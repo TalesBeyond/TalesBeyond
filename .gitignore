@@ -21,3 +21,5 @@ Thumbs.db
 !.vscode/extensions.json
 *.local
 .vercel
+
+.vercel
