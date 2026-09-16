@@ -1,0 +1,13 @@
+-- Hearthbound — 22_island_mask.sql
+-- Mask-based island merging (REQ-005) replaces the regions-based merge
+-- outcome (REQ-002, 21_island_regions.sql) for every merge performed after
+-- this ships. Instead of keeping both source islands as separate rectangular
+-- regions, a merge now produces one flat island plus a `mask` — a rows x
+-- cols array of booleans marking which cells of its bounding grid are
+-- actually part of the traced union shape; everything else is a void cell
+-- (no grid lines, not clickable, can't host a token). Null (the default)
+-- means "no mask" — a plain island, or a legacy regions-based merged island,
+-- renders exactly as it does today. Unlike `regions`, this has no `[]`
+-- empty-default convention: null and "no mask" are the same state, so there
+-- is no meaningful empty non-null value to default to.
+alter table islands add column if not exists mask jsonb null default null;

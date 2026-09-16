@@ -1,0 +1,14 @@
+-- Hearthbound — 21_island_regions.sql
+-- Merging two islands (REQ-002) needs the result to visually keep both
+-- original islands' rectangular footprints, not collapse into one filled
+-- bounding-box grid. `regions` describes the sub-rectangles (own offset,
+-- size, cell size, background) that make up an island's real shape; an
+-- island with no regions renders as one flat rectangle exactly as before,
+-- so every existing island stays valid unchanged. Regions are small,
+-- fully described client-side, and owned entirely by their parent
+-- island — nothing else ever references a region by id, unlike islands
+-- themselves (entities.island_id points into that table) — so this
+-- follows the same jsonb-array precedent as chest_items/drop_items
+-- (11_chests.sql, 13_mob_droppables.sql) rather than a normalized child
+-- table.
+alter table islands add column if not exists regions jsonb not null default '[]';

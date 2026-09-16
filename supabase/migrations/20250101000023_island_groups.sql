@@ -1,0 +1,12 @@
+-- Hearthbound — 23_island_groups.sql
+-- Both prior island-merge designs (regions, 21_island_regions.sql; mask,
+-- 22_island_mask.sql) combined two islands' *shapes* into one grid. That
+-- approach is retired in favor of island grouping: the host bundles 2+
+-- otherwise-untouched islands into a group that moves as a unit and shows
+-- one shared title, via an invisible bounding box rather than a combined
+-- shape. A group's membership is small, fully described client-side, and
+-- owned entirely by its layer — nothing else ever references a group by
+-- id — so it lives as one jsonb map keyed by group id on `layers`, the
+-- same shape the reducer already uses for `islands`/`entities`, rather
+-- than a normalized child table.
+alter table layers add column if not exists island_groups jsonb not null default '{}';

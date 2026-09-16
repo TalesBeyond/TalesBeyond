@@ -1,0 +1,218 @@
+# REQ-008 — Guest DM Sessions
+
+| Field | Value |
+| ----- | ----- |
+| ID | REQ-008 |
+| Title | Guest DM Sessions |
+| Status | InProgress |
+| Phase | Anonymous hosting |
+| Tier | Core |
+| Area | Auth / Realtime / cloud mode |
+| Author | Blaxine |
+| Created | 2026-09-15 |
+| Last Updated | 2026-09-15 |
+
+## Short Description
+
+Adds a third way to run a cloud-mode table, alongside signing up/logging in as
+a host (REQ-003) and true no-Supabase-configured local mode: a **guest DM**
+opens one table with no signup at all, and players still join it remotely by
+invite code exactly as they do today. Nothing about the table is ever written
+to Postgres — no `tables`/`players`/`layers`/`islands`/`entities` rows — so
+live sync between the DM and players runs over a new Supabase Realtime
+**Broadcast** channel instead of the existing Postgres-change subscription,
+with the DM's own browser holding the only authoritative copy of the table.
+Because nothing is stored, the DM is responsible for their own continuity:
+exporting the table to a file before closing it, and later resuming with that
+file plus a private DM code, which reactivates the same invite code so
+players can rejoin. A same-browser autosave protects against an ungraceful
+exit (crash, closed tab) that skipped the export step.
+
+## User Stories
+
+1. As a would-be DM who doesn't want to create an account, I want to open a table and start playing immediately, so that trying the app costs nothing up front.
+2. As a player, I want to join a guest DM's table by invite code exactly like I would any other table, so that I don't need to know or care which kind of table I'm joining.
+3. As a guest DM, I want to save my table to a file before I close it, so that I can pick the game back up later without losing anything.
+4. As a guest DM resuming a saved table, I want to prove it's really mine with a private code, so that someone who only has my exported file can't take over as DM.
+5. As a guest DM whose browser crashed or got closed by accident, I want a way to recover what I was doing without having remembered to export first, so that one mistake doesn't cost me the whole session.
+
+## Constraints
+
+- **The "image upload lock-down" originally scoped for this feature is already the existing behavior of the whole app, in every mode.** `TokenSidebar.jsx:50-67` already renders `<div className="empty-state">Only the DM can add tokens to the map.</div>` for any non-host and never shows its file input (`TokenSidebar.jsx:142`) to them; the map/island background upload lives inside `MapSettingsPopover` (`Toolbar.jsx`), which per REQ-002's own Constraints is already host-only "matching every other island-editing control." No player, in any mode today, can upload any image for anything. This plan adds no new restriction here — see Considered And Rejected.
+- **Supabase Storage is unusable for a guest table regardless.** `uploadImage()` (`src/lib/storageUpload.js:29`) writes to a path keyed by `tableId`, and `storage.objects`'s INSERT policy (`supabase/migrations/20250101000004_storage.sql:32-46`) authorizes that path only against a real `tables` row the caller belongs to. A guest table has no such row, so Storage could never accept an upload for one even if the (currently dormant, per REQ-007's Constraints) upload pipeline were wired up. Images in guest tables stay exactly what they already are everywhere in this app today — base64 data URLs embedded directly in state (`TokenSidebar.jsx:102`, `resizeImageToDataUrl`) — carried over broadcast like every other field.
+- **`session.hostKey` already exists for every table, in every mode.** `createEmptyGameState` (`src/state/store.jsx:38-68`) generates a 10-character `hostKey` (`generateInviteCode(10)`) unconditionally; today only local mode's Toolbar (copy-to-clipboard, `Toolbar.jsx:118`) and `RejoinHostForm` (`Landing.jsx:574-660`, gated `!isSupabaseConfigured`) ever surface or check it. This is the DM code the interview asked for — it needs surfacing in guest-mode UI and a validation path, not inventing from scratch.
+- **The existing Realtime sync module cannot be reused as-is.** `src/lib/realtime.js`'s `subscribeToTable` is built entirely on Postgres `postgres_changes` events (`.on('postgres_changes', { table: 'entities', ... })`, etc., lines 24-102) — it has no code path that doesn't originate from a real database row changing. A guest table's live sync needs a parallel module built on Realtime **Broadcast** (`channel.send({ type: 'broadcast', ... })` / `.on('broadcast', ...)`), which is a different subscription API on the same `supabase.channel(...)` object, not an extension of this file.
+- **Realtime Broadcast channels are unauthenticated-open by default in this project.** `supabase/config.toml` has no `[realtime]` Authorization/private-channel configuration, so any client holding the project's anon key can join or send on any channel name — access is governed entirely by knowing the channel's name (here, the invite code), the same trust boundary the existing invite-code join flow already relies on. Not a regression; worth stating because it means the invite code, not Supabase auth, is what actually gates a guest table's channel.
+- **Cloud mode's existing mutation pattern is "dispatch locally, then fire a remote write"** (e.g. `moveEntity`, `GameView.jsx:411-424`: `dispatch({ type: 'MOVE_ENTITY', ... })` immediately, then `moveEntityRemote(...).catch(reportError)`) — the remote call's own `postgres_changes` echo re-applying the same change to the writer is a harmless no-op today. This plan's broadcast module mirrors that shape for the DM (dispatch locally, then broadcast) but **cannot** mirror it for players, since a player has nothing durable to write to — see Architectural decisions.
+- **`GameProvider`'s existing `persistLocally` flag already implements a debounced continuous autosave** (`src/state/store.jsx:332-373`): every state change schedules a 300ms-debounced `saveSession(state.session.code, state)`, flushed again on unmount. This is the exact mechanism the interview asked for as the ungraceful-exit safety net — it needs a clean/unclean marker layered on top, not a new autosave loop built from scratch.
+- **`downloadSessionAsFile` (`src/state/persistence.js:64-74`) exports the entire `state` object verbatim**, `session.hostKey` included. Reused as-is, a guest table's exported file would embed the DM code directly, contradicting the decision that resuming needs the code as a second factor the file alone can't supply. Guest-table export needs its own function that strips the raw `hostKey` before serializing (see Architectural decisions for what replaces it).
+- **The repo has zero test files and no test runner** (re-confirmed by search, consistent with every prior REQ in this tree) — no `T`-phase steps; verification is the manual Smoke Test below.
+- **Discovered during Slice 2 implementation: two existing host actions have no safe guest-mode equivalent and are blocked outright rather than wired.** `regenerateCode` rotates `session.code`, which is also the guest broadcast channel's name (`guestRealtime.js`'s `channelNameFor`) — rotating it moves the DM to a brand-new channel that already-connected players have no way to learn about, unlike cloud mode where the channel is keyed by the permanent `tableId`, not the invite code. Mid-session `importTable` (a separate, older feature from this REQ's own file+DM-code resume in Slice 3) has no broadcast path and would silently desync every connected player if allowed. Both now show an explanatory alert for a guest host instead of running.
+- **Discovered and fixed during Slice 4 implementation: a pre-existing unload handler was silently corrupting guest sessions on every close or refresh.** `GameView.jsx`'s "local mode only" `beforeunload`/`pagehide` handler (added before this REQ, intended to drop a departing local-mode player from `players`) was gated only on `!isRemote` — since guest mode is also `!isRemote`, it fired for guest tables too, and for the guest **host** specifically it stripped their own player row from the saved state on every single tab close or refresh, not just a crash. This silently broke both ordinary resume-on-refresh and this slice's own recovery mechanism (the resumed state would be missing its host entirely). Fixed by excluding `isGuest` from that handler's condition — a guest table's shared truth lives in the DM's broadcast-authoritative state, not in any client's own localStorage, so the raw write was never correct for this mode regardless.
+- **No hard build-order dependency on REQ-001 (Connection Recovery, InProgress) or REQ-007 (Host Table Cap Hardening, InProgress).** Both are scoped entirely to the DB-backed cloud path (`isRemote`/`fetchTableSnapshot`, `host_auth_id` caps) that a guest table never touches — this plan's reconnect/resync logic (Slice 2) and lack of any table cap are independent of both.
+
+## Architectural decisions
+
+- **New `mode` value.** `App.jsx`/`GameProvider`/`GameView.jsx` thread `mode` through as `'local' | 'remote'` today (`App.jsx:14`, `GameView.jsx:134`'s `isRemote = mode === 'remote' && isSupabaseConfigured`). This plan adds `'guest'`, requiring `isSupabaseConfigured` exactly like `'remote'` does (Broadcast still needs a live Supabase project) but never calling any `remoteApi.js` function or opening a `postgres_changes` subscription.
+- **New broadcast sync module, `src/lib/guestRealtime.js`**, mirroring `realtime.js`'s single-channel-per-table shape but built on Realtime Broadcast. The channel name is the table's invite code. Two message kinds travel on it:
+  - `STATE_CHANGE` — a reducer action (the same shape `store.jsx`'s reducer already accepts) to dispatch verbatim. Sent by the DM's client after every local mutation, and by the DM's client alone in response to an `INTENT`.
+  - `INTENT` — a player's proposed action, sent instead of a local dispatch. Only the DM's client acts on `INTENT` messages.
+- **The DM's browser is the sole source of truth.** A DM-originated mutation dispatches locally first, then broadcasts a `STATE_CHANGE` — mirroring cloud mode's existing "dispatch locally, then fire the remote write" pattern (`GameView.jsx:411-424`) with a broadcast send standing in for the `remoteApi.js` call. A player-originated mutation does **not** dispatch locally first; it sends an `INTENT`, the DM's client validates it against the same permission checks already gating cloud mode (`canMoveEntity`/`canUpdateEntity`, `GameView.jsx:339-348`), applies it to its own authoritative state, and broadcasts the resulting `STATE_CHANGE` back out — the originating player's own view updates from that broadcast, the same as everyone else's, never from an optimistic local dispatch.
+- **Late join and reconnect use a request/response pair on the same channel**, not `fetchTableSnapshot` (which reads Postgres — nothing exists there for a guest table). A joining or reconnecting player's client broadcasts `STATE_REQUEST`; the DM's client responds with a `STATE_SNAPSHOT` (the full current state, mirroring `fetchTableSnapshot`'s output shape), which the requester dispatches via the existing `HYDRATE` action (`store.jsx:72`) exactly as today's resync/resume paths already do.
+- **DM-only fields never leave the DM's client for players.** `entity_dm_data`'s host-only privacy today comes from RLS on a real query (`15_entity_dm_data_privacy.sql`); a guest table has no RLS to lean on, so the DM's `STATE_CHANGE`/`STATE_SNAPSHOT` payloads to players must omit that data at the point of serialization instead — the DM's own local state keeps it.
+- **`session.hostKey` is the DM code**, surfaced in guest-mode UI (unlike today, where it's shown only in local mode). The invite code stays the separate, player-facing code exactly as it is everywhere else in the app.
+- **Guest-table export never includes the raw `hostKey`.** A new `downloadGuestSessionAsFile(state)` (sibling to `downloadSessionAsFile`) serializes the state with `session.hostKey` replaced by `session.hostKeyHash` — a SHA-256 digest of the real key (`crypto.subtle.digest`, already available in every browser this app targets). Resuming asks the DM to type the code, hashes what they typed, and compares it to the file's `hostKeyHash`; a match re-derives nothing (the real key is only ever needed locally, for surfacing back in the UI, and is supplied by the DM's own input) and a mismatch is rejected. This is the concrete mechanism behind "the file alone can't resume the table."
+- **Same invite code persists across resume.** The invite code is just `state.session.code`, already part of the exported/re-imported state; resuming re-opens the identical Broadcast channel name, so players who already have the code can rejoin without the DM redistributing a new one.
+- **Guest sessions reuse `GameProvider`'s existing debounced-autosave mechanism (`persistLocally={true}`, `store.jsx:332-373`)**, saving to the same `saveSession`/`hearthbound:session:<CODE>` local-storage key local mode already uses — no new autosave loop. Layered on top: a separate `hearthbound:guestclean:<CODE>` marker, written only at the moment of a deliberate export-then-leave, and cleared the moment a new guest table starts under that code. On Landing's guest entry point, a saved session under a code with no matching clean marker is an unclean exit; one with the marker (or no saved session at all) is not.
+- **Landing's cloud-mode host flow (`Landing.jsx`'s `HostForm`) gains a third branch**, "Start a guest table," alongside its existing signed-out (sign-up/log-in) and signed-in (table list) states — reachable only when `isSupabaseConfigured`. The true no-Supabase-configured branch (`HostTableForm`'s local-mode path, `RejoinHostForm`) is untouched by this plan.
+
+## UI / UX Notes
+
+- "Start a guest table" appears as a third option on Landing's host flow, alongside "Sign up / Log in" and (once signed in) "Your tables" — visible only in cloud mode (`isSupabaseConfigured`). Local demo mode's existing host flow is visually and behaviorally unchanged.
+- The guest DM's own private code is shown once, clearly labeled as something to save (mirroring `Toolbar.jsx:118`'s existing "copy host key" affordance, extended to guest mode's own entry point), alongside the invite code for players.
+- "Export table" is available at any time during a guest session (reusing the existing Toolbar export affordance's visual slot); leaving without exporting shows a plain warning rather than silently discarding anything.
+- Resuming asks for two things together: the exported file and the DM code — a wrong code shows an inline error naming the mismatch, without revealing whether the file itself was otherwise valid.
+- On Landing, if this browser has an unclean-exit guest session saved, offer to resume it locally before showing the normal guest-table-creation form — distinct copy from the deliberate file+code resume path, since this one needs neither.
+
+## Acceptance Criteria
+
+- [ ] **AC1 — Guest DM opens a table with no signup.** In cloud mode, "Start a guest table" creates a table with an invite code (for players) and a separate private DM code, with no row ever written to `tables`, `players`, `layers`, `islands`, or `entities`.
+- [ ] **AC2 — Players join exactly as today.** A player joins a guest table remotely by invite code (display name + color, no login) and sees the live map, indistinguishable in flow from joining any other cloud table.
+- [x] **AC3 — Full live sync, DM-authoritative.** Every mutation type the app already supports in cloud mode (token moves and placement, character sheet edits, map/island edits, chest/door state, DM notes staying visible to the DM only) round-trips live between the DM and every player over the new broadcast channel, with the DM's client the only one that ever applies a player-originated change to shared state.
+- [x] **AC4 — Late join and reconnect converge.** A player who joins after the session started, or whose connection drops and comes back, ends up on the DM's current state rather than stuck on stale or empty state.
+- [x] **AC5 — Export at any time.** The DM can download the full table to a JSON file at any point during the session, with the file containing a hash of the DM code rather than the code itself.
+- [x] **AC6 — Resume requires file and code together.** Uploading a previously exported file and entering the matching DM code resumes the table as its host, reactivating the same invite code; entering the wrong code is rejected with the file otherwise untouched.
+- [x] **AC7 — Same-browser recovery after an unclean exit.** If the DM's browser closes or disconnects without an explicit export, reopening the app on that same browser detects the interrupted session (via the debounced autosave, missing its clean marker) and offers to resume it locally, with copy that distinguishes this from a normal fresh start.
+- [ ] **AC8 — Local demo mode is untouched.** None of this feature's UI or code paths run when Supabase isn't configured; local mode's existing host flow and host-key rejoin behave exactly as they do today.
+
+## Technical Notes
+
+- `src/components/Landing.jsx`'s `HostForm` (lines 75-115) currently branches on `authState` (`checking` / `signedOut` / `signedIn`) only inside `isSupabaseConfigured`. Add a sibling top-level choice (e.g. a `hostPath` state: `'account' | 'guest'`) presented before `authState` even loads, so choosing "guest" skips `HostAuthForm`/`HostTablesList` entirely.
+- A new `GuestHostForm` (new component in `Landing.jsx`, alongside `HostTableForm`) reuses `HostTableForm`'s name/color/map-name/cols/rows fields verbatim, but on submit calls `createEmptyGameState` directly (same call `HostTableForm`'s local-mode branch already makes, `Landing.jsx:395`) instead of `createTableRemote`, and enters via `onEnter({ state, me, mode: 'guest' })`.
+- `src/lib/guestRealtime.js` (new): `subscribeToGuestTable(code, dispatch, { isHost, getState })` opens `supabase.channel('guest:' + code)`, wires `.on('broadcast', { event: 'state_change' }, ...)` → `dispatch(payload.action)` for every client, and (host only) `.on('broadcast', { event: 'intent' }, ...)` → validate against `canMoveEntity`/`canUpdateEntity`-equivalent checks, apply, then `channel.send({ type: 'broadcast', event: 'state_change', ... })`. Also handles `state_request`/`state_snapshot` per the late-join/reconnect design. Mirrors `realtime.js`'s `subscribeToTable(tableId, dispatch, onStatusChange)` signature shape (including the `onStatusChange` connection-status callback) so `GameView.jsx`'s existing subscription-effect pattern (`GameView.jsx:180-187`) can host it with minimal new wiring.
+- `src/components/GameView.jsx`: new `isGuestHost`/`isGuest` booleans alongside the existing `isRemote` (`GameView.jsx:134`). Every one of the `if (isRemote) ...Remote(...).catch(reportError)` call sites (lines 424, 435, 442, 462, 480, 521, 583, 599, 610, 631, 647, 657, 674, 688, 706, 714, 737, 742, 762, 778) gets a parallel `else if (isGuest)` branch: if `isGuestHost`, broadcast a `state_change` after the same local `dispatch(...)` call already present; if a guest player, send an `intent` instead of dispatching locally at all (per the host-authoritative decision above) — this is the largest single chunk of new call-site wiring in the feature.
+- `src/state/persistence.js`: new `downloadGuestSessionAsFile(state)` (sibling to `downloadSessionAsFile`, `persistence.js:64-74`), replacing `session.hostKey` with `session.hostKeyHash` (via `crypto.subtle.digest('SHA-256', ...)`, hex-encoded) before serializing. New `hashGuestCode(code)` helper (same digest call) used both here and by the resume-time comparison.
+- `src/components/Landing.jsx` (or `GameView.jsx`, wherever "resume a guest table" lives): a new form taking a file input plus a DM-code field; reads the file via the existing `readJsonFromFile` (`persistence.js:151-164`), hashes the entered code with `hashGuestCode`, compares to the file's `session.hostKeyHash`, and on match restores `session.hostKey` locally from the DM's own entered code before entering `GameProvider` — the real key only ever needs to exist in the resuming DM's own browser again, never in the file.
+- `src/state/store.jsx`'s `GameProvider` (lines 332-380): guest mode passes `persistLocally={true}` exactly like local mode does, reusing the existing debounced `saveSession` autosave unchanged. New: a `hearthbound:guestclean:<CODE>` marker (new small helper pair in `persistence.js`, e.g. `markGuestClean(code)` / `isGuestClean(code)` / `clearGuestClean(code)`) — set by the export-then-leave flow, checked by Landing's guest entry point before showing the normal "start a new guest table" form.
+- `src/App.jsx`: `handleEnter`/`handleLeave` (lines 59-71) and the resume-on-refresh effect (lines 20-57) get a `mode === 'guest'` branch mirroring the existing `'local'` branch (load from `saveSession`/`loadCurrentPointer`, no `fetchTableSnapshot` call) — a guest session surviving a page refresh reuses exactly the same local-storage-backed resume path local mode already has, not the Postgres-backed one `'remote'` uses.
+- DM-only fields (the `entity_dm_data` privacy concept — confirm the exact client-side field name via `mappers.js`'s `mapDbEntityDmData` during implementation) must be stripped from any `state_change`/`state_snapshot` payload the DM's client sends to players, mirroring the DB path's host-only RLS with an explicit filter step instead.
+- No `T`-phase steps: consistent with every prior REQ in this tree, verification is the manual Smoke Test below.
+
+## Implementation Steps
+
+| Phase | Meaning |
+| ----- | ------- |
+| F | Foundation |
+| S | Service |
+| U | UX |
+| D | Docs |
+
+### Slice 1 — Guest DM tracer bullet
+
+**Demoable when:** in cloud mode, "Start a guest table" on Landing opens a table with an invite code and a DM code shown once; a second browser joins by invite code exactly as it would any cloud table; moving a token in either browser is reflected live in the other, with no Supabase table row ever created for it.
+**Satisfies:** AC1, AC2, AC8 (partial: AC3 for one action type) · **Covers:** US1, US2
+
+| Done | # | Phase | Title | Description | Depends on | Primary files |
+| ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
+| ✅ | S001 | F | `guest` mode plumbing | Add `'guest'` as a third `mode` value through `App.jsx` (entry/resume/pointer handling, mirroring the existing `'local'` branch) and `GameView.jsx` (`isGuest`/`isGuestHost` booleans alongside `isRemote`). | — | `src/App.jsx`, `src/components/GameView.jsx` |
+| ✅ | S002 | F | Broadcast sync module | `src/lib/guestRealtime.js`: `subscribeToGuestTable(code, { onStateChange, onIntent, onPlayerJoin, onStatusChange })` wiring `state_change` (dispatch verbatim) and, host-only, `intent` (validate, apply, then broadcast `state_change`) on a `guest:<code>` channel. Extended beyond the original scope to also carry `player_join`/`player_join_ack` (see note below) and a player-side `requestGuestJoin` probe. | — | `src/lib/guestRealtime.js` |
+| ✅ | S003 | U | Landing guest entry point | New `GuestHostForm` in `Landing.jsx`, reusing `HostTableForm`'s fields, calling `createEmptyGameState` directly and entering with `mode: 'guest'`; shown as a third choice alongside sign-up/log-in and the signed-in table list, `isSupabaseConfigured`-gated. | S001 | `src/components/Landing.jsx` |
+| ✅ | S004 | S | First synced mutation + join handshake | Wire `moveEntity` (`GameView.jsx`) through S002: DM dispatches locally then broadcasts `state_change`; a guest player sends `intent` instead of dispatching, validated host-side against the sender's id (not `isHost`, which is always true for the DM's own client). **Discovered during implementation:** a player can't join a guest table through `JoinForm`'s existing cloud path at all — `whoamiForCodeRemote`/`joinTableRemote` are Postgres RPCs with nothing to find for a guest table. Added a `player_join`/`player_join_ack` handshake (S002) — the DM's client assigns a playerId, adds them to the roster, and answers with a full state snapshot — and wired `JoinForm` to probe for this first, falling back to the existing cloud join on no answer. This was pulled forward from Slice 2's late-join design because Slice 1 cannot be demoed without a player being able to join at all. | S001, S002, S003 | `src/components/GameView.jsx`, `src/components/Landing.jsx` |
+
+### Slice 2 — Full sync coverage and resync
+
+**Demoable when:** every kind of change the app supports (sheet edits, map/island edits, chest/door toggles, DM notes) made by either the DM or a player shows up correctly for everyone else in real time; a player who joins mid-session, or reconnects after a dropped connection, ends up caught up rather than stuck on stale state; a player's client never sees the DM's private notes.
+**Satisfies:** AC3, AC4 · **Covers:** US2
+
+| Done | # | Phase | Title | Description | Depends on | Primary files |
+| ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
+| ✅ | S005 | S | Remaining call sites | Extended every remaining `if (isRemote) ...Remote(...)` call site with the dispatch-then-broadcast (host) / intent-only (player) pattern S004 established: `addEntity`, `removeEntity`, `updateLayer`, `createLayer`, `placeAndAddIsland` (+ its `removeIsland` replacement-island branch), `updateIsland`, `removeIsland`, `confirmGroup`, `ungroupIslands`, `renameGroup`, `moveIslandGroup` (one `MOVE_ISLAND_GROUP` broadcast instead of remote's per-island loop), `removeLayer`, `toggleOpen`. `confirmEnterDoor` (player-only, since `enterDoor` excludes the host) and `leaveTable` (any player) got the player-intent side too, validated host-side against `senderId` for ownership/self-only fields. `regenerateCode` and mid-session `importTable` are explicitly guarded off for guest tables instead (see Constraints) — rotating the code would orphan the broadcast channel, and importing mid-session has no broadcast path to avoid desyncing players. | S004 | `src/components/GameView.jsx` |
+| ✅ | S006 | S | DM-notes filtering | `stripDmNotesFromAction`/`stripDmNotesFromState` helpers in `GameView.jsx`, applied at every host-side broadcast send (`broadcastGuestChange`, the guest effect's `applyAndBroadcast`, `handlePlayerJoin`'s join snapshot, `handleStateRequest`'s reconnect snapshot). | S002, S005 | `src/components/GameView.jsx` |
+| ✅ | S007 | S | Reconnect resync | `state_request`/`state_snapshot` pair added to `guestRealtime.js` and wired into `GameView.jsx`'s guest effect: a player's channel recovering from a real drop (not the initial join, already covered by S004) asks the host for a fresh snapshot and dispatches it via `HYDRATE`. | S002, S006 | `src/lib/guestRealtime.js`, `src/components/GameView.jsx` |
+
+### Slice 3 — Export and resume
+
+**Demoable when:** the DM can download the guest table to a file at any point; closing the table and later uploading that file with the correct DM code resumes it, reactivating the same invite code so a player who already has it can rejoin; the wrong code is rejected.
+**Satisfies:** AC5, AC6 · **Covers:** US3, US4
+
+| Done | # | Phase | Title | Description | Depends on | Primary files |
+| ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
+| ✅ | S008 | F | Hashed-code export | `hashGuestCode(code)` (SHA-256 via SubtleCrypto) and `downloadGuestSessionAsFile(state)` in `persistence.js` — the exported file carries `session.hostKeyHash`, never the raw `hostKey`. | — | `src/state/persistence.js` |
+| ✅ | S009 | U | Export control + leave guard | `exportTable()` branches to S008's function for a guest host and tracks `hasExportedGuestTable` (in-memory, per-mount). `leaveTable()` is now a gate: an un-exported guest host gets a confirm dialog (reusing the door-confirm CSS pattern) with Cancel / Leave anyway / Export & leave; every other case leaves immediately via the renamed `doLeaveTable()`, unchanged. | S008 | `src/components/GameView.jsx` |
+| ✅ | S010 | S | Resume form | `GuestResumeForm` in `Landing.jsx`, reachable via a "Resume an exported guest table" link from the guest-table chooser: reads the file via `readJsonFromFile`, hashes the entered code via `hashGuestCode`, compares to the file's `hostKeyHash`, and on match rebuilds `session.hostKey` from the entered code (stripping `hostKeyHash`) before entering via `onEnter({ state, me, mode: 'guest' })` — `me` is read directly from the restored `players[hostPlayerId]`. Mismatch or a malformed file shows an inline error; the file alone never resumes anything. | S008 | `src/components/Landing.jsx` |
+
+### Slice 4 — Same-browser autosave safety net
+
+**Demoable when:** force-closing the DM's tab mid-session without exporting, then reopening the app in that same browser, offers to resume the interrupted guest table locally, with copy distinguishing it from a fresh start; exporting and leaving cleanly does not trigger that prompt on the next visit.
+**Satisfies:** AC7
+
+| Done | # | Phase | Title | Description | Depends on | Primary files |
+| ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
+| ✅ | S011 | F | Active/clean marker | `markGuestActive`/`markGuestClean`/`clearGuestMeta`/`findUnclosedGuestTable` in `persistence.js`, backed by `hearthbound:guestmeta:<CODE>` (value `'active'` or `'clean'` — its mere presence, not just its value, is what tells a guest table apart from an ordinary local-mode one that never touches this key). `markGuestActive` is called wherever a guest table starts (fresh create, file-based resume, and the S012 local recovery); `markGuestClean` is called once, at `doLeaveTable`'s single guest-host choke point, covering every deliberate Leave path regardless of whether they exported. | S009, S010 | `src/state/persistence.js`, `src/components/Landing.jsx`, `src/components/GameView.jsx` |
+| ✅ | S012 | U | Unclean-exit recovery prompt | Landing's signed-out guest chooser checks `findUnclosedGuestTable()` on mount; if found, shows a banner naming the code with Resume/Discard actions — resume loads straight from `saveSession`'s storage (no file/code needed) via the same `players[hostPlayerId]`-as-`me` pattern `GuestResumeForm` uses. | S011 | `src/components/Landing.jsx` |
+| ✅ | S013 | D | Thesaurus update | Added "DM code", "Guest channel", "Guest table", and "Intent" to `THESAURUS.md`. | S004, S010, S012 | `THESAURUS.md` |
+
+### Dependency graph
+
+```
+S001 → S003 → S004 → S005 → S006 → S007
+S002 ────────↗
+S008 → S009 → S011 → S012
+S008 → S010
+S004, S010, S012 → S013
+```
+
+## Out of Scope
+
+- A programmatic "only one table per guest DM" enforcement — nothing keys a limit on, since there's no account; a guest opening a second table in a second tab is an accepted, unenforced edge case rather than something this plan builds server-side tracking for.
+- Any change to the no-Supabase-configured local mode's existing host-key rejoin flow (`RejoinHostForm`) — untouched.
+- Rebuilding the dormant Supabase Storage image pipeline, or building any new image-upload UI — no player, in any mode, can upload images today, and guest mode changes nothing about that (see Constraints).
+- Auto dice-rolling on character sheets, or any restriction on it — no such feature exists anywhere in the app yet; noted only as a rule to apply whenever it is eventually built.
+- Rate-limiting or debouncing high-frequency broadcast traffic (e.g. live token drag) beyond whatever the existing per-action call sites already produce — a future refinement if guest-mode message volume actually becomes a problem, not a day-one concern.
+- A full reconnect UX (grace period, blocking scrim) matching REQ-001's for guest mode — Slice 2's `state_request`/`state_snapshot` resync covers correctness (a reconnecting player converges on current state); polished reconnect UI is not part of this plan.
+- Migrating an existing guest table into a real signed-up host account, or vice versa — the two hosting paths stay entirely separate.
+
+## Open Questions
+
+- [ ] **Q1 — Broadcast message volume for high-frequency actions.** Should live token drag (not just drop) broadcast every intermediate position, or only the final one? Deferred until Slice 1/2 implementation surfaces whether the existing per-drop-only call sites already avoid the problem, or whether a future live-drag feature (already out of scope per REQ-001's own Out of Scope) would need this answered first.
+- [ ] **Q2 — Resume-form placement.** Should the file+DM-code resume form live on Landing (alongside guest table creation) or somewhere else? Deferred to implementation; Technical Notes assumes Landing but this is not load-bearing for any other decision.
+
+## Smoke Test
+
+> Developer runs the app; the agent does not self-run.
+
+1. In cloud mode, open Landing and confirm "Start a guest table" appears as a third option alongside sign-up/log-in. Create a guest table; confirm an invite code and a separately-labeled DM code are both shown, and that no new row appears in Supabase's `tables` table (check via the dashboard). *(AC1)*
+2. From a second browser, join using the invite code exactly as with any cloud table; confirm the join flow looks identical to a normal cloud join. *(AC2)*
+3. Move a token in the DM's browser and confirm it updates live in the player's browser, and vice versa; edit a character sheet field, a map/island setting, and toggle a chest/door from each side and confirm all sync correctly; confirm a DM note on an entity never appears in the player's browser. *(AC3)*
+4. Join a third browser mid-session, and separately throttle-and-restore one player's network connection; confirm both end up on the DM's current state rather than stale/empty. *(AC4)*
+5. Click "Export table" mid-session and confirm a JSON file downloads; open it and confirm it contains `session.hostKeyHash`, not the raw DM code. *(AC5)*
+6. Close the table, then on Landing use the resume form with that file and the correct DM code; confirm it resumes as host and the original invite code still lets the earlier player rejoin. Repeat with a wrong code and confirm it's rejected. *(AC6)*
+7. Start a fresh guest table, make a change, then force-close the tab without exporting. Reopen the app in that same browser and confirm it offers to resume the interrupted session locally, with wording distinct from the file-based resume. Repeat, this time exporting and leaving cleanly first, and confirm no such prompt appears on the next visit. *(AC7)*
+8. Without Supabase configured, confirm Landing's host flow looks and behaves exactly as it does today, with no guest-table option present. *(AC8)*
+
+## Size
+
+| T-Shirt Size | Estimated Hours | Notes |
+| ------------ | --------------- | ----- |
+| XL | 30–40 | A parallel Realtime transport (Broadcast vs. Postgres-changes) touching most of `GameView.jsx`'s ~20 mutation call sites, a new host-authoritative permission model for player-originated changes, a new hashed-code export/resume flow, and a new autosave-marker layer on top of an existing mechanism. No schema/migration work at all — this is entirely client-side (Broadcast needs no new database objects), but the surface area rivals or exceeds REQ-001 and REQ-003 combined.
+
+## Considered And Rejected
+
+- **A new WebRTC peer-to-peer transport instead of Supabase Realtime Broadcast.** Would avoid Supabase entirely for this mode, but this codebase has zero WebRTC infrastructure today (no signaling, no NAT-traversal, no reconnect handling), and building one is a substantially larger and riskier effort than reusing the Broadcast API this project's Supabase dependency already provides for free.
+- **Reusing the existing hosted-table DB rows, just deleting them when the DM leaves.** Simplest to build (the existing `join_table`/RLS/`postgres_changes` machinery just works), but only reduces steady-state storage — it still incurs the same per-session row/RPC cost the "quota control" motivation exists to avoid.
+- **Letting each player's browser hold its own character sheet independently, syncing only for display.** Survives a DM disconnect better, but breaks the "DM's export is the whole table" story — the export would be missing anything that only ever lived in a player's browser, and this REQ's premise (DM's browser is the one thing users are told to protect) depends on it actually being complete.
+- **Embedding the DM code directly in the exported file (no hash).** Simpler for the DM (one artifact, nothing to remember), but means anyone who obtains the exported file can fully take over as DM. A SHA-256 hash of the code preserves "file alone is insufficient" while still letting resume validate what the DM typed.
+- **One shared code for both player invites and DM resume.** Fewer things to communicate, but means leaking the invite code (which players necessarily have) could let someone attempt to resume/claim DM control — a real risk the two-code split avoids at negligible cost.
+- **Restricting player image uploads for islands/layers/monsters specifically, as originally scoped.** Dropped once the deep-dive found `TokenSidebar.jsx` and `MapSettingsPopover` already restrict every image-upload surface to the host, in every mode, today — there was nothing left for this feature to add. See Constraints.
+- **A beforeunload browser warning as the primary ungraceful-exit safeguard, instead of the localStorage autosave.** Reduces accidental closes but does nothing for an actual crash or force-quit, which fires no unload event at all — exactly the case the autosave (already running continuously via `GameProvider`'s existing debounce) protects against without relying on the DM seeing a prompt in time.
+- **Formalizing local mode itself into this feature (one unified "no full persistence" path) instead of adding guest mode as a peer branch under cloud mode.** Considered per the original framing, but the two run under genuinely different `isSupabaseConfigured` conditions — local mode has no Realtime to lose, guest mode's entire live-sync story depends on it. Keeping the true offline fallback (`HostTableForm`'s local branch, `RejoinHostForm`) untouched and adding guest mode as cloud mode's third branch avoids conflating two conditions that can't actually share code paths.
+
+## Revision History
+
+| Date | Author | Summary of Change |
+| ---- | ------ | ----------------- |
+| 2026-09-15 | Blaxine | Initial plan, following a `/grill-me` interview that resolved product scope and architecture. |
+| 2026-09-15 | Claude | Slice 1 implemented (S001-S004) and verified live against the real Supabase project in two browser tabs: a guest table opens with no signup, an invite-code join works end-to-end via a new `player_join`/`player_join_ack` handshake (pulled forward from Slice 2 — see S004's note), and a DM-authored token move broadcasts live to the joined player with zero REST/RPC calls recorded in either tab's network log (confirms AC1's no-DB-row claim empirically, not just by code review). AC8 (local mode untouched) verified by code review only — all new code is gated behind `isSupabaseConfigured`/the new `'guest'` mode value, but a live no-Supabase-configured run wasn't tested this pass. The reverse direction (a player moving their own hero) is implemented but not live-verified: it requires hero ownership, which is assigned via `updateEntity` (not wired for guest broadcast until Slice 2's S005), so a freshly-placed hero has no owner for a player to move yet. |
+| 2026-09-15 | Claude | Slice 2 implemented (S005-S007) and verified live in two browser tabs, satisfying AC3 and AC4. Verified: ownership assignment (`updateEntity`) broadcasts live; a player who now owns a hero can move it via the intent path and see the DM's applied result echoed back; a DM note set on an entity never reaches a joining player's snapshot nor a live update; force-dropping and restoring a player's Realtime connection (via `supabase.realtime.disconnect()`/`connect()`) correctly triggers a `state_request`/`state_snapshot` resync that catches the player up on a move the DM made while they were offline. One testing pitfall worth recording: a long-lived browser tab that's only ever hot-reloaded (never hard-reloaded) can keep running pre-edit closures for a mounted effect's callbacks, producing misleading results indistinguishable from a real bug — a DM-notes leak that appeared mid-session vanished entirely once the tab doing the joining was given a genuine full reload. Added two guest-mode guards not explicitly itemized in S005's original text (`regenerateCode`, mid-session `importTable`) — see new Constraints bullet. |
+| 2026-09-15 | Claude | Slice 3 implemented (S008-S010) and verified live, satisfying AC5 and AC6. Verified by intercepting the real `URL.createObjectURL` call during an actual Toolbar Export click (rather than relying on the OS download, which automation can't inspect): the exported file's `session` has no `hostKey` field at all, carries a 64-hex-char `hostKeyHash` that matches an independently-computed hash of the real code, and the invite code round-trips unchanged. Verified the resume form end-to-end (feeding the captured export back in as a synthetic `File`): a wrong DM code is rejected with an inline error and nothing is entered; the correct code resumes as the original host, restores `session.hostKey` from the typed value, drops `hostKeyHash` from the live state, and reactivates the identical invite code. Verified the Leave gate both ways: leaving after having exported goes straight through with no prompt; leaving an un-exported guest table shows the Cancel / Leave anyway / Export & leave dialog, and "Export & leave" exports before leaving. |
+| 2026-09-15 | Claude | Slice 4 implemented (S011-S013) and verified live, satisfying AC7 — REQ-008 is now feature-complete, all 8 ACs checked. Found and fixed a real, previously-latent bug in the process (see new Constraints bullet): a pre-existing unload handler was stripping the guest host from their own `players` on every close or refresh, not just a crash, silently breaking resume. After the fix: simulating a lost/cleared `hearthbound:current` pointer against still-present session data correctly surfaces the "not closed properly" banner on Landing, naming the orphaned code; "Resume it" re-enters with the table fully intact (host identity, entities, everything); a deliberate Leave (with or without exporting first) flips the marker to `'clean'` and the banner correctly does not reappear; and a plain page refresh (pointer intact) still resumes straight into the table exactly as before, confirming the fix didn't regress the common case. Moving to `InProgress`: all code is implemented and live-verified against the real Supabase project across many two-tab sessions, but every session so far has run in one browser via multiple tabs — a genuine cross-device test (two different physical browsers/machines) hasn't been done. |

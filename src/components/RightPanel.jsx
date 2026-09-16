@@ -1,0 +1,1181 @@
+import React, { useState } from 'react';
+import { CONDITIONS } from '../data/conditions.js';
+import {
+  ABILITIES,
+  SKILLS,
+  SPELL_LEVELS,
+  abilityModifier,
+  formatModifier,
+  defaultCharacterSheet,
+  normalizeCheckEntry,
+  normalizeEquipment,
+  newEquipmentItem,
+  normalizeSpellcasting,
+  newSpellEntry,
+  CURRENCIES,
+  normalizeCurrency,
+} from '../data/characterSheet.js';
+import { DEFAULT_WEAPONS } from '../data/weapons.js';
+import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
+import { makeIconDataUrl } from '../data/defaultTokens.js';
+import ChestContentsEditor from './ChestContentsEditor.jsx';
+import DroppablesEditor from './DroppablesEditor.jsx';
+
+export default function RightPanel({
+  players,
+  hostId,
+  layers,
+  layerOrder,
+  entities,
+  selectedEntity,
+  isHost,
+  onUpdateEntity,
+  onRemoveEntity,
+  tool,
+  heroes,
+  onGiveChestItem,
+  collapsed,
+  onToggleCollapsed,
+}) {
+  if (collapsed) {
+    return (
+      <div className="panel right collapsed">
+        <div className="panel-header">
+          <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Expand players & inspector panel">
+            «
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel right">
+      <div className="panel-header">
+        <span>Players</span>
+        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse players & inspector panel">
+          »
+        </button>
+      </div>
+      <div className="panel-scroll" style={{ flex: 'none', maxHeight: '38%' }}>
+        {Object.values(players).length === 0 ? (
+          <div className="empty-state">No one here yet.</div>
+        ) : (
+          Object.values(players).map((p) => (
+            <div className="player-row" key={p.id}>
+              <span className="player-dot" style={{ background: p.color }} />
+              <span className="player-name">{p.name}</span>
+              {p.id === hostId && <span className="player-tag">HOST</span>}
+              {!p.connected && <span className="player-tag">AWAY</span>}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="panel-header" style={{ borderTop: '1px solid var(--ink-700)' }}>
+        Inspector
+      </div>
+      <div className="panel-scroll">
+        {!selectedEntity ? (
+          <div className="empty-state">Select a token on the map to see its details here.</div>
+        ) : selectedEntity.kind === 'hero' ? (
+          <HeroInspector
+            key={selectedEntity.id}
+            entity={selectedEntity}
+            isHost={isHost}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            entities={entities}
+            players={players}
+          />
+        ) : selectedEntity.kind === 'door' ? (
+          <DoorInspector
+            entity={selectedEntity}
+            layers={layers}
+            layerOrder={layerOrder}
+            isHost={isHost}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+          />
+        ) : selectedEntity.kind === 'chest' ? (
+          <ChestInspector
+            entity={selectedEntity}
+            tool={tool}
+            heroes={heroes}
+            isHost={isHost}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            onGiveItem={onGiveChestItem}
+          />
+        ) : (
+          <MobInspector entity={selectedEntity} isHost={isHost} onUpdate={onUpdateEntity} onRemove={onRemoveEntity} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- shared bits ----------
+
+function NameField({ entity, onUpdate, disabled }) {
+  return (
+    <>
+      <label className="field-label">Name</label>
+      <input
+        className="field"
+        value={entity.name}
+        disabled={disabled}
+        onChange={(e) => onUpdate(entity.id, { name: e.target.value })}
+      />
+    </>
+  );
+}
+
+function CollapsibleField({ title, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button type="button" className="sidebar-section-header" onClick={() => setOpen((o) => !o)}>
+        <span className="field-label" style={{ margin: 0 }}>
+          {title}
+        </span>
+        <span className="sidebar-section-chevron">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+function DmNotesField({ entity, onUpdate, placeholder }) {
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 14 }}>
+        DM notes <span style={{ opacity: 0.6 }}>(only visible to you)</span>
+      </label>
+      <textarea
+        className="field"
+        rows={4}
+        style={{ resize: 'vertical' }}
+        placeholder={placeholder}
+        value={entity.dmNotes || ''}
+        onChange={(e) => onUpdate(entity.id, { dmNotes: e.target.value })}
+      />
+    </>
+  );
+}
+
+// Lets the DM link a hero token to whichever seated player controls it —
+// needed since placing tokens is host-only now (see PITFALLS.md #1), so a
+// hero would otherwise never end up owned by anyone but the DM. Only once
+// `ownerId` matches a player does GameView.jsx's canMoveEntity let them
+// drag that hero around.
+function OwnerField({ entity, players, isHost, onUpdate }) {
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Owner {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
+      </label>
+      <select
+        className="field"
+        value={entity.ownerId || ''}
+        disabled={!isHost}
+        onChange={(e) => onUpdate(entity.id, { ownerId: e.target.value || null })}
+      >
+        <option value="">— unassigned (DM controls) —</option>
+        {Object.values(players || {}).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+            {p.isHost ? ' (DM)' : ''}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+function RemoveButton({ entity, onRemove }) {
+  return (
+    <button className="btn btn-danger btn-block" style={{ marginTop: 14 }} onClick={() => onRemove(entity.id)}>
+      Remove from map
+    </button>
+  );
+}
+
+function ConditionsField({ entity, isHost, onUpdate }) {
+  const activeConditions = entity.conditions || [];
+
+  function toggleCondition(key) {
+    if (!isHost) return;
+    const next = activeConditions.includes(key) ? activeConditions.filter((c) => c !== key) : [...activeConditions, key];
+    onUpdate(entity.id, { conditions: next });
+  }
+
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Conditions {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
+      </label>
+      <div className="condition-row">
+        {CONDITIONS.map((c) => {
+          const active = activeConditions.includes(c.key);
+          return (
+            <button
+              key={c.key}
+              type="button"
+              className={`condition-badge${active ? ' active' : ''}`}
+              style={{ backgroundImage: `url(${c.imageUrl})` }}
+              title={`${c.label} — ${c.description}`}
+              disabled={!isHost}
+              onClick={() => toggleCondition(c.key)}
+            />
+          );
+        })}
+      </div>
+      {activeConditions.length > 0 && (
+        <ul className="condition-list">
+          {activeConditions.map((key) => {
+            const c = CONDITIONS.find((cond) => cond.key === key);
+            if (!c) return null;
+            return (
+              <li key={key} title={c.description}>
+                <img src={c.imageUrl} alt="" width={16} height={16} />
+                {c.label}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function HitPointsField({ entity, onUpdate, disabled }) {
+  const hpPct = entity.maxHp ? Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100)) : 0;
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Hit points
+      </label>
+      <div className="hp-row">
+        <input
+          type="number"
+          value={entity.hp}
+          disabled={disabled}
+          onChange={(e) => onUpdate(entity.id, { hp: parseInt(e.target.value, 10) || 0 })}
+        />
+        <span style={{ color: 'var(--parchment-300)' }}>/</span>
+        <input
+          type="number"
+          value={entity.maxHp}
+          disabled={disabled}
+          onChange={(e) => onUpdate(entity.id, { maxHp: parseInt(e.target.value, 10) || 0 })}
+        />
+      </div>
+      <div className="hp-bar-track">
+        <div className="hp-bar-fill" style={{ width: `${hpPct}%`, background: hpPct < 30 ? 'var(--danger)' : 'var(--moss)' }} />
+      </div>
+    </>
+  );
+}
+
+function ArmorClassField({ entity, onUpdate, disabled }) {
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Armor class
+      </label>
+      <input
+        type="number"
+        className="field"
+        style={{ maxWidth: 90 }}
+        value={entity.armorClass ?? 10}
+        disabled={disabled}
+        onChange={(e) => onUpdate(entity.id, { armorClass: parseInt(e.target.value, 10) || 0 })}
+      />
+    </>
+  );
+}
+
+function SizeField({ entity, onUpdate, disabled }) {
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Token size (squares wide)
+      </label>
+      <select
+        className="field"
+        value={entity.size || 1}
+        disabled={disabled}
+        onChange={(e) => onUpdate(entity.id, { size: parseInt(e.target.value, 10) })}
+      >
+        <option value={1}>1 × 1 (Medium)</option>
+        <option value={2}>2 × 2 (Large)</option>
+        <option value={3}>3 × 3 (Huge)</option>
+        <option value={4}>4 × 4 (Gargantuan)</option>
+      </select>
+    </>
+  );
+}
+
+// ---------- door ----------
+
+function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Door · square ({entity.col}, {entity.row})
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Linked layer {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
+      </label>
+      <select
+        className="field"
+        value={entity.targetLayerId || ''}
+        disabled={!isHost}
+        onChange={(e) => onUpdate(entity.id, { targetLayerId: e.target.value || null, targetCol: null, targetRow: null })}
+      >
+        <option value="">— not linked —</option>
+        {(layerOrder || []).map((id) => (
+          <option key={id} value={id}>
+            {layers?.[id]?.name || 'Untitled layer'}
+          </option>
+        ))}
+      </select>
+
+      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+// ---------- chest ----------
+
+function chestCostLabel(gp) {
+  if (gp >= 1) return `${Math.round(gp * 100) / 100} gp`;
+  const cp = Math.round((gp || 0) * 100);
+  return cp % 10 === 0 ? `${cp / 10} sp` : `${cp} cp`;
+}
+
+// Lets the DM hand one chest item straight to a hero's Bag > Weapons &
+// gear list, once the chest has been opened — mirrors the compendium
+// Give buttons (Toolbar.jsx's GiveButtons), just without a "Buy" side
+// since chest loot doesn't cost anything.
+function GiveChestItemButton({ item, heroes, onGive }) {
+  const [picking, setPicking] = useState(false);
+  const [heroId, setHeroId] = useState('');
+  const [feedback, setFeedback] = useState('');
+
+  function openPicker() {
+    setPicking(true);
+    setHeroId((heroes[0] && heroes[0].id) || '');
+  }
+
+  function confirm() {
+    const hero = heroes.find((h) => h.id === heroId);
+    if (!hero) return;
+    onGive(hero.id);
+    setFeedback(`Given to ${hero.name}`);
+    setPicking(false);
+    setTimeout(() => setFeedback(''), 2000);
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={heroes.length === 0}
+        title={heroes.length === 0 ? 'No heroes on the map yet' : 'Give this to a hero'}
+        onClick={openPicker}
+      >
+        Give
+      </button>
+      {feedback && <span style={{ fontSize: 11, color: 'var(--moss-dim)', fontWeight: 600 }}>{feedback}</span>}
+      {picking && (
+        <div className="attack-target-picker" style={{ margin: 0 }}>
+          <select className="field" value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+            {heroes.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+                {h.ownerName ? ` (${h.ownerName})` : ''}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn btn-primary btn-sm" onClick={confirm}>
+            Confirm
+          </button>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={() => setPicking(false)}>
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChestInspector({ entity, tool, heroes, isHost, onUpdate, onRemove, onGiveItem }) {
+  const items = entity.items || [];
+  const capacity = chestSlotCount(entity.chestSize);
+  const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
+
+  function toggleOpen() {
+    const opened = !entity.opened;
+    onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
+  }
+
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        {sizeLabel} chest · square ({entity.col}, {entity.row})
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+
+      <label className="field-label" style={{ marginTop: 10 }}>
+        State
+      </label>
+      <button type="button" className={`btn btn-block ${entity.opened ? 'btn-secondary' : 'btn-primary'}`} onClick={toggleOpen}>
+        {entity.opened ? 'Close chest' : 'Open chest'}
+      </button>
+
+      {isHost && entity.opened && (
+        <>
+          <label className="field-label" style={{ marginTop: 14 }}>
+            Give to a player
+          </label>
+          {items.length === 0 ? (
+            <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+              Nothing left to give.
+            </p>
+          ) : (
+            <div className="chest-item-list">
+              {items.map((item) => (
+                <div className="chest-item-row" key={item.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                  <div className="chest-item-info">
+                    <span className="chest-item-name">
+                      {item.name}
+                      {item.qty > 1 ? ` × ${item.qty}` : ''}
+                    </span>
+                  </div>
+                  <GiveChestItemButton item={item} heroes={heroes || []} onGive={(heroId) => onGiveItem(entity, item, heroId)} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {isHost && tool === 'edit' ? (
+        <>
+          <label className="field-label" style={{ marginTop: 14 }}>
+            Contents (editing — select the Edit tool to change)
+          </label>
+          <ChestContentsEditor
+            items={items}
+            capacity={capacity}
+            onAddItem={(item) => onUpdate(entity.id, { items: [...items, item] })}
+            onRemoveItem={(id) => onUpdate(entity.id, { items: items.filter((it) => it.id !== id) })}
+            onUpdateQty={(id, qty) => onUpdate(entity.id, { items: items.map((it) => (it.id === id ? { ...it, qty } : it)) })}
+          />
+        </>
+      ) : (
+        <>
+          <label className="field-label" style={{ marginTop: 14 }}>
+            Contents {items.length}/{capacity}{' '}
+            {isHost ? '— switch to the Edit tool to change' : '(host only can edit)'}
+          </label>
+          {items.length === 0 ? (
+            <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+              This chest is empty.
+            </p>
+          ) : (
+            <ul className="condition-list">
+              {items.map((item) => (
+                <li key={item.id}>
+                  {item.name} × {item.qty} ({chestCostLabel(item.cost)} each)
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+// ---------- monster (unchanged shape, no character sheet tabs) ----------
+
+function MobInspector({ entity, isHost, onUpdate, onRemove }) {
+  const droppables = entity.droppables || [];
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Monster · square ({entity.col}, {entity.row})
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <ArmorClassField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <HitPointsField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <SizeField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
+      {isHost && (
+        <CollapsibleField title="Droppables">
+          <DroppablesEditor
+            items={droppables}
+            onAddItem={(item) => onUpdate(entity.id, { droppables: [...droppables, item] })}
+            onRemoveItem={(id) => onUpdate(entity.id, { droppables: droppables.filter((it) => it.id !== id) })}
+            onUpdateItem={(id, patch) =>
+              onUpdate(entity.id, { droppables: droppables.map((it) => (it.id === id ? { ...it, ...patch } : it)) })
+            }
+          />
+        </CollapsibleField>
+      )}
+      {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this monster…" />}
+      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+// ---------- hero (full 5e-flavored sheet, tabbed) ----------
+
+const TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'abilities', label: 'Abilities' },
+  { key: 'saves', label: 'Saves & Skills' },
+  { key: 'attacks', label: 'Battle Equipment' },
+  { key: 'spells', label: 'Spells' },
+  { key: 'bag', label: 'Bag' },
+];
+
+function HeroInspector({ entity, isHost, onUpdate, onRemove, entities, players }) {
+  const [tab, setTab] = useState('overview');
+  const sheet = entity.sheet || defaultCharacterSheet();
+  const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
+
+  function updateSheet(patch) {
+    onUpdate(entity.id, { sheet: { ...sheet, ...patch } });
+  }
+
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Hero · square ({entity.col}, {entity.row})
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
+
+      <div className="sheet-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`sheet-tab${tab === t.key ? ' active' : ''}`}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {!isHost && (
+        <p className="footer-note" style={{ padding: '8px 2px', border: 'none' }}>
+          Only the DM can edit a character sheet — you can still look through every tab.
+        </p>
+      )}
+      <fieldset disabled={!isHost} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
+        {tab === 'overview' && <OverviewTab entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} />}
+        {tab === 'abilities' && <AbilitiesTab sheet={sheet} updateSheet={updateSheet} />}
+        {tab === 'saves' && <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />}
+        {tab === 'attacks' && <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} mobs={mobs} onAttackTarget={onUpdate} />}
+        {tab === 'spells' && <SpellsTab sheet={sheet} updateSheet={updateSheet} />}
+        {tab === 'bag' && <BagTab sheet={sheet} updateSheet={updateSheet} />}
+      </fieldset>
+
+      {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />}
+      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+function OverviewTab({ entity, sheet, isHost, onUpdate, updateSheet }) {
+  function setDeathSave(kind, count) {
+    updateSheet({ deathSaves: { ...sheet.deathSaves, [kind]: count } });
+  }
+
+  return (
+    <>
+      <div className="field-row" style={{ marginTop: 10 }}>
+        <div>
+          <label className="field-label">Level</label>
+          <input type="number" className="field" min={1} max={20} value={sheet.level} onChange={(e) => updateSheet({ level: parseInt(e.target.value, 10) || 1 })} />
+        </div>
+        <div>
+          <label className="field-label">Speed (ft)</label>
+          <input type="number" className="field" value={sheet.speed} onChange={(e) => updateSheet({ speed: parseInt(e.target.value, 10) || 0 })} />
+        </div>
+      </div>
+
+      <div className="field-row">
+        <div>
+          <label className="field-label">Armor class</label>
+          <input type="number" className="field" value={sheet.armorClass} onChange={(e) => updateSheet({ armorClass: parseInt(e.target.value, 10) || 0 })} />
+        </div>
+        <div>
+          <label className="field-label">Initiative</label>
+          <input type="number" className="field" value={sheet.initiative} onChange={(e) => updateSheet({ initiative: parseInt(e.target.value, 10) || 0 })} />
+        </div>
+      </div>
+
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Death saves
+      </label>
+      <div className="death-save-row">
+        <DeathSaveDots label="Successes" count={sheet.deathSaves.successes} colorClass="success" onSet={(n) => setDeathSave('successes', n)} />
+        <DeathSaveDots label="Failures" count={sheet.deathSaves.failures} colorClass="failure" onSet={(n) => setDeathSave('failures', n)} />
+      </div>
+
+      <HitPointsField entity={entity} onUpdate={onUpdate} />
+      <SizeField entity={entity} onUpdate={onUpdate} />
+      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
+    </>
+  );
+}
+
+function DeathSaveDots({ label, count, colorClass, onSet }) {
+  return (
+    <div className="death-save-group">
+      <span className="death-save-label">{label}</span>
+      <div className="death-save-dots">
+        {[1, 2, 3].map((i) => (
+          <button
+            key={i}
+            type="button"
+            className={`death-dot ${colorClass}${count >= i ? ' filled' : ''}`}
+            aria-label={`${label} ${i}`}
+            onClick={() => onSet(count >= i ? i - 1 : i)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AbilitiesTab({ sheet, updateSheet }) {
+  function setAbility(key, value) {
+    updateSheet({ abilities: { ...sheet.abilities, [key]: value } });
+  }
+
+  return (
+    <div className="ability-grid" style={{ marginTop: 10 }}>
+      {ABILITIES.map((a) => {
+        const score = sheet.abilities[a.key] ?? 10;
+        return (
+          <div className="ability-cell" key={a.key}>
+            <label className="field-label">{a.label}</label>
+            <input type="number" className="field" value={score} onChange={(e) => setAbility(a.key, parseInt(e.target.value, 10) || 0)} />
+            <span className="ability-mod">{formatModifier(abilityModifier(score))}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SavesSkillsTab({ sheet, updateSheet }) {
+  const profBonus = sheet.proficiencyBonus ?? 2;
+
+  function computedBonus(abilityKey, proficient) {
+    return abilityModifier(sheet.abilities[abilityKey] ?? 10) + (proficient ? profBonus : 0);
+  }
+
+  function toggleSave(key, abilityKey) {
+    const entry = normalizeCheckEntry(sheet.savingThrows[key], computedBonus(abilityKey, false));
+    const proficient = !entry.proficient;
+    updateSheet({
+      savingThrows: { ...sheet.savingThrows, [key]: { proficient, value: computedBonus(abilityKey, proficient) } },
+    });
+  }
+  function setSaveValue(key, value) {
+    const entry = normalizeCheckEntry(sheet.savingThrows[key], 0);
+    updateSheet({ savingThrows: { ...sheet.savingThrows, [key]: { ...entry, value } } });
+  }
+  function toggleSkill(key, abilityKey) {
+    const entry = normalizeCheckEntry(sheet.skills[key], computedBonus(abilityKey, false));
+    const proficient = !entry.proficient;
+    updateSheet({ skills: { ...sheet.skills, [key]: { proficient, value: computedBonus(abilityKey, proficient) } } });
+  }
+  function setSkillValue(key, value) {
+    const entry = normalizeCheckEntry(sheet.skills[key], 0);
+    updateSheet({ skills: { ...sheet.skills, [key]: { ...entry, value } } });
+  }
+
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Proficiency bonus
+      </label>
+      <input
+        type="number"
+        className="field"
+        style={{ maxWidth: 90 }}
+        value={profBonus}
+        onChange={(e) => updateSheet({ proficiencyBonus: parseInt(e.target.value, 10) || 0 })}
+      />
+
+      <div className="section-label" style={{ marginTop: 14 }}>
+        Saving throws
+      </div>
+      <ul className="check-list">
+        {ABILITIES.map((a) => {
+          const entry = normalizeCheckEntry(sheet.savingThrows[a.key], computedBonus(a.key, false));
+          return (
+            <li key={a.key}>
+              <label>
+                <input type="checkbox" checked={entry.proficient} onChange={() => toggleSave(a.key, a.key)} />
+                {a.label}
+              </label>
+              <input
+                type="number"
+                className="check-bonus-input"
+                value={entry.value}
+                onChange={(e) => setSaveValue(a.key, parseInt(e.target.value, 10) || 0)}
+              />
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="section-label" style={{ marginTop: 14 }}>
+        Skills
+      </div>
+      <ul className="check-list">
+        {SKILLS.map((s) => {
+          const entry = normalizeCheckEntry(sheet.skills[s.key], computedBonus(s.ability, false));
+          const ability = ABILITIES.find((a) => a.key === s.ability);
+          return (
+            <li key={s.key}>
+              <label>
+                <input type="checkbox" checked={entry.proficient} onChange={() => toggleSkill(s.key, s.ability)} />
+                {s.label} <span className="check-ability">({ability?.label.slice(0, 3)})</span>
+              </label>
+              <input
+                type="number"
+                className="check-bonus-input"
+                value={entry.value}
+                onChange={(e) => setSkillValue(s.key, parseInt(e.target.value, 10) || 0)}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+function totalToHit(weapon, additionalModifier) {
+  return (weapon.modifier || 0) + (additionalModifier || 0);
+}
+
+function totalDamageLabel(weapon, additionalDamage) {
+  const flat = (weapon.modifier || 0) + (additionalDamage || 0);
+  const mod = flat !== 0 ? (flat > 0 ? `+${flat}` : `${flat}`) : '';
+  return `${weapon.numberOfDice}${weapon.diceType}${mod}`;
+}
+
+function rollDie(sides) {
+  return 1 + Math.floor(Math.random() * sides);
+}
+
+function BattleEquipmentTab({ sheet, updateSheet, mobs, onAttackTarget }) {
+  const items = sheet.attacks || [];
+  const [pickingIndex, setPickingIndex] = useState(null);
+  const [pickTargetId, setPickTargetId] = useState('');
+  const [results, setResults] = useState({});
+
+  function addItem() {
+    updateSheet({ attacks: [...items, { weaponName: DEFAULT_WEAPONS[0].name, additionalModifier: 0, additionalDamage: 0 }] });
+  }
+  function updateItem(index, patch) {
+    updateSheet({ attacks: items.map((it, i) => (i === index ? { ...it, ...patch } : it)) });
+  }
+  function removeItem(index) {
+    updateSheet({ attacks: items.filter((_, i) => i !== index) });
+    setResults((prev) => {
+      const { [index]: _drop, ...rest } = prev;
+      return rest;
+    });
+    if (pickingIndex === index) setPickingIndex(null);
+  }
+
+  function openTargetPicker(index) {
+    setPickingIndex(index);
+    setPickTargetId((mobs[0] && mobs[0].id) || '');
+  }
+
+  function confirmAttack(index) {
+    const target = mobs.find((m) => m.id === pickTargetId);
+    if (!target) return;
+    const it = items[index];
+    const weapon = DEFAULT_WEAPONS.find((w) => w.name === it.weaponName) || DEFAULT_WEAPONS[0];
+    const toHitMod = totalToHit(weapon, it.additionalModifier);
+    const d20 = rollDie(20);
+    const attackTotal = d20 + toHitMod;
+    const targetAC = target.armorClass ?? 10;
+    const hit = attackTotal >= targetAC;
+    let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
+
+    if (hit) {
+      const sides = parseInt(weapon.diceType.slice(1), 10);
+      let diceTotal = 0;
+      for (let n = 0; n < weapon.numberOfDice; n++) diceTotal += rollDie(sides);
+      const flatDamage = (weapon.modifier || 0) + (it.additionalDamage || 0);
+      const damageTotal = Math.max(0, diceTotal + flatDamage);
+      const newHp = Math.max(0, (target.hp ?? target.maxHp ?? 0) - damageTotal);
+      onAttackTarget(target.id, { hp: newHp });
+      result = { ...result, damageTotal, newHp, maxHp: target.maxHp };
+    }
+
+    setResults((prev) => ({ ...prev, [index]: result }));
+    setPickingIndex(null);
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {items.length === 0 && (
+        <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+          No battle equipment added yet.
+        </p>
+      )}
+      {items.map((it, i) => {
+        const weapon = DEFAULT_WEAPONS.find((w) => w.name === it.weaponName) || DEFAULT_WEAPONS[0];
+        const result = results[i];
+        return (
+          <div className="attack-item" key={i}>
+            <div className="attack-row">
+              <select className="field" value={weapon.name} onChange={(e) => updateItem(i, { weaponName: e.target.value })}>
+                {DEFAULT_WEAPONS.map((w) => (
+                  <option key={w.name} value={w.name}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                className="field"
+                placeholder="Mod"
+                title="Additional modifier — stacks on top of the weapon's own bonus for the attack roll"
+                value={it.additionalModifier ?? 0}
+                onChange={(e) => updateItem(i, { additionalModifier: parseInt(e.target.value, 10) || 0 })}
+              />
+              <input
+                type="number"
+                className="field"
+                placeholder="Dmg"
+                title="Additional damage — stacks on top of the weapon's own damage"
+                value={it.additionalDamage ?? 0}
+                onChange={(e) => updateItem(i, { additionalDamage: parseInt(e.target.value, 10) || 0 })}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={mobs.length === 0}
+                title={mobs.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
+                onClick={() => openTargetPicker(i)}
+              >
+                Roll attack
+              </button>
+              <button type="button" className="btn btn-danger btn-sm" onClick={() => removeItem(i)}>
+                ×
+              </button>
+            </div>
+            <div className="attack-item-summary">
+              To hit {formatModifier(totalToHit(weapon, it.additionalModifier))} · Damage {totalDamageLabel(weapon, it.additionalDamage)}
+            </div>
+
+            {pickingIndex === i && (
+              <div className="attack-target-picker">
+                <select className="field" value={pickTargetId} onChange={(e) => setPickTargetId(e.target.value)}>
+                  {mobs.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} — {m.hp}/{m.maxHp} HP, AC {m.armorClass ?? 10}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => confirmAttack(i)}>
+                  Roll d20
+                </button>
+                <button type="button" className="btn btn-quiet btn-sm" onClick={() => setPickingIndex(null)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {result && (
+              <div className={`attack-result ${result.hit ? 'hit' : 'miss'}`}>
+                {result.hit
+                  ? `Hit! d20 ${result.d20} + ${result.toHitMod} = ${result.attackTotal} vs AC ${result.targetAC} on ${result.targetName}. ` +
+                    `Damage ${result.damageTotal} → ${result.targetName} now ${result.newHp}/${result.maxHp} HP.`
+                  : `Miss. d20 ${result.d20} + ${result.toHitMod} = ${result.attackTotal} vs AC ${result.targetAC} on ${result.targetName}.`}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 8 }} onClick={addItem}>
+        + Add battle equipment
+      </button>
+    </div>
+  );
+}
+
+function SpellsTab({ sheet, updateSheet }) {
+  const spellcasting = normalizeSpellcasting(sheet.spellcasting);
+  const [activeLevel, setActiveLevel] = useState(0);
+  const level = spellcasting.levels[activeLevel];
+
+  function updateCasting(patch) {
+    updateSheet({ spellcasting: { ...spellcasting, ...patch } });
+  }
+  function updateLevel(lvl, patch) {
+    updateCasting({ levels: { ...spellcasting.levels, [lvl]: { ...spellcasting.levels[lvl], ...patch } } });
+  }
+  function addSpell(lvl) {
+    const level = spellcasting.levels[lvl];
+    updateLevel(lvl, { spells: [...level.spells, newSpellEntry()] });
+  }
+  function updateSpell(lvl, id, patch) {
+    const level = spellcasting.levels[lvl];
+    updateLevel(lvl, { spells: level.spells.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
+  }
+  function removeSpell(lvl, id) {
+    const level = spellcasting.levels[lvl];
+    updateLevel(lvl, { spells: level.spells.filter((s) => s.id !== id) });
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <label className="field-label">Spellcasting class</label>
+      <input
+        className="field"
+        value={spellcasting.class}
+        onChange={(e) => updateCasting({ class: e.target.value })}
+        placeholder="e.g. Wizard"
+      />
+
+      <div className="field-row">
+        <div>
+          <label className="field-label">Ability</label>
+          <select className="field" value={spellcasting.ability} onChange={(e) => updateCasting({ ability: e.target.value })}>
+            <option value="">—</option>
+            {ABILITIES.map((a) => (
+              <option key={a.key} value={a.key}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="field-label">Save DC</label>
+          <input
+            type="number"
+            className="field"
+            value={spellcasting.saveDC}
+            onChange={(e) => updateCasting({ saveDC: parseInt(e.target.value, 10) || 0 })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Attack bonus</label>
+          <input
+            type="number"
+            className="field"
+            value={spellcasting.attackBonus}
+            onChange={(e) => updateCasting({ attackBonus: parseInt(e.target.value, 10) || 0 })}
+          />
+        </div>
+      </div>
+
+      <div className="spell-level-tabs">
+        {SPELL_LEVELS.map((lvl) => {
+          const count = spellcasting.levels[lvl].spells.length;
+          return (
+            <button
+              key={lvl}
+              type="button"
+              className={`spell-level-tab${activeLevel === lvl ? ' active' : ''}`}
+              onClick={() => setActiveLevel(lvl)}
+              title={lvl === 0 ? 'Cantrips' : `Level ${lvl}`}
+            >
+              {lvl}
+              {count > 0 && <span className="spell-level-count">{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="spell-level">
+        <div className="spell-level-header">
+          <span className="section-label" style={{ margin: 0 }}>
+            {activeLevel === 0 ? 'Cantrips' : `Level ${activeLevel}`}
+          </span>
+          {activeLevel > 0 && (
+            <div className="spell-slots" title="Slots total / expended">
+              <input
+                type="number"
+                min={0}
+                value={level.slotsTotal}
+                onChange={(e) => updateLevel(activeLevel, { slotsTotal: parseInt(e.target.value, 10) || 0 })}
+              />
+              <span>/</span>
+              <input
+                type="number"
+                min={0}
+                value={level.slotsExpended}
+                onChange={(e) => updateLevel(activeLevel, { slotsExpended: parseInt(e.target.value, 10) || 0 })}
+              />
+            </div>
+          )}
+        </div>
+        {level.spells.length === 0 && (
+          <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+            No {activeLevel === 0 ? 'cantrips' : `level ${activeLevel} spells`} added yet.
+          </p>
+        )}
+        {level.spells.map((s) => (
+          <div className="spell-row" key={s.id}>
+            <input
+              type="checkbox"
+              checked={s.prepared}
+              title="Prepared"
+              onChange={() => updateSpell(activeLevel, s.id, { prepared: !s.prepared })}
+            />
+            <input
+              className="field"
+              placeholder="Spell name"
+              value={s.name}
+              onChange={(e) => updateSpell(activeLevel, s.id, { name: e.target.value })}
+            />
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => removeSpell(activeLevel, s.id)}>
+              ×
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-secondary btn-block spell-add-btn" onClick={() => addSpell(activeLevel)}>
+          + Add spell
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const EQUIPMENT_CATEGORIES = [
+  { key: 'gear', label: 'Weapons & gear', hint: 'Swords, bows, armor, shields…' },
+  { key: 'other', label: 'Other items', hint: 'Rations, rope, potions, trinkets…' },
+];
+
+function BagTab({ sheet, updateSheet }) {
+  const equipment = normalizeEquipment(sheet.equipment);
+  const currency = normalizeCurrency(sheet);
+  const [activeCategory, setActiveCategory] = useState('gear');
+  const category = EQUIPMENT_CATEGORIES.find((c) => c.key === activeCategory);
+
+  function updateCategory(key, nextItems) {
+    updateSheet({ equipment: { ...equipment, [key]: nextItems } });
+  }
+  function addItem(key) {
+    updateCategory(key, [...equipment[key], newEquipmentItem()]);
+  }
+  function updateItem(key, id, patch) {
+    updateCategory(key, equipment[key].map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  }
+  function removeItem(key, id) {
+    updateCategory(key, equipment[key].filter((it) => it.id !== id));
+  }
+  function setCurrency(key, value) {
+    updateSheet({ currency: { ...currency, [key]: value } });
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <label className="field-label">Currency</label>
+      <div className="currency-row">
+        {CURRENCIES.map((c) => (
+          <div key={c.key} className={`currency-cell currency-${c.key}`}>
+            <label className="field-label">{c.label}</label>
+            <input
+              type="number"
+              className="field"
+              min={0}
+              value={currency[c.key]}
+              onChange={(e) => setCurrency(c.key, parseInt(e.target.value, 10) || 0)}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="equipment-cat-tabs">
+        {EQUIPMENT_CATEGORIES.map((c) => {
+          const count = equipment[c.key].length;
+          return (
+            <button
+              key={c.key}
+              type="button"
+              className={`equipment-cat-tab${activeCategory === c.key ? ' active' : ''}`}
+              onClick={() => setActiveCategory(c.key)}
+            >
+              {c.label}
+              {count > 0 && <span className="equipment-cat-count">{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <EquipmentCategory
+        hint={category.hint}
+        items={equipment[activeCategory]}
+        onAdd={() => addItem(activeCategory)}
+        onUpdate={(id, patch) => updateItem(activeCategory, id, patch)}
+        onRemove={(id) => removeItem(activeCategory, id)}
+      />
+    </div>
+  );
+}
+
+function EquipmentCategory({ hint, items, onAdd, onUpdate, onRemove }) {
+  return (
+    <>
+      {items.length === 0 && (
+        <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+          {hint}
+        </p>
+      )}
+      {items.map((item) => (
+        <div className="equipment-row" key={item.id}>
+          <input
+            className="field"
+            placeholder="Item name"
+            value={item.name}
+            onChange={(e) => onUpdate(item.id, { name: e.target.value })}
+          />
+          <input
+            type="number"
+            className="field"
+            min={0}
+            value={item.qty}
+            onChange={(e) => onUpdate(item.id, { qty: parseInt(e.target.value, 10) || 0 })}
+          />
+          <button type="button" className="btn btn-danger btn-sm" onClick={() => onRemove(item.id)}>
+            ×
+          </button>
+        </div>
+      ))}
+      <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 4 }} onClick={onAdd}>
+        + Add item
+      </button>
+    </>
+  );
+}
