@@ -4,13 +4,13 @@
 | ----- | ----- |
 | ID | REQ-001 |
 | Title | Connection Recovery |
-| Status | InProgress |
+| Status | Done |
 | Phase | Realtime hardening (Realtime Roadmap Phase 1) |
 | Tier | Core |
 | Area | Realtime / cloud sync |
 | Author | Blaxine |
 | Created | 2026-09-08 |
-| Last Updated | 2026-09-08 |
+| Last Updated | 2026-09-20 |
 
 > Source PRD: REQ-001-PRD-Connection-Recovery.md
 
@@ -58,12 +58,12 @@ connection to lose.
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — Grace period suppresses blips.** A channel status transition to `TIMED_OUT`/`CLOSED`/`CHANNEL_ERROR` that returns to `SUBSCRIBED` within 1.5s never shows the scrim or blocks anything.
-- [ ] **AC2 — A real drop is surfaced.** If the disconnected state persists past 1.5s, the "Reconnecting…" indicator appears and the entire game screen (map, toolbar, right panel, token sidebar) becomes inert to input.
-- [ ] **AC3 — Full resync before unblocking.** Once the channel reports `SUBSCRIBED` again after the scrim was shown, the app fetches a fresh table snapshot and replaces local state with it; the scrim only clears after that snapshot has landed successfully.
-- [ ] **AC4 — Resync failure retries with backoff.** If the snapshot fetch itself fails, the app retries automatically on a 2s/4s/8s/16s schedule capped at 30s, remaining blocked and showing the indicator throughout.
-- [ ] **AC5 — Escape hatch without stopping retries.** After 4 failed resync attempts, a manual reload control appears alongside the indicator; automatic retries continue in the background regardless.
-- [ ] **AC6 — Local mode is unaffected.** None of this triggers in local demo mode, which has no realtime channel to lose.
+- [x] **AC1 — Grace period suppresses blips.** A channel status transition to `TIMED_OUT`/`CLOSED`/`CHANNEL_ERROR` that returns to `SUBSCRIBED` within 1.5s never shows the scrim or blocks anything. *Verified live by the host, 2026-09-20.*
+- [x] **AC2 — A real drop is surfaced.** If the disconnected state persists past 1.5s, the "Reconnecting…" indicator appears and the entire game screen (map, toolbar, right panel, token sidebar) becomes inert to input. *Verified live by the host, 2026-09-20.*
+- [x] **AC3 — Full resync before unblocking.** Once the channel reports `SUBSCRIBED` again after the scrim was shown, the app fetches a fresh table snapshot and replaces local state with it; the scrim only clears after that snapshot has landed successfully. *Verified live by the host, 2026-09-20.*
+- [x] **AC4 — Resync failure retries with backoff.** If the snapshot fetch itself fails, the app retries automatically on a 2s/4s/8s/16s schedule capped at 30s, remaining blocked and showing the indicator throughout. *Verified live by the host, 2026-09-20.*
+- [x] **AC5 — Escape hatch without stopping retries.** After 4 failed resync attempts, a manual reload control appears alongside the indicator; automatic retries continue in the background regardless. *Verified live by the host, 2026-09-20.*
+- [x] **AC6 — Local mode is unaffected.** None of this triggers in local demo mode, which has no realtime channel to lose. *Verified live by the host, 2026-09-20.*
 
 ## Technical Notes
 
@@ -159,3 +159,4 @@ S005 (standalone)
 | ---- | ------ | ----------------- |
 | 2026-09-08 | Blaxine | Initial plan. |
 | 2026-09-09 | Blaxine | Both slices implemented (S001-S008), all checked off. Fixed a live-verified bug found during implementation: the initial-connection-handshake flap incorrectly triggered the scrim (see new Constraints bullet). Moved to `InProgress` — code is done, but the DevTools network-throttling **Smoke Test** (real drop/recovery, resync failure/backoff, escape hatch) still needs a manual pass before this moves to `Done`. |
+| 2026-09-20 | Blaxine | Smoke Test run live by the host against a real hosted cloud table — confirmed working. AC1-AC6 all verified. Moved to `Done`. |
