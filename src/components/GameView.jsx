@@ -997,7 +997,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         // older feature from REQ-008's own file+DM-code resume flow
         // (Slice 3) — allowing it here would silently desync every
         // connected player, since nothing broadcasts a wholesale replace.
-        alert('Importing a file mid-session is not supported for a guest table — export is still available as a backup.');
+        alert(
+          'Importing a file mid-session is not supported for a guest table. To resume a previously ' +
+            'exported table, leave this one first and use "Resume guest session" on the Landing screen.'
+        );
         return;
       }
       const parsed = migrateLegacyState(raw);
@@ -1038,6 +1041,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // tab that just closes or crashes never reaches this line, which is
     // exactly the "unclean" signal findUnclosedGuestTable looks for.
     if (isGuestHost) markGuestClean(state.session.code);
+    // A signed-in host leaving their own cloud table must NOT delete their
+    // own player row. "members can read their table" (02_policies.sql) is
+    // tables' only SELECT policy, and it requires a live players row for
+    // this identity — deleting it here would permanently hide this table
+    // from the host's own "Your tables" list (listMyTablesRemote) and block
+    // ever resuming or deleting it again, even though the table itself
+    // still exists and still counts against their 20-table cap. Unlike a
+    // player freeing a seat, the host isn't vacating anything by leaving —
+    // they're just navigating away from a live view they can always return
+    // to by signing in again.
+    if (isRemote && isHost) {
+      clearCurrentPointer();
+      onLeave();
+      return;
+    }
     dispatch({ type: 'REMOVE_PLAYER', id: me.id });
     if (isRemote) {
       removePlayerRemote(me.id).catch(reportError);
@@ -1151,6 +1169,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <Toolbar
           isHost={isHost}
+          isGuestHost={isGuestHost}
           layer={currentLayer}
           activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
           tool={tool}

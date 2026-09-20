@@ -26,6 +26,7 @@ function ToolCard({ icon, label, active, onClick, disabled, title }) {
 
 export default function Toolbar({
   isHost,
+  isGuestHost,
   layer,
   activeIsland,
   tool,
@@ -302,9 +303,13 @@ export default function Toolbar({
           />
           <ToolCard
             icon="🗝"
-            label={copiedHostKey ? 'Copied!' : 'Host key'}
+            label={copiedHostKey ? 'Copied!' : isGuestHost ? 'DM code' : 'Host key'}
             onClick={copyHostKey}
-            title="Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host"
+            title={
+              isGuestHost
+                ? 'Your private DM code — save it, along with an exported .json, to resume this table later via "Resume guest session" on the Landing screen'
+                : 'Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
+            }
           />
         </div>
       )}

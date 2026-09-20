@@ -189,11 +189,12 @@ function HostForm({ onEnter }) {
           onClick={() => setHostChoice('resumeGuest')}
           style={{ marginTop: 8 }}
         >
-          Resume Guest Session
+          Resume guest session
         </button>
         <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
           A guest table needs no account — but nothing about it is saved on our end. You'll need to
-          export it yourself before closing it if you want to pick it back up later.
+          export it yourself before closing it if you want to pick it back up later, then come back
+          here and use "Resume guest session" (the file mid-session Import button won't do this).
         </p>
       </div>
     );
