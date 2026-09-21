@@ -1627,6 +1627,22 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   margin-top: 14px;
 }
 
+.host-absent-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  background: linear-gradient(180deg, var(--ink-900), var(--ink-800));
+  border: 1px solid var(--gold-line);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 10px 20px;
+  color: var(--parchment-100);
+  font-size: 0.95rem;
+  box-shadow: 0 12px 30px -12px rgba(0,0,0,0.6);
+}
+
 /* ---------- Weapons compendium (book) ---------- */
 
 .book-backdrop {

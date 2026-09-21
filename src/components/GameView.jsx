@@ -64,6 +64,16 @@ const ZOOM_STEP = 0.1;
 const RECONNECT_GRACE_MS = 1500;
 const RESYNC_BACKOFF_MS = [2000, 4000, 8000, 16000, 30000];
 
+// Host-absence auto-end: once the host's Presence entry disappears — an
+// explicit leave, a closed tab, or a crash — and stays gone past a short
+// grace period (absorbing the host's own refresh/reconnect blips), every
+// other connected player gets this long before their own session ends on
+// its own (back to Landing). Each player's browser reaches this
+// independently off the same Presence signal, so there's no single place
+// that "ends all sessions" — they all just expire around the same time.
+const HOST_ABSENCE_GRACE_MS = 5000;
+const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
+
 function clampZoom(z) {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));
 }
@@ -312,6 +322,56 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const isGuest = mode === 'guest' && isSupabaseConfigured;
   const isGuestHost = isGuest && isHost;
 
+  // Host-absence auto-end (see HOST_ABSENCE_* above) — { endAt } once the
+  // countdown is actually running (for the banner), else null. The timers
+  // themselves are closure-scoped refs, not state, for the same reason
+  // reconnectUi's grace/backoff timers are: they must outlive renders and
+  // get mutated from a Presence callback that isn't triggered by React.
+  const [hostAbsentBanner, setHostAbsentBanner] = useState(null);
+  const hostAbsentTimersRef = useRef({ graceTimer: null, endTimer: null });
+
+  function handleHostPresenceChange(hostPresent) {
+    const timers = hostAbsentTimersRef.current;
+    if (hostPresent) {
+      if (timers.graceTimer) clearTimeout(timers.graceTimer);
+      if (timers.endTimer) clearTimeout(timers.endTimer);
+      timers.graceTimer = null;
+      timers.endTimer = null;
+      setHostAbsentBanner(null);
+      return;
+    }
+    if (timers.graceTimer || timers.endTimer) return; // already waiting on this absence
+    timers.graceTimer = setTimeout(() => {
+      timers.graceTimer = null;
+      const endAt = Date.now() + HOST_ABSENCE_END_MS;
+      setHostAbsentBanner({ endAt });
+      timers.endTimer = setTimeout(() => {
+        timers.endTimer = null;
+        clearCurrentPointer();
+        onLeave();
+      }, HOST_ABSENCE_END_MS);
+    }, HOST_ABSENCE_GRACE_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      const timers = hostAbsentTimersRef.current;
+      if (timers.graceTimer) clearTimeout(timers.graceTimer);
+      if (timers.endTimer) clearTimeout(timers.endTimer);
+    };
+  }, []);
+
+  // Ticks once a second only while the banner is up, purely to recompute
+  // the mm:ss countdown text below — the actual end-of-session action is
+  // the setTimeout above, not this render loop.
+  const [hostAbsentNow, setHostAbsentNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hostAbsentBanner) return undefined;
+    const id = setInterval(() => setHostAbsentNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hostAbsentBanner]);
+  const hostAbsentSecondsLeft = hostAbsentBanner ? Math.max(0, Math.ceil((hostAbsentBanner.endAt - hostAbsentNow) / 1000)) : 0;
+
   const baseLayerId = state.layerOrder[0];
   const [hostViewLayerId, setHostViewLayerId] = useState(baseLayerId);
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
@@ -471,7 +531,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       }, RECONNECT_GRACE_MS);
     }
 
-    const unsubscribe = subscribeToTable(tableId, dispatch, handleStatusChange);
+    const unsubscribe = subscribeToTable(tableId, dispatch, handleStatusChange, {
+      isHost,
+      onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
+    });
     return () => {
       if (graceTimer) clearTimeout(graceTimer);
       if (backoffTimer) clearTimeout(backoffTimer);
@@ -584,6 +647,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             if (forId === me.id) dispatch({ type: 'HYDRATE', state: snapshotState });
           },
       onStatusChange: handleGuestStatusChange,
+      isHost: isGuestHost,
+      onHostPresenceChange: isGuestHost ? undefined : handleHostPresenceChange,
     });
     guestChannelRef.current = channel;
     return () => {
@@ -1646,6 +1711,14 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {hostAbsentBanner && (
+        <div className="host-absent-banner">
+          The host has left the table. This session will end in{' '}
+          {String(Math.floor(hostAbsentSecondsLeft / 60)).padStart(2, '0')}:
+          {String(hostAbsentSecondsLeft % 60).padStart(2, '0')} unless they return.
         </div>
       )}
     </div>

@@ -39,6 +39,15 @@ export function migrateLegacyState(raw) {
 
   if (!state.layers) return state; // still not a recognizable shape — nothing more we can do
 
+  // Custom assets (36_custom_assets.sql / Toolbar.jsx's Asset Storage) is a
+  // top-level slice added after this app already had saves/exports in the
+  // wild — backfill it here (this module's whole job) so an older save or
+  // .json export still hydrates into a state shape every reducer case and
+  // component can rely on, and so re-exporting it afterward actually
+  // includes the field instead of silently omitting it.
+  if (!state.customAssets) state = { ...state, customAssets: {} };
+  if (!state.customAssetOrder) state = { ...state, customAssetOrder: [] };
+
   let entitiesChanged = false;
   const migratedEntities = { ...state.entities };
   const migratedLayers = {};

@@ -17,9 +17,26 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // in @supabase/realtime-js) as (status, isInitialJoin) — isInitialJoin is true
 // only for the very first SUBSCRIBED, so a caller can tell "just connected"
 // apart from "recovered after a drop" without tracking that itself.
-export function subscribeToTable(tableId, dispatch, onStatusChange) {
+//
+// presence, if given, rides this same channel's Presence feature (separate
+// from postgres_changes) to answer one question: is the host's browser
+// still around? `{ isHost, onHostPresenceChange }` — the host's own client
+// tracks itself so everyone else's `onHostPresenceChange(hostPresent)` fires
+// on join/leave/crash alike (Presence detects a dropped socket on its own,
+// unlike postgres_changes' players-row DELETE, which a host leaving never
+// triggers — see doLeaveTable in GameView.jsx). Used to auto-end a table's
+// player sessions a few minutes after the host disappears.
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
+
+  if (presence?.onHostPresenceChange) {
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const hostPresent = Object.values(state).some((metas) => metas.some((meta) => meta.isHost));
+      presence.onHostPresenceChange(hostPresent);
+    });
+  }
 
   channel
     .on(
@@ -129,6 +146,7 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
       } else {
         onStatusChange?.(status, false);
       }
+      if (status === 'SUBSCRIBED' && presence?.isHost) channel.track({ isHost: true });
     });
 
   return () => {
