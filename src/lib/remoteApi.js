@@ -23,7 +23,7 @@ import {
 // dmNotes/droppables live in their own host-only-readable table (see
 // 15_entity_dm_data_privacy.sql) instead of on `entities` — split a patch
 // bound for updateEntityRemote across the two tables by key.
-const DM_DATA_KEYS = ['dmNotes', 'droppables'];
+const DM_DATA_KEYS = ['dmNotes', 'droppables', 'mobSheet'];
 
 function must(result, context) {
   if (result.error) throw new Error(`${context}: ${result.error.message}`);
@@ -146,6 +146,16 @@ export async function fetchTableSnapshot(tableId) {
   const dmDataRows = must(dmDataRes, 'fetchTableSnapshot(entityDmData)');
   const playerRows = must(playersRes, 'fetchTableSnapshot(players)');
 
+  // The clock lives in its own column (32_game_clock.sql). Fetched
+  // separately and forgivingly - a project that has not run that migration
+  // yet has no such column, and that must not stop anyone joining.
+  const clockRes = await supabase.from('tables').select('game_clock').eq('id', tableId).maybeSingle();
+  const clock = clockRes.error ? null : clockRes.data?.game_clock ?? null;
+  // Same again for the manual day/night override (33_day_night_override.sql),
+  // in its own query so a project that has 32 but not 33 still gets its clock.
+  const overrideRes = await supabase.from('tables').select('day_night_override').eq('id', tableId).maybeSingle();
+  const dayNightOverride = overrideRes.error ? null : overrideRes.data?.day_night_override ?? null;
+
   const players = {};
   let hostPlayerId = null;
   for (const row of playerRows) {
@@ -182,6 +192,7 @@ export async function fetchTableSnapshot(tableId) {
       ...mapDbEntity(row),
       dmNotes: dmData?.dmNotes ?? '',
       droppables: row.kind === 'mob' ? dmData?.droppables ?? [] : undefined,
+      mobSheet: row.kind === 'mob' ? dmData?.mobSheet : undefined,
     };
     entityOrder.push(row.id);
   }
@@ -196,10 +207,22 @@ export async function fetchTableSnapshot(tableId) {
     },
     layers,
     layerOrder,
+    clock,
+    dayNightOverride,
     entities,
     entityOrder,
     players,
   };
+}
+
+// ---- In-game clock ----
+
+export async function updateTableClockRemote(tableId, clock) {
+  must(await supabase.from('tables').update({ game_clock: clock }).eq('id', tableId), 'updateTableClock');
+}
+
+export async function updateTableDayNightOverrideRemote(tableId, phase) {
+  must(await supabase.from('tables').update({ day_night_override: phase }).eq('id', tableId), 'updateTableDayNightOverride');
 }
 
 // ---- Layers ----
@@ -248,7 +271,14 @@ export async function addEntityRemote(tableId, entity) {
       await supabase.from('entity_dm_data').insert({
         entity_id: entity.id,
         table_id: tableId,
-        ...mapClientEntityDmDataPatchToDb({ dmNotes: entity.dmNotes ?? '', droppables: entity.droppables ?? [] }),
+        // mobSheet is only sent when there is one (a freshly placed monster
+        // has none), so placing a hero or monster never depends on the
+        // mob_sheet column existing — see 30_mob_sheet.sql.
+        ...mapClientEntityDmDataPatchToDb({
+          dmNotes: entity.dmNotes ?? '',
+          droppables: entity.droppables ?? [],
+          ...(entity.mobSheet ? { mobSheet: entity.mobSheet } : {}),
+        }),
       }),
       'addEntity(dmData)'
     );
@@ -284,6 +314,28 @@ export async function updateEntityRemote(entityId, patch) {
 
 export async function removeEntityRemote(entityId) {
   must(await supabase.from('entities').delete().eq('id', entityId), 'removeEntity');
+}
+
+// Un-revealing a trap. Revealing one is an ordinary UPDATE (the row becomes
+// visible to players, so Realtime delivers it), but Realtime sends no event
+// when a row *stops* being visible to a subscriber — a player's client
+// would keep showing a trap the DM just hid. Deleting the row does reach
+// them (the same DELETE event every other removed token relies on), so a
+// hide is delete + re-insert of the same entity, now unrevealed and thus
+// invisible to players again. The insert is retried because a failure
+// after the delete would otherwise lose the trap from the database.
+export async function hideTrapRemote(tableId, entity) {
+  await removeEntityRemote(entity.id);
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await addEntityRemote(tableId, { ...entity, trapRevealed: false });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
 
 // ---- Players ----

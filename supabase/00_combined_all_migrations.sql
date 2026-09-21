@@ -1322,3 +1322,153 @@ create policy "host can delete storage for their own table"
       select id from tables where host_auth_id = auth.uid()
     )
   );
+
+-- ======================================================================
+-- 28_traps.sql
+-- ======================================================================
+-- Hearthbound — 28_traps.sql
+-- Trap tokens: a hidden hazard the DM places on the map. Its mechanics
+-- (description, save number, fail number, dice to roll, damage) live on the
+-- entity row itself, like a chest's contents do.
+--
+-- The point of a trap is that players don't know it's there, so hiding it
+-- in the UI alone would repeat the mistake 15_entity_dm_data_privacy.sql
+-- was written to fix: `entities`' SELECT policy let every seated member
+-- read every row, and Realtime broadcasts full rows under that same
+-- policy, so an unrevealed trap's position and numbers would be one
+-- devtools tab away. Instead, this migration narrows that SELECT policy —
+-- an unrevealed trap is readable by the host only. A player's queries and
+-- Realtime subscription simply never see the row until the DM reveals it,
+-- at which point Realtime delivers it as an UPDATE the client upserts.
+--
+-- Hiding a trap again after revealing it can't be signalled the same way
+-- (Realtime sends no event when a row becomes invisible to a subscriber),
+-- so the host's client deletes and re-inserts the row instead — see
+-- hideTrapRemote in src/lib/remoteApi.js.
+
+alter table entities drop constraint if exists entities_kind_check;
+alter table entities add constraint entities_kind_check check (kind in ('hero','mob','door','chest','trap'));
+
+alter table entities add column if not exists trap_description text not null default '';
+alter table entities add column if not exists trap_save integer;
+alter table entities add column if not exists trap_fail integer;
+alter table entities add column if not exists trap_dice text not null default '';
+alter table entities add column if not exists trap_damage text not null default '';
+alter table entities add column if not exists trap_revealed boolean not null default false;
+
+drop policy if exists "members can read entities at their table" on entities;
+drop policy if exists "members can read visible entities at their table" on entities;
+create policy "members can read visible entities at their table"
+  on entities for select
+  using (
+    table_id in (select table_id from players where auth_user_id = auth.uid())
+    and (
+      kind <> 'trap'
+      or trap_revealed
+      or table_id in (select table_id from players where auth_user_id = auth.uid() and is_host)
+    )
+  );
+
+-- No change needed to enforce_entity_write_permissions() (16_dm_only_edits):
+-- a non-host's UPDATE on a trap already falls through to its final
+-- "Only the DM can edit this token" exception, and INSERT/DELETE on
+-- `entities` are host-only policies already.
+
+-- ======================================================================
+-- 29_trap_damage_type.sql
+-- ======================================================================
+-- Hearthbound — 29_trap_damage_type.sql
+-- What kind of damage a trap deals (poison, electric, bludgeoning, ...),
+-- stored as a plain key like the rest of a trap's mechanics
+-- (28_traps.sql). 'none' is a trap with no typed damage. Kept as its own
+-- migration rather than folded into 28 so it applies cleanly whether or
+-- not 28 has already been run against a given project.
+
+alter table entities add column if not exists trap_damage_type text not null default 'none';
+
+-- ======================================================================
+-- 30_mob_sheet.sql
+-- ======================================================================
+-- Hearthbound — 30_mob_sheet.sql
+-- Monsters get the same tabbed character sheet a hero has (abilities,
+-- saves & skills, battle equipment, spells, bag), but only the DM ever
+-- sees it. Heroes' sheets live on `entities.sheet`, which every seated
+-- player can read — fine for a hero, wrong for an enemy's stats and spell
+-- list. A monster's sheet goes into `entity_dm_data` instead, whose RLS
+-- (15_entity_dm_data_privacy.sql) already makes it host-only for SELECT,
+-- UPDATE and DELETE, so a player's queries and Realtime feed never
+-- receive it. Nullable: a monster has no sheet until the DM first edits one.
+
+alter table entity_dm_data add column if not exists mob_sheet jsonb;
+
+-- ======================================================================
+-- 31_island_conditions.sql
+-- ======================================================================
+-- Hearthbound — 31_island_conditions.sql
+-- Islands can carry condition states (fog, darkness, fire, unstable
+-- footing, ...) the same way hero/monster tokens do (06_conditions.sql).
+-- Stored as a plain text[] of catalog keys (src/data/islandConditions.js).
+-- No CHECK on the values, unlike entities.conditions: that constraint had
+-- to be loosened by hand every time its catalog grew, and this is a
+-- purely informational marker with nothing to enforce.
+--
+-- Nothing to change on the RLS side: islands are already readable by every
+-- seated member and writable by the host only (10_islands.sql), which is
+-- exactly who should see and who may set an island's conditions.
+
+alter table islands add column if not exists conditions text[] not null default '{}';
+
+-- ======================================================================
+-- 32_game_clock.sql
+-- ======================================================================
+-- Hearthbound — 32_game_clock.sql
+-- The table's in-game clock, and each island's day/night setting.
+--
+-- tables.game_clock: one jsonb per table holding the clock's anchor (base
+-- in-game time, the real timestamp it was set at, the tick speed, running
+-- flag, and the day/night cycle's sunrise/sunset) — see src/utils/gameClock.js.
+-- Clients derive the current time from that locally, so the row only changes
+-- when the DM edits the clock, never per tick. Null = no clock. Writing it is
+-- already host-only ("host can update their table", 02_policies.sql), and
+-- every member can already read their table's row.
+--
+-- islands.day_night: whether an island follows the table's clock ('cycle'),
+-- or stays always 'day' / always 'night' regardless of it. Islands are
+-- already readable by members and writable by the host only (10_islands.sql).
+
+alter table tables add column if not exists game_clock jsonb;
+
+alter table islands add column if not exists day_night text not null default 'cycle';
+alter table islands drop constraint if exists islands_day_night_check;
+alter table islands add constraint islands_day_night_check check (day_night in ('cycle', 'day', 'night'));
+
+-- ======================================================================
+-- 33_day_night_override.sql
+-- ======================================================================
+-- Hearthbound — 33_day_night_override.sql
+-- A day/night phase the DM sets by hand, overriding the in-game clock's own
+-- cycle (32_game_clock.sql) until they hand it back. One nullable value per
+-- table: null = follow the clock, otherwise the phase to show. Kept as its
+-- own column rather than inside game_clock so it works with no clock at all.
+--
+-- Writing it is already host-only ("host can update their table",
+-- 02_policies.sql); every member can already read their table's row.
+
+alter table tables add column if not exists day_night_override text;
+alter table tables drop constraint if exists tables_day_night_override_check;
+alter table tables add constraint tables_day_night_override_check
+  check (day_night_override is null or day_night_override in ('dawn', 'day', 'dusk', 'night'));
+
+-- ======================================================================
+-- 34_trap_size.sql
+-- ======================================================================
+-- Hearthbound — 34_trap_size.sql
+-- A trap can cover anything from a single tile up to a 5x5 area
+-- (src/data/traps.js). Every other token still tops out at 4x4, which is
+-- what entities.size's original check (01_schema.sql) enforced for all
+-- kinds — so the limit is widened for traps only, rather than for
+-- everything. Dropped-and-re-added so it re-runs cleanly.
+
+alter table entities drop constraint if exists entities_size_check;
+alter table entities add constraint entities_size_check
+  check (size between 1 and 4 or (kind = 'trap' and size = 5));

@@ -4,6 +4,9 @@ import { resizeImageToDataUrl } from '../utils/image.js';
 import { WEAPONS } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
 import { defaultCharacterSheet, normalizeEquipment, normalizeCurrency, newEquipmentItem } from '../data/characterSheet.js';
+import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
+import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
+import ClockReadout from './ClockReadout.jsx';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
@@ -15,10 +18,10 @@ function newDiceSet(overrides = {}) {
 // select, popover trigger, or one-shot command) is one of these instead of
 // a text button or a dropdown item, so the whole bar reads as a row of
 // little tiles rather than a list of menus.
-function ToolCard({ icon, label, active, onClick, disabled, title }) {
+function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
   return (
     <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label}>
-      <span className="tool-card-icon">{icon}</span>
+      <span className="tool-card-icon">{image ? <img className="tool-card-image" src={image} alt="" /> : icon}</span>
       <span className="tool-card-label">{label}</span>
     </button>
   );
@@ -37,6 +40,12 @@ export default function Toolbar({
   onRegenerateCode,
   onToggleOpen,
   onSaveNow,
+  clock,
+  onOpenClock,
+  onSetClockRunning,
+  dayPhase,
+  dayNightOverride,
+  onSetDayNightOverride,
   onExport,
   onImport,
   onLeave,
@@ -76,6 +85,7 @@ export default function Toolbar({
   const [showDice, setShowDice] = useState(false);
   const [showCompendium, setShowCompendium] = useState(false);
   const [showItemCompendium, setShowItemCompendium] = useState(false);
+  const [showDayNight, setShowDayNight] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Lifted out of DiceRollerPopover so the roll log and saved dice sets
@@ -91,6 +101,7 @@ export default function Toolbar({
     setShowDice((s) => (name === 'dice' ? !s : false));
     setShowCompendium((s) => (name === 'compendium' ? !s : false));
     setShowItemCompendium((s) => (name === 'itemCompendium' ? !s : false));
+    setShowDayNight((s) => (name === 'dayNight' ? !s : false));
   }
 
   function copyCode() {
@@ -196,6 +207,18 @@ export default function Toolbar({
         <ToolCard icon="◎" label="Recenter" onClick={onRecenter} title="Scroll back to the currently selected island" />
       </div>
 
+      {clock && (
+        <div className="toolbar-group">
+          <ClockReadout
+            clock={clock}
+            isHost={isHost}
+            onOpen={onOpenClock}
+            onSetRunning={onSetClockRunning}
+            phaseOverride={dayNightOverride}
+          />
+        </div>
+      )}
+
       {isHost && (
         <div className="toolbar-group">
           <ToolCard icon="🗺" label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
@@ -253,6 +276,24 @@ export default function Toolbar({
 
       {isHost && (
         <div className="toolbar-group">
+          <ToolCard icon="🕒" label="Ingame time" onClick={onOpenClock} title="Set the in-game time, tick speed, and day/night cycle" />
+          <ToolCard
+            icon={dayPhase ? '' : '🌓'}
+            image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}
+            label="Day / night"
+            active={showDayNight}
+            onClick={() => togglePopover('dayNight')}
+            title="Change the day/night phase by hand, whatever the clock says"
+          />
+          {showDayNight && (
+            <DayNightPopover
+              override={dayNightOverride}
+              hasClock={Boolean(clock)}
+              hasCycle={Boolean(clock?.cycle?.enabled)}
+              onSelect={(phase) => onSetDayNightOverride(phase)}
+              onClose={() => setShowDayNight(false)}
+            />
+          )}
           <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
           <ToolCard icon="📖" label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
           <ToolCard icon="📦" label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
@@ -321,6 +362,123 @@ export default function Toolbar({
   );
 }
 
+// Set the day/night phase by hand. Picking a phase overrides the clock's own
+// cycle (which keeps running underneath) until "Follow the clock" hands it
+// back; it works with the cycle on or off, and with no clock at all.
+function DayNightPopover({ override, hasClock, hasCycle, onSelect, onClose }) {
+  const isManual = Boolean(override);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 54,
+        left: 0,
+        background: 'var(--ink-800)',
+        border: '1px solid var(--gold-line)',
+        borderRadius: 6,
+        padding: 16,
+        width: 240,
+        zIndex: 100,
+        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+      }}
+    >
+      <div className="popover-header">
+        <span className="section-label" style={{ margin: 0 }}>
+          Day / night
+        </span>
+        <button className="popover-close" onClick={onClose} aria-label="Close day / night" title="Close">
+          ×
+        </button>
+      </div>
+      <p className="footer-note" style={{ border: 'none', padding: '0 0 10px' }}>
+        {isManual
+          ? hasClock
+            ? 'Set by hand — the clock keeps running, but no longer decides the phase.'
+            : 'Set by hand.'
+          : hasCycle
+            ? 'Following the clock.'
+            : 'No day/night cycle is running.'}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <button
+          type="button"
+          className={`btn btn-block ${!isManual ? 'btn-primary' : 'btn-secondary'}`}
+          aria-pressed={!isManual}
+          onClick={() => onSelect(null)}
+          title="Let the clock's day/night cycle decide the phase"
+        >
+          Follow the clock
+        </button>
+        {['dawn', 'day', 'dusk', 'night'].map((key) => {
+          const p = DAY_PHASES[key];
+          const active = override === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`btn btn-block daynight-option ${active ? 'btn-primary' : 'btn-secondary'}`}
+              aria-pressed={active}
+              onClick={() => onSelect(key)}
+              title={p.description}
+            >
+              <img src={p.imageUrl} alt="" width={20} height={20} />
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// The island's condition states - fog, darkness, fire, and so on. Toggling
+// one applies immediately (like a token's conditions), not via "Apply
+// changes", and everyone at the table sees the resulting badges on the map.
+function IslandConditionsField({ island, isHost, onPatch }) {
+  const active = island.conditions || [];
+
+  function toggle(key) {
+    if (!isHost) return;
+    onPatch({ conditions: active.includes(key) ? active.filter((k) => k !== key) : [...active, key] });
+  }
+
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Island conditions {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
+      </label>
+      <div className="condition-row">
+        {ISLAND_CONDITIONS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            className={`condition-badge${active.includes(c.key) ? ' active' : ''}`}
+            style={{ backgroundImage: `url(${c.imageUrl})` }}
+            title={`${c.label} — ${c.description}`}
+            aria-pressed={active.includes(c.key)}
+            disabled={!isHost}
+            onClick={() => toggle(c.key)}
+          />
+        ))}
+      </div>
+      {active.length > 0 && (
+        <ul className="condition-list" style={{ marginBottom: 6 }}>
+          {active.map((key) => {
+            const c = ISLAND_CONDITIONS.find((cond) => cond.key === key);
+            if (!c) return null;
+            return (
+              <li key={key} title={c.description}>
+                <img src={c.imageUrl} alt="" width={16} height={16} />
+                {c.label}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
 function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
@@ -378,6 +536,25 @@ function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch
           <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} disabled={!isHost} />
         </div>
       </div>
+
+      <IslandConditionsField island={island} isHost={isHost} onPatch={onIslandPatch} />
+
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Day / night
+      </label>
+      <select
+        className="field"
+        value={island.dayNight || 'cycle'}
+        disabled={!isHost}
+        onChange={(e) => onIslandPatch({ dayNight: e.target.value })}
+        title="Follow the table's in-game clock, or stay always day / always night regardless of it"
+      >
+        {ISLAND_DAY_NIGHT_MODES.map((m) => (
+          <option key={m.key} value={m.key}>
+            {m.label}
+          </option>
+        ))}
+      </select>
 
       <div className="section-label">This layer</div>
       <label className="field-label">Feet per square</label>

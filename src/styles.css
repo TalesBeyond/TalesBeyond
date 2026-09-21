@@ -373,15 +373,47 @@ input, select {
 
 /* ---------- Game layout ---------- */
 
+/* The side panels' widths are set from GameView (--left-w / --right-w) so
+   they can be dragged to a new size; the fallbacks are the defaults. */
 .game-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 260px 1fr 280px;
+  grid-template-columns: var(--left-w, 260px) 1fr var(--right-w, 340px);
   min-height: 0;
+  position: relative;
 }
-.game-layout.left-collapsed { grid-template-columns: 36px 1fr 280px; }
-.game-layout.right-collapsed { grid-template-columns: 260px 1fr 36px; }
+.game-layout.left-collapsed { grid-template-columns: 36px 1fr var(--right-w, 340px); }
+.game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
+
+/* Drag handles straddling each panel's inner edge. Wider than the visible
+   line so it's easy to grab; the line only shows on hover/focus/drag. */
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 20;
+  touch-action: none;
+  outline: none;
+}
+.panel-resizer.left { left: calc(var(--left-w, 260px) - 5px); }
+.panel-resizer.right { right: calc(var(--right-w, 340px) - 5px); }
+.panel-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.panel-resizer.dragging::after { background: var(--gold-line); }
+body.panel-resizing { cursor: col-resize; user-select: none; }
 
 .panel {
   background: var(--ink-900);
@@ -757,6 +789,54 @@ input, select {
   box-shadow: 0 1px 2px rgba(0,0,0,0.6);
   display: block;
 }
+
+/* The toolbar's "Ingame time" readout: icon, then caption / time / day+phase. */
+.clock-readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+}
+button.clock-readout { cursor: pointer; }
+button.clock-readout:hover { border-color: var(--gold-line); background: var(--ink-800); }
+.clock-readout-icon { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.clock-readout-body { display: flex; flex-direction: column; line-height: 1.15; }
+.clock-readout-caption {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment-300);
+}
+.clock-readout-time { font-family: var(--font-display); font-size: 17px; white-space: nowrap; }
+.clock-readout-paused { font-size: 12px; opacity: 0.8; }
+.clock-readout-sub { font-size: 11.5px; color: var(--parchment-200); }
+
+/* Pause / play, beside the readout (DM only). */
+.clock-toggle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-700);
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.clock-toggle:not(:disabled):hover { border-color: var(--gold-line); }
+.clock-toggle:disabled { opacity: 0.45; cursor: default; }
+
+.tool-card-image { width: 22px; height: 22px; border-radius: 50%; display: block; }
+.daynight-option { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+.daynight-option img { border-radius: 50%; flex-shrink: 0; }
 
 /* ---------- Hero character sheet (Inspector tabs) ---------- */
 
@@ -1218,6 +1298,32 @@ input, select {
   box-shadow: 0 0 0 2px var(--ember), 0 4px 14px -6px rgba(0,0,0,0.6);
 }
 
+/* An island's condition badges straddle its top edge, right-aligned so they
+   stay clear of the name label on the left. */
+.island-conditions {
+  position: absolute;
+  top: -13px;
+  right: 8px;
+  display: flex;
+  gap: 3px;
+  z-index: 2;
+}
+.island-conditions img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(23, 20, 15, 0.9);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  display: block;
+}
+
+.island-daynight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: background 1.5s ease;
+}
+
 .island-label {
   position: absolute;
   top: -20px;
@@ -1305,6 +1411,9 @@ input, select {
 .token.dragging { cursor: grabbing; z-index: 50; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
 .token.selected { outline: 3px solid var(--ember); outline-offset: 1px; }
 .token.door { border-radius: 6px; border-style: dashed; }
+/* An unrevealed trap: only the DM's client ever has it, so ghost it to tell it
+   apart from a revealed (player-visible) one. */
+.token.trap-hidden { opacity: 0.5; border-style: dashed; }
 .token .token-hp {
   position: absolute;
   bottom: -16px;

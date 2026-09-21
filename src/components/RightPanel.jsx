@@ -18,7 +18,10 @@ import {
 import { DEFAULT_WEAPONS } from '../data/weapons.js';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
+import { parseTrapNumber, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
+import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
+import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 
 export default function RightPanel({
@@ -107,8 +110,17 @@ export default function RightPanel({
             onRemove={onRemoveEntity}
             onGiveItem={onGiveChestItem}
           />
+        ) : selectedEntity.kind === 'trap' ? (
+          <TrapInspector entity={selectedEntity} isHost={isHost} onUpdate={onUpdateEntity} onRemove={onRemoveEntity} />
         ) : (
-          <MobInspector entity={selectedEntity} isHost={isHost} onUpdate={onUpdateEntity} onRemove={onRemoveEntity} />
+          <MobInspector
+            key={selectedEntity.id}
+            entity={selectedEntity}
+            isHost={isHost}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            entities={entities}
+          />
         )}
       </div>
     </div>
@@ -296,7 +308,7 @@ function ArmorClassField({ entity, onUpdate, disabled }) {
   );
 }
 
-function SizeField({ entity, onUpdate, disabled }) {
+function SizeField({ entity, onUpdate, disabled, maxSize }) {
   return (
     <>
       <label className="field-label" style={{ marginTop: 10 }}>
@@ -308,10 +320,11 @@ function SizeField({ entity, onUpdate, disabled }) {
         disabled={disabled}
         onChange={(e) => onUpdate(entity.id, { size: parseInt(e.target.value, 10) })}
       >
-        <option value={1}>1 × 1 (Medium)</option>
-        <option value={2}>2 × 2 (Large)</option>
-        <option value={3}>3 × 3 (Huge)</option>
-        <option value={4}>4 × 4 (Gargantuan)</option>
+        {tokenSizesUpTo(maxSize).map((s) => (
+          <option key={s.size} value={s.size}>
+            {s.label}
+          </option>
+        ))}
       </select>
     </>
   );
@@ -341,6 +354,110 @@ function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove 
         {(layerOrder || []).map((id) => (
           <option key={id} value={id}>
             {layers?.[id]?.name || 'Untitled layer'}
+          </option>
+        ))}
+      </select>
+
+      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+// ---------- trap ----------
+
+// A player only ever gets here once the DM has revealed the trap (an
+// unrevealed one never reaches their client - see GameView's
+// entitiesVisibleOnLayer), and sees the same fields read-only.
+function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
+  const revealed = Boolean(entity.trapRevealed);
+
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Trap &middot; square ({entity.col}, {entity.row})
+        {isHost && !revealed ? ' \u00b7 hidden from players' : ''}
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+
+      <SizeField entity={entity} onUpdate={onUpdate} disabled={!isHost} maxSize={MAX_TRAP_SIZE} />
+
+      {isHost && (
+        <label className="checkbox-row" style={{ marginTop: 10 }}>
+          <input
+            type="checkbox"
+            checked={revealed}
+            onChange={(e) => onUpdate(entity.id, { trapRevealed: e.target.checked })}
+          />
+          Reveal trap
+        </label>
+      )}
+
+      <label className="field-label" style={{ marginTop: isHost ? 0 : 10 }}>
+        Description
+      </label>
+      <textarea
+        className="field"
+        rows={3}
+        style={{ resize: 'vertical' }}
+        value={entity.trapDescription || ''}
+        disabled={!isHost}
+        onChange={(e) => onUpdate(entity.id, { trapDescription: e.target.value })}
+      />
+
+      <div className="two-col" style={{ marginTop: 10 }}>
+        <div>
+          <label className="field-label">Save number</label>
+          <input
+            className="field"
+            type="number"
+            value={entity.trapSave ?? ''}
+            disabled={!isHost}
+            onChange={(e) => onUpdate(entity.id, { trapSave: parseTrapNumber(e.target.value) })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Fail number</label>
+          <input
+            className="field"
+            type="number"
+            value={entity.trapFail ?? ''}
+            disabled={!isHost}
+            onChange={(e) => onUpdate(entity.id, { trapFail: parseTrapNumber(e.target.value) })}
+          />
+        </div>
+      </div>
+
+      {/* Full-width rows, not a two-column grid like save/fail above: the
+          inspector is narrow enough that the dice type dropdown would be
+          squeezed too small to read beside the count box. */}
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Dice to roll
+      </label>
+      <DiceInput value={entity.trapDice || ''} disabled={!isHost} onChange={(dice) => onUpdate(entity.id, { trapDice: dice })} />
+
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Damage
+      </label>
+      <input
+        className="field"
+        value={entity.trapDamage || ''}
+        disabled={!isHost}
+        onChange={(e) => onUpdate(entity.id, { trapDamage: e.target.value })}
+      />
+
+      <label className="field-label" style={{ marginTop: 10 }}>
+        Damage type
+      </label>
+      <select
+        className="field"
+        value={entity.trapDamageType || 'none'}
+        disabled={!isHost}
+        onChange={(e) => onUpdate(entity.id, { trapDamageType: e.target.value })}
+      >
+        {DAMAGE_TYPES.map((t) => (
+          <option key={t.key} value={t.key}>
+            {t.label}
           </option>
         ))}
       </select>
@@ -507,10 +624,24 @@ function ChestInspector({ entity, tool, heroes, isHost, onUpdate, onRemove, onGi
   );
 }
 
-// ---------- monster (unchanged shape, no character sheet tabs) ----------
+// ---------- monster ----------
 
-function MobInspector({ entity, isHost, onUpdate, onRemove }) {
+// A player only ever sees a monster's public face: name, AC, HP, size, and
+// conditions. The DM gets the same six sheet tabs a hero has, kept in
+// `mobSheet` - which lives in entity_dm_data's host-only RLS in cloud mode
+// and is stripped from a guest table's broadcasts, so it never reaches a
+// player's client.
+function MobInspector({ entity, isHost, onUpdate, onRemove, entities }) {
   const droppables = entity.droppables || [];
+  const sheet = entity.mobSheet || defaultCharacterSheet();
+  // A monster's Battle Equipment attacks heroes, mirroring how a hero's
+  // attacks monsters.
+  const heroTargets = Object.values(entities || {}).filter((e) => e.kind === 'hero');
+
+  function updateSheet(patch) {
+    onUpdate(entity.id, { mobSheet: { ...sheet, ...patch } });
+  }
+
   return (
     <div className="inspector-card">
       <h4>{entity.name}</h4>
@@ -518,10 +649,16 @@ function MobInspector({ entity, isHost, onUpdate, onRemove }) {
         Monster · square ({entity.col}, {entity.row})
       </div>
       <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-      <ArmorClassField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-      <HitPointsField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-      <SizeField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
+      {isHost ? (
+        <SheetTabs entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} targets={heroTargets} />
+      ) : (
+        <>
+          <ArmorClassField entity={entity} onUpdate={onUpdate} disabled />
+          <HitPointsField entity={entity} onUpdate={onUpdate} disabled />
+          <SizeField entity={entity} onUpdate={onUpdate} disabled />
+          <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
+        </>
+      )}
       {isHost && (
         <CollapsibleField title="Droppables">
           <DroppablesEditor
@@ -551,24 +688,14 @@ const TABS = [
   { key: 'bag', label: 'Bag' },
 ];
 
-function HeroInspector({ entity, isHost, onUpdate, onRemove, entities, players }) {
+// The six-tab character sheet shared by heroes and monsters. `targets` is
+// who this creature's Battle Equipment can attack: monsters for a hero,
+// heroes for a monster.
+function SheetTabs({ entity, sheet, isHost, onUpdate, updateSheet, targets }) {
   const [tab, setTab] = useState('overview');
-  const sheet = entity.sheet || defaultCharacterSheet();
-  const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
-
-  function updateSheet(patch) {
-    onUpdate(entity.id, { sheet: { ...sheet, ...patch } });
-  }
 
   return (
-    <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        Hero · square ({entity.col}, {entity.row})
-      </div>
-      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-      <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
-
+    <>
       <div className="sheet-tabs">
         {TABS.map((t) => (
           <button
@@ -591,10 +718,32 @@ function HeroInspector({ entity, isHost, onUpdate, onRemove, entities, players }
         {tab === 'overview' && <OverviewTab entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} />}
         {tab === 'abilities' && <AbilitiesTab sheet={sheet} updateSheet={updateSheet} />}
         {tab === 'saves' && <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />}
-        {tab === 'attacks' && <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} mobs={mobs} onAttackTarget={onUpdate} />}
+        {tab === 'attacks' && <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={targets} onAttackTarget={onUpdate} />}
         {tab === 'spells' && <SpellsTab sheet={sheet} updateSheet={updateSheet} />}
         {tab === 'bag' && <BagTab sheet={sheet} updateSheet={updateSheet} />}
       </fieldset>
+    </>
+  );
+}
+
+function HeroInspector({ entity, isHost, onUpdate, onRemove, entities, players }) {
+  const sheet = entity.sheet || defaultCharacterSheet();
+  const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
+
+  function updateSheet(patch) {
+    onUpdate(entity.id, { sheet: { ...sheet, ...patch } });
+  }
+
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Hero · square ({entity.col}, {entity.row})
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
+
+      <SheetTabs entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
 
       {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />}
       {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
@@ -623,7 +772,13 @@ function OverviewTab({ entity, sheet, isHost, onUpdate, updateSheet }) {
       <div className="field-row">
         <div>
           <label className="field-label">Armor class</label>
-          <input type="number" className="field" value={sheet.armorClass} onChange={(e) => updateSheet({ armorClass: parseInt(e.target.value, 10) || 0 })} />
+          {/* A monster's AC lives on the entity itself (players see it, and hero
+              attacks roll against it); a hero's lives on its sheet. */}
+          {entity.kind === 'mob' ? (
+            <input type="number" className="field" value={entity.armorClass ?? 10} onChange={(e) => onUpdate(entity.id, { armorClass: parseInt(e.target.value, 10) || 0 })} />
+          ) : (
+            <input type="number" className="field" value={sheet.armorClass} onChange={(e) => updateSheet({ armorClass: parseInt(e.target.value, 10) || 0 })} />
+          )}
         </div>
         <div>
           <label className="field-label">Initiative</label>
@@ -791,7 +946,12 @@ function rollDie(sides) {
   return 1 + Math.floor(Math.random() * sides);
 }
 
-function BattleEquipmentTab({ sheet, updateSheet, mobs, onAttackTarget }) {
+// A hero's AC lives on its sheet; a monster's on the entity itself.
+function acOf(target) {
+  return target.kind === 'hero' ? target.sheet?.armorClass ?? 10 : target.armorClass ?? 10;
+}
+
+function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
   const items = sheet.attacks || [];
   const [pickingIndex, setPickingIndex] = useState(null);
   const [pickTargetId, setPickTargetId] = useState('');
@@ -814,18 +974,18 @@ function BattleEquipmentTab({ sheet, updateSheet, mobs, onAttackTarget }) {
 
   function openTargetPicker(index) {
     setPickingIndex(index);
-    setPickTargetId((mobs[0] && mobs[0].id) || '');
+    setPickTargetId((targets[0] && targets[0].id) || '');
   }
 
   function confirmAttack(index) {
-    const target = mobs.find((m) => m.id === pickTargetId);
+    const target = targets.find((t) => t.id === pickTargetId);
     if (!target) return;
     const it = items[index];
     const weapon = DEFAULT_WEAPONS.find((w) => w.name === it.weaponName) || DEFAULT_WEAPONS[0];
     const toHitMod = totalToHit(weapon, it.additionalModifier);
     const d20 = rollDie(20);
     const attackTotal = d20 + toHitMod;
-    const targetAC = target.armorClass ?? 10;
+    const targetAC = acOf(target);
     const hit = attackTotal >= targetAC;
     let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
 
@@ -883,8 +1043,8 @@ function BattleEquipmentTab({ sheet, updateSheet, mobs, onAttackTarget }) {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                disabled={mobs.length === 0}
-                title={mobs.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
+                disabled={targets.length === 0}
+                title={targets.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
                 onClick={() => openTargetPicker(i)}
               >
                 Roll attack
@@ -900,9 +1060,9 @@ function BattleEquipmentTab({ sheet, updateSheet, mobs, onAttackTarget }) {
             {pickingIndex === i && (
               <div className="attack-target-picker">
                 <select className="field" value={pickTargetId} onChange={(e) => setPickTargetId(e.target.value)}>
-                  {mobs.map((m) => (
+                  {targets.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} — {m.hp}/{m.maxHp} HP, AC {m.armorClass ?? 10}
+                      {m.name} — {m.hp}/{m.maxHp} HP, AC {acOf(m)}
                     </option>
                   ))}
                 </select>

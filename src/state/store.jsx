@@ -51,6 +51,14 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     },
     layers: { [baseLayer.id]: baseLayer },
     layerOrder: [baseLayer.id],
+    // The table's in-game clock (utils/gameClock.js), or null when the DM
+    // hasn't started one.
+    clock: null,
+    // A phase ('dawn' | 'day' | 'dusk' | 'night') the DM has set by hand,
+    // taking priority over the clock's own day/night cycle until they hand it
+    // back ("Follow the clock" = null). Independent of the clock, so it works
+    // with the cycle on, off, or no clock at all.
+    dayNightOverride: null,
     entities: {},
     entityOrder: [],
     players: {
@@ -276,6 +284,12 @@ function reducer(state, action) {
 
     case 'SET_SESSION_OPEN':
       return { ...state, session: { ...state.session, isOpen: action.isOpen } };
+
+    case 'SET_CLOCK':
+      return { ...state, clock: action.clock ?? null };
+
+    case 'SET_DAY_NIGHT_OVERRIDE':
+      return { ...state, dayNightOverride: action.phase ?? null };
 
     case 'ADD_ENTITY': {
       const alreadyPresent = Boolean(state.entities[action.entity.id]);

@@ -29,7 +29,17 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
         if (payload.eventType === 'INSERT') {
           dispatch({ type: 'ADD_ENTITY', entity: mapDbEntity(payload.new) });
         } else if (payload.eventType === 'UPDATE') {
-          dispatch({ type: 'UPDATE_ENTITY', id: payload.new.id, patch: mapDbEntity(payload.new) });
+          // A trap the DM just revealed reaches a player as an UPDATE for a
+          // row their client has never seen (it was invisible to them until
+          // now — 20250101000028_traps.sql). ADD_ENTITY upserts, so use it
+          // for traps; every other kind's UPDATE targets an entity the
+          // client already has.
+          const type = payload.new.kind === 'trap' ? 'ADD_ENTITY' : 'UPDATE_ENTITY';
+          dispatch(
+            type === 'ADD_ENTITY'
+              ? { type, entity: mapDbEntity(payload.new) }
+              : { type, id: payload.new.id, patch: mapDbEntity(payload.new) }
+          );
         } else if (payload.eventType === 'DELETE') {
           dispatch({ type: 'REMOVE_ENTITY', id: payload.old.id });
         }
@@ -91,7 +101,12 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'tables', filter: `id=eq.${tableId}` },
-      (payload) => dispatch({ type: 'SET_SESSION_OPEN', isOpen: payload.new.is_open })
+      (payload) => {
+        dispatch({ type: 'SET_SESSION_OPEN', isOpen: payload.new.is_open });
+        // Absent (not merely null) before 32_game_clock.sql is applied.
+        if ('game_clock' in payload.new) dispatch({ type: 'SET_CLOCK', clock: payload.new.game_clock ?? null });
+        if ('day_night_override' in payload.new) dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase: payload.new.day_night_override ?? null });
+      }
     )
     .on(
       'postgres_changes',

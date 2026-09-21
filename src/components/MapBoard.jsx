@@ -1,15 +1,26 @@
 import React, { useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { pixelToCell, feetDistance, computeCanvasBounds } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
+import { getIslandCondition } from '../data/islandConditions.js';
+import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
 const ISLAND_SNAP_PX = 20; // un-zoomed pixels — how close an island's edge must get to another's to snap flush
+
+// Paint order among tokens, lowest first: traps underneath, doors on top,
+// everything else (in entityOrder) between.
+function tokenStackRank(entity) {
+  if (entity?.kind === 'trap') return 0;
+  if (entity?.kind === 'door') return 2;
+  return 1;
+}
 
 export default function MapBoard({
   islands,
   islandOrder,
   islandGroups = {},
   pendingGroupIslandIds = [],
+  dayPhase = null,
   onToggleGroupCandidate,
   onMoveIslandGroup,
   feetPerSquare,
@@ -439,6 +450,8 @@ export default function MapBoard({
         const h = island.rows * island.cellSize * zoom;
         const cellPx = island.cellSize * zoom;
         const isPendingGroupMember = pendingGroupIslandIds.includes(id);
+        // This island's own day/night setting, else the table clock's phase.
+        const phase = DAY_PHASES[islandPhase(island, dayPhase)];
 
         return (
           <div
@@ -456,6 +469,18 @@ export default function MapBoard({
             {/* A grouped island's own label is suppressed — the group's
                 single shared title (rendered below) stands in for it. */}
             {!groupIdByIslandId.has(id) && <div className="island-label">{island.name}</div>}
+            {/* Condition badges (fog, fire, ...) sit on the island's top edge for
+                everyone - a grouped island keeps its own, unlike the label. */}
+            {(phase || island.conditions?.length > 0) && (
+              <div className="island-conditions">
+                {phase && <img src={phase.imageUrl} alt={phase.label} title={`${phase.label} — ${phase.description}`} />}
+                {(island.conditions || []).map((key) => {
+                  const c = getIslandCondition(key);
+                  if (!c) return null;
+                  return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                })}
+              </div>
+            )}
             <svg className="grid-svg" width={w} height={h}>
               {Array.from({ length: island.cols + 1 }).map((_, v) => (
                 <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke="rgba(23,20,15,0.28)" strokeWidth={v % 5 === 0 ? 1.4 : 0.7} />
@@ -464,6 +489,8 @@ export default function MapBoard({
                 <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke="rgba(23,20,15,0.28)" strokeWidth={hh % 5 === 0 ? 1.4 : 0.7} />
               ))}
             </svg>
+            {/* Dusk/night/dawn tint - over the map art and grid, under the tokens. */}
+            {phase?.tint && <div className="island-daynight" style={{ background: phase.tint }} />}
           </div>
         );
       })}
@@ -501,9 +528,11 @@ export default function MapBoard({
       {/* Doors render last (on top) regardless of entityOrder, so one stays
           clickable/openable even when a hero token shares its square —
           otherwise whichever happened to be placed more recently would
-          silently swallow the click. */}
+          silently swallow the click. Traps render first (underneath) for the
+          opposite reason: one can cover up to 5x5 squares, and must not
+          swallow clicks meant for the heroes and monsters standing on it. */}
       {[...entityOrder]
-        .sort((a, b) => (entities[a]?.kind === 'door' ? 1 : 0) - (entities[b]?.kind === 'door' ? 1 : 0))
+        .sort((a, b) => tokenStackRank(entities[a]) - tokenStackRank(entities[b]))
         .map((id) => {
           const entity = entities[id];
           if (!entity) return null;
@@ -519,7 +548,7 @@ export default function MapBoard({
           return (
             <div
               key={id}
-              className={`token${entity.kind === 'door' ? ' door' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}`}
+              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}`}
               style={{
                 width: size,
                 height: size,
@@ -530,7 +559,7 @@ export default function MapBoard({
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
               onClick={(e) => e.stopPropagation()}
-              title={entity.name}
+              title={entity.kind === 'trap' && !entity.trapRevealed ? `${entity.name} (hidden from players)` : entity.name}
             >
               <span className="token-label">{entity.name}</span>
               {entity.kind !== 'door' && entity.maxHp ? (

@@ -5,6 +5,7 @@ import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
+import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
 import { renderIslandTemplateToDataUrl } from '../utils/image.js';
 import {
   saveSession,
@@ -33,6 +34,9 @@ import {
   moveEntityRemote,
   updateEntityRemote,
   removeEntityRemote,
+  hideTrapRemote,
+  updateTableClockRemote,
+  updateTableDayNightOverrideRemote,
   regenerateInviteCodeRemote,
   setTableOpenRemote,
   removePlayerRemote,
@@ -43,6 +47,10 @@ import MapBoard from './MapBoard.jsx';
 import TokenSidebar from './TokenSidebar.jsx';
 import RightPanel from './RightPanel.jsx';
 import Toolbar from './Toolbar.jsx';
+import PanelResizer from './PanelResizer.jsx';
+import ClockModal from './ClockModal.jsx';
+import { useDayPhase } from '../state/useGameClock.js';
+import { withClockRunning } from '../utils/gameClock.js';
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
@@ -81,13 +89,19 @@ function findFreeCell(entities, islandId, cols, rows) {
 // side sits on. Every other entity kind stays scoped to its own layerId
 // (and islandId) only. Returns a dict keyed by id, with col/row/islandId
 // already resolved for viewing `layerId`.
-function entitiesVisibleOnLayer(state, layerId) {
+function entitiesVisibleOnLayer(state, layerId, showHiddenTraps) {
   const result = {};
   const targetLayer = state.layers[layerId];
   const targetBaseIslandId = targetLayer?.islandOrder[0];
   for (const id of state.entityOrder) {
     const entity = state.entities[id];
     if (!entity) continue;
+    // An unrevealed trap does not exist for anyone but the DM. In cloud mode
+    // and guest mode a player's client never receives it at all (see
+    // 20250101000028_traps.sql and toGuestBroadcastAction below); this is
+    // the matching filter for local mode, where every tab shares one
+    // localStorage copy of the table and nothing else can keep it apart.
+    if (isHiddenTrap(entity) && !showHiddenTraps) continue;
     if (entity.layerId === layerId) {
       result[id] = entity;
     } else if (entity.kind === 'door' && entity.targetLayerId === layerId) {
@@ -102,6 +116,50 @@ function entitiesVisibleOnLayer(state, layerId) {
   return result;
 }
 
+// The side panels can be dragged wider or narrower. The widths are a
+// per-viewer convenience, so they live in this browser's localStorage and
+// the game still works (at the defaults) if that is unavailable.
+const PANEL_WIDTHS_KEY = 'hearthbound:panelwidths';
+const DEFAULT_PANEL_WIDTHS = { left: 260, right: 340 };
+const PANEL_MIN = 220;
+const PANEL_MAX = 640;
+const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
+const COLLAPSED_PANEL_WIDTH = 36;
+
+function loadPanelWidths() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PANEL_WIDTHS_KEY));
+    const left = Number(saved?.left);
+    const right = Number(saved?.right);
+    return {
+      left: Number.isFinite(left) ? Math.min(PANEL_MAX, Math.max(PANEL_MIN, left)) : DEFAULT_PANEL_WIDTHS.left,
+      right: Number.isFinite(right) ? Math.min(PANEL_MAX, Math.max(PANEL_MIN, right)) : DEFAULT_PANEL_WIDTHS.right,
+    };
+  } catch {
+    return DEFAULT_PANEL_WIDTHS;
+  }
+}
+
+// The widths a viewer *prefers* are stored as-is, but what is shown is fitted
+// to the current window: if the two panels would leave the map narrower than
+// MAP_MIN_WIDTH (a smaller window than the one they were sized in), they
+// shrink together, proportionally, down to PANEL_MIN. The preference itself
+// is untouched, so they spring back if the window grows again.
+function fitPanelWidths(widths, viewport, leftCollapsed, rightCollapsed) {
+  if (!viewport) return widths;
+  const leftShown = leftCollapsed ? COLLAPSED_PANEL_WIDTH : widths.left;
+  const rightShown = rightCollapsed ? COLLAPSED_PANEL_WIDTH : widths.right;
+  const room = viewport - MAP_MIN_WIDTH;
+  if (leftShown + rightShown <= room) return widths;
+  const expanded = (leftCollapsed ? 0 : leftShown) + (rightCollapsed ? 0 : rightShown);
+  const available = room - (leftCollapsed ? COLLAPSED_PANEL_WIDTH : 0) - (rightCollapsed ? COLLAPSED_PANEL_WIDTH : 0);
+  const factor = Math.max(0, available) / expanded;
+  return {
+    left: Math.max(PANEL_MIN, Math.floor(widths.left * factor)),
+    right: Math.max(PANEL_MIN, Math.floor(widths.right * factor)),
+  };
+}
+
 // saveSession returns false (and only logs to console) when localStorage's
 // quota is exceeded — usually from uncapped background/token image uploads
 // piling up across tables in this browser. Surface that instead of letting
@@ -112,22 +170,65 @@ function entitiesVisibleOnLayer(state, layerId) {
 // to lean on, so the host's own client strips it at the point a broadcast
 // leaves for players. The host's own local state (and localStorage
 // autosave) keeps it; only outgoing broadcast payloads are filtered.
-function stripDmNotesFromAction(action) {
-  if (action.type === 'ADD_ENTITY' && action.entity?.dmNotes !== undefined) {
-    return { ...action, entity: { ...action.entity, dmNotes: undefined } };
-  }
-  if (action.type === 'UPDATE_ENTITY' && action.patch?.dmNotes !== undefined) {
-    return { ...action, patch: { ...action.patch, dmNotes: undefined } };
-  }
-  return action;
+//
+// Fields that live in entity_dm_data in cloud mode (host-only under RLS):
+// none of them may reach a player over a guest table's broadcast either.
+// (droppables was previously missing from this filter, so a guest table's
+// players could read a monster's loot table; it is covered now.)
+const DM_ONLY_KEYS = ['dmNotes', 'droppables', 'mobSheet'];
+
+function withoutDmOnlyKeys(obj) {
+  if (!obj || !DM_ONLY_KEYS.some((key) => obj[key] !== undefined)) return obj;
+  const copy = { ...obj };
+  for (const key of DM_ONLY_KEYS) delete copy[key];
+  return copy;
 }
 
-function stripDmNotesFromState(fullState) {
+// The same filter keeps an unrevealed trap off a guest table's wire. To
+// players a trap does not exist until revealed, so revealing one is sent as
+// an ADD_ENTITY, hiding it again as a REMOVE_ENTITY, and anything that
+// touches a still-hidden trap (moves, edits, its own removal) is not sent
+// at all. `prevState` is the state from *before* the action was applied,
+// which is what stateRef holds at every call site (they dispatch and then
+// broadcast within the same event, before React re-renders).
+//
+// Returns the action to broadcast, or null when nothing should go out.
+function toGuestBroadcastAction(action, prevState) {
+  switch (action.type) {
+    case 'ADD_ENTITY': {
+      if (isHiddenTrap(action.entity)) return null;
+      return { ...action, entity: withoutDmOnlyKeys(action.entity) };
+    }
+    case 'UPDATE_ENTITY': {
+      const before = prevState.entities[action.id];
+      if (before?.kind === 'trap') {
+        const after = { ...before, ...action.patch };
+        const wasHidden = isHiddenTrap(before);
+        const nowHidden = isHiddenTrap(after);
+        if (wasHidden && nowHidden) return null;
+        if (wasHidden) return { type: 'ADD_ENTITY', entity: after };
+        if (nowHidden) return { type: 'REMOVE_ENTITY', id: action.id };
+      }
+      const patch = withoutDmOnlyKeys(action.patch);
+      if (patch === action.patch) return action;
+      // A patch that was nothing but DM-only fields has nothing left to say.
+      return Object.keys(patch).length === 0 ? null : { ...action, patch };
+    }
+    case 'MOVE_ENTITY':
+    case 'REMOVE_ENTITY':
+      return isHiddenTrap(prevState.entities[action.id]) ? null : action;
+    default:
+      return action;
+  }
+}
+
+function toGuestSnapshot(fullState) {
   const entities = {};
   for (const [id, entity] of Object.entries(fullState.entities)) {
-    entities[id] = entity.dmNotes !== undefined ? { ...entity, dmNotes: undefined } : entity;
+    if (isHiddenTrap(entity)) continue;
+    entities[id] = withoutDmOnlyKeys(entity);
   }
-  return { ...fullState, entities };
+  return { ...fullState, entities, entityOrder: fullState.entityOrder.filter((id) => entities[id]) };
 }
 
 function saveOrWarn(code, nextState) {
@@ -155,6 +256,45 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
+  const [showClockModal, setShowClockModal] = useState(false);
+  // Only changes when the day/night phase does, so the map can react to dusk
+  // arriving without this whole screen re-rendering every second.
+  const clockPhase = useDayPhase(state.clock);
+  // The phase the table is actually in: the DM's manual choice if they made
+  // one, otherwise whatever the clock's cycle says.
+  const tablePhase = state.dayNightOverride ?? clockPhase;
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+
+  useEffect(() => {
+    function onWindowResize() {
+      setViewportWidth(window.innerWidth);
+    }
+    window.addEventListener('resize', onWindowResize);
+    return () => window.removeEventListener('resize', onWindowResize);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_WIDTHS_KEY, JSON.stringify(panelWidths));
+    } catch {
+      // storage blocked or full - the sizes just won't be remembered
+    }
+  }, [panelWidths]);
+
+  // Clamp a requested width to [PANEL_MIN, PANEL_MAX] and to whatever leaves
+  // the map at least MAP_MIN_WIDTH given the other panel's current width.
+  function resizePanel(side, requested) {
+    setPanelWidths((prev) => {
+      const otherCollapsed = side === 'left' ? rightCollapsed : leftCollapsed;
+      const shown = fitPanelWidths(prev, window.innerWidth, leftCollapsed, rightCollapsed);
+      const otherWidth = otherCollapsed ? COLLAPSED_PANEL_WIDTH : shown[side === 'left' ? 'right' : 'left'];
+      const room = window.innerWidth - otherWidth - MAP_MIN_WIDTH;
+      const max = Math.max(PANEL_MIN, Math.min(PANEL_MAX, room));
+      const next = Math.round(Math.min(max, Math.max(PANEL_MIN, requested)));
+      return next === prev[side] ? prev : { ...prev, [side]: next };
+    });
+  }
   // View-only, per-viewer preference — never shared/persisted, so the host
   // and every player can each zoom their own view of the map independently.
   const [zoom, setZoom] = useState(1);
@@ -230,7 +370,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   });
 
-  const layerEntities = entitiesVisibleOnLayer(state, currentLayerId);
+  const layerEntities = entitiesVisibleOnLayer(state, currentLayerId, isHost);
   const layerEntityOrder = state.entityOrder.filter((id) => layerEntities[id]);
 
   const layerPlayerCounts = {};
@@ -357,8 +497,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const code = state.session.code;
 
     function applyAndBroadcast(action) {
+      const safe = toGuestBroadcastAction(action, stateRef.current);
       dispatch(action);
-      guestChannelRef.current?.sendStateChange(stripDmNotesFromAction(action));
+      if (safe) guestChannelRef.current?.sendStateChange(safe);
     }
 
     // Host-side validation of a player's proposed action — mirrors
@@ -406,7 +547,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         currentLayerId: stateRef.current.layerOrder[0],
       };
       dispatch({ type: 'ADD_PLAYER', player });
-      const snapshot = stripDmNotesFromState({ ...stateRef.current, players: { ...stateRef.current.players, [id]: player } });
+      const snapshot = toGuestSnapshot({ ...stateRef.current, players: { ...stateRef.current.players, [id]: player } });
       guestChannelRef.current?.sendJoinAck(requestId, id, snapshot);
       guestChannelRef.current?.sendStateChange({ type: 'ADD_PLAYER', player });
     }
@@ -415,7 +556,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // snapshot. Unlike handlePlayerJoin, nothing new is allocated — the
     // requester already has a playerId from before the drop.
     function handleStateRequest(requesterId) {
-      guestChannelRef.current?.sendStateSnapshot(requesterId, stripDmNotesFromState(stateRef.current));
+      guestChannelRef.current?.sendStateSnapshot(requesterId, toGuestSnapshot(stateRef.current));
     }
 
     // Player-side only: a channel recovery that isn't the very first join
@@ -457,7 +598,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // A no-op for players and for non-guest modes.
   function broadcastGuestChange(action) {
     if (!isGuestHost) return;
-    guestChannelRef.current?.sendStateChange(stripDmNotesFromAction(action));
+    const safe = toGuestBroadcastAction(action, stateRef.current);
+    if (safe) guestChannelRef.current?.sendStateChange(safe);
   }
 
   // Local mode only: closing the tab/browser or navigating away should drop
@@ -510,7 +652,16 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function addEntity(draft) {
     if (!isHost) return;
     const targetIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
-    const { col, row } = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
+    const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
+    // Only a trap can be sized at placement (1 to 5 squares wide); everything
+    // else starts 1x1.
+    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : 1;
+    // findFreeCell finds a free single square, which is the token's top-left
+    // corner — pull a big trap back so it lands fully on the island rather
+    // than hanging off its right/bottom edge (an island smaller than the
+    // trap just pins it to the top-left).
+    const col = Math.max(0, Math.min(free.col, targetIsland.cols - size));
+    const row = Math.max(0, Math.min(free.row, targetIsland.rows - size));
     // A door's placement on its target layer is independent of its
     // placement here — find it its own free cell over there too (always on
     // that layer's base island, since doors aren't per-island-targeted),
@@ -521,7 +672,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     if (draft.kind === 'door' && draft.targetLayerId) {
       const targetLayer = state.layers[draft.targetLayerId];
       const targetLayerBaseIsland = targetLayer.islands[targetLayer.islandOrder[0]];
-      const targetLayerEntities = entitiesVisibleOnLayer(state, draft.targetLayerId);
+      const targetLayerEntities = entitiesVisibleOnLayer(state, draft.targetLayerId, isHost);
       const free = findFreeCell(targetLayerEntities, targetLayerBaseIsland.id, targetLayerBaseIsland.cols, targetLayerBaseIsland.rows);
       targetCol = free.col;
       targetRow = free.row;
@@ -534,7 +685,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       color: draft.color,
       col,
       row,
-      size: 1,
+      size,
       hp: draft.maxHp,
       maxHp: draft.maxHp,
       armorClass: draft.kind === 'mob' ? 10 : undefined,
@@ -547,13 +698,26 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       targetLayerId: draft.kind === 'door' ? draft.targetLayerId ?? null : null,
       targetCol,
       targetRow,
-      conditions: draft.kind !== 'door' && draft.kind !== 'chest' ? [] : undefined,
+      conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
       dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? '' : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
       opened: draft.kind === 'chest' ? false : undefined,
       items: draft.kind === 'chest' ? draft.items || [] : undefined,
+      // A trap always starts hidden - the DM reveals it deliberately from
+      // its inspector.
+      ...(draft.kind === 'trap'
+        ? {
+            trapDescription: draft.trapDescription ?? '',
+            trapSave: draft.trapSave ?? null,
+            trapFail: draft.trapFail ?? null,
+            trapDice: draft.trapDice ?? '',
+            trapDamage: draft.trapDamage ?? '',
+            trapDamageType: draft.trapDamageType ?? 'none',
+            trapRevealed: false,
+          }
+        : {}),
     };
     dispatch({ type: 'ADD_ENTITY', entity });
     setSelectedId(entity.id);
@@ -592,7 +756,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
     dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId });
     if (isRemote) moveEntityRemote(id, col, row, islandId).catch(reportError);
-    else if (isGuestHost) guestChannelRef.current?.sendStateChange({ type: 'MOVE_ENTITY', id, col, row, islandId });
+    else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId });
   }
 
   function updateEntity(id, patch) {
@@ -610,8 +774,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // keystroke today — fine at current usage, but if that ever gets slow
     // enough to matter, debounce the network call here rather than in each
     // caller (Realtime Roadmap §2.4).
-    if (isRemote) updateEntityRemote(id, patch).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'UPDATE_ENTITY', id, patch });
+    if (isRemote) {
+      // Hiding a revealed trap again cannot be a plain UPDATE - see
+      // hideTrapRemote for why it is a delete + re-insert instead.
+      if (entity.kind === 'trap' && entity.trapRevealed && patch.trapRevealed === false) {
+        hideTrapRemote(state.session.tableId, { ...entity, ...patch }).catch(reportError);
+      } else {
+        updateEntityRemote(id, patch).catch(reportError);
+      }
+    } else if (isGuestHost) {
+      broadcastGuestChange({ type: 'UPDATE_ENTITY', id, patch });
+    }
   }
 
   function removeEntity(id) {
@@ -767,6 +940,43 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     dispatch({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
     if (isRemote) updateIslandRemote(islandId, patch).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
+  }
+
+  // The table's in-game clock (null removes it). Host-only, like every other
+  // table-wide setting; players just see the result.
+  function updateClock(clock) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_CLOCK', clock });
+    if (isRemote) {
+      updateTableClockRemote(state.session.tableId, clock).catch(reportError);
+    } else if (isGuestHost) {
+      broadcastGuestChange({ type: 'SET_CLOCK', clock });
+    } else {
+      saveOrWarn(state.session.code, { ...state, clock });
+    }
+  }
+
+  // Pause or resume the clock from the toolbar. Re-bases the anchor to the
+  // current time first (withClockRunning) so pausing freezes what is on screen
+  // and resuming carries on from there.
+  function setClockRunning(running) {
+    if (!state.clock) return;
+    updateClock(withClockRunning(state.clock, running, Date.now()));
+  }
+
+  // The DM setting the day/night phase by hand (null = hand it back to the
+  // clock). Works whether or not the clock's own cycle is on, or a clock
+  // exists at all.
+  function updateDayNightOverride(phase) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase });
+    if (isRemote) {
+      updateTableDayNightOverrideRemote(state.session.tableId, phase).catch(reportError);
+    } else if (isGuestHost) {
+      broadcastGuestChange({ type: 'SET_DAY_NIGHT_OVERRIDE', phase });
+    } else {
+      saveOrWarn(state.session.code, { ...state, dayNightOverride: phase });
+    }
   }
 
   function moveIsland(islandId, x, y) {
@@ -1154,8 +1364,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     return () => stage.removeEventListener('wheel', onWheel);
   }, []);
 
+  const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
+
   return (
-    <div className={`game-layout${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}>
+    <div
+      className={`game-layout${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
+      style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
+    >
       <TokenSidebar
         onAddEntity={addEntity}
         layers={state.layers}
@@ -1180,6 +1395,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onRegenerateCode={regenerateCode}
           onToggleOpen={toggleOpen}
           onSaveNow={saveNow}
+          clock={state.clock}
+          onOpenClock={() => setShowClockModal(true)}
+          onSetClockRunning={setClockRunning}
+          dayPhase={tablePhase}
+          dayNightOverride={state.dayNightOverride}
+          onSetDayNightOverride={updateDayNightOverride}
           onExport={exportTable}
           onImport={importTable}
           onLeave={leaveTable}
@@ -1216,6 +1437,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             islandOrder={currentLayer.islandOrder}
             islandGroups={currentLayer.islandGroups || {}}
             pendingGroupIslandIds={pendingGroupIslandIds}
+            dayPhase={tablePhase}
             onToggleGroupCandidate={toggleGroupCandidate}
             onMoveIslandGroup={moveIslandGroup}
             feetPerSquare={currentLayer.feetPerSquare}
@@ -1252,6 +1474,40 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         collapsed={rightCollapsed}
         onToggleCollapsed={() => setRightCollapsed((c) => !c)}
       />
+
+      {showClockModal && isHost && (
+        <ClockModal
+          clock={state.clock}
+          onSave={(clock) => {
+            updateClock(clock);
+            setShowClockModal(false);
+          }}
+          onRemove={() => {
+            updateClock(null);
+            setShowClockModal(false);
+          }}
+          onClose={() => setShowClockModal(false)}
+        />
+      )}
+
+      {!leftCollapsed && (
+        <PanelResizer
+          side="left"
+          width={shownPanelWidths.left}
+          label="Resize tokens panel"
+          onResize={(w) => resizePanel('left', w)}
+          onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
+        />
+      )}
+      {!rightCollapsed && (
+        <PanelResizer
+          side="right"
+          width={shownPanelWidths.right}
+          label="Resize players and inspector panel"
+          onResize={(w) => resizePanel('right', w)}
+          onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
+        />
+      )}
 
       {pendingDoor && (
         <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
