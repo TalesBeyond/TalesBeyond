@@ -69,6 +69,9 @@ export default function Toolbar({
   onRenameGroup,
   heroes,
   onUpdateEntity,
+  initiativeHeroes,
+  initiativeMobs,
+  onRollInitiative,
   customAssets,
   onAddCustomAsset,
   onRemoveCustomAsset,
@@ -87,6 +90,7 @@ export default function Toolbar({
   const [showLayers, setShowLayers] = useState(false);
   const [showIslands, setShowIslands] = useState(false);
   const [showDice, setShowDice] = useState(false);
+  const [showInitiative, setShowInitiative] = useState(false);
   const [showCompendium, setShowCompendium] = useState(false);
   const [showItemCompendium, setShowItemCompendium] = useState(false);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
@@ -104,6 +108,7 @@ export default function Toolbar({
     setShowLayers((s) => (name === 'layers' ? !s : false));
     setShowIslands((s) => (name === 'islands' ? !s : false));
     setShowDice((s) => (name === 'dice' ? !s : false));
+    setShowInitiative((s) => (name === 'initiative' ? !s : false));
     setShowCompendium((s) => (name === 'compendium' ? !s : false));
     setShowItemCompendium((s) => (name === 'itemCompendium' ? !s : false));
     setShowAssetStorage((s) => (name === 'assetStorage' ? !s : false));
@@ -310,7 +315,6 @@ export default function Toolbar({
               onClose={() => setShowDayNight(false)}
             />
           )}
-          <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
           <ToolCard icon="📖" label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
           <ToolCard icon="📦" label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
           <ToolCard
@@ -320,19 +324,35 @@ export default function Toolbar({
             onClick={() => togglePopover('assetStorage')}
             title="Create custom monsters, weapons, and items for this table"
           />
-          {showDice && (
-            <DiceRollerPopover
-              sets={diceSets}
-              rolls={diceRolls}
-              onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev])}
-              onAddSet={() => setDiceSets((prev) => [...prev, newDiceSet()])}
-              onUpdateSet={(id, patch) => setDiceSets((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))}
-              onRemoveSet={(id) => setDiceSets((prev) => prev.filter((s) => s.id !== id))}
-              onClose={() => setShowDice(false)}
-            />
-          )}
+          <ToolCard
+            icon="👢"
+            label="Initiative"
+            active={showInitiative}
+            onClick={() => togglePopover('initiative')}
+            title="Roll for Initiative"
+          />
         </div>
       )}
+
+      {/* Every player's own private dice tray — never shared with anyone
+          else's browser, same as it always was for the host (see
+          diceSets/diceRolls above); just no longer gated to the host. */}
+      <div className="toolbar-group">
+        <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
+        {showDice && (
+          <DiceRollerPopover
+            sets={diceSets}
+            rolls={diceRolls}
+            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev])}
+            onClearRolls={() => setDiceRolls([])}
+            onAddSet={() => setDiceSets((prev) => [...prev, newDiceSet()])}
+            onUpdateSet={(id, patch) => setDiceSets((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))}
+            onRemoveSet={(id) => setDiceSets((prev) => prev.filter((s) => s.id !== id))}
+            onClearSets={() => setDiceSets([])}
+            onClose={() => setShowDice(false)}
+          />
+        )}
+      </div>
       {isHost && showCompendium && (
         <WeaponsCompendiumModal
           onClose={() => setShowCompendium(false)}
@@ -355,6 +375,14 @@ export default function Toolbar({
           customAssets={customAssets}
           onAddAsset={onAddCustomAsset}
           onRemoveAsset={onRemoveCustomAsset}
+        />
+      )}
+      {isHost && showInitiative && (
+        <InitiativeModal
+          heroes={initiativeHeroes || []}
+          mobs={initiativeMobs || []}
+          onRoll={onRollInitiative}
+          onClose={() => setShowInitiative(false)}
         />
       )}
 
@@ -886,7 +914,7 @@ function GroupRow({ group, onRename, onUngroup }) {
 
 const DICE_TYPES = [4, 6, 8, 10, 12, 20, 100];
 
-function DiceRollerPopover({ sets, rolls, onRoll, onAddSet, onUpdateSet, onRemoveSet, onClose }) {
+function DiceRollerPopover({ sets, rolls, onRoll, onClearRolls, onAddSet, onUpdateSet, onRemoveSet, onClearSets, onClose }) {
   function rollSet(set) {
     const results = Array.from({ length: set.quantity }, () => 1 + Math.floor(Math.random() * set.sides));
     const total = results.reduce((sum, n) => sum + n, 0);
@@ -898,6 +926,13 @@ function DiceRollerPopover({ sets, rolls, onRoll, onAddSet, onUpdateSet, onRemov
       results,
       total,
     });
+  }
+
+  // Rolls every configured set in one go. Reversed so the history list (each
+  // onRoll prepends) ends up reading top-to-bottom in the same order the
+  // sets are listed, instead of backwards.
+  function rollAll() {
+    [...sets].reverse().forEach(rollSet);
   }
 
   return (
@@ -925,6 +960,17 @@ function DiceRollerPopover({ sets, rolls, onRoll, onAddSet, onUpdateSet, onRemov
           ×
         </button>
       </div>
+
+      <button
+        type="button"
+        className="btn btn-primary btn-block"
+        style={{ marginBottom: 10 }}
+        onClick={rollAll}
+        disabled={sets.length === 0}
+        title="Roll every set below at once"
+      >
+        🎲 Roll All ({sets.length})
+      </button>
 
       {sets.map((set) => (
         <div className="dice-set" key={set.id}>
@@ -974,12 +1020,31 @@ function DiceRollerPopover({ sets, rolls, onRoll, onAddSet, onUpdateSet, onRemov
         </div>
       ))}
 
-      <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 4 }} onClick={onAddSet}>
-        + Add another set
-      </button>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        <button type="button" className="btn btn-secondary btn-block" onClick={onAddSet}>
+          + Add another set
+        </button>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={onClearSets}
+          disabled={sets.length === 0}
+          title="Remove every dice set below"
+        >
+          Clear all dice
+        </button>
+      </div>
 
       {rolls.length > 0 && (
         <div className="dice-history">
+          <div className="popover-header" style={{ marginBottom: 4 }}>
+            <span className="section-label" style={{ margin: 0 }}>
+              Roll history
+            </span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onClearRolls} title="Clear roll history">
+              Clear
+            </button>
+          </div>
           {rolls.map((r) => (
             <div className="dice-roll-row" key={r.id}>
               <div>
@@ -993,6 +1058,131 @@ function DiceRollerPopover({ sets, rolls, onRoll, onAddSet, onUpdateSet, onRemov
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// DM-only: pick which hero and monster/NPC tokens on the current layer are
+// in this encounter, then roll a d20 for each at once. The actual roll +
+// per-entity `initiativeRoll`/`initiativeTurn` stamping (rendered as the
+// boot badge on the token, see MapBoard.jsx) lives in GameView's
+// rollInitiative — this component is just the picker + results readout.
+function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
+  const [participantIds, setParticipantIds] = useState([]);
+  const [results, setResults] = useState(null);
+
+  const byId = {};
+  for (const e of heroes) byId[e.id] = e;
+  for (const e of mobs) byId[e.id] = e;
+
+  const availableHeroes = heroes.filter((h) => !participantIds.includes(h.id));
+  const availableMobs = mobs.filter((m) => !participantIds.includes(m.id));
+
+  function addParticipant(id) {
+    if (!id || participantIds.includes(id)) return;
+    setParticipantIds((prev) => [...prev, id]);
+  }
+
+  function removeParticipant(id) {
+    setParticipantIds((prev) => prev.filter((pid) => pid !== id));
+  }
+
+  function handleRoll() {
+    const rolled = onRoll(participantIds) || [];
+    setResults(rolled.map((r) => ({ ...r, name: byId[r.id]?.name || 'Unknown' })));
+  }
+
+  function handleClear() {
+    onRoll([]);
+    setParticipantIds([]);
+    setResults([]);
+  }
+
+  return (
+    <div className="book-backdrop" onClick={onClose}>
+      <div className="book-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <div className="book-card-header">
+          <span className="book-title">👢 Roll for Initiative</span>
+          <button className="popover-close" onClick={onClose} aria-label="Close initiative roller" title="Close">
+            ×
+          </button>
+        </div>
+
+        <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          <label className="field-label">Add player</label>
+          <select className="field" value="" onChange={(e) => addParticipant(e.target.value)}>
+            <option value="">Choose a hero…</option>
+            {availableHeroes.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+                {h.ownerName ? ` (${h.ownerName})` : ''}
+              </option>
+            ))}
+          </select>
+
+          <label className="field-label" style={{ marginTop: 10 }}>
+            Add monster / NPC
+          </label>
+          <select className="field" value="" onChange={(e) => addParticipant(e.target.value)}>
+            <option value="">Choose a monster or NPC…</option>
+            {availableMobs.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+
+          {participantIds.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              {participantIds.map((id) => (
+                <div className="dice-set-header" key={id}>
+                  <span className="dice-set-title" style={{ flex: 1 }}>
+                    {byId[id]?.name || 'Unknown'}
+                  </span>
+                  <button type="button" className="btn btn-danger btn-sm" title="Remove" onClick={() => removeParticipant(id)}>
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={handleRoll}
+              disabled={participantIds.length === 0}
+            >
+              🎲 Roll Initiative ({participantIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handleClear}
+              title="Remove every initiative badge from the map"
+            >
+              Clear
+            </button>
+          </div>
+
+          {results && results.length > 0 && (
+            <div className="dice-history">
+              <span className="section-label" style={{ margin: '0 0 4px' }}>
+                Turn order
+              </span>
+              {results.map((r) => (
+                <div className="dice-roll-row" key={r.id}>
+                  <span className="dice-roll-name">
+                    👢 {r.turn}. {r.name}
+                  </span>
+                  <span className="dice-roll-total">{r.roll}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

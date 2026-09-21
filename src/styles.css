@@ -1439,6 +1439,24 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   border-radius: 3px;
   white-space: nowrap;
 }
+/* Roll for Initiative's turn-order badge — mirrors .token-conditions'
+   corner placement, just the opposite side so the two never collide. */
+.token .token-initiative {
+  position: absolute;
+  top: 2px;
+  left: -8px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(23, 20, 15, 0.85);
+  color: var(--parchment-100);
+  padding: 1px 4px 1px 3px;
+  border-radius: 10px;
+  border: 1px solid var(--gold-line);
+  white-space: nowrap;
+}
 
 /* ---------- Door confirmation dialog ---------- */
 

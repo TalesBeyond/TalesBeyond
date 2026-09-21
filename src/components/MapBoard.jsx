@@ -562,6 +562,11 @@ export default function MapBoard({
               title={entity.kind === 'trap' && !entity.trapRevealed ? `${entity.name} (hidden from players)` : entity.name}
             >
               <span className="token-label">{entity.name}</span>
+              {entity.kind !== 'door' && entity.initiativeTurn != null && (
+                <span className="token-initiative" title={`Initiative: rolled ${entity.initiativeRoll}, turn ${entity.initiativeTurn}`}>
+                  👢{entity.initiativeTurn}
+                </span>
+              )}
               {entity.kind !== 'door' && entity.maxHp ? (
                 <span className="token-hp">
                   {entity.hp}/{entity.maxHp}

@@ -451,6 +451,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     .filter((e) => e.kind === 'hero')
     .map((e) => ({ ...e, ownerName: state.players[e.ownerId]?.name }));
 
+  // Roll for Initiative's participant pools — unlike `heroes` above, scoped
+  // to whatever the host is currently looking at: an encounter roll is for
+  // the scene in front of them, not every hero/monster across every layer.
+  // There's no separate "NPC" kind in this app (see mob), so a "monster or
+  // NPC" token is just any mob-kind entity — a DM already renames/reskins
+  // one for either purpose via Asset Storage.
+  const initiativeHeroes = Object.values(layerEntities).filter((e) => e.kind === 'hero');
+  const initiativeMobs = Object.values(layerEntities).filter((e) => e.kind === 'mob');
+
   // In cloud mode, subscribe to live changes from every other connected
   // browser for as long as this screen is mounted (SPEC.md §9.5). One
   // channel per table for its whole lifetime — Realtime Roadmap §2.3; a
@@ -916,6 +925,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     if (selectedId === id) setSelectedId(null);
     if (isRemote) removeEntityRemote(id).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
+  }
+
+  // Roll for Initiative: DM-only, rolls a d20 for every selected hero/mob
+  // and stamps entity.initiativeRoll/initiativeTurn via the same updateEntity
+  // path as any other entity edit (so it syncs the same way HP or a
+  // condition would). A fresh roll fully replaces whatever combat order was
+  // showing before — anything still carrying a badge that isn't part of
+  // this new roll (or the whole roll is being cleared) has it stripped
+  // first. Returns the sorted results so the modal can show the turn order
+  // without re-deriving it.
+  function rollInitiative(selectedIds) {
+    if (!isHost) return [];
+    const selected = new Set(selectedIds);
+    for (const entity of Object.values(state.entities)) {
+      if (entity.initiativeTurn != null && !selected.has(entity.id)) {
+        updateEntity(entity.id, { initiativeRoll: null, initiativeTurn: null });
+      }
+    }
+    const rolled = selectedIds.map((id) => ({ id, roll: 1 + Math.floor(Math.random() * 20) }));
+    rolled.sort((a, b) => b.roll - a.roll);
+    rolled.forEach(({ id, roll }, index) => updateEntity(id, { initiativeRoll: roll, initiativeTurn: index + 1 }));
+    return rolled.map(({ id, roll }, index) => ({ id, roll, turn: index + 1 }));
   }
 
   // Asset Storage (Toolbar.jsx): the DM authoring a custom monster/weapon/
@@ -1566,6 +1597,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onRenameGroup={renameGroup}
           heroes={heroes}
           onUpdateEntity={updateEntity}
+          initiativeHeroes={initiativeHeroes}
+          initiativeMobs={initiativeMobs}
+          onRollInitiative={rollInitiative}
           customAssets={state.customAssets}
           onAddCustomAsset={addCustomAsset}
           onRemoveCustomAsset={removeCustomAsset}
