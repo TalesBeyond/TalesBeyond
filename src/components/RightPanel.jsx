@@ -15,7 +15,7 @@ import {
   CURRENCIES,
   normalizeCurrency,
 } from '../data/characterSheet.js';
-import { DEFAULT_WEAPONS } from '../data/weapons.js';
+import { WEAPONS } from '../data/weapons.js';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
 import { parseTrapNumber, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
@@ -32,6 +32,7 @@ export default function RightPanel({
   entities,
   selectedEntity,
   isHost,
+  meId,
   onUpdateEntity,
   onRemoveEntity,
   tool,
@@ -86,6 +87,7 @@ export default function RightPanel({
             key={selectedEntity.id}
             entity={selectedEntity}
             isHost={isHost}
+            meId={meId}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             entities={entities}
@@ -690,9 +692,13 @@ const TABS = [
 
 // The six-tab character sheet shared by heroes and monsters. `targets` is
 // who this creature's Battle Equipment can attack: monsters for a hero,
-// heroes for a monster.
-function SheetTabs({ entity, sheet, isHost, onUpdate, updateSheet, targets }) {
+// heroes for a monster. `isOwner` (a hero's own player, never true for a
+// monster) unlocks just the Battle Equipment, Spells, and Bag tabs — see
+// PITFALLS.md #1.
+function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targets }) {
   const [tab, setTab] = useState('overview');
+  const canEditOwnTabs = isHost || isOwner;
+  const isOwnedTab = tab === 'attacks' || tab === 'spells' || tab === 'bag';
 
   return (
     <>
@@ -711,24 +717,32 @@ function SheetTabs({ entity, sheet, isHost, onUpdate, updateSheet, targets }) {
 
       {!isHost && (
         <p className="footer-note" style={{ padding: '8px 2px', border: 'none' }}>
-          Only the DM can edit a character sheet — you can still look through every tab.
+          {canEditOwnTabs
+            ? 'Only the DM can edit the rest of a character sheet — Battle Equipment, Spells, and Bag are yours to manage.'
+            : 'Only the DM can edit a character sheet — you can still look through every tab.'}
         </p>
       )}
-      <fieldset disabled={!isHost} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
-        {tab === 'overview' && <OverviewTab entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} />}
-        {tab === 'abilities' && <AbilitiesTab sheet={sheet} updateSheet={updateSheet} />}
-        {tab === 'saves' && <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />}
-        {tab === 'attacks' && <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={targets} onAttackTarget={onUpdate} />}
-        {tab === 'spells' && <SpellsTab sheet={sheet} updateSheet={updateSheet} />}
-        {tab === 'bag' && <BagTab sheet={sheet} updateSheet={updateSheet} />}
-      </fieldset>
+      {isOwnedTab ? (
+        <fieldset disabled={!canEditOwnTabs} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
+          {tab === 'attacks' && <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={targets} onAttackTarget={onUpdate} />}
+          {tab === 'spells' && <SpellsTab sheet={sheet} updateSheet={updateSheet} />}
+          {tab === 'bag' && <BagTab sheet={sheet} updateSheet={updateSheet} />}
+        </fieldset>
+      ) : (
+        <fieldset disabled={!isHost} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
+          {tab === 'overview' && <OverviewTab entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} />}
+          {tab === 'abilities' && <AbilitiesTab sheet={sheet} updateSheet={updateSheet} />}
+          {tab === 'saves' && <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />}
+        </fieldset>
+      )}
     </>
   );
 }
 
-function HeroInspector({ entity, isHost, onUpdate, onRemove, entities, players }) {
+function HeroInspector({ entity, isHost, meId, onUpdate, onRemove, entities, players }) {
   const sheet = entity.sheet || defaultCharacterSheet();
   const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
+  const isOwner = !!meId && entity.ownerId === meId;
 
   function updateSheet(patch) {
     onUpdate(entity.id, { sheet: { ...sheet, ...patch } });
@@ -743,7 +757,7 @@ function HeroInspector({ entity, isHost, onUpdate, onRemove, entities, players }
       <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
       <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
 
-      <SheetTabs entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
+      <SheetTabs entity={entity} sheet={sheet} isHost={isHost} isOwner={isOwner} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
 
       {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />}
       {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
@@ -951,14 +965,27 @@ function acOf(target) {
   return target.kind === 'hero' ? target.sheet?.armorClass ?? 10 : target.armorClass ?? 10;
 }
 
+// Battle Equipment only offers weapons the hero already carries (Bag's
+// "Weapons & gear" list), never a fixed catalog — see PITFALLS.md #1. A
+// bag item's name is matched against the weapon catalog for real combat
+// dice; a homebrew name with no catalog match still equips, just with a
+// plain 1d4/no-modifier baseline the player can tune via Mod/Dmg.
+function weaponStatsFor(name) {
+  const match = WEAPONS.find((w) => w.name.toLowerCase() === (name || '').trim().toLowerCase());
+  if (match) return match;
+  return { name, numberOfDice: 1, diceType: 'd4', modifier: 0 };
+}
+
 function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
   const items = sheet.attacks || [];
+  const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
   const [pickingIndex, setPickingIndex] = useState(null);
   const [pickTargetId, setPickTargetId] = useState('');
   const [results, setResults] = useState({});
 
   function addItem() {
-    updateSheet({ attacks: [...items, { weaponName: DEFAULT_WEAPONS[0].name, additionalModifier: 0, additionalDamage: 0 }] });
+    if (bagWeapons.length === 0) return;
+    updateSheet({ attacks: [...items, { weaponName: bagWeapons[0].name, additionalModifier: 0, additionalDamage: 0 }] });
   }
   function updateItem(index, patch) {
     updateSheet({ attacks: items.map((it, i) => (i === index ? { ...it, ...patch } : it)) });
@@ -981,7 +1008,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
     const target = targets.find((t) => t.id === pickTargetId);
     if (!target) return;
     const it = items[index];
-    const weapon = DEFAULT_WEAPONS.find((w) => w.name === it.weaponName) || DEFAULT_WEAPONS[0];
+    const weapon = weaponStatsFor(it.weaponName);
     const toHitMod = totalToHit(weapon, it.additionalModifier);
     const d20 = rollDie(20);
     const attackTotal = d20 + toHitMod;
@@ -1008,18 +1035,26 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
     <div style={{ marginTop: 10 }}>
       {items.length === 0 && (
         <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-          No battle equipment added yet.
+          {bagWeapons.length === 0
+            ? 'No battle equipment added yet — add a weapon under the Bag tab first.'
+            : 'No battle equipment added yet.'}
         </p>
       )}
       {items.map((it, i) => {
-        const weapon = DEFAULT_WEAPONS.find((w) => w.name === it.weaponName) || DEFAULT_WEAPONS[0];
+        const weapon = weaponStatsFor(it.weaponName);
+        // Keep the currently-equipped weapon selectable even if it's since
+        // been removed from the bag, so an existing attack never silently
+        // jumps to a different weapon out from under the player.
+        const weaponOptions = bagWeapons.some((w) => w.name === it.weaponName)
+          ? bagWeapons
+          : [{ id: 'current', name: it.weaponName }, ...bagWeapons];
         const result = results[i];
         return (
           <div className="attack-item" key={i}>
             <div className="attack-row">
               <select className="field" value={weapon.name} onChange={(e) => updateItem(i, { weaponName: e.target.value })}>
-                {DEFAULT_WEAPONS.map((w) => (
-                  <option key={w.name} value={w.name}>
+                {weaponOptions.map((w) => (
+                  <option key={w.id} value={w.name}>
                     {w.name}
                   </option>
                 ))}
@@ -1086,7 +1121,14 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
           </div>
         );
       })}
-      <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 8 }} onClick={addItem}>
+      <button
+        type="button"
+        className="btn btn-secondary btn-block"
+        style={{ marginTop: 8 }}
+        disabled={bagWeapons.length === 0}
+        title={bagWeapons.length === 0 ? 'Add a weapon under the Bag tab first' : 'Equip a weapon from your bag'}
+        onClick={addItem}
+      >
         + Add battle equipment
       </button>
     </div>

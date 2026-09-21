@@ -189,6 +189,18 @@ export function mapClientEntityDmDataPatchToDb(patch) {
   return db;
 }
 
+// Custom assets (36_custom_assets.sql) — a DM-authored monster/weapon/item.
+// `data` is already in the exact shape its catalog counterpart uses (see
+// src/data/weapons.js / items.js / defaultTokens.js), so the client never
+// needs to reshape it before rendering it alongside the built-in catalog.
+export function mapDbCustomAsset(row) {
+  return {
+    id: row.id,
+    assetType: row.asset_type,
+    data: row.data,
+  };
+}
+
 export function mapDbPlayer(row) {
   return {
     id: row.id,

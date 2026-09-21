@@ -61,6 +61,13 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     dayNightOverride: null,
     entities: {},
     entityOrder: [],
+    // DM-authored custom monsters/weapons/items (Toolbar.jsx's Asset Storage
+    // modal) — see 36_custom_assets.sql. Keyed like entities: {id: {id,
+    // assetType, data}}, where `data` is the full entry (same shape its
+    // built-in catalog counterpart uses), rendered alongside — never instead
+    // of — the static WEAPONS/ITEMS/DEFAULT_MOBS catalogs.
+    customAssets: {},
+    customAssetOrder: [],
     players: {
       [hostPlayerId]: {
         id: hostPlayerId,
@@ -332,6 +339,27 @@ function reducer(state, action) {
         ...state,
         entities: rest,
         entityOrder: state.entityOrder.filter((id) => id !== action.id),
+      };
+    }
+
+    case 'ADD_CUSTOM_ASSET': {
+      const customAssets = state.customAssets || {};
+      const alreadyPresent = Boolean(customAssets[action.item.id]);
+      return {
+        ...state,
+        customAssets: { ...customAssets, [action.item.id]: action.item },
+        customAssetOrder: alreadyPresent
+          ? state.customAssetOrder
+          : [...(state.customAssetOrder || []), action.item.id],
+      };
+    }
+
+    case 'REMOVE_CUSTOM_ASSET': {
+      const { [action.id]: _removed, ...rest } = state.customAssets || {};
+      return {
+        ...state,
+        customAssets: rest,
+        customAssetOrder: (state.customAssetOrder || []).filter((id) => id !== action.id),
       };
     }
 

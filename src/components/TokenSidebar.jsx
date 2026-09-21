@@ -26,8 +26,13 @@ function CollapsibleSection({ title, defaultOpen = true, children }) {
   );
 }
 
-export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentLayerId, isHost, collapsed, onToggleCollapsed }) {
+export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed }) {
   const fileInputRef = useRef(null);
+  // DM-authored monsters from Toolbar's Asset Storage modal (36_custom_assets.sql)
+  // — shown in their own section, alongside (never instead of) Default monsters.
+  const customMonsters = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'monster')
+    .map((item) => ({ id: item.id, ...item.data }));
   const [pendingKind, setPendingKind] = useState('hero');
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
   const [placeableKind, setPlaceableKind] = useState('door');
@@ -209,6 +214,31 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
               </div>
             ))}
           </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Custom monsters">
+          {customMonsters.length === 0 ? (
+            <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+              No custom monsters yet — add some from Asset Storage in the toolbar.
+            </p>
+          ) : (
+            <div className="token-grid">
+              {customMonsters.map((m) => (
+                <div className="token-card" key={m.id}>
+                  <img src={m.imageUrl} alt={m.name} />
+                  <span>{m.name}</span>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() =>
+                      onAddEntity({ kind: 'mob', name: m.name, imageUrl: m.imageUrl, color: m.color, maxHp: m.maxHp || 15 })
+                    }
+                  >
+                    Place
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </CollapsibleSection>
 
         <CollapsibleSection title="Placeable">

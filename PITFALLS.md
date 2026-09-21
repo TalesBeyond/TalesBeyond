@@ -39,7 +39,8 @@ table is a cooperative, trusted space"), with an optional future "lock
 hero tokens to their owner" setting. You asked for something stricter:
 **the DM is the only one editing any information — players only move
 their own token, open doors, and open chests.** That's now implemented,
-superseding SPEC §2/§13's original plan.
+superseding SPEC §2/§13's original plan. **Update:** a player can also now
+use their own hero's Battle Equipment, Spells, and Bag tabs — see below.
 
 **What a player can still do:**
 1. Drag their own hero token around (col/row/island — not other players'
@@ -49,31 +50,59 @@ superseding SPEC §2/§13's original plan.
    placing is host-only now, so this is a required setup step per player.
 2. Click a door to walk through it.
 3. Click "Open chest" / "Close chest" on a chest's inspector.
+4. On their own hero's **Battle Equipment** tab: add/remove equipment,
+   change weapon, add modifiers, and roll an attack — including applying
+   the resulting damage to whichever monster they targeted.
+5. On their own hero's **Spells** tab: add/edit spells and spell slots.
+6. On their own hero's **Bag** tab: add/remove/edit equipment and
+   currency. Every other tab on the sheet (Overview, Abilities, Saves &
+   Skills) stays read-only for a player, same as before.
 
 **Everything else is DM-only**, including: placing or removing any
-token, renaming/resizing/HP/AC/conditions on anything, a hero's entire
-character sheet (abilities, saves, skills, attacks/rolling, spells,
-bag/currency), chest contents and "Give to a player," DM notes and mob
-droppables (already were), layers/islands (already were), and importing
-a `.json` table (overwrites the whole shared state).
+token, renaming/resizing/HP/AC/conditions on anything, the rest of a
+hero's character sheet (level/abilities/saves/skills), chest contents and
+"Give to a player," DM notes and mob droppables (already were),
+layers/islands (already were), and importing a `.json` table (overwrites
+the whole shared state). A monster stays DM-only too, except that its
+`hp` can be reduced by a player's attack roll.
 
 **Where it's enforced:**
 - `GameView.jsx` — `canMoveEntity(entity)` and `canUpdateEntity(entity,
   patch)` gate every call to `moveEntity`/`updateEntity`, and `addEntity`/
   `removeEntity`/layer/island mutators are `if (!isHost) return;` outright.
   This is the single choke point every UI action already funnels through.
+  `canUpdateEntity` allows a non-host exactly three patch shapes: a
+  chest's opened/imageUrl toggle, a `sheet` patch on their own hero where
+  every key except `HERO_OWNER_SHEET_KEYS` (`attacks`, `spellcasting`,
+  `equipment`, `currency`) is unchanged (`isHeroOwnerSheetPatch`), and an
+  hp-only decrease on a mob (`canDamageMob`, for applying attack damage).
+  The same rule (as `canPlayerUpdateEntity`) is what the guest-table
+  peer-sync path (`applyValidatedIntent`, for a table with no Postgres
+  row) validates a player's proposed action against too — it has to be a
+  *value* compare of the sheet's other keys, not a reference compare,
+  since a guest's patch arrives there after a round trip through Realtime
+  broadcast, which JSON-serializes it and gives every nested object/array
+  a fresh reference even when nothing in it changed.
 - `RightPanel.jsx` — read-only fields (`disabled`) for non-host, tab
-  content wrapped in `<fieldset disabled>` for a hero's sheet (one native
-  HTML disable instead of touching ~40 individual inputs), Remove/Give
+  content wrapped in `<fieldset disabled>` per tab (one native HTML
+  disable instead of touching every individual input): the Battle
+  Equipment, Spells, and Bag tabs' fieldset is enabled for
+  `isHost || isOwner`, every other tab's stays `isHost`-only. Remove/Give
   buttons hidden entirely for non-host.
 - `TokenSidebar.jsx` — the whole panel is host-only now; a player sees
   "Only the DM can add tokens to the map" instead of the placement gallery.
-- Cloud mode: `16_dm_only_edits.sql` makes this a real security boundary,
-  not just a UI convention — `entities` INSERT/DELETE become host-only via
-  RLS, and a BEFORE UPDATE trigger (`enforce_entity_write_permissions`)
-  rejects any UPDATE from a non-host except the two allowed cases above,
-  checked field-by-field (RLS alone can't express "these columns, only on
-  this row" — hence the trigger).
+- Cloud mode: `35_player_battle_equipment.sql` (superseding
+  `16_dm_only_edits.sql`'s original trigger) makes this a real security
+  boundary, not just a UI convention — `entities` INSERT/DELETE stay
+  host-only via RLS, and a BEFORE UPDATE trigger
+  (`enforce_entity_write_permissions`) rejects any UPDATE from a non-host
+  except the cases above, checked field-by-field (RLS alone can't express
+  "these columns, only on this row" — hence the trigger). The hero-owner
+  case uses
+  `(sheet - array['attacks','spellcasting','equipment','currency'])`
+  jsonb-key-removal equality to allow only the Battle Equipment/Spells/Bag
+  tabs' slice of the sheet to change; the mob case requires every column
+  but `hp` to be unchanged and `hp` to only move down, never up.
 
 **Caveat:** in local mode, this is a UX guardrail, not real security — a
 single browser simulating "multiple players" via tabs is one trust

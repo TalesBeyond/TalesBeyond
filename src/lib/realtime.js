@@ -10,7 +10,7 @@
 // SPEC.md §9.5 for the reasoning and future refinement ideas.
 
 import { supabase } from './supabaseClient.js';
-import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData } from './mappers.js';
+import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
 // CHANNEL_ERROR transition of this one channel (see REALTIME_SUBSCRIBE_STATES
@@ -108,6 +108,13 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
         if ('day_night_override' in payload.new) dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase: payload.new.day_night_override ?? null });
       }
     )
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_assets', filter: `table_id=eq.${tableId}` }, (payload) => {
+      if (payload.eventType === 'INSERT') {
+        dispatch({ type: 'ADD_CUSTOM_ASSET', item: mapDbCustomAsset(payload.new) });
+      } else if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'REMOVE_CUSTOM_ASSET', id: payload.old.id });
+      }
+    })
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'invite_codes', filter: `table_id=eq.${tableId}` },

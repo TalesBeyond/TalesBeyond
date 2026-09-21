@@ -17,6 +17,7 @@ import {
   mapClientEntityPatchToDb,
   mapDbEntityDmData,
   mapClientEntityDmDataPatchToDb,
+  mapDbCustomAsset,
   mapDbPlayer,
 } from './mappers.js';
 
@@ -156,6 +157,18 @@ export async function fetchTableSnapshot(tableId) {
   const overrideRes = await supabase.from('tables').select('day_night_override').eq('id', tableId).maybeSingle();
   const dayNightOverride = overrideRes.error ? null : overrideRes.data?.day_night_override ?? null;
 
+  // Custom assets (36_custom_assets.sql) are a whole separate table rather
+  // than a column, so a project that hasn't run that migration yet gets an
+  // error here instead of a missing column — same forgiving treatment.
+  const customAssetsRes = await supabase.from('custom_assets').select('*').eq('table_id', tableId);
+  const customAssetRows = customAssetsRes.error ? [] : customAssetsRes.data;
+  const customAssets = {};
+  const customAssetOrder = [];
+  for (const row of customAssetRows) {
+    customAssets[row.id] = mapDbCustomAsset(row);
+    customAssetOrder.push(row.id);
+  }
+
   const players = {};
   let hostPlayerId = null;
   for (const row of playerRows) {
@@ -211,6 +224,8 @@ export async function fetchTableSnapshot(tableId) {
     dayNightOverride,
     entities,
     entityOrder,
+    customAssets,
+    customAssetOrder,
     players,
   };
 }
@@ -336,6 +351,19 @@ export async function hideTrapRemote(tableId, entity) {
     }
   }
   throw lastError;
+}
+
+// ---- Custom assets ----
+
+export async function addCustomAssetRemote(tableId, item) {
+  must(
+    await supabase.from('custom_assets').insert({ id: item.id, table_id: tableId, asset_type: item.assetType, data: item.data }),
+    'addCustomAsset'
+  );
+}
+
+export async function removeCustomAssetRemote(id) {
+  must(await supabase.from('custom_assets').delete().eq('id', id), 'removeCustomAsset');
 }
 
 // ---- Players ----

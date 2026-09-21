@@ -35,6 +35,8 @@ import {
   updateEntityRemote,
   removeEntityRemote,
   hideTrapRemote,
+  addCustomAssetRemote,
+  removeCustomAssetRemote,
   updateTableClockRemote,
   updateTableDayNightOverrideRemote,
   regenerateInviteCodeRemote,
@@ -514,8 +516,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         applyAndBroadcast(action);
       } else if (action.type === 'UPDATE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
-        if (!entity || entity.kind !== 'chest') return;
-        if (!Object.keys(action.patch || {}).every((key) => CHEST_TOGGLE_KEYS.includes(key))) return;
+        if (!canPlayerUpdateEntity(entity, action.patch || {}, senderId)) return;
         applyAndBroadcast(action);
       } else if (action.type === 'PATCH_PLAYER') {
         // A player may only patch their own record, and only the field
@@ -631,22 +632,79 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   }, [isRemote, isGuest, me.id]);
 
   // Permission model: the DM edits everything; a player may only move
-  // their own hero token and open/close a chest — see PITFALLS.md #1.
-  // Enforced here (the single choke point every mutation already funnels
-  // through) rather than in each calling component, so no future caller
-  // can accidentally skip the check. Mirrored server-side for cloud mode
-  // by 16_dm_only_edits.sql's RLS + trigger.
+  // their own hero token, open/close a chest, and use their own hero's
+  // Battle Equipment tab (weapon, modifiers, rolling), Spells tab, and Bag
+  // tab (equipment, currency) — see PITFALLS.md #1. Enforced here (the
+  // single choke point every mutation already funnels through) rather
+  // than in each calling component, so no future caller can accidentally
+  // skip the check. Mirrored server-side for cloud mode by
+  // 35_player_battle_equipment.sql's trigger.
   const CHEST_TOGGLE_KEYS = ['opened', 'imageUrl'];
+  // Sheet keys a hero's own owner may change — Battle Equipment writes
+  // `attacks`, Spells writes `spellcasting`, Bag writes
+  // `equipment`/`currency`. Every other key (level, abilities, saves, ...)
+  // stays DM-only.
+  const HERO_OWNER_SHEET_KEYS = ['attacks', 'spellcasting', 'equipment', 'currency'];
 
   function canMoveEntity(entity) {
     if (!entity) return false;
     return isHost || (entity.kind === 'hero' && entity.ownerId === me.id);
   }
 
+  // A hero's whole tabbed sheet lives in one `sheet` object, so "only
+  // Battle Equipment/Bag changed" means every other top-level key is still
+  // equal to what it was before the patch. This has to be a value compare,
+  // not a reference compare: a guest's patch arrives here after a round
+  // trip through the Realtime broadcast channel (applyValidatedIntent
+  // below), which JSON-serializes it — every nested object/array gets a
+  // fresh reference even when nothing in it changed.
+  function isHeroOwnerSheetPatch(entity, patch) {
+    const keys = Object.keys(patch);
+    if (keys.length !== 1 || keys[0] !== 'sheet') return false;
+    const oldSheet = entity.sheet || {};
+    const newSheet = patch.sheet || {};
+    const allKeys = new Set([...Object.keys(oldSheet), ...Object.keys(newSheet)]);
+    for (const key of allKeys) {
+      if (HERO_OWNER_SHEET_KEYS.includes(key)) continue;
+      if (JSON.stringify(oldSheet[key]) !== JSON.stringify(newSheet[key])) return false;
+    }
+    return true;
+  }
+
+  // A hit rolled from Battle Equipment applies its damage to the target
+  // mob's hp (RightPanel.jsx's confirmAttack). Bounded to a plain decrease
+  // so this only ever reads as "apply attack damage," never "edit a
+  // monster's hp."
+  function canDamageMob(entity, patch) {
+    const keys = Object.keys(patch);
+    if (keys.length !== 1 || keys[0] !== 'hp') return false;
+    const newHp = patch.hp;
+    const currentHp = entity.hp ?? entity.maxHp ?? 0;
+    return typeof newHp === 'number' && newHp >= 0 && newHp <= currentHp;
+  }
+
+  // The non-host update rules, independent of whose browser is evaluating
+  // them — shared by canUpdateEntity (host's own `me.id`) and the guest
+  // sync handler's applyValidatedIntent below (a remote sender's id, which
+  // can never be trusted to equal `me.id`/`isHost`).
+  function canPlayerUpdateEntity(entity, patch, playerId) {
+    if (!entity) return false;
+    if (entity.kind === 'chest') {
+      return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
+    }
+    if (entity.kind === 'hero' && entity.ownerId === playerId) {
+      return isHeroOwnerSheetPatch(entity, patch);
+    }
+    if (entity.kind === 'mob') {
+      return canDamageMob(entity, patch);
+    }
+    return false;
+  }
+
   function canUpdateEntity(entity, patch) {
     if (!entity) return false;
     if (isHost) return true;
-    return entity.kind === 'chest' && Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
+    return canPlayerUpdateEntity(entity, patch, me.id);
   }
 
   function addEntity(draft) {
@@ -793,6 +851,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     if (selectedId === id) setSelectedId(null);
     if (isRemote) removeEntityRemote(id).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
+  }
+
+  // Asset Storage (Toolbar.jsx): the DM authoring a custom monster/weapon/
+  // item and dropping it into this table's compendiums/monster list
+  // alongside the built-in defaults — see 36_custom_assets.sql. `data` is
+  // already the full entry, shaped exactly like its catalog counterpart.
+  function addCustomAsset(assetType, data) {
+    if (!isHost) return;
+    const item = { id: generateEntityId(), assetType, data };
+    dispatch({ type: 'ADD_CUSTOM_ASSET', item });
+    if (isRemote) addCustomAssetRemote(state.session.tableId, item).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'ADD_CUSTOM_ASSET', item });
+  }
+
+  function removeCustomAsset(id) {
+    if (!isHost) return;
+    dispatch({ type: 'REMOVE_CUSTOM_ASSET', id });
+    if (isRemote) removeCustomAssetRemote(id).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_CUSTOM_ASSET', id });
   }
 
   // Looting a chest: the same "drop it into Bag > Weapons & gear" used by
@@ -1377,6 +1454,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         layerOrder={state.layerOrder}
         currentLayerId={currentLayerId}
         isHost={isHost}
+        customAssets={state.customAssets}
         collapsed={leftCollapsed}
         onToggleCollapsed={() => setLeftCollapsed((c) => !c)}
       />
@@ -1423,6 +1501,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onRenameGroup={renameGroup}
           heroes={heroes}
           onUpdateEntity={updateEntity}
+          customAssets={state.customAssets}
+          onAddCustomAsset={addCustomAsset}
+          onRemoveCustomAsset={removeCustomAsset}
           collapsed={toolbarCollapsed}
           onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
           zoom={zoom}
@@ -1466,6 +1547,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         entities={layerEntities}
         selectedEntity={selectedEntity}
         isHost={isHost}
+        meId={me.id}
         onUpdateEntity={updateEntity}
         onRemoveEntity={removeEntity}
         tool={tool}
