@@ -7,7 +7,7 @@
 // state/persistence.js, so both can import it without creating a circular
 // dependency between those two.
 
-import { generateEntityId } from '../utils/inviteCode.js';
+import { generateEntityId, generateInviteCode } from '../utils/inviteCode.js';
 
 export function migrateLegacyState(raw) {
   if (!raw) return raw;
@@ -47,6 +47,19 @@ export function migrateLegacyState(raw) {
   // includes the field instead of silently omitting it.
   if (!state.customAssets) state = { ...state, customAssets: {} };
   if (!state.customAssetOrder) state = { ...state, customAssetOrder: [] };
+
+  // session.hostKey (the local/guest "rejoin as host" code — see
+  // store.jsx's createEmptyGameState) is likewise a field added after
+  // saves/exports already existed in the wild. This function is only ever
+  // called for local/guest state (never a remote/cloud snapshot — see
+  // fetchTableSnapshot, which has no hostKey concept at all), so an older
+  // save or .json export missing it here really is missing it, not a
+  // signed-in host table that was never supposed to have one. Generate one
+  // on the fly so the Toolbar's host key / DM code chip always has a real
+  // value instead of silently showing "undefined".
+  if (state.session && !state.session.hostKey) {
+    state = { ...state, session: { ...state.session, hostKey: generateInviteCode(10) } };
+  }
 
   let entitiesChanged = false;
   const migratedEntities = { ...state.entities };

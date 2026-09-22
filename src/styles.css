@@ -538,6 +538,45 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .tool-card:hover:not(:disabled) { border-color: var(--gold-line); color: var(--parchment-100); background: var(--ink-800); }
 .tool-card.active { background: var(--moss-dim); border-color: var(--moss); color: #fff; }
 .tool-card:disabled { opacity: 0.4; cursor: default; }
+/* A grouped toolbar entry's dropdown: a row of tool cards under its trigger. */
+.toolbar-menu {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: max-content;
+  max-width: 90vw;
+  padding: 8px;
+  background: var(--ink-800);
+  border: 1px solid var(--gold-line);
+  border-radius: 6px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+}
+.toolbar-menu .tool-card:hover:not(:disabled) { background: var(--ink-700); }
+
+/* Click-to-copy code readout (player code, host key). */
+.code-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 50px;
+  padding: 4px 12px;
+  flex-shrink: 0;
+  background: var(--ink-950);
+  border: 1px solid var(--gold-line);
+  border-radius: 8px;
+  color: var(--parchment-100);
+  cursor: pointer;
+}
+.code-chip:hover { background: var(--ink-800); }
+.code-chip-caption { font-size: 9px; line-height: 1.15; letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-300); }
+.code-chip-value { font-family: var(--font-mono); font-size: 15px; line-height: 1; letter-spacing: 0.12em; }
+
 .tool-card-icon { font-size: 17px; line-height: 1; }
 .tool-card-label { font-size: 9px; line-height: 1.15; text-align: center; white-space: nowrap; }
 
@@ -1876,18 +1915,3 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   gap: 10px;
 }
 
-.copyable {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.copyable code {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  letter-spacing: 0.15em;
-  background: var(--ink-950);
-  border: 1px solid var(--gold-line);
-  padding: 8px 14px;
-  border-radius: 4px;
-  color: var(--parchment-100);
-}

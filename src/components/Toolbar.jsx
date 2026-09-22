@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
@@ -27,6 +27,51 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
     </button>
   );
 }
+
+// A grouped toolbar entry: one trigger card that opens a small row of
+// ToolCards below it. Closes on an outside click or Escape. `popovers` render
+// in the same relatively-positioned wrapper, so a menu item can hand off to a
+// popover that opens exactly where the menu was.
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handlePointerDown(e) {
+      if (!ref.current?.contains(e.target)) onClose();
+    }
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div className="toolbar-group" ref={ref}>
+      <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} />
+      {open && <div className="toolbar-menu">{children}</div>}
+      {popovers}
+    </div>
+  );
+}
+
+// A code readout that copies itself when clicked (player code, host key).
+function CodeChip({ caption, value, copied, onCopy, title }) {
+  return (
+    <button type="button" className="code-chip" onClick={onCopy} title={title}>
+      <span className="code-chip-caption">{copied ? 'Copied!' : caption}</span>
+      <span className="code-chip-value">{value}</span>
+    </button>
+  );
+}
+
+const TOOL_ICONS = { play: '✥', edit: '✎', pan: '✋', ruler: '↔', group: '⛓' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands' };
 
 export default function Toolbar({
   isHost,
@@ -95,6 +140,8 @@ export default function Toolbar({
   const [showItemCompendium, setShowItemCompendium] = useState(false);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   const [showDayNight, setShowDayNight] = useState(false);
+  // Which grouped menu (tools / layout / mapping / world / library) is open.
+  const [openMenu, setOpenMenu] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Lifted out of DiceRollerPopover so the roll log and saved dice sets
@@ -103,7 +150,34 @@ export default function Toolbar({
   const [diceRolls, setDiceRolls] = useState([]);
   const [diceSets, setDiceSets] = useState([newDiceSet({ title: 'Quick roll' })]);
 
+  function closePopovers() {
+    setShowMapSettings(false);
+    setShowLayers(false);
+    setShowIslands(false);
+    setShowDice(false);
+    setShowInitiative(false);
+    setShowCompendium(false);
+    setShowItemCompendium(false);
+    setShowAssetStorage(false);
+    setShowDayNight(false);
+  }
+
+  const closeMenu = useCallback(() => setOpenMenu(null), []);
+
+  function toggleMenu(name) {
+    closePopovers();
+    setOpenMenu((m) => (m === name ? null : name));
+  }
+
+  // Runs a menu item's action and folds the menu away (used by items that
+  // are one-shot picks, not by zoom, which you tend to click repeatedly).
+  function pick(action) {
+    setOpenMenu(null);
+    action();
+  }
+
   function togglePopover(name) {
+    setOpenMenu(null);
     setShowMapSettings((s) => (name === 'mapSettings' ? !s : false));
     setShowLayers((s) => (name === 'layers' ? !s : false));
     setShowIslands((s) => (name === 'islands' ? !s : false));
@@ -188,46 +262,174 @@ export default function Toolbar({
       <button className="toolbar-collapse-btn" onClick={onToggleCollapsed} title="Collapse toolbar">
         ▴
       </button>
-      <div className="toolbar-group">
+
+      {/* The trigger shows the active tool's icon, so the current mode is
+          still visible with the menu folded away. */}
+      <ToolMenu
+        icon={TOOL_ICONS[tool] || '🛠'}
+        label="Tools"
+        title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
+        active={showAssetStorage}
+        open={openMenu === 'tools'}
+        onToggle={() => toggleMenu('tools')}
+        onClose={closeMenu}
+      >
         <ToolCard
-          icon="✥"
+          icon={TOOL_ICONS.play}
           label="Play"
           active={tool === 'play'}
-          onClick={() => onToolChange('play')}
+          onClick={() => pick(() => onToolChange('play'))}
           title="Select and drag tokens"
         />
-        {isHost && (
-          <ToolCard
-            icon="✎"
-            label="Edit"
-            active={tool === 'edit'}
-            onClick={() => onToolChange('edit')}
-            title="Drag islands around to reposition them"
-          />
-        )}
         <ToolCard
-          icon="✋"
+          icon={TOOL_ICONS.pan}
           label="Pan"
           active={tool === 'pan'}
-          onClick={() => onToolChange('pan')}
+          onClick={() => pick(() => onToolChange('pan'))}
           title="Click and drag to pan around the map"
         />
         <ToolCard
-          icon="↔"
+          icon={TOOL_ICONS.ruler}
           label="Ruler"
           active={tool === 'ruler'}
-          onClick={() => onToolChange('ruler')}
+          onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
         />
-      </div>
+        {isHost && (
+          <>
+            <ToolCard
+              icon={TOOL_ICONS.edit}
+              label="Edit"
+              active={tool === 'edit'}
+              onClick={() => pick(() => onToolChange('edit'))}
+              title="Drag islands around to reposition them"
+            />
+            <ToolCard
+              icon={TOOL_ICONS.group}
+              label="Merge Islands"
+              active={tool === 'group'}
+              onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
+              title="Select 2+ islands to bundle into a group that moves and titles as one"
+            />
+            <ToolCard
+              icon="🗃"
+              label="Storage"
+              active={showAssetStorage}
+              onClick={() => togglePopover('assetStorage')}
+              title="Asset Storage — create custom monsters, weapons, and items for this table"
+            />
+          </>
+        )}
+      </ToolMenu>
 
-      <div className="toolbar-group">
+      <ToolMenu
+        icon="🔍"
+        label="Layout"
+        title="Zoom and recenter the map"
+        open={openMenu === 'layout'}
+        onToggle={() => toggleMenu('layout')}
+        onClose={closeMenu}
+      >
         <ToolCard icon="−" label="Zoom out" onClick={onZoomOut} title="Zoom out" />
         <ToolCard icon={`${Math.round((zoom ?? 1) * 100)}%`} label="Reset" onClick={onZoomReset} title="Reset zoom to 100%" />
         <ToolCard icon="+" label="Zoom in" onClick={onZoomIn} title="Zoom in" />
         <ToolCard icon="◎" label="Recenter" onClick={onRecenter} title="Scroll back to the currently selected island" />
-      </div>
+      </ToolMenu>
 
+      {isHost && (
+        <ToolMenu
+          icon="🧭"
+          label="Mapping"
+          title="Map settings, islands, and layers"
+          active={showMapSettings || showIslands || showLayers}
+          open={openMenu === 'mapping'}
+          onToggle={() => toggleMenu('mapping')}
+          onClose={closeMenu}
+          popovers={
+            <>
+              {showMapSettings && (
+                <MapSettingsPopover
+                  layer={layer}
+                  island={activeIsland}
+                  isHost={isHost}
+                  onLayerPatch={onLayerPatch}
+                  onIslandPatch={onIslandPatch}
+                  onBackgroundFile={handleBackgroundFile}
+                  onDownloadIsland={onDownloadIsland}
+                  onDownloadIslandImage={onDownloadIslandImage}
+                  onClose={() => setShowMapSettings(false)}
+                />
+              )}
+              {showIslands && (
+                <IslandManagerPopover
+                  islands={layer.islands}
+                  islandOrder={layer.islandOrder}
+                  islandGroups={layer.islandGroups || {}}
+                  activeIslandId={activeIslandId}
+                  onSelectIsland={onSelectIsland}
+                  onCreateIsland={onCreateIsland}
+                  onRemoveIsland={onRemoveIsland}
+                  onImportIsland={onImportIsland}
+                  onUngroupIslands={onUngroupIslands}
+                  onRenameGroup={onRenameGroup}
+                  onClose={() => setShowIslands(false)}
+                />
+              )}
+              {showLayers && (
+                <LayerSwitcherPopover
+                  layers={layers}
+                  layerOrder={layerOrder}
+                  currentLayerId={currentLayerId}
+                  layerPlayerCounts={layerPlayerCounts}
+                  onSwitchLayer={onSwitchLayer}
+                  onCreateLayer={onCreateLayer}
+                  onRemoveLayer={onRemoveLayer}
+                  onClose={() => setShowLayers(false)}
+                />
+              )}
+            </>
+          }
+        >
+          <ToolCard icon="🗺" label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
+          <ToolCard icon="🏝" label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
+          <ToolCard icon="🗂" label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
+        </ToolMenu>
+      )}
+
+      {isHost && (
+        <ToolMenu
+          icon="🌍"
+          label="World state"
+          title="In-game time and day / night"
+          active={showDayNight}
+          open={openMenu === 'world'}
+          onToggle={() => toggleMenu('world')}
+          onClose={closeMenu}
+          popovers={
+            showDayNight && (
+              <DayNightPopover
+                override={dayNightOverride}
+                hasClock={Boolean(clock)}
+                hasCycle={Boolean(clock?.cycle?.enabled)}
+                onSelect={(phase) => onSetDayNightOverride(phase)}
+                onClose={() => setShowDayNight(false)}
+              />
+            )
+          }
+        >
+          <ToolCard icon="🕒" label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
+          <ToolCard
+            icon={dayPhase ? '' : '🌓'}
+            image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}
+            label="Day / night"
+            active={showDayNight}
+            onClick={() => togglePopover('dayNight')}
+            title="Change the day/night phase by hand, whatever the clock says"
+          />
+        </ToolMenu>
+      )}
+
+      {/* Not a button: the readout is how every player sees the in-game time. */}
       {clock && (
         <div className="toolbar-group">
           <ClockReadout
@@ -241,89 +443,25 @@ export default function Toolbar({
       )}
 
       {isHost && (
-        <div className="toolbar-group">
-          <ToolCard icon="🗺" label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
-          <ToolCard icon="🏝" label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
-          <ToolCard icon="🗂" label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
-          <ToolCard
-            icon="⛓"
-            label="Merge Islands"
-            active={tool === 'group'}
-            onClick={() => onToolChange(tool === 'group' ? 'edit' : 'group')}
-            title="Select 2+ islands to bundle into a group that moves and titles as one"
-          />
-          {showMapSettings && (
-            <MapSettingsPopover
-              layer={layer}
-              island={activeIsland}
-              isHost={isHost}
-              onLayerPatch={onLayerPatch}
-              onIslandPatch={onIslandPatch}
-              onBackgroundFile={handleBackgroundFile}
-              onDownloadIsland={onDownloadIsland}
-              onDownloadIslandImage={onDownloadIslandImage}
-              onClose={() => setShowMapSettings(false)}
-            />
-          )}
-          {showIslands && (
-            <IslandManagerPopover
-              islands={layer.islands}
-              islandOrder={layer.islandOrder}
-              islandGroups={layer.islandGroups || {}}
-              activeIslandId={activeIslandId}
-              onSelectIsland={onSelectIsland}
-              onCreateIsland={onCreateIsland}
-              onRemoveIsland={onRemoveIsland}
-              onImportIsland={onImportIsland}
-              onUngroupIslands={onUngroupIslands}
-              onRenameGroup={onRenameGroup}
-              onClose={() => setShowIslands(false)}
-            />
-          )}
-          {showLayers && (
-            <LayerSwitcherPopover
-              layers={layers}
-              layerOrder={layerOrder}
-              currentLayerId={currentLayerId}
-              layerPlayerCounts={layerPlayerCounts}
-              onSwitchLayer={onSwitchLayer}
-              onCreateLayer={onCreateLayer}
-              onRemoveLayer={onRemoveLayer}
-              onClose={() => setShowLayers(false)}
-            />
-          )}
-        </div>
-      )}
-
-      {isHost && (
-        <div className="toolbar-group">
-          <ToolCard icon="🕒" label="Ingame time" onClick={onOpenClock} title="Set the in-game time, tick speed, and day/night cycle" />
-          <ToolCard
-            icon={dayPhase ? '' : '🌓'}
-            image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}
-            label="Day / night"
-            active={showDayNight}
-            onClick={() => togglePopover('dayNight')}
-            title="Change the day/night phase by hand, whatever the clock says"
-          />
-          {showDayNight && (
-            <DayNightPopover
-              override={dayNightOverride}
-              hasClock={Boolean(clock)}
-              hasCycle={Boolean(clock?.cycle?.enabled)}
-              onSelect={(phase) => onSetDayNightOverride(phase)}
-              onClose={() => setShowDayNight(false)}
-            />
-          )}
+        <ToolMenu
+          icon="📚"
+          label="Library"
+          title="Weapon and item compendiums"
+          active={showCompendium || showItemCompendium}
+          open={openMenu === 'library'}
+          onToggle={() => toggleMenu('library')}
+          onClose={closeMenu}
+        >
           <ToolCard icon="📖" label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
           <ToolCard icon="📦" label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
-          <ToolCard
-            icon="🗃"
-            label="Asset Storage"
-            active={showAssetStorage}
-            onClick={() => togglePopover('assetStorage')}
-            title="Create custom monsters, weapons, and items for this table"
-          />
+        </ToolMenu>
+      )}
+
+      {/* Initiative and dice stay one click away — no menu to open first.
+          Everyone's dice tray is private to their own browser (see
+          diceSets/diceRolls above), so it isn't gated to the host. */}
+      <div className="toolbar-group">
+        {isHost && (
           <ToolCard
             icon="👢"
             label="Initiative"
@@ -331,13 +469,7 @@ export default function Toolbar({
             onClick={() => togglePopover('initiative')}
             title="Roll for Initiative"
           />
-        </div>
-      )}
-
-      {/* Every player's own private dice tray — never shared with anyone
-          else's browser, same as it always was for the host (see
-          diceSets/diceRolls above); just no longer gated to the host. */}
-      <div className="toolbar-group">
+        )}
         <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceRollerPopover
@@ -353,6 +485,31 @@ export default function Toolbar({
           />
         )}
       </div>
+
+      {isHost && (
+        <div className="toolbar-group">
+          <CodeChip
+            caption="Player code"
+            value={session.code}
+            copied={copied}
+            onCopy={copyCode}
+            title="Click to copy the invite code players join with"
+          />
+          <CodeChip
+            caption={isGuestHost ? 'DM code' : 'Host key'}
+            value={session.hostKey}
+            copied={copiedHostKey}
+            onCopy={copyHostKey}
+            title={
+              isGuestHost
+                ? 'Click to copy your private DM code — save it, along with an exported .json, to resume this table later via "Resume guest session" on the Landing screen'
+                : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
+            }
+          />
+          <ToolCard icon="🔄" label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
+        </div>
+      )}
+
       {isHost && showCompendium && (
         <WeaponsCompendiumModal
           onClose={() => setShowCompendium(false)}
@@ -388,45 +545,34 @@ export default function Toolbar({
 
       <div className="spacer" />
 
-      {isHost && (
-        <div className="toolbar-group">
-          <ToolCard icon="💾" label="Save" onClick={onSaveNow} title={lastSavedLabel} />
-          <ToolCard icon="⬇" label="Export" onClick={onExport} title="Export .json" />
-          <ToolCard icon="⬆" label="Import" onClick={() => importRef.current?.click()} title="Import .json — overwrites the whole table" />
-          <input ref={importRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
-        </div>
-      )}
-
-      {isHost && (
-        <div className="toolbar-group">
-          <div className="copyable">
-            <code>{session.code}</code>
-          </div>
-          <ToolCard icon="📋" label={copied ? 'Copied!' : 'Copy'} onClick={copyCode} title="Copy invite code" />
-          <ToolCard icon="🔄" label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
-          <ToolCard
-            icon={session.isOpen ? '🔓' : '🔒'}
-            label={session.isOpen ? 'Close' : 'Reopen'}
-            active={!session.isOpen}
-            onClick={onToggleOpen}
-            title={session.isOpen ? 'Close table to new joins' : 'Table closed — reopen'}
-          />
-          <ToolCard
-            icon="🗝"
-            label={copiedHostKey ? 'Copied!' : isGuestHost ? 'DM code' : 'Host key'}
-            onClick={copyHostKey}
-            title={
-              isGuestHost
-                ? 'Your private DM code — save it, along with an exported .json, to resume this table later via "Resume guest session" on the Landing screen'
-                : 'Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
-            }
-          />
-        </div>
-      )}
-
-      <div className="toolbar-group">
-        <ToolCard icon="🚪" label="Leave" onClick={onLeave} title="Leave the table" />
-      </div>
+      {/* The very last group: save/export/import/close/leave — the
+          "shutting the book" actions, tucked away since they're reached for
+          far less often than anything above. */}
+      <ToolMenu
+        icon="⚙"
+        label="Configurations"
+        title="Save, export, import, close, and leave"
+        open={openMenu === 'configurations'}
+        onToggle={() => toggleMenu('configurations')}
+        onClose={closeMenu}
+      >
+        {isHost && (
+          <>
+            <ToolCard icon="💾" label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
+            <ToolCard icon="⬇" label="Export" onClick={() => pick(onExport)} title="Export .json" />
+            <ToolCard icon="⬆" label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .json — overwrites the whole table" />
+            <input ref={importRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+            <ToolCard
+              icon={session.isOpen ? '🔓' : '🔒'}
+              label={session.isOpen ? 'Close' : 'Reopen'}
+              active={!session.isOpen}
+              onClick={() => pick(onToggleOpen)}
+              title={session.isOpen ? 'Close table to new joins' : 'Table closed — reopen'}
+            />
+          </>
+        )}
+        <ToolCard icon="🚪" label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />
+      </ToolMenu>
     </div>
   );
 }
