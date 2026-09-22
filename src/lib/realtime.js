@@ -10,16 +10,33 @@
 // SPEC.md §9.5 for the reasoning and future refinement ideas.
 
 import { supabase } from './supabaseClient.js';
-import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData } from './mappers.js';
+import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
 // CHANNEL_ERROR transition of this one channel (see REALTIME_SUBSCRIBE_STATES
 // in @supabase/realtime-js) as (status, isInitialJoin) — isInitialJoin is true
 // only for the very first SUBSCRIBED, so a caller can tell "just connected"
 // apart from "recovered after a drop" without tracking that itself.
-export function subscribeToTable(tableId, dispatch, onStatusChange) {
+//
+// presence, if given, rides this same channel's Presence feature (separate
+// from postgres_changes) to answer one question: is the host's browser
+// still around? `{ isHost, onHostPresenceChange }` — the host's own client
+// tracks itself so everyone else's `onHostPresenceChange(hostPresent)` fires
+// on join/leave/crash alike (Presence detects a dropped socket on its own,
+// unlike postgres_changes' players-row DELETE, which a host leaving never
+// triggers — see doLeaveTable in GameView.jsx). Used to auto-end a table's
+// player sessions a few minutes after the host disappears.
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
+
+  if (presence?.onHostPresenceChange) {
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const hostPresent = Object.values(state).some((metas) => metas.some((meta) => meta.isHost));
+      presence.onHostPresenceChange(hostPresent);
+    });
+  }
 
   channel
     .on(
@@ -29,7 +46,17 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
         if (payload.eventType === 'INSERT') {
           dispatch({ type: 'ADD_ENTITY', entity: mapDbEntity(payload.new) });
         } else if (payload.eventType === 'UPDATE') {
-          dispatch({ type: 'UPDATE_ENTITY', id: payload.new.id, patch: mapDbEntity(payload.new) });
+          // A trap the DM just revealed reaches a player as an UPDATE for a
+          // row their client has never seen (it was invisible to them until
+          // now — 20250101000028_traps.sql). ADD_ENTITY upserts, so use it
+          // for traps; every other kind's UPDATE targets an entity the
+          // client already has.
+          const type = payload.new.kind === 'trap' ? 'ADD_ENTITY' : 'UPDATE_ENTITY';
+          dispatch(
+            type === 'ADD_ENTITY'
+              ? { type, entity: mapDbEntity(payload.new) }
+              : { type, id: payload.new.id, patch: mapDbEntity(payload.new) }
+          );
         } else if (payload.eventType === 'DELETE') {
           dispatch({ type: 'REMOVE_ENTITY', id: payload.old.id });
         }
@@ -91,8 +118,20 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'tables', filter: `id=eq.${tableId}` },
-      (payload) => dispatch({ type: 'SET_SESSION_OPEN', isOpen: payload.new.is_open })
+      (payload) => {
+        dispatch({ type: 'SET_SESSION_OPEN', isOpen: payload.new.is_open });
+        // Absent (not merely null) before 32_game_clock.sql is applied.
+        if ('game_clock' in payload.new) dispatch({ type: 'SET_CLOCK', clock: payload.new.game_clock ?? null });
+        if ('day_night_override' in payload.new) dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase: payload.new.day_night_override ?? null });
+      }
     )
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_assets', filter: `table_id=eq.${tableId}` }, (payload) => {
+      if (payload.eventType === 'INSERT') {
+        dispatch({ type: 'ADD_CUSTOM_ASSET', item: mapDbCustomAsset(payload.new) });
+      } else if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'REMOVE_CUSTOM_ASSET', id: payload.old.id });
+      }
+    })
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'invite_codes', filter: `table_id=eq.${tableId}` },
@@ -107,6 +146,7 @@ export function subscribeToTable(tableId, dispatch, onStatusChange) {
       } else {
         onStatusChange?.(status, false);
       }
+      if (status === 'SUBSCRIBED' && presence?.isHost) channel.track({ isHost: true });
     });
 
   return () => {

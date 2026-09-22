@@ -373,15 +373,47 @@ input, select {
 
 /* ---------- Game layout ---------- */
 
+/* The side panels' widths are set from GameView (--left-w / --right-w) so
+   they can be dragged to a new size; the fallbacks are the defaults. */
 .game-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 260px 1fr 280px;
+  grid-template-columns: var(--left-w, 260px) 1fr var(--right-w, 340px);
   min-height: 0;
+  position: relative;
 }
-.game-layout.left-collapsed { grid-template-columns: 36px 1fr 280px; }
-.game-layout.right-collapsed { grid-template-columns: 260px 1fr 36px; }
+.game-layout.left-collapsed { grid-template-columns: 36px 1fr var(--right-w, 340px); }
+.game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
+
+/* Drag handles straddling each panel's inner edge. Wider than the visible
+   line so it's easy to grab; the line only shows on hover/focus/drag. */
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 20;
+  touch-action: none;
+  outline: none;
+}
+.panel-resizer.left { left: calc(var(--left-w, 260px) - 5px); }
+.panel-resizer.right { right: calc(var(--right-w, 340px) - 5px); }
+.panel-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.panel-resizer.dragging::after { background: var(--gold-line); }
+body.panel-resizing { cursor: col-resize; user-select: none; }
 
 .panel {
   background: var(--ink-900);
@@ -506,6 +538,45 @@ input, select {
 .tool-card:hover:not(:disabled) { border-color: var(--gold-line); color: var(--parchment-100); background: var(--ink-800); }
 .tool-card.active { background: var(--moss-dim); border-color: var(--moss); color: #fff; }
 .tool-card:disabled { opacity: 0.4; cursor: default; }
+/* A grouped toolbar entry's dropdown: a row of tool cards under its trigger. */
+.toolbar-menu {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: max-content;
+  max-width: 90vw;
+  padding: 8px;
+  background: var(--ink-800);
+  border: 1px solid var(--gold-line);
+  border-radius: 6px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+}
+.toolbar-menu .tool-card:hover:not(:disabled) { background: var(--ink-700); }
+
+/* Click-to-copy code readout (player code, host key). */
+.code-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 50px;
+  padding: 4px 12px;
+  flex-shrink: 0;
+  background: var(--ink-950);
+  border: 1px solid var(--gold-line);
+  border-radius: 8px;
+  color: var(--parchment-100);
+  cursor: pointer;
+}
+.code-chip:hover { background: var(--ink-800); }
+.code-chip-caption { font-size: 9px; line-height: 1.15; letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-300); }
+.code-chip-value { font-family: var(--font-mono); font-size: 15px; line-height: 1; letter-spacing: 0.12em; }
+
 .tool-card-icon { font-size: 17px; line-height: 1; }
 .tool-card-label { font-size: 9px; line-height: 1.15; text-align: center; white-space: nowrap; }
 
@@ -757,6 +828,54 @@ input, select {
   box-shadow: 0 1px 2px rgba(0,0,0,0.6);
   display: block;
 }
+
+/* The toolbar's "Ingame time" readout: icon, then caption / time / day+phase. */
+.clock-readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+}
+button.clock-readout { cursor: pointer; }
+button.clock-readout:hover { border-color: var(--gold-line); background: var(--ink-800); }
+.clock-readout-icon { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.clock-readout-body { display: flex; flex-direction: column; line-height: 1.15; }
+.clock-readout-caption {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment-300);
+}
+.clock-readout-time { font-family: var(--font-display); font-size: 17px; white-space: nowrap; }
+.clock-readout-paused { font-size: 12px; opacity: 0.8; }
+.clock-readout-sub { font-size: 11.5px; color: var(--parchment-200); }
+
+/* Pause / play, beside the readout (DM only). */
+.clock-toggle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-700);
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.clock-toggle:not(:disabled):hover { border-color: var(--gold-line); }
+.clock-toggle:disabled { opacity: 0.45; cursor: default; }
+
+.tool-card-image { width: 22px; height: 22px; border-radius: 50%; display: block; }
+.daynight-option { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+.daynight-option img { border-radius: 50%; flex-shrink: 0; }
 
 /* ---------- Hero character sheet (Inspector tabs) ---------- */
 
@@ -1218,6 +1337,32 @@ input, select {
   box-shadow: 0 0 0 2px var(--ember), 0 4px 14px -6px rgba(0,0,0,0.6);
 }
 
+/* An island's condition badges straddle its top edge, right-aligned so they
+   stay clear of the name label on the left. */
+.island-conditions {
+  position: absolute;
+  top: -13px;
+  right: 8px;
+  display: flex;
+  gap: 3px;
+  z-index: 2;
+}
+.island-conditions img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(23, 20, 15, 0.9);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  display: block;
+}
+
+.island-daynight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: background 1.5s ease;
+}
+
 .island-label {
   position: absolute;
   top: -20px;
@@ -1305,6 +1450,9 @@ input, select {
 .token.dragging { cursor: grabbing; z-index: 50; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
 .token.selected { outline: 3px solid var(--ember); outline-offset: 1px; }
 .token.door { border-radius: 6px; border-style: dashed; }
+/* An unrevealed trap: only the DM's client ever has it, so ghost it to tell it
+   apart from a revealed (player-visible) one. */
+.token.trap-hidden { opacity: 0.5; border-style: dashed; }
 .token .token-hp {
   position: absolute;
   bottom: -16px;
@@ -1328,6 +1476,24 @@ input, select {
   color: var(--parchment-100);
   padding: 1px 5px;
   border-radius: 3px;
+  white-space: nowrap;
+}
+/* Roll for Initiative's turn-order badge — mirrors .token-conditions'
+   corner placement, just the opposite side so the two never collide. */
+.token .token-initiative {
+  position: absolute;
+  top: 2px;
+  left: -8px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(23, 20, 15, 0.85);
+  color: var(--parchment-100);
+  padding: 1px 4px 1px 3px;
+  border-radius: 10px;
+  border: 1px solid var(--gold-line);
   white-space: nowrap;
 }
 
@@ -1516,6 +1682,22 @@ input, select {
 
 .reconnect-card .btn {
   margin-top: 14px;
+}
+
+.host-absent-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  background: linear-gradient(180deg, var(--ink-900), var(--ink-800));
+  border: 1px solid var(--gold-line);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 10px 20px;
+  color: var(--parchment-100);
+  font-size: 0.95rem;
+  box-shadow: 0 12px 30px -12px rgba(0,0,0,0.6);
 }
 
 /* ---------- Weapons compendium (book) ---------- */
@@ -1733,18 +1915,3 @@ input, select {
   gap: 10px;
 }
 
-.copyable {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.copyable code {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  letter-spacing: 0.15em;
-  background: var(--ink-950);
-  border: 1px solid var(--gold-line);
-  padding: 8px 14px;
-  border-radius: 4px;
-  color: var(--parchment-100);
-}

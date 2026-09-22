@@ -51,8 +51,23 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     },
     layers: { [baseLayer.id]: baseLayer },
     layerOrder: [baseLayer.id],
+    // The table's in-game clock (utils/gameClock.js), or null when the DM
+    // hasn't started one.
+    clock: null,
+    // A phase ('dawn' | 'day' | 'dusk' | 'night') the DM has set by hand,
+    // taking priority over the clock's own day/night cycle until they hand it
+    // back ("Follow the clock" = null). Independent of the clock, so it works
+    // with the cycle on, off, or no clock at all.
+    dayNightOverride: null,
     entities: {},
     entityOrder: [],
+    // DM-authored custom monsters/weapons/items (Toolbar.jsx's Asset Storage
+    // modal) — see 36_custom_assets.sql. Keyed like entities: {id: {id,
+    // assetType, data}}, where `data` is the full entry (same shape its
+    // built-in catalog counterpart uses), rendered alongside — never instead
+    // of — the static WEAPONS/ITEMS/DEFAULT_MOBS catalogs.
+    customAssets: {},
+    customAssetOrder: [],
     players: {
       [hostPlayerId]: {
         id: hostPlayerId,
@@ -277,6 +292,12 @@ function reducer(state, action) {
     case 'SET_SESSION_OPEN':
       return { ...state, session: { ...state.session, isOpen: action.isOpen } };
 
+    case 'SET_CLOCK':
+      return { ...state, clock: action.clock ?? null };
+
+    case 'SET_DAY_NIGHT_OVERRIDE':
+      return { ...state, dayNightOverride: action.phase ?? null };
+
     case 'ADD_ENTITY': {
       const alreadyPresent = Boolean(state.entities[action.entity.id]);
       return {
@@ -318,6 +339,27 @@ function reducer(state, action) {
         ...state,
         entities: rest,
         entityOrder: state.entityOrder.filter((id) => id !== action.id),
+      };
+    }
+
+    case 'ADD_CUSTOM_ASSET': {
+      const customAssets = state.customAssets || {};
+      const alreadyPresent = Boolean(customAssets[action.item.id]);
+      return {
+        ...state,
+        customAssets: { ...customAssets, [action.item.id]: action.item },
+        customAssetOrder: alreadyPresent
+          ? state.customAssetOrder
+          : [...(state.customAssetOrder || []), action.item.id],
+      };
+    }
+
+    case 'REMOVE_CUSTOM_ASSET': {
+      const { [action.id]: _removed, ...rest } = state.customAssets || {};
+      return {
+        ...state,
+        customAssets: rest,
+        customAssetOrder: (state.customAssetOrder || []).filter((id) => id !== action.id),
       };
     }
 

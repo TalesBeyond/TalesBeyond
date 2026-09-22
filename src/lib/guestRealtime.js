@@ -26,9 +26,24 @@ function channelNameFor(code) {
 //   check `forId` against its own id before applying it.
 // onStatusChange(status, isInitialJoin): same shape as realtime.js's
 //   subscribeToTable, for connection-state UI and reconnect detection.
-export function subscribeToGuestTable(code, { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange } = {}) {
+// isHost / onHostPresenceChange: same Presence-based "is the host's browser
+//   still around" mechanism as subscribeToTable — doubly necessary here,
+//   since a guest table has no players row at all for a DELETE event to
+//   ever signal the host leaving.
+export function subscribeToGuestTable(
+  code,
+  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange } = {}
+) {
   const channel = supabase.channel(channelNameFor(code));
   let hasJoinedOnce = false;
+
+  if (onHostPresenceChange) {
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const hostPresent = Object.values(state).some((metas) => metas.some((meta) => meta.isHost));
+      onHostPresenceChange(hostPresent);
+    });
+  }
 
   if (onStateChange) {
     channel.on('broadcast', { event: 'state_change' }, ({ payload }) => onStateChange(payload.action));
@@ -53,6 +68,7 @@ export function subscribeToGuestTable(code, { onStateChange, onIntent, onPlayerJ
     } else {
       onStatusChange?.(status, false);
     }
+    if (status === 'SUBSCRIBED' && isHost) channel.track({ isHost: true });
   });
 
   return {

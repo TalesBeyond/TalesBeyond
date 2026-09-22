@@ -4,8 +4,8 @@
 // subset as a "+2" variant, to reach exactly 100 rows deterministically
 // (37 base + 37 +1 + 26 +2 = 100) rather than hand-authoring 100 one-offs.
 //
-// Standalone reference data — not wired into any UI yet (e.g. a future
-// "pick a weapon" step for the Attacks tab in RightPanel.jsx).
+// RightPanel.jsx's Battle Equipment tab matches a bag item's name against
+// this catalog to find its combat dice — see weaponStatsFor there.
 
 export const WEAPON_TYPES = ['melee', 'ranged'];
 
@@ -84,7 +84,9 @@ const BASE_WEAPONS = [
   { type: 'ranged', name: 'Net', numberOfDice: 1, diceType: 'd4', cost: 1, equipableClass: ['fighter', 'ranger', 'rogue'] },
 ];
 
-function averageDamage(numberOfDice, diceType, modifier) {
+// Exported so a DM's custom weapon (Toolbar.jsx's Asset Storage) can compute
+// the same `damage` figure this catalog uses for its own entries.
+export function averageDamage(numberOfDice, diceType, modifier) {
   const sides = parseInt(diceType.slice(1), 10);
   const avgPerDie = (sides + 1) / 2;
   return Math.round((numberOfDice * avgPerDie + modifier) * 10) / 10;
@@ -108,8 +110,3 @@ const plusOne = BASE_WEAPONS.map((w) => withModifier(w, 1));
 const plusTwo = BASE_WEAPONS.slice(0, 26).map((w) => withModifier(w, 2)); // 37 + 37 + 26 = 100
 
 export const WEAPONS = [...mundane, ...plusOne, ...plusTwo];
-
-// A small curated starter set offered as a dropdown on a hero's Attacks tab,
-// so a player picks a weapon instead of typing every field by hand.
-const DEFAULT_WEAPON_NAMES = ['Dagger', 'Shortsword', 'Longsword', 'Shortbow', 'Quarterstaff'];
-export const DEFAULT_WEAPONS = DEFAULT_WEAPON_NAMES.map((name) => WEAPONS.find((w) => w.name === name));

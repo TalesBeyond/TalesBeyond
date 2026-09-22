@@ -39,6 +39,8 @@ export function mapDbIsland(row) {
     backgroundImage: row.background_url,
     x: row.x,
     y: row.y,
+    conditions: row.conditions || [],
+    dayNight: row.day_night ?? 'cycle',
   };
 }
 
@@ -51,6 +53,8 @@ export function mapClientIslandPatchToDb(patch) {
   if ('backgroundImage' in patch) db.background_url = patch.backgroundImage;
   if ('x' in patch) db.x = patch.x;
   if ('y' in patch) db.y = patch.y;
+  if ('conditions' in patch) db.conditions = patch.conditions;
+  if ('dayNight' in patch) db.day_night = patch.dayNight;
   return db;
 }
 
@@ -78,6 +82,17 @@ export function mapDbEntity(row) {
     chestSize: row.chest_size ?? undefined,
     opened: row.kind === 'chest' ? row.opened ?? false : undefined,
     items: row.kind === 'chest' ? row.chest_items ?? [] : undefined,
+    ...(row.kind === 'trap'
+      ? {
+          trapDescription: row.trap_description ?? '',
+          trapSave: row.trap_save ?? null,
+          trapFail: row.trap_fail ?? null,
+          trapDice: row.trap_dice ?? '',
+          trapDamage: row.trap_damage ?? '',
+          trapDamageType: row.trap_damage_type ?? 'none',
+          trapRevealed: row.trap_revealed ?? false,
+        }
+      : {}),
   };
 }
 
@@ -106,6 +121,17 @@ export function mapClientEntityToDb(entity, tableId) {
     chest_size: entity.chestSize ?? null,
     opened: entity.opened ?? false,
     chest_items: entity.items ?? [],
+    ...(entity.kind === 'trap'
+      ? {
+          trap_description: entity.trapDescription ?? '',
+          trap_save: entity.trapSave ?? null,
+          trap_fail: entity.trapFail ?? null,
+          trap_dice: entity.trapDice ?? '',
+          trap_damage: entity.trapDamage ?? '',
+          trap_damage_type: entity.trapDamageType ?? 'none',
+          trap_revealed: entity.trapRevealed ?? false,
+        }
+      : {}),
   };
 }
 
@@ -131,6 +157,13 @@ export function mapClientEntityPatchToDb(patch) {
   if ('chestSize' in patch) db.chest_size = patch.chestSize;
   if ('opened' in patch) db.opened = patch.opened;
   if ('items' in patch) db.chest_items = patch.items;
+  if ('trapDescription' in patch) db.trap_description = patch.trapDescription;
+  if ('trapSave' in patch) db.trap_save = patch.trapSave;
+  if ('trapFail' in patch) db.trap_fail = patch.trapFail;
+  if ('trapDice' in patch) db.trap_dice = patch.trapDice;
+  if ('trapDamage' in patch) db.trap_damage = patch.trapDamage;
+  if ('trapDamageType' in patch) db.trap_damage_type = patch.trapDamageType;
+  if ('trapRevealed' in patch) db.trap_revealed = patch.trapRevealed;
   return db;
 }
 
@@ -142,6 +175,9 @@ export function mapDbEntityDmData(row) {
   return {
     dmNotes: row.dm_notes ?? '',
     droppables: row.drop_items ?? [],
+    // A monster's tabbed character sheet (30_mob_sheet.sql) — DM-only, so
+    // it lives here rather than on `entities`. Absent until first edited.
+    mobSheet: row.mob_sheet ?? undefined,
   };
 }
 
@@ -149,7 +185,20 @@ export function mapClientEntityDmDataPatchToDb(patch) {
   const db = {};
   if ('dmNotes' in patch) db.dm_notes = patch.dmNotes;
   if ('droppables' in patch) db.drop_items = patch.droppables;
+  if ('mobSheet' in patch) db.mob_sheet = patch.mobSheet;
   return db;
+}
+
+// Custom assets (36_custom_assets.sql) — a DM-authored monster/weapon/item.
+// `data` is already in the exact shape its catalog counterpart uses (see
+// src/data/weapons.js / items.js / defaultTokens.js), so the client never
+// needs to reshape it before rendering it alongside the built-in catalog.
+export function mapDbCustomAsset(row) {
+  return {
+    id: row.id,
+    assetType: row.asset_type,
+    data: row.data,
+  };
 }
 
 export function mapDbPlayer(row) {
