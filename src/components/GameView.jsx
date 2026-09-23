@@ -1975,6 +1975,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       </div>
 
       <RightPanel
+        audio={audioApi}
         players={state.players}
         hostId={state.session.hostPlayerId}
         layers={state.layers}

@@ -23,8 +23,10 @@ import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
+import SoundField from './SoundField.jsx';
 
 export default function RightPanel({
+  audio,
   players,
   hostId,
   layers,
@@ -88,6 +90,7 @@ export default function RightPanel({
             key={selectedEntity.id}
             entity={selectedEntity}
             isHost={isHost}
+            audio={audio}
             meId={meId}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
@@ -122,6 +125,7 @@ export default function RightPanel({
             key={selectedEntity.id}
             entity={selectedEntity}
             isHost={isHost}
+            audio={audio}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             entities={entities}
@@ -689,7 +693,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
 // `mobSheet` - which lives in entity_dm_data's host-only RLS in cloud mode
 // and is stripped from a guest table's broadcasts, so it never reaches a
 // player's client.
-function MobInspector({ entity, isHost, onUpdate, onRemove, entities }) {
+function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
   const droppables = entity.droppables || [];
   const sheet = entity.mobSheet || defaultCharacterSheet();
   // A monster's Battle Equipment attacks heroes, mirroring how a hero's
@@ -729,6 +733,7 @@ function MobInspector({ entity, isHost, onUpdate, onRemove, entities }) {
           />
         </CollapsibleField>
       )}
+      {isHost && <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />}
       {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this monster…" />}
       {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
     </div>
@@ -795,7 +800,7 @@ function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targ
   );
 }
 
-function HeroInspector({ entity, isHost, meId, onUpdate, onRemove, entities, players }) {
+function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entities, players }) {
   const sheet = entity.sheet || defaultCharacterSheet();
   const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
   const isOwner = !!meId && entity.ownerId === meId;
@@ -815,6 +820,7 @@ function HeroInspector({ entity, isHost, meId, onUpdate, onRemove, entities, pla
 
       <SheetTabs entity={entity} sheet={sheet} isHost={isHost} isOwner={isOwner} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
 
+      {isHost && <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />}
       {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />}
       {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
     </div>

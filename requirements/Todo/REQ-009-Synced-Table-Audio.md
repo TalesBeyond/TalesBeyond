@@ -156,9 +156,9 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S017 | U | Token upload UI | Sound section (host only) in the hero and mob inspectors: upload/replace/remove, loop toggle, play/pause. | S013, S016 | `src/components/RightPanel.jsx` |
-|  | S018 | S | Cascade in the reducer | Removing a layer, island, or entity also removes the tracks targeting it (and clears `nowPlaying`/`resume` entries that reference them). | S002 | `src/state/store.jsx` |
-|  | S019 | P | Database and file cleanup | Remove a target's `audio_tracks` rows and Storage objects when the DM deletes a layer, island, or token; extend `deleteTableStorage` to the audio bucket; clean up when a track is replaced. | S018 | `supabase/migrations/`, `src/lib/storageUpload.js`, `src/lib/remoteApi.js`, `src/components/GameView.jsx` |
+| ✅ | S017 | U | Token upload UI | Sound section (host only) in the hero and mob inspectors: upload/replace/remove, loop toggle, play/pause. | S013, S016 | `src/components/RightPanel.jsx` |
+| ✅ | S018 | S | Cascade in the reducer | Removing a layer, island, or entity also removes the tracks targeting it (and clears `nowPlaying`/`resume` entries that reference them). | S002 | `src/state/store.jsx` |
+| ✅ | S019 | P | Database and file cleanup | Remove a target's `audio_tracks` rows and Storage objects when the DM deletes a layer, island, or token; extend `deleteTableStorage` to the audio bucket; clean up when a track is replaced. | S018 | `supabase/migrations/`, `src/lib/storageUpload.js`, `src/lib/remoteApi.js`, `src/components/GameView.jsx` |
 
 ### Slice 5 — Guest tables
 
