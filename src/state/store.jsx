@@ -35,6 +35,14 @@ export function createInitialLayer(overrides = {}) {
   };
 }
 
+const EMPTY_AUDIO = { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } };
+
+// A null/partial playback value (no column yet, or a row nobody has played on)
+// becomes the empty shape every consumer can rely on.
+export function normalizePlayback(playback) {
+  return { nowPlaying: playback?.nowPlaying ?? null, resume: playback?.resume ?? {} };
+}
+
 export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }) {
   const baseLayer = createInitialLayer();
   return {
@@ -68,6 +76,11 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     // of — the static WEAPONS/ITEMS/DEFAULT_MOBS catalogs.
     customAssets: {},
     customAssetOrder: [],
+    // REQ-009 Synced Table Audio: `tracks` keyed by id, `trackOrder` for
+    // stable listing, `playback` = { nowPlaying: { trackId, anchorMs,
+    // offsetMs } | null, resume: { [trackId]: offsetMs } } — see
+    // 38_synced_table_audio.sql. Cloud tables only in Slice 1.
+    audio: { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } },
     players: {
       [hostPlayerId]: {
         id: hostPlayerId,
@@ -356,6 +369,31 @@ function reducer(state, action) {
           : [...(state.customAssetOrder || []), action.item.id],
       };
     }
+
+    case 'SET_AUDIO_TRACK': {
+      const audio = state.audio || EMPTY_AUDIO;
+      const alreadyPresent = Boolean(audio.tracks[action.track.id]);
+      return {
+        ...state,
+        audio: {
+          ...audio,
+          tracks: { ...audio.tracks, [action.track.id]: action.track },
+          trackOrder: alreadyPresent ? audio.trackOrder : [...audio.trackOrder, action.track.id],
+        },
+      };
+    }
+
+    case 'REMOVE_AUDIO_TRACK': {
+      const audio = state.audio || EMPTY_AUDIO;
+      const { [action.id]: _removed, ...tracks } = audio.tracks;
+      return {
+        ...state,
+        audio: { ...audio, tracks, trackOrder: audio.trackOrder.filter((id) => id !== action.id) },
+      };
+    }
+
+    case 'SET_AUDIO_PLAYBACK':
+      return { ...state, audio: { ...(state.audio || EMPTY_AUDIO), playback: normalizePlayback(action.playback) } };
 
     case 'REMOVE_CUSTOM_ASSET': {
       const { [action.id]: _removed, ...rest } = state.customAssets || {};

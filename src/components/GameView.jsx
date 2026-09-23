@@ -39,6 +39,9 @@ import {
   addCustomAssetRemote,
   removeCustomAssetRemote,
   updateTableClockRemote,
+  upsertAudioTrackRemote,
+  removeAudioTrackRemote,
+  updateAudioPlaybackRemote,
   updateTableDayNightOverrideRemote,
   regenerateInviteCodeRemote,
   setTableOpenRemote,
@@ -54,6 +57,9 @@ import PanelResizer from './PanelResizer.jsx';
 import ClockModal from './ClockModal.jsx';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
+import MusicModal from './MusicModal.jsx';
+import { useTableAudio } from '../lib/audioEngine.js';
+import { uploadAudio, removeAudioFile } from '../lib/storageUpload.js';
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
@@ -364,6 +370,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // Realtime) exactly like 'remote' does, but never calls remoteApi.js.
   const isGuest = mode === 'guest' && isSupabaseConfigured;
   const isGuestHost = isGuest && isHost;
+
+  // REQ-009 Synced Table Audio. Slice 1: cloud tables only — local demo mode
+  // has no Storage and guest mode arrives in Slice 5, so the Music button is
+  // disabled there and no audio code path runs.
+  const audioEnabled = isRemote;
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  const { blocked: audioBlocked, unlock: unlockAudio } = useTableAudio({
+    enabled: audioEnabled,
+    playback: state.audio?.playback,
+    tracks: state.audio?.tracks,
+  });
 
   // Host-absence auto-end (see HOST_ABSENCE_* above) — { endAt } once the
   // countdown is actually running (for the banner), else null. The timers
@@ -1207,6 +1224,77 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
+  // ---- Synced Table Audio (REQ-009), host-only, cloud tables only ----
+
+  const audioPlayback = state.audio?.playback || { nowPlaying: null, resume: {} };
+  const worldTrack =
+    Object.values(state.audio?.tracks || {}).find((t) => t.targetKind === 'world') || null;
+
+  // Same write pattern as updateClock: local dispatch, then the remote write.
+  function writeAudioPlayback(playback) {
+    if (!isHost || !audioEnabled) return;
+    dispatch({ type: 'SET_AUDIO_PLAYBACK', playback });
+    updateAudioPlaybackRemote(state.session.tableId, playback).catch(reportError);
+  }
+
+  // Starting a sound pauses the one playing (its position goes into `resume`)
+  // and continues the new one from its own resume offset, else 0.
+  function playAudioTrack(trackId) {
+    const { nowPlaying, resume } = audioPlayback;
+    const next = { ...resume };
+    if (nowPlaying) next[nowPlaying.trackId] = nowPlaying.offsetMs + (Date.now() - nowPlaying.anchorMs);
+    const offsetMs = next[trackId] ?? 0;
+    delete next[trackId];
+    writeAudioPlayback({ nowPlaying: { trackId, anchorMs: Date.now(), offsetMs }, resume: next });
+  }
+
+  function pauseAudio() {
+    const { nowPlaying, resume } = audioPlayback;
+    if (!nowPlaying) return;
+    writeAudioPlayback({
+      nowPlaying: null,
+      resume: { ...resume, [nowPlaying.trackId]: nowPlaying.offsetMs + (Date.now() - nowPlaying.anchorMs) },
+    });
+  }
+
+  // Attach (or replace) the table's World music. Throws with a message the
+  // modal shows inline.
+  async function uploadWorldAudio(file) {
+    if (!isHost || !audioEnabled) return;
+    const tableId = state.session.tableId;
+    const uploaded = await uploadAudio(file, tableId);
+    const track = {
+      id: worldTrack?.id ?? generateEntityId(),
+      targetKind: 'world',
+      targetId: tableId,
+      name: file.name,
+      ...uploaded,
+    };
+    if (worldTrack && audioPlayback.nowPlaying?.trackId === worldTrack.id) {
+      writeAudioPlayback({ nowPlaying: null, resume: audioPlayback.resume });
+    }
+    try {
+      await upsertAudioTrackRemote(tableId, track);
+    } catch (err) {
+      removeAudioFile(uploaded.storagePath);
+      throw err;
+    }
+    dispatch({ type: 'SET_AUDIO_TRACK', track });
+    if (worldTrack) removeAudioFile(worldTrack.storagePath);
+  }
+
+  function removeWorldAudio() {
+    if (!isHost || !audioEnabled || !worldTrack) return;
+    const { resume } = audioPlayback;
+    const { [worldTrack.id]: _dropped, ...restResume } = resume;
+    if (audioPlayback.nowPlaying?.trackId === worldTrack.id || worldTrack.id in resume) {
+      writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === worldTrack.id ? null : audioPlayback.nowPlaying, resume: restResume });
+    }
+    dispatch({ type: 'REMOVE_AUDIO_TRACK', id: worldTrack.id });
+    removeAudioTrackRemote(worldTrack.id).catch(reportError);
+    removeAudioFile(worldTrack.storagePath);
+  }
+
   // Pause or resume the clock from the toolbar. Re-bases the anchor to the
   // current time first (withClockRunning) so pausing freezes what is on screen
   // and resuming carries on from there.
@@ -1696,6 +1784,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           autosaveSecondsLeft={autosaveSecondsLeft}
           clock={state.clock}
           onOpenClock={() => setShowClockModal(true)}
+          audioEnabled={audioEnabled}
+          audioNowPlaying={Boolean(audioPlayback.nowPlaying)}
+          onOpenMusic={() => setShowMusicModal(true)}
           onSetClockRunning={setClockRunning}
           dayPhase={tablePhase}
           dayNightOverride={state.dayNightOverride}
@@ -1781,6 +1872,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         collapsed={rightCollapsed}
         onToggleCollapsed={() => setRightCollapsed((c) => !c)}
       />
+
+      {showMusicModal && audioEnabled && (
+        <MusicModal
+          isHost={isHost}
+          worldTrack={worldTrack}
+          playback={audioPlayback}
+          onUpload={uploadWorldAudio}
+          onRemove={removeWorldAudio}
+          onPlay={playAudioTrack}
+          onPause={pauseAudio}
+          onClose={() => setShowMusicModal(false)}
+        />
+      )}
+
+      {audioBlocked && (
+        <button className="audio-unlock-banner" onClick={unlockAudio}>
+          🔊 Tap to enable sound
+        </button>
+      )}
 
       {showClockModal && isHost && (
         <ClockModal

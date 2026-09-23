@@ -95,6 +95,9 @@ export default function Toolbar({
   autosaveSecondsLeft,
   clock,
   onOpenClock,
+  audioEnabled,
+  audioNowPlaying,
+  onOpenMusic,
   onSetClockRunning,
   dayPhase,
   dayNightOverride,
@@ -477,6 +480,14 @@ export default function Toolbar({
             title="Roll for Initiative"
           />
         )}
+        <ToolCard
+          icon="🎵"
+          label="Music"
+          active={audioNowPlaying}
+          disabled={!audioEnabled}
+          onClick={onOpenMusic}
+          title={audioEnabled ? 'Table music' : 'Music needs a cloud table — it is not available in local or guest tables'}
+        />
         <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceRollerPopover

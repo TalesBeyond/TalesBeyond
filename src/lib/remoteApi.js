@@ -18,6 +18,8 @@ import {
   mapDbEntityDmData,
   mapClientEntityDmDataPatchToDb,
   mapDbCustomAsset,
+  mapDbAudioTrack,
+  audioTrackToDb,
   mapDbPlayer,
 } from './mappers.js';
 
@@ -169,6 +171,19 @@ export async function fetchTableSnapshot(tableId) {
     customAssetOrder.push(row.id);
   }
 
+  // Audio (38_synced_table_audio.sql): the tracks table and the playback
+  // column are both fetched forgivingly, like everything optional above.
+  const audioTracksRes = await supabase.from('audio_tracks').select('*').eq('table_id', tableId);
+  const audioTrackRows = audioTracksRes.error ? [] : audioTracksRes.data;
+  const audioTracks = {};
+  const audioTrackOrder = [];
+  for (const row of audioTrackRows) {
+    audioTracks[row.id] = mapDbAudioTrack(row);
+    audioTrackOrder.push(row.id);
+  }
+  const playbackRes = await supabase.from('tables').select('audio_playback').eq('id', tableId).maybeSingle();
+  const audioPlayback = playbackRes.error ? null : playbackRes.data?.audio_playback ?? null;
+
   const players = {};
   let hostPlayerId = null;
   for (const row of playerRows) {
@@ -226,8 +241,31 @@ export async function fetchTableSnapshot(tableId) {
     entityOrder,
     customAssets,
     customAssetOrder,
+    audio: {
+      tracks: audioTracks,
+      trackOrder: audioTrackOrder,
+      playback: { nowPlaying: audioPlayback?.nowPlaying ?? null, resume: audioPlayback?.resume ?? {} },
+    },
     players,
   };
+}
+
+// ---- Audio (38_synced_table_audio.sql) ----
+
+// One track per (table, target): re-attaching to the same target replaces it.
+export async function upsertAudioTrackRemote(tableId, track) {
+  must(
+    await supabase.from('audio_tracks').upsert(audioTrackToDb(tableId, track), { onConflict: 'table_id,target_kind,target_id' }),
+    'upsertAudioTrack'
+  );
+}
+
+export async function removeAudioTrackRemote(id) {
+  must(await supabase.from('audio_tracks').delete().eq('id', id), 'removeAudioTrack');
+}
+
+export async function updateAudioPlaybackRemote(tableId, playback) {
+  must(await supabase.from('tables').update({ audio_playback: playback }).eq('id', tableId), 'updateAudioPlayback');
 }
 
 // ---- In-game clock ----

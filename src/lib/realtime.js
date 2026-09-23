@@ -10,7 +10,7 @@
 // SPEC.md §9.5 for the reasoning and future refinement ideas.
 
 import { supabase } from './supabaseClient.js';
-import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset } from './mappers.js';
+import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
 // CHANNEL_ERROR transition of this one channel (see REALTIME_SUBSCRIBE_STATES
@@ -122,6 +122,7 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         dispatch({ type: 'SET_SESSION_OPEN', isOpen: payload.new.is_open });
         // Absent (not merely null) before 32_game_clock.sql is applied.
         if ('game_clock' in payload.new) dispatch({ type: 'SET_CLOCK', clock: payload.new.game_clock ?? null });
+        if ('audio_playback' in payload.new) dispatch({ type: 'SET_AUDIO_PLAYBACK', playback: payload.new.audio_playback });
         if ('day_night_override' in payload.new) dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase: payload.new.day_night_override ?? null });
       }
     )
@@ -130,6 +131,13 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         dispatch({ type: 'ADD_CUSTOM_ASSET', item: mapDbCustomAsset(payload.new) });
       } else if (payload.eventType === 'DELETE') {
         dispatch({ type: 'REMOVE_CUSTOM_ASSET', id: payload.old.id });
+      }
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'audio_tracks', filter: `table_id=eq.${tableId}` }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'REMOVE_AUDIO_TRACK', id: payload.old.id });
+      } else {
+        dispatch({ type: 'SET_AUDIO_TRACK', track: mapDbAudioTrack(payload.new) });
       }
     })
     .on(
