@@ -143,11 +143,11 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S012 | U | Layer and island upload UI | Upload/replace/remove control and loop toggle for the layer and island in the map settings popover (host only). | S004, S008 | `src/components/Toolbar.jsx` |
-|  | S013 | S | Exclusive play and resume offsets | The DM's play action writes the interrupted track's position into `resume` and sets the new `nowPlaying`; pause does the same; play on a track starts from its `resume` offset. | S010 | `src/components/GameView.jsx`, `src/state/store.jsx` |
-|  | S014 | S | Layer/island audibility | Extend the engine's audibility rule with the current-layer checks for layer and island tracks. | S010 | new module under `src/lib/` |
-|  | S015 | S | Auto-follow on layer switch | When the DM's viewed layer changes, write playback per the auto-follow rule. | S013, S014 | `src/components/GameView.jsx` |
-|  | S016 | U | Modal source labels | List layer and island tracks in the Music modal with their source names, grouped, with now-playing and resume-position indication. | S011, S012 | new modal component |
+| ✅ | S012 | U | Layer and island upload UI | Upload/replace/remove control and loop toggle for the layer and island in the map settings popover (host only). | S004, S008 | `src/components/Toolbar.jsx` |
+| ✅ | S013 | S | Exclusive play and resume offsets | The DM's play action writes the interrupted track's position into `resume` and sets the new `nowPlaying`; pause does the same; play on a track starts from its `resume` offset. | S010 | `src/components/GameView.jsx`, `src/state/store.jsx` |
+| ✅ | S014 | S | Layer/island audibility | Extend the engine's audibility rule with the current-layer checks for layer and island tracks. | S010 | new module under `src/lib/` |
+| ✅ | S015 | S | Auto-follow on layer switch | When the DM's viewed layer changes, write playback per the auto-follow rule. | S013, S014 | `src/components/GameView.jsx` |
+| ✅ | S016 | U | Modal source labels | List layer and island tracks in the Music modal with their source names, grouped, with now-playing and resume-position indication. | S011, S012 | new modal component |
 
 ### Slice 4 — Token audio and cleanup
 

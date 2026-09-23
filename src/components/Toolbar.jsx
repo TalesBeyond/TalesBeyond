@@ -8,6 +8,7 @@ import { defaultCharacterSheet, normalizeEquipment, normalizeCurrency, newEquipm
 import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
+import SoundField from './SoundField.jsx';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
@@ -361,6 +362,7 @@ export default function Toolbar({
                   layer={layer}
                   island={activeIsland}
                   isHost={isHost}
+                  audio={audio}
                   onLayerPatch={onLayerPatch}
                   onIslandPatch={onIslandPatch}
                   onBackgroundFile={handleBackgroundFile}
@@ -730,7 +732,7 @@ function IslandConditionsField({ island, isHost, onPatch }) {
   );
 }
 
-function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
+function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
   const [rows, setRows] = useState(island.rows);
@@ -789,6 +791,9 @@ function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch
       </div>
 
       <IslandConditionsField island={island} isHost={isHost} onPatch={onIslandPatch} />
+
+      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label="Layer sound (plays for players on this layer)" />
+      <SoundField audio={audio} targetKind="island" targetId={island.id} label="Island sound (played by the DM, heard on this layer)" />
 
       <label className="field-label" style={{ marginTop: 10 }}>
         Day / night
