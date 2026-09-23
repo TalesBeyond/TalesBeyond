@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland } from '../state/store.jsx';
+import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds } from '../utils/grid.js';
@@ -20,6 +20,8 @@ import {
   clearCurrentPointer,
   sessionExists,
   markGuestClean,
+  loadLocalAudioVolumes,
+  saveLocalAudioVolumes,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { subscribeToTable } from '../lib/realtime.js';
@@ -58,8 +60,15 @@ import ClockModal from './ClockModal.jsx';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
-import { useTableAudio } from '../lib/audioEngine.js';
-import { uploadAudio, removeAudioFile } from '../lib/storageUpload.js';
+import { useTableAudio, defaultLoopFor } from '../lib/audioEngine.js';
+import {
+  uploadAudio,
+  removeAudioFiles,
+  validateAudioFile,
+  AUDIO_BUCKET,
+  GUEST_AUDIO_BUCKET,
+  AUDIO_TABLE_QUOTA_BYTES,
+} from '../lib/storageUpload.js';
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
@@ -371,17 +380,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const isGuest = mode === 'guest' && isSupabaseConfigured;
   const isGuestHost = isGuest && isHost;
 
-  // REQ-009 Synced Table Audio. Slice 1: cloud tables only — local demo mode
-  // has no Storage and guest mode arrives in Slice 5, so the Music button is
-  // disabled there and no audio code path runs.
-  const audioEnabled = isRemote;
-  const [showMusicModal, setShowMusicModal] = useState(false);
-  const { blocked: audioBlocked, unlock: unlockAudio } = useTableAudio({
-    enabled: audioEnabled,
-    playback: state.audio?.playback,
-    tracks: state.audio?.tracks,
-  });
-
   // Host-absence auto-end (see HOST_ABSENCE_* above) — { endAt } once the
   // countdown is actually running (for the banner), else null. The timers
   // themselves are closure-scoped refs, not state, for the same reason
@@ -436,6 +434,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const [hostViewLayerId, setHostViewLayerId] = useState(baseLayerId);
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
+
+  // REQ-009 Synced Table Audio. Cloud tables and guest tables have audio;
+  // local demo mode has no Storage, so there the Music button is disabled and
+  // no audio code path runs.
+  const audioEnabled = isRemote || isGuest;
+  const audioBucket = isGuest ? GUEST_AUDIO_BUCKET : AUDIO_BUCKET;
+  const audioScope = isRemote ? state.session.tableId : state.session.code;
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  // Each player's own level per track — this browser only.
+  const [localAudioVolumes, setLocalAudioVolumes] = useState(() => loadLocalAudioVolumes(audioScope));
+  const { blocked: audioBlocked, unlock: unlockAudio, expired: expiredAudio } = useTableAudio({
+    enabled: audioEnabled,
+    playback: state.audio?.playback,
+    tracks: state.audio?.tracks,
+    currentLayerId,
+    layers: state.layers,
+    localVolumes: localAudioVolumes,
+    checkFiles: isGuest,
+  });
 
   // Which island new tokens/doors get placed onto, and which island is
   // highlighted for editing — a local viewing choice (like hostViewLayerId),
@@ -1004,10 +1021,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   function removeEntity(id) {
     if (!isHost) return;
+    const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_ENTITY', id }) : null;
     dispatch({ type: 'REMOVE_ENTITY', id });
     if (selectedId === id) setSelectedId(null);
     if (isRemote) removeEntityRemote(id).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
+    if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
 
   // Roll for Initiative: DM-only, rolls a d20 for every selected hero/mob
@@ -1224,26 +1243,39 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
-  // ---- Synced Table Audio (REQ-009), host-only, cloud tables only ----
 
+  // ---- Synced Table Audio (REQ-009): the DM alone uploads, plays, pauses ----
+
+  const audioTracks = state.audio?.tracks || {};
   const audioPlayback = state.audio?.playback || { nowPlaying: null, resume: {} };
-  const worldTrack =
-    Object.values(state.audio?.tracks || {}).find((t) => t.targetKind === 'world') || null;
+  const audioUsedBytes = Object.values(audioTracks).reduce((sum, t) => sum + (t.sizeBytes || 0), 0);
+  const findAudioTrack = (targetKind, targetId) =>
+    Object.values(audioTracks).find((t) => t.targetKind === targetKind && t.targetId === String(targetId)) || null;
+  const worldTrack = findAudioTrack('world', audioScope);
 
-  // Same write pattern as updateClock: local dispatch, then the remote write.
+  // The same write pattern as updateClock: local dispatch, then the remote
+  // write (cloud) or the guest broadcast. Guest tables keep tracks and
+  // playback in state only.
+  function syncAudio(action, remoteWrite) {
+    dispatch(action);
+    if (isRemote) remoteWrite?.().catch(reportError);
+    else if (isGuestHost) broadcastGuestChange(action);
+  }
+
   function writeAudioPlayback(playback) {
     if (!isHost || !audioEnabled) return;
-    dispatch({ type: 'SET_AUDIO_PLAYBACK', playback });
-    updateAudioPlaybackRemote(state.session.tableId, playback).catch(reportError);
+    syncAudio({ type: 'SET_AUDIO_PLAYBACK', playback }, () => updateAudioPlaybackRemote(state.session.tableId, playback));
   }
+
+  const positionNow = (np) => np.offsetMs + (Date.now() - np.anchorMs);
 
   // Starting a sound pauses the one playing (its position goes into `resume`)
   // and continues the new one from its own resume offset, else 0.
   function playAudioTrack(trackId) {
     const { nowPlaying, resume } = audioPlayback;
     const next = { ...resume };
-    if (nowPlaying) next[nowPlaying.trackId] = nowPlaying.offsetMs + (Date.now() - nowPlaying.anchorMs);
-    const offsetMs = next[trackId] ?? 0;
+    if (nowPlaying && nowPlaying.trackId !== trackId) next[nowPlaying.trackId] = positionNow(nowPlaying);
+    const offsetMs = next[trackId] ?? (nowPlaying?.trackId === trackId ? positionNow(nowPlaying) : 0);
     delete next[trackId];
     writeAudioPlayback({ nowPlaying: { trackId, anchorMs: Date.now(), offsetMs }, resume: next });
   }
@@ -1251,49 +1283,130 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function pauseAudio() {
     const { nowPlaying, resume } = audioPlayback;
     if (!nowPlaying) return;
-    writeAudioPlayback({
-      nowPlaying: null,
-      resume: { ...resume, [nowPlaying.trackId]: nowPlaying.offsetMs + (Date.now() - nowPlaying.anchorMs) },
-    });
+    writeAudioPlayback({ nowPlaying: null, resume: { ...resume, [nowPlaying.trackId]: positionNow(nowPlaying) } });
   }
 
-  // Attach (or replace) the table's World music. Throws with a message the
-  // modal shows inline.
-  async function uploadWorldAudio(file) {
+  function friendlyAudioError(err) {
+    const message = String(err?.message || err);
+    if (/quota|50 MB/i.test(message)) return new Error("This table's audio is full (50 MB limit). Remove a file first.");
+    if (/mime|not supported|invalid.*type/i.test(message)) return new Error('Only MP3 or WAV files are supported.');
+    if (/maximum allowed size|too large|413/i.test(message)) return new Error('That file is over the 10 MB limit.');
+    return err instanceof Error ? err : new Error(message);
+  }
+
+  // Attach (or replace) the sound on a target. Throws an Error whose message
+  // the UI shows inline.
+  async function attachAudio(targetKind, targetId, file) {
     if (!isHost || !audioEnabled) return;
-    const tableId = state.session.tableId;
-    const uploaded = await uploadAudio(file, tableId);
+    const problem = validateAudioFile(file);
+    if (problem) throw new Error(problem);
+    const existing = findAudioTrack(targetKind, targetId);
+    const usedByOthers = audioUsedBytes - (existing?.sizeBytes || 0);
+    if (usedByOthers + file.size > AUDIO_TABLE_QUOTA_BYTES) {
+      const left = Math.max(0, AUDIO_TABLE_QUOTA_BYTES - usedByOthers) / 1048576;
+      throw new Error(`Not enough room: this table's audio limit is 50 MB and ${left.toFixed(1)} MB is left.`);
+    }
+    let uploaded;
+    try {
+      uploaded = await uploadAudio(file, audioScope, audioBucket);
+    } catch (err) {
+      throw friendlyAudioError(err);
+    }
     const track = {
-      id: worldTrack?.id ?? generateEntityId(),
-      targetKind: 'world',
-      targetId: tableId,
+      id: existing?.id ?? generateEntityId(),
+      targetKind,
+      targetId: String(targetId),
       name: file.name,
       ...uploaded,
+      baseVolume: existing?.baseVolume ?? 1,
+      loop: existing?.loop ?? defaultLoopFor(targetKind),
     };
-    if (worldTrack && audioPlayback.nowPlaying?.trackId === worldTrack.id) {
-      writeAudioPlayback({ nowPlaying: null, resume: audioPlayback.resume });
+    if (isRemote) {
+      try {
+        await upsertAudioTrackRemote(state.session.tableId, track);
+      } catch (err) {
+        removeAudioFiles([uploaded.storagePath], audioBucket);
+        throw friendlyAudioError(err);
+      }
     }
-    try {
-      await upsertAudioTrackRemote(tableId, track);
-    } catch (err) {
-      removeAudioFile(uploaded.storagePath);
-      throw err;
+    if (existing) {
+      // The replaced file is gone: stop it for everyone and forget its position.
+      const { [existing.id]: _drop, ...resume } = audioPlayback.resume;
+      if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
+        writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
+      }
+      removeAudioFiles([existing.storagePath], audioBucket);
     }
     dispatch({ type: 'SET_AUDIO_TRACK', track });
-    if (worldTrack) removeAudioFile(worldTrack.storagePath);
+    if (isGuestHost) broadcastGuestChange({ type: 'SET_AUDIO_TRACK', track });
   }
 
-  function removeWorldAudio() {
-    if (!isHost || !audioEnabled || !worldTrack) return;
-    const { resume } = audioPlayback;
-    const { [worldTrack.id]: _dropped, ...restResume } = resume;
-    if (audioPlayback.nowPlaying?.trackId === worldTrack.id || worldTrack.id in resume) {
-      writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === worldTrack.id ? null : audioPlayback.nowPlaying, resume: restResume });
-    }
-    dispatch({ type: 'REMOVE_AUDIO_TRACK', id: worldTrack.id });
-    removeAudioTrackRemote(worldTrack.id).catch(reportError);
-    removeAudioFile(worldTrack.storagePath);
+  // Loop and base volume. Cloud rows are upserted whole (the host may write).
+  function patchAudioTrack(trackId, patch) {
+    const track = audioTracks[trackId];
+    if (!isHost || !track) return;
+    const next = { ...track, ...patch };
+    syncAudio({ type: 'SET_AUDIO_TRACK', track: next }, () => upsertAudioTrackRemote(state.session.tableId, next));
   }
+
+  // Delete tracks' rows and files, and clean the playback value. `audio` is the
+  // slice as it will be once they are gone (see previewAudioCascade).
+  function dropAudioTracks(removed, audio) {
+    if (!removed.length) return;
+    if (isRemote) for (const t of removed) removeAudioTrackRemote(t.id).catch(reportError);
+    removeAudioFiles(removed.map((t) => t.storagePath), audioBucket);
+    if (audio && JSON.stringify(audio.playback) !== JSON.stringify(audioPlayback)) writeAudioPlayback(audio.playback);
+  }
+
+  function removeAudioTrack(trackId) {
+    if (!isHost || !audioTracks[trackId]) return;
+    const audio = pruneAudio(state.audio, [trackId]);
+    dispatch({ type: 'REMOVE_AUDIO_TRACK', id: trackId });
+    if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_AUDIO_TRACK', id: trackId });
+    dropAudioTracks([audioTracks[trackId]], audio);
+  }
+
+  // What the layer/island/token UI needs, bundled so it can be passed down once.
+  const audioApi = {
+    enabled: audioEnabled,
+    isHost,
+    tracks: audioTracks,
+    playback: audioPlayback,
+    expired: expiredAudio,
+    usedBytes: audioUsedBytes,
+    findTrack: findAudioTrack,
+    attach: attachAudio,
+    patch: patchAudioTrack,
+    remove: removeAudioTrack,
+    play: playAudioTrack,
+    pause: pauseAudio,
+    localVolumes: localAudioVolumes,
+    setLocalVolume: (trackId, value) =>
+      setLocalAudioVolumes((prev) => {
+        const next = { ...prev, [trackId]: value };
+        saveLocalAudioVolumes(audioScope, next);
+        return next;
+      }),
+  };
+
+  // Auto-follow: when the DM switches the layer they are viewing, a layer sound
+  // starts (interrupting whatever played); with none, a playing layer or island
+  // sound pauses. World and token sounds are never touched. Deliberately keyed
+  // on the change, not the mount, so a DM page refresh never restarts anything.
+  const previousViewLayerRef = useRef(hostViewLayerId);
+  useEffect(() => {
+    if (previousViewLayerRef.current === hostViewLayerId) return;
+    previousViewLayerRef.current = hostViewLayerId;
+    if (!isHost || !audioEnabled) return;
+    const layerTrack = findAudioTrack('layer', hostViewLayerId);
+    const playing = audioPlayback.nowPlaying ? audioTracks[audioPlayback.nowPlaying.trackId] : null;
+    if (layerTrack) {
+      if (playing?.id !== layerTrack.id && !expiredAudio.has(layerTrack.id)) playAudioTrack(layerTrack.id);
+    } else if (playing && (playing.targetKind === 'layer' || playing.targetKind === 'island')) {
+      pauseAudio();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostViewLayerId]);
 
   // Pause or resume the clock from the toolbar. Re-bases the anchor to the
   // current time first (withClockRunning) so pausing freezes what is on screen
@@ -1330,9 +1443,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const isSoleIsland = layer.islandOrder.length === 1;
     if (islandId === layer.islandOrder[0] && !isSoleIsland) return; // base island stays put while a sibling exists
 
+    const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_ISLAND', layerId: currentLayerId, islandId }) : null;
     dispatch({ type: 'REMOVE_ISLAND', layerId: currentLayerId, islandId });
     if (isRemote) removeIslandRemote(islandId).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ISLAND', layerId: currentLayerId, islandId });
+    if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
 
     if (isSoleIsland) {
       // The canvas, active-island selection, and map settings all assume a
@@ -1431,10 +1546,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function removeLayer(layerId) {
     if (!isHost) return;
     if (layerId === baseLayerId) return;
+    const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_LAYER', id: layerId }) : null;
     dispatch({ type: 'REMOVE_LAYER', id: layerId });
     if (hostViewLayerId === layerId) setHostViewLayerId(baseLayerId);
     if (isRemote) removeLayerRemote(layerId).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_LAYER', id: layerId });
+    if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
 
   function enterDoor(doorEntity) {
@@ -1635,7 +1752,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // leave path funnels through (whether or not they exported first) — a
     // tab that just closes or crashes never reaches this line, which is
     // exactly the "unclean" signal findUnclosedGuestTable looks for.
-    if (isGuestHost) markGuestClean(state.session.code);
+    if (isGuestHost) {
+      markGuestClean(state.session.code);
+      // Best-effort: the scheduled purge catches anything this misses.
+      removeAudioFiles(Object.values(audioTracks).map((t) => t.storagePath), GUEST_AUDIO_BUCKET);
+    }
     // A signed-in host leaving their own cloud table must NOT delete their
     // own player row. "members can read their table" (02_policies.sql) is
     // tables' only SELECT policy, and it requires a live players row for
@@ -1784,8 +1905,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           autosaveSecondsLeft={autosaveSecondsLeft}
           clock={state.clock}
           onOpenClock={() => setShowClockModal(true)}
-          audioEnabled={audioEnabled}
-          audioNowPlaying={Boolean(audioPlayback.nowPlaying)}
+          audio={audioApi}
           onOpenMusic={() => setShowMusicModal(true)}
           onSetClockRunning={setClockRunning}
           dayPhase={tablePhase}
@@ -1875,13 +1995,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
       {showMusicModal && audioEnabled && (
         <MusicModal
-          isHost={isHost}
+          audio={audioApi}
           worldTrack={worldTrack}
-          playback={audioPlayback}
-          onUpload={uploadWorldAudio}
-          onRemove={removeWorldAudio}
-          onPlay={playAudioTrack}
-          onPause={pauseAudio}
+          worldTargetId={audioScope}
+          layers={state.layers}
+          layerOrder={state.layerOrder}
+          entities={state.entities}
+          isGuest={isGuest}
           onClose={() => setShowMusicModal(false)}
         />
       )}

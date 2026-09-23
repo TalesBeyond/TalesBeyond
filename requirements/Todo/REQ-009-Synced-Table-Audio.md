@@ -131,10 +131,10 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S008 | P | Base volume and loop fields | Add `base_volume` and `loop` to the track row, mapper, reducer patch, and write API; loop defaults by target kind. | S004 | `supabase/migrations/`, `src/lib/mappers.js`, `src/lib/remoteApi.js`, `src/state/store.jsx` |
-|  | S009 | S | Local volume storage | Per-table, per-track local volume read/write helpers in the persistence boundary, tolerant of unavailable storage. | — | `src/state/persistence.js` |
-|  | S010 | S | Engine: volume, loop, catch-up | Apply base × local to the audio element; honor loop and wrap the derived position; re-derive on join, `HYDRATE`, and reconnect resync so late joiners and reconnecters seek correctly. | S005, S008, S009 | new module under `src/lib/`, `src/components/GameView.jsx` |
-|  | S011 | U | Modal mixer controls | Per-track base slider (DM), local slider (everyone), loop toggle (DM) in the Music modal. | S006, S008, S010 | new modal component, `src/styles.css` |
+| ✅ | S008 | P | Base volume and loop fields | Add `base_volume` and `loop` to the track row, mapper, reducer patch, and write API; loop defaults by target kind. | S004 | `supabase/migrations/`, `src/lib/mappers.js`, `src/lib/remoteApi.js`, `src/state/store.jsx` |
+| ✅ | S009 | S | Local volume storage | Per-table, per-track local volume read/write helpers in the persistence boundary, tolerant of unavailable storage. | — | `src/state/persistence.js` |
+| ✅ | S010 | S | Engine: volume, loop, catch-up | Apply base × local to the audio element; honor loop and wrap the derived position; re-derive on join, `HYDRATE`, and reconnect resync so late joiners and reconnecters seek correctly. | S005, S008, S009 | new module under `src/lib/`, `src/components/GameView.jsx` |
+| ✅ | S011 | U | Modal mixer controls | Per-track base slider (DM), local slider (everyone), loop toggle (DM) in the Music modal. | S006, S008, S010 | new modal component, `src/styles.css` |
 
 ### Slice 3 — Layer and island audio
 

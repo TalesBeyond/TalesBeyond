@@ -214,6 +214,8 @@ export function mapDbAudioTrack(row) {
     storagePath: row.storage_path,
     mime: row.mime,
     sizeBytes: Number(row.size_bytes),
+    baseVolume: row.base_volume ?? 1,
+    loop: row.loop ?? true,
   };
 }
 
@@ -228,6 +230,8 @@ export function audioTrackToDb(tableId, track) {
     storage_path: track.storagePath,
     mime: track.mime,
     size_bytes: track.sizeBytes,
+    base_volume: track.baseVolume ?? 1,
+    loop: track.loop ?? true,
   };
 }
 

@@ -95,8 +95,7 @@ export default function Toolbar({
   autosaveSecondsLeft,
   clock,
   onOpenClock,
-  audioEnabled,
-  audioNowPlaying,
+  audio,
   onOpenMusic,
   onSetClockRunning,
   dayPhase,
@@ -483,10 +482,10 @@ export default function Toolbar({
         <ToolCard
           icon="🎵"
           label="Music"
-          active={audioNowPlaying}
-          disabled={!audioEnabled}
+          active={Boolean(audio?.playback?.nowPlaying)}
+          disabled={!audio?.enabled}
           onClick={onOpenMusic}
-          title={audioEnabled ? 'Table music' : 'Music needs a cloud table — it is not available in local or guest tables'}
+          title={audio?.enabled ? 'Table music' : 'Music needs a cloud or guest table — it is not available in local demo tables'}
         />
         <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (

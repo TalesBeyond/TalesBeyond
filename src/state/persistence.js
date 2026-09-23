@@ -366,3 +366,27 @@ export function readEncodedJsonFromFile(file) {
     reader.readAsArrayBuffer(file);
   });
 }
+
+// REQ-009 Synced Table Audio — each player's own volume per track, this
+// browser only. Keyed per table (its id in cloud tables, its code in guest
+// tables) and tolerant of storage being unavailable: reads fall back to {}
+// and writes are silently skipped.
+const AUDIO_VOLUME_NAMESPACE = 'hearthbound:audiovol:';
+
+export function loadLocalAudioVolumes(tableKey) {
+  try {
+    const raw = window.localStorage.getItem(AUDIO_VOLUME_NAMESPACE + tableKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalAudioVolumes(tableKey, volumes) {
+  try {
+    window.localStorage.setItem(AUDIO_VOLUME_NAMESPACE + tableKey, JSON.stringify(volumes));
+  } catch {
+    // storage blocked or full - the level just won't survive a refresh
+  }
+}

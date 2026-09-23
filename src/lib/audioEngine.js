@@ -1,39 +1,104 @@
 // REQ-009 Synced Table Audio — the playback engine. One <audio> element driven
 // from state.audio: every client derives the position from the shared anchor
-// (offsetMs + Date.now() - anchorMs), so nothing is written per tick. Slice 1
-// plays the world track only, audible to everyone.
+// (offsetMs + Date.now() - anchorMs), so nothing is written per tick.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// The audible track for this client, or null. Later slices extend this with the
-// layer/island/entity rules; keeping it one function keeps that a single change.
-export function audibleTrack(playback, tracks) {
-  const np = playback?.nowPlaying;
-  const track = np ? tracks?.[np.trackId] : null;
-  if (!track || track.targetKind !== 'world') return null;
-  return track;
+// Loops by default for world/layer/island sounds, not for one-shot token sounds.
+export function defaultLoopFor(targetKind) {
+  return targetKind !== 'entity';
 }
 
-// Where the current sound should be, in seconds, wrapped by its duration.
-export function playbackPositionSeconds(nowPlaying, durationSeconds, nowMs = Date.now()) {
+// Where the current sound should be, in seconds. A looping track wraps by its
+// duration; a one-shot returns null once it has run past the end.
+export function playbackPositionSeconds(nowPlaying, durationSeconds, loop, nowMs = Date.now()) {
   const raw = Math.max(0, (nowPlaying.offsetMs + (nowMs - nowPlaying.anchorMs)) / 1000);
-  return Number.isFinite(durationSeconds) && durationSeconds > 0 ? raw % durationSeconds : raw;
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return raw;
+  if (loop) return raw % durationSeconds;
+  return raw >= durationSeconds ? null : raw;
+}
+
+// The audibility rule (REQ-009): world and token sounds are heard by everyone;
+// a layer sound only by clients on that layer; an island sound only by clients
+// whose current layer contains that island. `expired` files are skipped.
+export function audibleTrack(playback, tracks, { currentLayerId, layers, expired } = {}) {
+  const np = playback?.nowPlaying;
+  const track = np ? tracks?.[np.trackId] : null;
+  if (!track || expired?.has(track.id)) return null;
+  switch (track.targetKind) {
+    case 'world':
+    case 'entity':
+      return track;
+    case 'layer':
+      return track.targetId === currentLayerId ? track : null;
+    case 'island':
+      return layers?.[currentLayerId]?.islands?.[track.targetId] ? track : null;
+    default:
+      return null;
+  }
 }
 
 /**
- * @returns {{ blocked: boolean, unlock: () => void }} `blocked` is true when
- * the browser refused to start audio without a user gesture; `unlock` retries
- * (call it from a click).
+ * @param {object} opts
+ * @param {boolean} opts.enabled - false in local demo mode: nothing runs
+ * @param {object} opts.playback - state.audio.playback
+ * @param {object} opts.tracks - state.audio.tracks
+ * @param {string} opts.currentLayerId - the layer this client is on
+ * @param {object} opts.layers - state.layers
+ * @param {object} opts.localVolumes - { [trackId]: 0..1 } this browser's levels
+ * @param {boolean} opts.checkFiles - HEAD-check track files up front (guest
+ *   tables, whose files expire)
+ * @returns {{ blocked: boolean, unlock: () => void, expired: Set<string> }}
  */
-export function useTableAudio({ enabled, playback, tracks }) {
+export function useTableAudio({ enabled, playback, tracks, currentLayerId, layers, localVolumes, checkFiles }) {
   const elRef = useRef(null);
   const [blocked, setBlocked] = useState(false);
-  // Bumped by unlock() so the sync effect re-runs and re-derives the position.
-  const [unlockTick, setUnlockTick] = useState(0);
+  const [expired, setExpired] = useState(() => new Set());
+  // Bumped by unlock(), and when the tab wakes or the network returns, so the
+  // sync effect re-derives the position.
+  const [resyncTick, setResyncTick] = useState(0);
 
-  const track = enabled ? audibleTrack(playback, tracks) : null;
+  const track = enabled ? audibleTrack(playback, tracks, { currentLayerId, layers, expired }) : null;
   const nowPlaying = track ? playback.nowPlaying : null;
   const url = track?.url ?? null;
+  const loop = track?.loop ?? true;
+  const volume = track ? clamp01(track.baseVolume ?? 1) * clamp01(localVolumes?.[track.id] ?? 1) : 0;
+
+  const markExpired = useCallback((id) => {
+    setExpired((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+
+  // Guest files expire after 6 hours, and a guest table resumed from autosave
+  // can reference files that are gone — find out before anyone presses play.
+  const trackKey = Object.values(tracks || {})
+    .map((t) => `${t.id}=${t.url}`)
+    .join('|');
+  useEffect(() => {
+    if (!enabled || !checkFiles) return undefined;
+    let cancelled = false;
+    for (const t of Object.values(tracks || {})) {
+      fetch(t.url, { method: 'HEAD' }).then(
+        (res) => !cancelled && !res.ok && markExpired(t.id),
+        () => {} // offline is not expiry
+      );
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, checkFiles, trackKey, markExpired]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const bump = () => setResyncTick((n) => n + 1);
+    const onVisible = () => document.visibilityState === 'visible' && bump();
+    window.addEventListener('online', bump);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('online', bump);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [enabled]);
 
   useEffect(() => {
     if (!nowPlaying || !url) {
@@ -48,8 +113,10 @@ export function useTableAudio({ enabled, playback, tracks }) {
       elRef.current.preload = 'auto';
     }
     const el = elRef.current;
-    // World music loops by default (Slice 2 makes this per-track).
-    el.loop = true;
+    el.loop = loop;
+    const trackId = nowPlaying.trackId;
+    const onError = () => markExpired(trackId);
+    el.addEventListener('error', onError);
     if (el.getAttribute('data-src') !== url) {
       el.setAttribute('data-src', url);
       el.src = url;
@@ -58,13 +125,17 @@ export function useTableAudio({ enabled, playback, tracks }) {
     let cancelled = false;
     function seekAndPlay() {
       if (cancelled) return;
-      const target = playbackPositionSeconds(nowPlaying, el.duration);
+      const target = playbackPositionSeconds(nowPlaying, el.duration, loop);
+      if (target === null) {
+        el.pause(); // a one-shot that has already finished
+        return;
+      }
       if (Math.abs(el.currentTime - target) > 0.25) el.currentTime = target;
       el.play().then(
         () => !cancelled && setBlocked(false),
         (err) => {
-          // A file that cannot load must never throw; only a gesture block is
-          // something the player can fix.
+          // Only a gesture block is something the player can fix; a file that
+          // cannot load surfaces through the 'error' event instead.
           if (!cancelled && err?.name === 'NotAllowedError') setBlocked(true);
         }
       );
@@ -76,8 +147,16 @@ export function useTableAudio({ enabled, playback, tracks }) {
     return () => {
       cancelled = true;
       el.removeEventListener('loadedmetadata', seekAndPlay);
+      el.removeEventListener('error', onError);
     };
-  }, [url, nowPlaying?.trackId, nowPlaying?.anchorMs, nowPlaying?.offsetMs, unlockTick]);
+    // `playback` itself is a dependency so a resync (HYDRATE after a
+    // reconnect) re-derives the position even when the values are unchanged.
+  }, [url, loop, playback, nowPlaying?.trackId, nowPlaying?.anchorMs, nowPlaying?.offsetMs, resyncTick, markExpired]);
+
+  // Volume changes apply live, without re-seeking. (iOS Safari ignores it.)
+  useEffect(() => {
+    if (elRef.current) elRef.current.volume = volume;
+  }, [volume, url]);
 
   useEffect(
     () => () => {
@@ -91,6 +170,10 @@ export function useTableAudio({ enabled, playback, tracks }) {
     []
   );
 
-  const unlock = useCallback(() => setUnlockTick((n) => n + 1), []);
-  return { blocked, unlock };
+  const unlock = useCallback(() => setResyncTick((n) => n + 1), []);
+  return { blocked, unlock, expired };
+}
+
+function clamp01(n) {
+  return Math.min(1, Math.max(0, Number(n) || 0));
 }

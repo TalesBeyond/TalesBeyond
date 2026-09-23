@@ -1,46 +1,42 @@
 import React, { useRef, useState } from 'react';
-import { validateAudioFile } from '../lib/storageUpload.js';
+import { DebouncedRange } from './SoundField.jsx';
+import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
 
 function formatSeconds(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-// The Music modal (REQ-009). Slice 1 lists just the World music row: the DM
-// uploads/replaces the file and plays or pauses it; players see its status.
-export default function MusicModal({ isHost, worldTrack, playback, onUpload, onRemove, onPlay, onPause, onClose }) {
-  const fileRef = useRef(null);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+const megabytes = (bytes) => (bytes / 1048576).toFixed(1);
 
-  const isPlaying = Boolean(worldTrack && playback.nowPlaying?.trackId === worldTrack.id);
-  const resumeMs = worldTrack ? playback.resume[worldTrack.id] : undefined;
-
-  async function pickFile(e) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const problem = validateAudioFile(file);
-    if (problem) return setError(problem);
-    setError('');
-    setBusy(true);
-    try {
-      await onUpload(file);
-    } catch (err) {
-      setError(err.message || 'Upload failed.');
-    } finally {
-      setBusy(false);
+// Every sound in the session, world music first. The DM sees a synced base
+// slider, the loop toggle and play/pause per track; every player sees just
+// their own local slider.
+export default function MusicModal({ audio, worldTrack, worldTargetId, layers, layerOrder, entities, isGuest, onClose }) {
+  const rows = [{ key: 'world', source: 'World music', kind: 'world', track: worldTrack }];
+  for (const track of Object.values(audio.tracks)) {
+    if (track.targetKind === 'layer' && layers[track.targetId]) {
+      rows.push({ key: track.id, source: `Layer — ${layers[track.targetId].name}`, kind: 'layer', track, order: layerOrder.indexOf(track.targetId) });
+    } else if (track.targetKind === 'island') {
+      const island = Object.values(layers)
+        .map((layer) => layer.islands?.[track.targetId])
+        .find(Boolean);
+      if (island) rows.push({ key: track.id, source: `Island — ${island.name}`, kind: 'island', track, order: 1000 });
+    } else if (track.targetKind === 'entity' && entities[track.targetId]) {
+      rows.push({ key: track.id, source: `Token — ${entities[track.targetId].name}`, kind: 'entity', track, order: 2000 });
     }
   }
+  const [world, ...rest] = rows;
+  rest.sort((a, b) => a.order - b.order);
 
-  let status = 'No file yet';
-  if (worldTrack) status = isPlaying ? 'Now playing' : resumeMs ? `Paused at ${formatSeconds(resumeMs)}` : 'Stopped';
+  const used = audio.usedBytes;
+  const pct = Math.min(100, (used / AUDIO_TABLE_QUOTA_BYTES) * 100);
 
   return (
     <div className="book-backdrop" onClick={onClose}>
       <div
         className="book-card"
-        style={{ maxWidth: 520, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
+        style={{ maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">
@@ -49,45 +45,137 @@ export default function MusicModal({ isHost, worldTrack, playback, onUpload, onR
             ×
           </button>
         </div>
-        <div style={{ padding: 16, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          <div className="music-row">
-            <div className="music-row-main">
-              <div className="music-row-source">World music</div>
-              <div className="music-row-name">{worldTrack ? worldTrack.name : '—'}</div>
-              <div className="music-row-status">{status}</div>
-            </div>
-            {isHost && worldTrack && (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => (isPlaying ? onPause() : onPlay(worldTrack.id))}
-                title={isPlaying ? 'Pause for everyone' : 'Play for everyone'}
-              >
-                {isPlaying ? '⏸ Pause' : '▶ Play'}
-              </button>
-            )}
-          </div>
+        <div style={{ padding: 16, flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <MusicRow row={world} audio={audio} worldTargetId={worldTargetId} />
+          {rest.map((row) => (
+            <MusicRow key={row.key} row={row} audio={audio} />
+          ))}
 
-          {isHost && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <input ref={fileRef} type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" style={{ display: 'none' }} onChange={pickFile} />
-              <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-                {busy ? 'Uploading…' : worldTrack ? 'Replace file' : 'Upload MP3 or WAV'}
-              </button>
-              {worldTrack && (
-                <button className="btn btn-danger btn-sm" disabled={busy} onClick={onRemove}>
-                  Remove
-                </button>
-              )}
+          {audio.isHost && (
+            <div className="music-usage">
+              <div className="music-usage-bar">
+                <div className="music-usage-fill" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="music-row-status">
+                {megabytes(used)} of {megabytes(AUDIO_TABLE_QUOTA_BYTES)} MB used · {megabytes(Math.max(0, AUDIO_TABLE_QUOTA_BYTES - used))} MB left
+                {isGuest ? ' · guest audio is removed after 6 hours' : ''}
+              </div>
             </div>
           )}
-          {error && <p className="error-note" style={{ marginTop: 8 }}>{error}</p>}
-          <p className="footer-note" style={{ border: 'none', padding: '10px 0 0' }}>
-            {isHost
-              ? 'MP3 or WAV, up to 10 MB. The music plays for everyone at the table.'
-              : 'The DM controls the music. It plays for everyone at the table.'}
+          <p className="footer-note" style={{ border: 'none', padding: 0 }}>
+            {audio.isHost
+              ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to layers, islands and tokens from Map settings and the token inspector.'
+              : 'The DM controls the music. Your volume slider only changes what you hear.'}
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MusicRow({ row, audio, worldTargetId }) {
+  const { track } = row;
+  const fileRef = useRef(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const expired = track ? audio.expired.has(track.id) : false;
+  const isPlaying = Boolean(track && audio.playback.nowPlaying?.trackId === track.id);
+  const resumeMs = track ? audio.playback.resume[track.id] : undefined;
+  let status = 'No file yet';
+  if (track) {
+    if (expired) status = audio.isHost ? 'File expired — re-upload' : 'Unavailable';
+    else status = isPlaying ? 'Now playing' : resumeMs ? `Paused at ${formatSeconds(resumeMs)}` : 'Stopped';
+  }
+
+  async function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    setBusy(true);
+    try {
+      await audio.attach('world', worldTargetId, file);
+    } catch (err) {
+      setError(err.message || 'Upload failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const localVolume = track ? audio.localVolumes[track.id] ?? 1 : 1;
+
+  return (
+    <div className={`music-row${expired && !audio.isHost ? ' music-row-muted' : ''}`}>
+      <div className="music-row-head">
+        <div className="music-row-main">
+          <div className="music-row-source">{row.source}</div>
+          <div className="music-row-name">{track ? track.name : '—'}</div>
+          <div className="music-row-status">{status}</div>
+        </div>
+        {audio.isHost && track && !expired && (
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => (isPlaying ? audio.pause() : audio.play(track.id))}
+            title={isPlaying ? 'Pause for everyone' : 'Play for everyone who can hear it'}
+          >
+            {isPlaying ? '⏸ Pause' : '▶ Play'}
+          </button>
+        )}
+      </div>
+
+      {track && !expired && (
+        <div className="music-sliders">
+          {audio.isHost && (
+            <label className="music-slider">
+              <span>Table volume</span>
+              <DebouncedRange value={track.baseVolume} label={`Table volume for ${row.source}`} onCommit={(v) => audio.patch(track.id, { baseVolume: v })} />
+            </label>
+          )}
+          <label className="music-slider">
+            <span>{audio.isHost ? 'My volume' : 'Volume'}</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={localVolume}
+              aria-label={`My volume for ${row.source}`}
+              onChange={(e) => audio.setLocalVolume(track.id, Number(e.target.value))}
+            />
+          </label>
+        </div>
+      )}
+
+      {audio.isHost && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+          {track && !expired && (
+            <label className="checkbox-row" style={{ margin: 0 }}>
+              <input type="checkbox" checked={track.loop} onChange={(e) => audio.patch(track.id, { loop: e.target.checked })} />
+              Loop
+            </label>
+          )}
+          {row.kind === 'world' && (
+            <>
+              <input ref={fileRef} type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" style={{ display: 'none' }} onChange={pickFile} />
+              <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+                {busy ? 'Uploading…' : track ? 'Replace file' : 'Upload MP3 or WAV'}
+              </button>
+            </>
+          )}
+          {track && (
+            <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => audio.remove(track.id)}>
+              Remove
+            </button>
+          )}
+        </div>
+      )}
+      {audio.isHost && expired && row.kind !== 'world' && (
+        <p className="footer-note" style={{ border: 'none', padding: '6px 0 0' }}>
+          Re-upload it from Map settings or the token inspector.
+        </p>
+      )}
+      {error && <p className="error-note" style={{ marginTop: 8 }}>{error}</p>}
     </div>
   );
 }
