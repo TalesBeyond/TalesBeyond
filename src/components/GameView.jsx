@@ -15,6 +15,7 @@ import {
   downloadIslandAsFile,
   downloadDataUrl,
   readJsonFromFile,
+  readEncodedJsonFromFile,
   saveIdentity,
   clearCurrentPointer,
   sessionExists,
@@ -74,6 +75,12 @@ const RESYNC_BACKOFF_MS = [2000, 4000, 8000, 16000, 30000];
 const HOST_ABSENCE_GRACE_MS = 5000;
 const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
 
+// A host-only safety net alongside the manual Save button (Toolbar's
+// Configurations menu) — periodically calls the same save path in case they
+// forget. Meaningless in cloud mode (isRemote syncs every mutation as it
+// happens; saveNow there just relabels the toolbar), but harmless there too.
+const AUTOSAVE_INTERVAL_SECONDS = 15 * 60;
+
 function clampZoom(z) {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));
 }
@@ -101,6 +108,41 @@ function findFreeCell(entities, islandId, cols, rows) {
 // side sits on. Every other entity kind stays scoped to its own layerId
 // (and islandId) only. Returns a dict keyed by id, with col/row/islandId
 // already resolved for viewing `layerId`.
+// Where a hero lands after walking through a door: one square off the
+// door itself, on whichever side is being entered — never standing on the
+// door's own square. `doorEntity` must be the raw entity (state.entities[id]),
+// not a view-resolved one (entitiesVisibleOnLayer overrides col/row/islandId
+// for a door viewed from its target side, which would give the wrong "home
+// side" position here). Falls back to the first free cell on that island if
+// every orthogonal neighbor is occupied or off the grid.
+function arrivalCellNearDoor(state, doorEntity, destinationLayerId) {
+  const enteringTargetSide = destinationLayerId === doorEntity.targetLayerId;
+  const islandId = enteringTargetSide ? state.layers[destinationLayerId]?.islandOrder[0] : doorEntity.islandId;
+  const col = enteringTargetSide ? doorEntity.targetCol ?? doorEntity.col : doorEntity.col;
+  const row = enteringTargetSide ? doorEntity.targetRow ?? doorEntity.row : doorEntity.row;
+  const island = state.layers[destinationLayerId]?.islands[islandId];
+  if (!island) return { islandId, col, row };
+
+  const entitiesOnDestination = entitiesVisibleOnLayer(state, destinationLayerId, true);
+  const occupied = new Set(
+    Object.values(entitiesOnDestination)
+      .filter((e) => e.islandId === islandId)
+      .map((e) => `${e.col},${e.row}`)
+  );
+  const candidates = [
+    { col, row: row + 1 },
+    { col, row: row - 1 },
+    { col: col + 1, row },
+    { col: col - 1, row },
+  ];
+  for (const c of candidates) {
+    if (c.col < 0 || c.row < 0 || c.col >= island.cols || c.row >= island.rows) continue;
+    if (!occupied.has(`${c.col},${c.row}`)) return { islandId, col: c.col, row: c.row };
+  }
+  const free = findFreeCell(entitiesOnDestination, islandId, island.cols, island.rows);
+  return { islandId, col: free.col, row: free.row };
+}
+
 function entitiesVisibleOnLayer(state, layerId, showHiddenTraps) {
   const result = {};
   const targetLayer = state.layers[layerId];
@@ -247,7 +289,7 @@ function saveOrWarn(code, nextState) {
   const ok = saveSession(code, nextState);
   if (!ok) {
     alert(
-      'Could not save — your browser storage is full. Try removing a background image or some custom-uploaded token art, or use Export .json to back up this table.'
+      'Could not save — your browser storage is full. Try removing a background image or some custom-uploaded token art, or use Export .bmp to back up this table.'
     );
   }
   return ok;
@@ -259,6 +301,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const [tool, setTool] = useState('play');
   const [selectedId, setSelectedId] = useState(null);
   const [savedAgo, setSavedAgo] = useState(mode === 'remote' ? 'Synced to the cloud' : 'Saved just now');
+  const [autosaveSecondsLeft, setAutosaveSecondsLeft] = useState(AUTOSAVE_INTERVAL_SECONDS);
   const [pendingDoor, setPendingDoor] = useState(null);
   // REQ-008: whether this guest DM has exported at least once since opening
   // this table — purely in-memory, per-mount (not the localStorage clean
@@ -749,6 +792,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // mob's hp (RightPanel.jsx's confirmAttack). Bounded to a plain decrease
   // so this only ever reads as "apply attack damage," never "edit a
   // monster's hp."
+  // A player taking an item from an opened chest (RightPanel's "Take"
+  // button) removes exactly one whole item stack from the chest's `items`
+  // — same as the host's "Give" — and nothing else. Bounded so this only
+  // ever reads as "loot one stack," never "edit a chest's contents."
+  function isTakeChestItemPatch(entity, patch) {
+    const keys = Object.keys(patch);
+    if (keys.length !== 1 || keys[0] !== 'items') return false;
+    const oldItems = entity.items || [];
+    const newItems = patch.items || [];
+    if (newItems.length !== oldItems.length - 1) return false;
+    const removed = oldItems.filter((it) => !newItems.some((n) => n.id === it.id));
+    if (removed.length !== 1) return false;
+    // Every remaining item must be byte-for-byte unchanged — a value
+    // compare, not a reference compare, since a guest's patch arrives here
+    // after a round trip through Realtime broadcast (see
+    // isHeroOwnerSheetPatch above for why that matters).
+    return newItems.every((it) => JSON.stringify(it) === JSON.stringify(oldItems.find((o) => o.id === it.id)));
+  }
+
   function canDamageMob(entity, patch) {
     const keys = Object.keys(patch);
     if (keys.length !== 1 || keys[0] !== 'hp') return false;
@@ -764,7 +826,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function canPlayerUpdateEntity(entity, patch, playerId) {
     if (!entity) return false;
     if (entity.kind === 'chest') {
-      return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
+      return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key)) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch);
@@ -866,7 +928,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
-  function moveEntity(id, col, row, islandId) {
+  // `layerId` is only ever passed by confirmEnterDoor, to carry a hero
+  // across to the door's other side along with the col/row/islandId move —
+  // every other caller (MapBoard's drag) leaves it undefined and this
+  // behaves exactly as before.
+  function moveEntity(id, col, row, islandId, layerId) {
     const entity = state.entities[id];
     if (!canMoveEntity(entity)) return;
     // Dragging a door while viewing it from its target-layer side repositions
@@ -883,12 +949,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // apply — never an optimistic local dispatch (see Architectural
     // decisions: the DM's browser is the sole source of truth).
     if (isGuest && !isGuestHost) {
-      guestChannelRef.current?.sendIntent({ type: 'MOVE_ENTITY', id, col, row, islandId }, me.id);
+      guestChannelRef.current?.sendIntent({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId }, me.id);
       return;
     }
-    dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId });
-    if (isRemote) moveEntityRemote(id, col, row, islandId).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId });
+    dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
+    if (isRemote) moveEntityRemote(id, col, row, islandId, layerId).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
   }
 
   function updateEntity(id, patch) {
@@ -980,6 +1046,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
     updateEntity(hero.id, { sheet: { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } } });
     updateEntity(chestEntity.id, { items: (chestEntity.items || []).filter((it) => it.id !== item.id) });
+  }
+
+  // The player-facing counterpart to giveChestItemToHero above: a player
+  // loots an opened chest into their own hero's Bag — never anyone else's,
+  // since the target hero is resolved from `me.id` here rather than taking
+  // a heroId from the caller (RightPanel's ChestInspector doesn't have one
+  // to offer a player anyway — see isTakeChestItemPatch for the write-side
+  // guard against taking more than one stack).
+  function takeChestItem(chestEntity, item) {
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    if (!myHero) return;
+    giveChestItemToHero(chestEntity, item, myHero.id);
   }
 
   function updateLayer(layerId, patch) {
@@ -1284,6 +1362,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const pending = pendingDoor;
     setPendingDoor(null);
     if (!pending) return;
+    // Move the player's own hero off the square it was standing on and
+    // onto the new layer, one square clear of the door rather than sitting
+    // on top of it — the door itself is always the raw entity (never the
+    // target-side view-resolved copy MapBoard's onEnterDoor handed
+    // enterDoor), so arrivalCellNearDoor sees its true home/target
+    // col/row regardless of which side was clicked.
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    if (myHero) {
+      const rawDoor = state.entities[pending.door.id];
+      if (rawDoor) {
+        const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
+        moveEntity(myHero.id, arrival.col, arrival.row, arrival.islandId, pending.destinationLayerId);
+      }
+    }
     const patch = { currentLayerId: pending.destinationLayerId };
     // REQ-008: only a player ever reaches this (enterDoor excludes the
     // host), so this is always the guest-player intent branch, never the
@@ -1342,12 +1434,44 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   function saveNow() {
     console.log('Save clicked — saving table', state.session.code);
+    autosaveSecondsRef.current = AUTOSAVE_INTERVAL_SECONDS;
+    setAutosaveSecondsLeft(AUTOSAVE_INTERVAL_SECONDS);
     if (isRemote) {
       setSavedAgo('Synced to the cloud');
       return;
     }
     if (saveOrWarn(state.session.code, state)) setSavedAgo('Saved just now');
   }
+
+  // `saveNow` closes over this render's `state`, so the interval below can't
+  // call it directly — a setInterval callback keeps whatever closure was
+  // live when the effect last ran, which (since the effect only depends on
+  // isHost) would mean saving the same stale snapshot every 15 minutes
+  // forever. Stashing the latest `saveNow` in a ref, reassigned every
+  // render, sidesteps that — same trick as `stateRef` above for the guest
+  // channel's handlers.
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+  // The actual countdown lives in a ref, mutated directly by the interval —
+  // `autosaveSecondsLeft` state only mirrors it for display. Driving the
+  // countdown through a setState *updater* instead would mean calling
+  // saveNowRef.current() (a real side effect: writes to localStorage)
+  // from inside that updater function, which React may invoke more than
+  // once per tick (e.g. Strict Mode's double-invoke) and could double-save.
+  const autosaveSecondsRef = useRef(AUTOSAVE_INTERVAL_SECONDS);
+
+  useEffect(() => {
+    if (!isHost) return undefined;
+    const tick = setInterval(() => {
+      autosaveSecondsRef.current -= 1;
+      if (autosaveSecondsRef.current <= 0) {
+        saveNowRef.current();
+      } else {
+        setAutosaveSecondsLeft(autosaveSecondsRef.current);
+      }
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [isHost]);
 
   function exportTable() {
     if (isGuestHost) {
@@ -1366,7 +1490,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // Overwrites the entire shared table — DM only (see PITFALLS.md #1).
     if (!isHost) return;
     try {
-      const raw = await readJsonFromFile(file);
+      const raw = await readEncodedJsonFromFile(file);
       if (!raw?.session?.code || !(raw?.map || raw?.layers)) {
         alert('That file does not look like a Hearthbound table export.');
         return;
@@ -1569,6 +1693,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onRegenerateCode={regenerateCode}
           onToggleOpen={toggleOpen}
           onSaveNow={saveNow}
+          autosaveSecondsLeft={autosaveSecondsLeft}
           clock={state.clock}
           onOpenClock={() => setShowClockModal(true)}
           onSetClockRunning={setClockRunning}
@@ -1652,6 +1777,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         tool={tool}
         heroes={heroes}
         onGiveChestItem={giveChestItemToHero}
+        onTakeChestItem={takeChestItem}
         collapsed={rightCollapsed}
         onToggleCollapsed={() => setRightCollapsed((c) => !c)}
       />

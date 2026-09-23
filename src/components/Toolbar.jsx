@@ -11,6 +11,12 @@ import ClockReadout from './ClockReadout.jsx';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
+function formatCountdown(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function newDiceSet(overrides = {}) {
   return { id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, title: '', sides: 20, quantity: 1, ...overrides };
 }
@@ -86,6 +92,7 @@ export default function Toolbar({
   onRegenerateCode,
   onToggleOpen,
   onSaveNow,
+  autosaveSecondsLeft,
   clock,
   onOpenClock,
   onSetClockRunning,
@@ -502,11 +509,18 @@ export default function Toolbar({
             onCopy={copyHostKey}
             title={
               isGuestHost
-                ? 'Click to copy your private DM code — save it, along with an exported .json, to resume this table later via "Resume guest session" on the Landing screen'
+                ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
                 : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
             }
           />
-          <ToolCard icon="🔄" label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
+          {/* Regenerating isn't supported for a guest table (GameView.jsx's
+              regenerateCode just alerts and bails — the invite code doubles
+              as the peer broadcast channel's name, so rotating it would
+              strand anyone already connected) — hide the button rather than
+              offer a dead end. */}
+          {!isGuestHost && (
+            <ToolCard icon="🔄" label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
+          )}
         </div>
       )}
 
@@ -545,6 +559,18 @@ export default function Toolbar({
 
       <div className="spacer" />
 
+      {/* A host-only safety net alongside the manual Save inside
+          Configurations below — counts down from 5:00 and autosaves the
+          same way that button does, in case the DM forgets. */}
+      {isHost && (
+        <span
+          className="autosave-countdown"
+          title={`Auto-saves in ${formatCountdown(autosaveSecondsLeft)} — the Save button in Configurations still works any time`}
+        >
+          ⏳ {formatCountdown(autosaveSecondsLeft)}
+        </span>
+      )}
+
       {/* The very last group: save/export/import/close/leave — the
           "shutting the book" actions, tucked away since they're reached for
           far less often than anything above. */}
@@ -559,9 +585,9 @@ export default function Toolbar({
         {isHost && (
           <>
             <ToolCard icon="💾" label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
-            <ToolCard icon="⬇" label="Export" onClick={() => pick(onExport)} title="Export .json" />
-            <ToolCard icon="⬆" label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .json — overwrites the whole table" />
-            <input ref={importRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+            <ToolCard icon="⬇" label="Export" onClick={() => pick(onExport)} title="Export .bmp" />
+            <ToolCard icon="⬆" label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .bmp — overwrites the whole table" />
+            <input ref={importRef} type="file" accept="image/bmp,.bmp" style={{ display: 'none' }} onChange={handleImportFile} />
             <ToolCard
               icon={session.isOpen ? '🔓' : '🔒'}
               label={session.isOpen ? 'Close' : 'Reopen'}

@@ -300,8 +300,8 @@ export async function addEntityRemote(tableId, entity) {
   }
 }
 
-export async function moveEntityRemote(entityId, col, row, islandId) {
-  const db = { col, row, ...(islandId ? { island_id: islandId } : {}) };
+export async function moveEntityRemote(entityId, col, row, islandId, layerId) {
+  const db = { col, row, ...(islandId ? { island_id: islandId } : {}), ...(layerId ? { layer_id: layerId } : {}) };
   must(await supabase.from('entities').update(db).eq('id', entityId), 'moveEntity');
 }
 

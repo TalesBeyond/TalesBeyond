@@ -38,6 +38,7 @@ export default function RightPanel({
   tool,
   heroes,
   onGiveChestItem,
+  onTakeChestItem,
   collapsed,
   onToggleCollapsed,
 }) {
@@ -108,9 +109,11 @@ export default function RightPanel({
             tool={tool}
             heroes={heroes}
             isHost={isHost}
+            meId={meId}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             onGiveItem={onGiveChestItem}
+            onTakeItem={onTakeChestItem}
           />
         ) : selectedEntity.kind === 'trap' ? (
           <TrapInspector entity={selectedEntity} isHost={isHost} onUpdate={onUpdateEntity} onRemove={onRemoveEntity} />
@@ -534,10 +537,40 @@ function GiveChestItemButton({ item, heroes, onGive }) {
   );
 }
 
-function ChestInspector({ entity, tool, heroes, isHost, onUpdate, onRemove, onGiveItem }) {
+// A player's own "Take" on an opened chest's item — mirrors
+// GiveChestItemButton but has nowhere to pick a hero: it always loots into
+// whichever hero the DM has assigned this viewer (RightPanel's `meId`), so
+// it's just a button, disabled with an explanatory title until one exists.
+function TakeChestItemButton({ disabled, onTake }) {
+  const [feedback, setFeedback] = useState('');
+
+  function handleClick() {
+    onTake();
+    setFeedback('Added to Bag');
+    setTimeout(() => setFeedback(''), 2000);
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={disabled}
+        title={disabled ? 'You need your own hero on the map first' : 'Add this to your Bag'}
+        onClick={handleClick}
+      >
+        Take
+      </button>
+      {feedback && <span style={{ fontSize: 11, color: 'var(--moss-dim)', fontWeight: 600 }}>{feedback}</span>}
+    </div>
+  );
+}
+
+function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove, onGiveItem, onTakeItem }) {
   const items = entity.items || [];
   const capacity = chestSlotCount(entity.chestSize);
   const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
+  const myHero = (heroes || []).find((h) => h.ownerId === meId);
 
   function toggleOpen() {
     const opened = !entity.opened;
@@ -599,17 +632,26 @@ function ChestInspector({ entity, tool, heroes, isHost, onUpdate, onRemove, onGi
             onUpdateQty={(id, qty) => onUpdate(entity.id, { items: items.map((it) => (it.id === id ? { ...it, qty } : it)) })}
           />
         </>
+      ) : !isHost && !entity.opened ? (
+        <>
+          <label className="field-label" style={{ marginTop: 14 }}>
+            Contents
+          </label>
+          <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+            Open the chest to see what's inside.
+          </p>
+        </>
       ) : (
         <>
           <label className="field-label" style={{ marginTop: 14 }}>
-            Contents {items.length}/{capacity}{' '}
-            {isHost ? '— switch to the Edit tool to change' : '(host only can edit)'}
+            Contents {items.length}/{capacity}
+            {isHost ? ' — switch to the Edit tool to change' : ''}
           </label>
           {items.length === 0 ? (
             <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
               This chest is empty.
             </p>
-          ) : (
+          ) : isHost ? (
             <ul className="condition-list">
               {items.map((item) => (
                 <li key={item.id}>
@@ -617,6 +659,20 @@ function ChestInspector({ entity, tool, heroes, isHost, onUpdate, onRemove, onGi
                 </li>
               ))}
             </ul>
+          ) : (
+            <div className="chest-item-list">
+              {items.map((item) => (
+                <div className="chest-item-row" key={item.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                  <div className="chest-item-info">
+                    <span className="chest-item-name">
+                      {item.name}
+                      {item.qty > 1 ? ` × ${item.qty}` : ''}
+                    </span>
+                  </div>
+                  <TakeChestItemButton disabled={!myHero} onTake={() => onTakeItem(entity, item)} />
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

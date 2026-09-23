@@ -328,6 +328,9 @@ function reducer(state, action) {
             col: action.col,
             row: action.row,
             ...(action.islandId ? { islandId: action.islandId } : {}),
+            // Only set by confirmEnterDoor, to carry a hero across to a
+            // door's other layer along with its col/row/islandId.
+            ...(action.layerId ? { layerId: action.layerId } : {}),
           },
         },
       };

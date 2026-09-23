@@ -494,6 +494,19 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 .toolbar .spacer { flex: 1; }
 
+.autosave-countdown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--parchment-300);
+  padding: 4px 8px;
+  border-left: 1px solid var(--ink-700);
+  white-space: nowrap;
+}
+
 .toolbar.collapsed { padding: 4px 16px; }
 
 .toolbar-collapse-btn {

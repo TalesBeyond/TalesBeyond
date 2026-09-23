@@ -9,7 +9,7 @@ import {
   sessionExists,
   listLocalSessionCodes,
   hashGuestCode,
-  readJsonFromFile,
+  readEncodedJsonFromFile,
   markGuestActive,
   clearGuestMeta,
   findUnclosedGuestTable,
@@ -28,6 +28,10 @@ import { deleteTableStorage } from '../lib/storageUpload.js';
 import { requestGuestJoin } from '../lib/guestRealtime.js';
 
 const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#b23a3a', '#3a6ea5', '#c98a3b'];
+
+// Temporary: host accounts (Sign up / Log in) are hidden for now — hosting
+// only offers a guest table (start new or resume) until this flips back on.
+const SHOW_HOST_LOGIN = false;
 
 export default function Landing({ onEnter }) {
   const [mode, setMode] = useState('host');
@@ -172,14 +176,16 @@ function HostForm({ onEnter }) {
             </div>
           </div>
         )}
-        <button type="button" className="btn btn-primary btn-block" onClick={() => setHostChoice('account')}>
-          Sign up / Log in
-        </button>
+        {SHOW_HOST_LOGIN && (
+          <button type="button" className="btn btn-primary btn-block" onClick={() => setHostChoice('account')}>
+            Sign up / Log in
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-secondary btn-block"
           onClick={() => setHostChoice('guest')}
-          style={{ marginTop: 8 }}
+          style={SHOW_HOST_LOGIN ? { marginTop: 8 } : undefined}
         >
           Start a guest table
         </button>
@@ -682,7 +688,7 @@ function GuestResumeForm({ onEnter, onBack }) {
     if (!file) return;
     setFileName(file.name);
     setError('');
-    readJsonFromFile(file)
+    readEncodedJsonFromFile(file)
       .then((raw) => setFileContents(raw))
       .catch(() => {
         setFileContents(null);
@@ -736,7 +742,7 @@ function GuestResumeForm({ onEnter, onBack }) {
       {error && <div className="error-note">{error}</div>}
 
       <label className="field-label">Exported table file</label>
-      <input className="field" type="file" accept="application/json" onChange={handleFile} />
+      <input className="field" type="file" accept="image/bmp,.bmp" onChange={handleFile} />
       {fileName && (
         <p className="footer-note" style={{ border: 'none', padding: '6px 2px 0', margin: 0 }}>
           {fileName}
