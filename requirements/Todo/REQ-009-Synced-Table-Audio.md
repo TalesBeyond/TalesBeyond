@@ -167,11 +167,11 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S020 | P | Guest scratch bucket | Migration adding the guest bucket: authenticated insert under a `<CODE>/` prefix, public-read, 10 MB limit, MP3/WAV allow-list, owner-scoped delete. | — | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S021 | S | Guest upload path | Ensure an anonymous Supabase session before a guest upload; upload to the guest bucket; keep track records and playback in state only, broadcast with `broadcastGuestChange`; client-side 50 MB quota check. Enable the Music button for guest tables. | S020, S010 | `src/lib/auth.js`, `src/lib/storageUpload.js`, `src/components/GameView.jsx`, `src/components/Toolbar.jsx` |
-|  | S022 | S | Expired-file handling | When a track's file fails to load, mark it expired in the modal and skip it in the engine without throwing; covers guest resume from autosave. | S021 | new module under `src/lib/`, new modal component |
-|  | S023 | P | Scheduled purge | A service-role scheduled job that removes guest-bucket objects older than 6 hours through the Storage API (Open Question Q4). | S020 | new `supabase/functions/` entry, `supabase/migrations/` |
-|  | S024 | S | Best-effort delete on leave | On a guest host's deliberate leave, delete that table's uploaded files from the guest bucket. | S021 | `src/components/GameView.jsx` |
+| ✅ | S020 | P | Guest scratch bucket | Migration adding the guest bucket: authenticated insert under a `<CODE>/` prefix, public-read, 10 MB limit, MP3/WAV allow-list, owner-scoped delete. | — | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S021 | S | Guest upload path | Ensure an anonymous Supabase session before a guest upload; upload to the guest bucket; keep track records and playback in state only, broadcast with `broadcastGuestChange`; client-side 50 MB quota check. Enable the Music button for guest tables. | S020, S010 | `src/lib/auth.js`, `src/lib/storageUpload.js`, `src/components/GameView.jsx`, `src/components/Toolbar.jsx` |
+| ✅ | S022 | S | Expired-file handling | When a track's file fails to load, mark it expired in the modal and skip it in the engine without throwing; covers guest resume from autosave. | S021 | new module under `src/lib/`, new modal component |
+| ✅ | S023 | P | Scheduled purge | A service-role scheduled job that removes guest-bucket objects older than 6 hours through the Storage API (Open Question Q4). | S020 | new `supabase/functions/` entry, `supabase/migrations/` |
+| ✅ | S024 | S | Best-effort delete on leave | On a guest host's deliberate leave, delete that table's uploaded files from the guest bucket. | S021 | `src/components/GameView.jsx` |
 
 ### Slice 6 — Limits and hardening
 

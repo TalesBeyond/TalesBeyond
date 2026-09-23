@@ -1892,3 +1892,94 @@ create trigger islands_delete_audio after delete on islands
 drop trigger if exists entities_delete_audio on entities;
 create trigger entities_delete_audio after delete on entities
   for each row execute function delete_audio_for_target('entity');
+
+-- ======================================================================
+-- 42_guest_audio_bucket.sql
+-- ======================================================================
+-- Hearthbound — 42_guest_audio_bucket.sql
+-- REQ-009 Slice 5: scratch storage for guest tables' audio.
+--
+-- A guest DM has no `tables` row and no `players` row, so the table-scoped
+-- policies of 38_synced_table_audio.sql cannot authorize them. This bucket
+-- lets any signed-in (anonymous) session upload under a `<INVITE CODE>/`
+-- prefix, and lets only the uploader delete their own files. Nothing here can
+-- enforce a per-table quota — the 10 MB object limit and MP3/WAV allow-list
+-- are the only server-side bounds. Files are purged after 6 hours by the
+-- purge-guest-audio Edge Function (see 43_guest_audio_purge.sql).
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('guest-audio', 'guest-audio', true, 10485760,
+          array['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave'])
+  on conflict (id) do update
+    set file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view guest audio" on storage.objects;
+create policy "public can view guest audio"
+  on storage.objects for select
+  using (bucket_id = 'guest-audio');
+
+drop policy if exists "guests can upload audio under their code" on storage.objects;
+create policy "guests can upload audio under their code"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'guest-audio'
+    and auth.uid() is not null
+    and name ~ '^[A-Za-z0-9]+/[^/]+$'
+  );
+
+-- Owner-scoped delete. Newer Storage versions record the uploader in
+-- owner_id (text); older ones in owner (uuid) — use whichever exists.
+do $$
+begin
+  drop policy if exists "guests can delete their own audio" on storage.objects;
+  if exists (select 1 from information_schema.columns where table_schema = 'storage' and table_name = 'objects' and column_name = 'owner_id') then
+    create policy "guests can delete their own audio"
+      on storage.objects for delete
+      using (bucket_id = 'guest-audio' and owner_id = auth.uid()::text);
+  else
+    create policy "guests can delete their own audio"
+      on storage.objects for delete
+      using (bucket_id = 'guest-audio' and owner = auth.uid());
+  end if;
+end $$;
+
+-- ======================================================================
+-- 43_guest_audio_purge.sql
+-- ======================================================================
+-- Hearthbound — 43_guest_audio_purge.sql
+-- REQ-009 Slice 5: the scheduled purge of guest audio older than 6 hours.
+--
+-- Deleting rows from storage.objects with SQL does NOT free the backing file,
+-- so the purge has to go through the Storage API, which needs a service-role
+-- caller: the purge-guest-audio Edge Function (supabase/functions/). This
+-- migration only adds a helper that schedules it with pg_cron + pg_net, and
+-- it needs your project's URL and service-role key, so it is NOT run for you.
+-- After deploying the function, run once in the SQL Editor:
+--
+--   select schedule_guest_audio_purge('https://<project-ref>.supabase.co', '<service-role-key>');
+--
+-- Both pg_cron and pg_net must be enabled (Database -> Extensions). If your
+-- plan does not offer them, call the function from any external scheduler
+-- instead (REQ-009 Q4) — it accepts a POST with the service-role bearer token.
+
+create or replace function schedule_guest_audio_purge(project_url text, service_role_key text) returns void as $$
+begin
+  create extension if not exists pg_cron;
+  create extension if not exists pg_net;
+  perform cron.unschedule('purge-guest-audio')
+    where exists (select 1 from cron.job where jobname = 'purge-guest-audio');
+  perform cron.schedule(
+    'purge-guest-audio',
+    '*/30 * * * *',
+    format(
+      $job$select net.http_post(url := %L, headers := jsonb_build_object('Authorization', %L, 'Content-Type', 'application/json'), body := '{}'::jsonb)$job$,
+      project_url || '/functions/v1/purge-guest-audio',
+      'Bearer ' || service_role_key
+    )
+  );
+end;
+$$ language plpgsql security definer set search_path = public;
+
+-- Only the service role / dashboard should ever call it.
+revoke all on function schedule_guest_audio_purge(text, text) from public, anon, authenticated;
