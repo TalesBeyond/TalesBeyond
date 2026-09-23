@@ -9,9 +9,11 @@ feature's own plan — this seed only records terms that already exist.
 
 | Term | Definition | Notes |
 | ---- | ---------- | ----- |
+| Audio track | One MP3/WAV file attached to a target — the table (World music), a layer, an island, or a hero/mob token — with a name, synced Base volume and a Loop flag. One track per target; stored in `audio_tracks` (cloud) or in state only (guest), served from Storage. The DM alone uploads, plays and pauses; only one plays at a time. | `src/lib/audioEngine.js`, `supabase/migrations/20250101000038_synced_table_audio.sql` |
 | Base island | The permanent, undeletable first island in an island's `islandOrder` — where new players land on that layer. | `src/state/store.jsx` |
 | Base layer | The permanent, undeletable first layer in `layerOrder[0]` — every table has one. | `src/state/store.jsx` |
 | Bag | A hero's inventory: freeform gear/other-items lists plus bronze/silver/gold currency. | `src/components/RightPanel.jsx` |
+| Base volume | The DM-set, table-wide volume (0–1) of an Audio track, synced to everyone. The audible level is Base volume × Local volume. | `src/components/MusicModal.jsx` |
 | Chest | A lootable container entity kind with a size tier, an opened/closed state, and item contents. | `src/data/chests.js`, `supabase/11_chests.sql` |
 | Cloud mode | The mode the app runs in when `VITE_SUPABASE_PROJECT_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` are set — actions go over the network through Supabase, live-synced via Realtime. | `src/lib/supabaseClient.js` |
 | Day/night cycle | The four phases of the in-game day - Dawn, Day, Dusk, Night - derived from the Ingame clock and the DM's chosen sunrise and sunset; each island follows it, or is set to always day / always night, shown as a tint and a sun/moon badge. The DM can also set the phase by hand at any time (the toolbar's Day / night button, `dayNightOverride`), which takes priority over the clock until they choose "Follow the clock". | `src/utils/gameClock.js`, `src/data/dayPhases.js` |
@@ -39,11 +41,16 @@ feature's own plan — this seed only records terms that already exist.
 | Island shell | An island's grid + background only — no id, position, or entities — the shape downloaded/uploaded when exporting or importing a single island (distinct from a whole table snapshot). | `src/state/persistence.js` (`downloadIslandAsFile`/`importIsland`) |
 | Layer | A separate map/level within a table, holding any number of islands and linked to other layers by doors. | `supabase/05_layers.sql` |
 | Local demo mode | The mode the app runs in by default — the whole table lives in `localStorage`, no server involved. | `src/state/persistence.js` |
+| Local volume | A player's own volume (0–1) for one Audio track, kept only in that browser (`hearthbound:audiovol:<table>`) and never synced. Has no effect on iOS Safari. | `src/state/persistence.js` |
 | Merge | The host action (via the "Merge Islands" button) of selecting islands on the map to bundle into one island group — see Island group. | `src/components/GameView.jsx` |
 | Mob | An entity kind representing a monster/NPC, with armor class, conditions, and droppables. | `supabase/09_armor_class.sql` |
+| Now playing | The single Audio track currently playing for the whole table: `{ trackId, anchorMs, offsetMs }` in `audio.playback.nowPlaying`. Each client derives the position as `offsetMs + (Date.now() - anchorMs)`, wrapped by the duration when the track loops; who actually hears it depends on the track's target (a layer sound only on that layer). | `src/lib/audioEngine.js` |
 | Player | A seat at a table (`Player { id, name, color, isHost, connected, joinedAt, currentLayerId }`); up to 9 non-host players plus 1 host per table. | `src/state/store.jsx` |
+| Resume position | Where an interrupted or paused Audio track stopped, in `audio.playback.resume[trackId]`. Pressing play on it later continues from there; nothing resumes by itself. | `src/components/GameView.jsx` |
 | Resync | Re-fetching a full table snapshot and re-hydrating state after a dropped realtime connection recovers, so nothing that happened while disconnected is missed. | `src/components/GameView.jsx` (reuses `fetchTableSnapshot` + `HYDRATE`) |
+| Sound unlock | The "Tap to enable sound" banner shown when the browser refuses to start audio without a user gesture; one click starts the current track at the right position. | `src/components/GameView.jsx` |
 | Tick | The Ingame clock's speed: how many in-game minutes pass per real second (0 stops it). The DM can change it at any time. | `src/utils/gameClock.js` |
 | Table | The top-level shared object a host creates and players join — one map/session, tracked by `session.tableId`/`session.code`. | `supabase/01_schema.sql` |
 | Table snapshot | The full `{ session, layers, layerOrder, entities, entityOrder, players }` shape fetched to hydrate the reducer on join or resume. | `src/lib/remoteApi.js`'s `fetchTableSnapshot` |
 | Trap | A hidden hazard entity kind with a description, size (1x1 up to 5x5 squares), save number, fail number, dice to roll, damage, and damage type. Invisible to players until the DM ticks "Reveal trap" (`trapRevealed`) — enforced by an `entities` RLS rule in cloud mode, by the DM's broadcast filter in a guest table, and by a client filter in local mode. | `src/data/traps.js`, `supabase/migrations/20250101000028_traps.sql`, `supabase/migrations/20250101000034_trap_size.sql` |
+| World music | The table's own Audio track — always listed first in the Music modal, audible to everyone regardless of layer. | `src/components/MusicModal.jsx` |

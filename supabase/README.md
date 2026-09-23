@@ -58,6 +58,12 @@ The sixteen migrations, in order:
 14. `..._entity_ordering_and_player_leave.sql` — a real `created_at` timestamp for reliable token stacking order, and a self-only DELETE policy on `players` so leaving a table actually frees the seat in cloud mode
 15. `..._entity_dm_data_privacy.sql` — moves DM notes and mob droppables into their own host-only-readable `entity_dm_data` table, so that data is actually private (enforced by RLS + Realtime) rather than merely hidden in the UI
 16. `..._dm_only_edits.sql` — the DM is the only one who can edit information; a player may only move their own hero, and open/close a chest, enforced by RLS + a field-level trigger (not just the UI)
+17. `..._synced_table_audio.sql` — REQ-009 synced table audio: the `audio_tracks` table (members read, host writes), `tables.audio_playback`, the public-read `table-audio` bucket (host-only upload, 10 MB, MP3/WAV only) and realtime enablement for both
+18. `..._audio_volume_loop.sql` — per-track synced base volume and loop flag
+19. `..._audio_cleanup.sql` — triggers that delete a track's row when its layer, island or token is deleted (the Storage file is removed by the client)
+20. `..._audio_quota.sql` — a database check rejecting more than 50 MB of audio per table
+21. `..._guest_audio_bucket.sql` — the `guest-audio` scratch bucket for guest tables (10 MB, MP3/WAV, uploads under a `<CODE>/` prefix, owner-scoped delete)
+22. `..._guest_audio_purge.sql` — a helper that schedules the `purge-guest-audio` Edge Function (`supabase/functions/`) every 30 minutes to delete guest audio older than 6 hours; run `schedule_guest_audio_purge(url, service_role_key)` once after deploying the function (needs pg_cron + pg_net)
 
 ## 3. Enable anonymous sign-in
 

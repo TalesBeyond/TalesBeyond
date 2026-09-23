@@ -414,6 +414,7 @@ channel
 - Bucket `token-art` (public-read, authenticated-write) for uploaded hero/monster portraits; bucket `map-backgrounds` likewise for background images.
 - Client resizes images to ≤512×512 (tokens) / ≤2048×2048 (backgrounds) via `<canvas>` before upload to bound storage and bandwidth.
 - Default hero/monster art stays as the inline SVG data URLs already in `data/defaultTokens.js` — no need to round-trip those through Storage.
+- **Audio (REQ-009):** bucket `table-audio` (public-read, host-only upload/delete scoped to a hosted table id, 10 MB object limit, MP3/WAV allow-list) holds Synced Table Audio; guest tables use the separate `guest-audio` bucket (any signed-in session may upload under a `<CODE>/` prefix) and their files are purged after 6 hours by the `purge-guest-audio` Edge Function. Cloud tables are capped at 50 MB of audio, enforced by a database trigger. Local demo mode has no audio.
 
 ### 9.7 API/RPC surface consumed by the frontend — specification only (implemented calls listed inline below)
 

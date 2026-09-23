@@ -180,9 +180,9 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S025 | P | Table quota enforcement | Database check rejecting an `audio_tracks` insert or size-increasing update that would push a table past 50 MB. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S026 | U | Usage meter and errors | Show used/limit in the modal and surface the quota and type errors from S025 and the bucket. | S025, S011 | new modal component |
-|  | S027 | X | Docs and thesaurus | Add the audio terms to `THESAURUS.md` (Audio track, World music, Now playing, Resume position, Base volume, Local volume, Sound unlock); update `supabase/README.md`'s migration list and `SPEC.md` where it describes storage. | S026 | `THESAURUS.md`, `supabase/README.md`, `SPEC.md` |
+| ✅ | S025 | P | Table quota enforcement | Database check rejecting an `audio_tracks` insert or size-increasing update that would push a table past 50 MB. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S026 | U | Usage meter and errors | Show used/limit in the modal and surface the quota and type errors from S025 and the bucket. | S025, S011 | new modal component |
+| ✅ | S027 | X | Docs and thesaurus | Add the audio terms to `THESAURUS.md` (Audio track, World music, Now playing, Resume position, Base volume, Local volume, Sound unlock); update `supabase/README.md`'s migration list and `SPEC.md` where it describes storage. | S026 | `THESAURUS.md`, `supabase/README.md`, `SPEC.md` |
 
 ### Dependency graph
 
