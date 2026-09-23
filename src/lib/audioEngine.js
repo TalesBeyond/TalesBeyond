@@ -68,8 +68,8 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
     setExpired((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }, []);
 
-  // Guest files expire after 6 hours, and a guest table resumed from autosave
-  // can reference files that are gone — find out before anyone presses play.
+  // A guest table resumed from autosave references blob URLs that died with
+  // the old page — find out before the DM presses play.
   const trackKey = Object.values(tracks || {})
     .map((t) => `${t.id}=${t.url}`)
     .join('|');
@@ -77,6 +77,14 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
     if (!enabled || !checkFiles) return undefined;
     let cancelled = false;
     for (const t of Object.values(tracks || {})) {
+      if (t.url.startsWith('blob:')) {
+        // A guest DM's local file: a blob URL from an earlier page load is dead.
+        fetch(t.url).then(
+          (res) => res.body?.cancel(),
+          () => !cancelled && markExpired(t.id)
+        );
+        continue;
+      }
       fetch(t.url, { method: 'HEAD' }).then(
         (res) => !cancelled && !res.ok && markExpired(t.id),
         () => {} // offline is not expiry

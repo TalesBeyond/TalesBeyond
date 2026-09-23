@@ -9,7 +9,7 @@ feature's own plan — this seed only records terms that already exist.
 
 | Term | Definition | Notes |
 | ---- | ---------- | ----- |
-| Audio track | One MP3/WAV file attached to a target — the table (World music), a layer, an island, or a hero/mob token — with a name, synced Base volume and a Loop flag. One track per target; stored in `audio_tracks` (cloud) or in state only (guest), served from Storage. The DM alone uploads, plays and pauses; only one plays at a time. | `src/lib/audioEngine.js`, `supabase/migrations/20250101000038_synced_table_audio.sql` |
+| Audio track | One MP3/WAV file attached to a target — the table (World music), a layer, an island, or a hero/mob token — with a name, synced Base volume and a Loop flag. One track per target; stored in `audio_tracks` and Storage (cloud), or only as a local blob URL in the DM's browser (guest tables, where nobody else hears it). The DM alone uploads, plays and pauses; only one plays at a time. | `src/lib/audioEngine.js`, `supabase/migrations/20250101000038_synced_table_audio.sql` |
 | Base island | The permanent, undeletable first island in an island's `islandOrder` — where new players land on that layer. | `src/state/store.jsx` |
 | Base layer | The permanent, undeletable first layer in `layerOrder[0]` — every table has one. | `src/state/store.jsx` |
 | Bag | A hero's inventory: freeform gear/other-items lists plus bronze/silver/gold currency. | `src/components/RightPanel.jsx` |

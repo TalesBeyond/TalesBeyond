@@ -487,7 +487,7 @@ export default function Toolbar({
           active={Boolean(audio?.playback?.nowPlaying)}
           disabled={!audio?.enabled}
           onClick={onOpenMusic}
-          title={audio?.enabled ? 'Table music' : 'Music needs a cloud or guest table — it is not available in local demo tables'}
+          title={audio?.enabled ? 'Table music' : 'Music is available to the DM of a cloud or guest table only'}
         />
         <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (

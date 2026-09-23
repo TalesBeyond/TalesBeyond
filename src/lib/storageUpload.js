@@ -5,7 +5,6 @@
 // replacement for the base64 data URLs Phase 1 stores directly in state.
 
 import { supabase } from './supabaseClient.js';
-import { ensureAnonymousSession } from './auth.js';
 import { resizeImageToCanvas } from '../utils/image.js';
 
 function resizeImageFile(file, maxDim) {
@@ -58,31 +57,38 @@ export function validateAudioFile(file) {
 // 41_audio_quota.sql); guest tables have no row to enforce it on, so the same
 // cap is checked client-side only.
 export const AUDIO_TABLE_QUOTA_BYTES = 50 * 1024 * 1024;
-// Guest tables (no table row, no membership) upload to their own scratch
-// bucket under a `<CODE>/` prefix; files are purged after 6 hours.
-export const GUEST_AUDIO_BUCKET = 'guest-audio';
+
+function audioMime(file) {
+  return AUDIO_TYPES[file.type] ? file.type : file.name.toLowerCase().endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
+}
 
 /**
- * Uploads an audio file to `${bucket}/${scope}/...` (scope = table id for
- * cloud tables, invite code for guest tables) and returns what a track record
- * needs. Host-only (enforced by the bucket's insert policy).
+ * A guest DM's audio is never uploaded anywhere: it plays from a blob URL in
+ * their own tab, so only they hear it. Same shape as uploadAudio's result.
  */
-export async function uploadAudio(file, scope, bucket = AUDIO_BUCKET) {
+export function localAudioFile(file) {
+  return { url: URL.createObjectURL(file), storagePath: '', mime: audioMime(file), sizeBytes: file.size };
+}
+
+/**
+ * Uploads an audio file to `table-audio/${tableId}/...` and returns what a
+ * track record needs. Host-only (enforced by the bucket's insert policy).
+ */
+export async function uploadAudio(file, tableId) {
   const error = validateAudioFile(file);
   if (error) throw new Error(error);
-  // A guest DM has no Supabase session until they need one — Storage needs it.
-  if (bucket === GUEST_AUDIO_BUCKET) await ensureAnonymousSession();
-  const mime = AUDIO_TYPES[file.type] ? file.type : file.name.toLowerCase().endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
-  const path = `${scope}/${randomFileName(AUDIO_TYPES[mime])}`;
-  const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, { contentType: mime, upsert: false });
-  if (uploadError) throw new Error(`upload to ${bucket}: ${uploadError.message}`);
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  const mime = audioMime(file);
+  const path = `${tableId}/${randomFileName(AUDIO_TYPES[mime])}`;
+  const { error: uploadError } = await supabase.storage.from(AUDIO_BUCKET).upload(path, file, { contentType: mime, upsert: false });
+  if (uploadError) throw new Error(`upload to ${AUDIO_BUCKET}: ${uploadError.message}`);
+  const { data } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, storagePath: path, mime, sizeBytes: file.size };
 }
 
-export async function removeAudioFiles(storagePaths, bucket = AUDIO_BUCKET) {
-  if (!storagePaths.length) return;
-  const { error } = await supabase.storage.from(bucket).remove(storagePaths);
+export async function removeAudioFiles(storagePaths) {
+  const paths = storagePaths.filter(Boolean);
+  if (!paths.length) return;
+  const { error } = await supabase.storage.from(AUDIO_BUCKET).remove(paths);
   if (error) console.error('removeAudioFiles:', error.message);
 }
 

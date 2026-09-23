@@ -58,12 +58,13 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
               </div>
               <div className="music-row-status">
                 {megabytes(used)} of {megabytes(AUDIO_TABLE_QUOTA_BYTES)} MB used · {megabytes(Math.max(0, AUDIO_TABLE_QUOTA_BYTES - used))} MB left
-                {isGuest ? ' · guest audio is removed after 6 hours' : ''}
               </div>
             </div>
           )}
           <p className="footer-note" style={{ border: 'none', padding: 0 }}>
-            {audio.isHost
+            {isGuest
+              ? 'Guest table: your files stay on this device and only you hear them — nothing is uploaded, and they are gone when you close the page.'
+              : audio.isHost
               ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to layers, islands and tokens from Map settings and the token inspector.'
               : 'The DM controls the music. Your volume slider only changes what you hear.'}
           </p>

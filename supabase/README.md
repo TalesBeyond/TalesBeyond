@@ -62,8 +62,6 @@ The sixteen migrations, in order:
 18. `..._audio_volume_loop.sql` — per-track synced base volume and loop flag
 19. `..._audio_cleanup.sql` — triggers that delete a track's row when its layer, island or token is deleted (the Storage file is removed by the client)
 20. `..._audio_quota.sql` — a database check rejecting more than 50 MB of audio per table
-21. `..._guest_audio_bucket.sql` — the `guest-audio` scratch bucket for guest tables (10 MB, MP3/WAV, uploads under a `<CODE>/` prefix, owner-scoped delete)
-22. `..._guest_audio_purge.sql` — a helper that schedules the `purge-guest-audio` Edge Function (`supabase/functions/`) every 30 minutes to delete guest audio older than 6 hours; run `schedule_guest_audio_purge(url, service_role_key)` once after deploying the function (needs pg_cron + pg_net)
 
 ## 3. Enable anonymous sign-in
 

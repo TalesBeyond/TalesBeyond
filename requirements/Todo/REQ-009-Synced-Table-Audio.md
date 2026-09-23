@@ -267,3 +267,5 @@ S001 → S025 → S026 → S027
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-09-23 | Blaxine | Initial plan, following a `/grill-me` interview that resolved scope and behavior and a `/create-req` deep-dive that grounded it in the code. |
+
+> **Revision (2026-09-23, Blaxine):** Slice 5 changed. A guest DM's audio is **never uploaded**: files play from a local blob URL in the DM's browser only, players hear nothing, and no guest bucket, purge function or 6-hour expiry exists. The `guest-audio` bucket, purge migration and Edge Function were removed; AC12 and Slice 5's steps S020–S024 above describe the superseded design.

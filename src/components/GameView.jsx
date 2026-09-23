@@ -65,8 +65,7 @@ import {
   uploadAudio,
   removeAudioFiles,
   validateAudioFile,
-  AUDIO_BUCKET,
-  GUEST_AUDIO_BUCKET,
+  localAudioFile,
   AUDIO_TABLE_QUOTA_BYTES,
 } from '../lib/storageUpload.js';
 
@@ -297,7 +296,10 @@ function toGuestSnapshot(fullState) {
     if (isHiddenTrap(entity)) continue;
     entities[id] = withoutDmOnlyKeys(entity);
   }
-  return { ...fullState, entities, entityOrder: fullState.entityOrder.filter((id) => entities[id]) };
+  // A guest DM's audio never leaves their browser (files are local blob URLs
+  // only the DM can play), so players get no tracks and no playback.
+  const audio = { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } };
+  return { ...fullState, entities, entityOrder: fullState.entityOrder.filter((id) => entities[id]), audio };
 }
 
 function saveOrWarn(code, nextState) {
@@ -435,11 +437,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
 
-  // REQ-009 Synced Table Audio. Cloud tables and guest tables have audio;
-  // local demo mode has no Storage, so there the Music button is disabled and
-  // no audio code path runs.
-  const audioEnabled = isRemote || isGuest;
-  const audioBucket = isGuest ? GUEST_AUDIO_BUCKET : AUDIO_BUCKET;
+  // REQ-009 Synced Table Audio. Cloud tables sync audio through Storage. A
+  // guest DM keeps their files on their own device only (nothing is uploaded
+  // anywhere, so players hear nothing); guest players and local demo tables
+  // have no audio, and there the Music button is disabled.
+  const audioEnabled = isRemote || isGuestHost;
   const audioScope = isRemote ? state.session.tableId : state.session.code;
   const [showMusicModal, setShowMusicModal] = useState(false);
   // Each player's own level per track — this browser only.
@@ -1254,12 +1256,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const worldTrack = findAudioTrack('world', audioScope);
 
   // The same write pattern as updateClock: local dispatch, then the remote
-  // write (cloud) or the guest broadcast. Guest tables keep tracks and
-  // playback in state only.
+  // write. Guest tables keep tracks and playback in the DM's state only —
+  // never broadcast, since players have no way to fetch the files.
   function syncAudio(action, remoteWrite) {
     dispatch(action);
     if (isRemote) remoteWrite?.().catch(reportError);
-    else if (isGuestHost) broadcastGuestChange(action);
+  }
+
+  // Cloud files live in Storage; a guest DM's are blob URLs in this tab.
+  function releaseAudioFiles(tracks) {
+    if (isGuest) tracks.forEach((t) => URL.revokeObjectURL(t.url));
+    else removeAudioFiles(tracks.map((t) => t.storagePath));
   }
 
   function writeAudioPlayback(playback) {
@@ -1308,7 +1315,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
     let uploaded;
     try {
-      uploaded = await uploadAudio(file, audioScope, audioBucket);
+      uploaded = isGuest ? localAudioFile(file) : await uploadAudio(file, audioScope);
     } catch (err) {
       throw friendlyAudioError(err);
     }
@@ -1325,7 +1332,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       try {
         await upsertAudioTrackRemote(state.session.tableId, track);
       } catch (err) {
-        removeAudioFiles([uploaded.storagePath], audioBucket);
+        releaseAudioFiles([uploaded]);
         throw friendlyAudioError(err);
       }
     }
@@ -1335,10 +1342,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
         writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
       }
-      removeAudioFiles([existing.storagePath], audioBucket);
+      releaseAudioFiles([existing]);
     }
     dispatch({ type: 'SET_AUDIO_TRACK', track });
-    if (isGuestHost) broadcastGuestChange({ type: 'SET_AUDIO_TRACK', track });
   }
 
   // Loop and base volume. Cloud rows are upserted whole (the host may write).
@@ -1354,7 +1360,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function dropAudioTracks(removed, audio) {
     if (!removed.length) return;
     if (isRemote) for (const t of removed) removeAudioTrackRemote(t.id).catch(reportError);
-    removeAudioFiles(removed.map((t) => t.storagePath), audioBucket);
+    releaseAudioFiles(removed);
     if (audio && JSON.stringify(audio.playback) !== JSON.stringify(audioPlayback)) writeAudioPlayback(audio.playback);
   }
 
@@ -1362,7 +1368,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     if (!isHost || !audioTracks[trackId]) return;
     const audio = pruneAudio(state.audio, [trackId]);
     dispatch({ type: 'REMOVE_AUDIO_TRACK', id: trackId });
-    if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_AUDIO_TRACK', id: trackId });
     dropAudioTracks([audioTracks[trackId]], audio);
   }
 
@@ -1754,8 +1759,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // exactly the "unclean" signal findUnclosedGuestTable looks for.
     if (isGuestHost) {
       markGuestClean(state.session.code);
-      // Best-effort: the scheduled purge catches anything this misses.
-      removeAudioFiles(Object.values(audioTracks).map((t) => t.storagePath), GUEST_AUDIO_BUCKET);
+      releaseAudioFiles(Object.values(audioTracks));
     }
     // A signed-in host leaving their own cloud table must NOT delete their
     // own player row. "members can read their table" (02_policies.sql) is
