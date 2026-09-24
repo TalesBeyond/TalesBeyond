@@ -37,6 +37,7 @@ export default function MapBoard({
   onEnterDoor,
   tool, // 'play' | 'edit' | 'pan' | 'ruler'
   zoom = 1,
+  onRulerChange,
 }) {
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
@@ -487,6 +488,12 @@ export default function MapBoard({
     }
   }
 
+  // Report the live measurement upward so the HUD can show it.
+  const rulerFeet = rulerLine ? rulerLine.feet : null;
+  useEffect(() => {
+    onRulerChange?.(rulerFeet);
+  }, [rulerFeet, onRulerChange]);
+
   return (
     <div
       ref={wrapRef}
@@ -610,7 +617,7 @@ export default function MapBoard({
                 left: cx - size / 2,
                 top: cy - size / 2,
                 backgroundImage: `url(${entity.imageUrl})`,
-                borderColor: entity.color || 'rgba(0,0,0,0.55)',
+                '--token-color': entity.color || 'transparent',
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
               onClick={(e) => e.stopPropagation()}
@@ -622,6 +629,14 @@ export default function MapBoard({
                   👢{entity.initiativeTurn}
                 </span>
               )}
+              {entity.kind !== 'door' && entity.maxHp ? (
+                <span className="token-hpbar" aria-hidden="true">
+                  <span
+                    className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`}
+                    style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
+                  />
+                </span>
+              ) : null}
               {entity.kind !== 'door' && entity.maxHp ? (
                 <span className="token-hp">
                   {entity.hp}/{entity.maxHp}

@@ -9,6 +9,7 @@ import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
+import CompendiumBook from './CompendiumBook.jsx';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
@@ -178,15 +179,11 @@ export default function Toolbar({
   initiativeMobs,
   onRollInitiative,
   customAssets,
+  onAddEntity,
   onAddCustomAsset,
   onRemoveCustomAsset,
   collapsed,
   onToggleCollapsed,
-  zoom,
-  onZoomIn,
-  onZoomOut,
-  onZoomReset,
-  onRecenter,
 }) {
   const importRef = useRef(null);
   // Only one popover open at a time — clicking a card closes the others and
@@ -198,9 +195,10 @@ export default function Toolbar({
   const [showInitiative, setShowInitiative] = useState(false);
   const [showCompendium, setShowCompendium] = useState(false);
   const [showItemCompendium, setShowItemCompendium] = useState(false);
+  const [showMonsterCompendium, setShowMonsterCompendium] = useState(false);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   const [showDayNight, setShowDayNight] = useState(false);
-  // Which grouped menu (tools / layout / mapping / world / library) is open.
+  // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
@@ -303,6 +301,9 @@ export default function Toolbar({
   const customWeapons = Object.values(customAssets || {})
     .filter((item) => item.assetType === 'weapon')
     .map((item) => ({ id: item.id, ...item.data }));
+  const customMonsters = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'monster')
+    .map((item) => ({ id: item.id, ...item.data }));
   const customItems = Object.values(customAssets || {})
     .filter((item) => item.assetType === 'item')
     .map((item) => ({ id: item.id, ...item.data }));
@@ -380,20 +381,6 @@ export default function Toolbar({
             />
           </>
         )}
-      </ToolMenu>
-
-      <ToolMenu
-        icon={<Icon name="layout" />}
-        label="Layout"
-        title="Zoom and recenter the map"
-        open={openMenu === 'layout'}
-        onToggle={() => toggleMenu('layout')}
-        onClose={closeMenu}
-      >
-        <ToolCard icon="−" label="Zoom out" onClick={onZoomOut} title="Zoom out" />
-        <ToolCard icon={`${Math.round((zoom ?? 1) * 100)}%`} label="Reset" onClick={onZoomReset} title="Reset zoom to 100%" />
-        <ToolCard icon="+" label="Zoom in" onClick={onZoomIn} title="Zoom in" />
-        <ToolCard icon={<Icon name="recenter" />} label="Recenter" onClick={onRecenter} title="Scroll back to the currently selected island" />
       </ToolMenu>
 
       {isHost && (
@@ -504,18 +491,21 @@ export default function Toolbar({
       )}
 
       {isHost && (
-        <ToolMenu
-          icon={<Icon name="library" />}
-          label="Library"
-          title="Weapon and item compendiums"
-          active={showCompendium || showItemCompendium}
-          open={openMenu === 'library'}
-          onToggle={() => toggleMenu('library')}
-          onClose={closeMenu}
-        >
-          <ToolCard icon={<Icon name="weapons" />} label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
-          <ToolCard icon={<Icon name="items" />} label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
-        </ToolMenu>
+        <div className="toolbar-group">
+          <ToolCard
+            icon={<Icon name="library" />}
+            label="Compendium"
+            active={showCompendium || showItemCompendium || showMonsterCompendium}
+            onClick={() => {
+              const open = showCompendium || showItemCompendium || showMonsterCompendium;
+              setOpenMenu(null);
+              setShowCompendium(!open);
+              setShowItemCompendium(false);
+              setShowMonsterCompendium(false);
+            }}
+            title="Open the compendium of weapons, items, and monsters"
+          />
+        </div>
       )}
 
       {/* Initiative and dice stay one click away — no menu to open first.
@@ -586,19 +576,24 @@ export default function Toolbar({
         </div>
       )}
 
-      {isHost && showCompendium && (
-        <WeaponsCompendiumModal
-          onClose={() => setShowCompendium(false)}
+      {isHost && (showCompendium || showItemCompendium || showMonsterCompendium) && (
+        <CompendiumBook
+          kind={showCompendium ? 'weapons' : showItemCompendium ? 'items' : 'monsters'}
+          onClose={() => {
+            setShowCompendium(false);
+            setShowItemCompendium(false);
+            setShowMonsterCompendium(false);
+          }}
+          onSwitchKind={(k) => {
+            setShowCompendium(k === 'weapons');
+            setShowItemCompendium(k === 'items');
+            setShowMonsterCompendium(k === 'monsters');
+          }}
+          onAddMonster={onAddEntity}
+          customMonsters={customMonsters}
           heroes={heroes || []}
           onGiveItem={giveItemToHero}
           customWeapons={customWeapons}
-        />
-      )}
-      {isHost && showItemCompendium && (
-        <ItemsCompendiumModal
-          onClose={() => setShowItemCompendium(false)}
-          heroes={heroes || []}
-          onGiveItem={giveItemToHero}
           customItems={customItems}
         />
       )}
@@ -620,6 +615,13 @@ export default function Toolbar({
       )}
 
       <div className="spacer" />
+
+      {isHost && lastSavedLabel && (
+        <span className="toolbar-saved" role="status">
+          <span className="toolbar-saved-dot" aria-hidden="true" />
+          {lastSavedLabel}
+        </span>
+      )}
 
       {/* A host-only safety net alongside the manual Save inside
           Configurations below — counts down from 5:00 and autosaves the
@@ -659,8 +661,11 @@ export default function Toolbar({
             />
           </>
         )}
-        <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />
       </ToolMenu>
+
+      <button type="button" className="toolbar-leave" onClick={onLeave} title="Leave the table">
+        Leave
+      </button>
     </div>
   );
 }
@@ -1424,187 +1429,6 @@ function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
   );
 }
 
-function baseWeaponName(name) {
-  return name.replace(/^\+\d+ /, '');
-}
-
-function weaponDiceLabel(w) {
-  const mod = w.modifier ? (w.modifier > 0 ? `+${w.modifier}` : `${w.modifier}`) : '';
-  return `${w.numberOfDice}${w.diceType}${mod}`;
-}
-
-function formatCost(gp) {
-  if (gp >= 1) return `${Math.round(gp * 100) / 100} gp`;
-  const cp = Math.round(gp * 100);
-  return cp % 10 === 0 ? `${cp / 10} sp` : `${cp} cp`;
-}
-
-const WEAPON_TYPE_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'melee', label: 'Melee' },
-  { key: 'ranged', label: 'Ranged' },
-];
-
-function WeaponsCompendiumModal({ onClose, heroes, onGiveItem, customWeapons }) {
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-
-  // The DM's custom weapons (Asset Storage) render right alongside the
-  // built-in catalog — never in place of it.
-  const allWeapons = useMemo(() => [...WEAPONS, ...(customWeapons || [])], [customWeapons]);
-
-  const entries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return allWeapons.filter((w) => (typeFilter === 'all' || w.type === typeFilter) && (!q || w.name.toLowerCase().includes(q))).sort(
-      (a, b) => a.type.localeCompare(b.type) || baseWeaponName(a.name).localeCompare(baseWeaponName(b.name)) || a.modifier - b.modifier
-    );
-  }, [allWeapons, search, typeFilter]);
-
-  let lastType = null;
-
-  return (
-    <div className="book-backdrop" onClick={onClose}>
-      <div className="book-card" onClick={(e) => e.stopPropagation()}>
-        <div className="book-card-header">
-          <span className="book-title">📖 Weapons Compendium</span>
-          <button className="popover-close" onClick={onClose} aria-label="Close compendium" title="Close">
-            ×
-          </button>
-        </div>
-
-        <div className="book-controls">
-          <input className="field" placeholder="Search weapons…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <div className="book-type-filter">
-            {WEAPON_TYPE_FILTERS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`tool-btn ${typeFilter === t.key ? 'active' : ''}`}
-                onClick={() => setTypeFilter(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <span className="footer-note" style={{ border: 'none', padding: 0 }}>
-            {entries.length} of {allWeapons.length}
-          </span>
-        </div>
-
-        <div className="book-pages">
-          {entries.length === 0 && (
-            <p className="footer-note" style={{ border: 'none', color: 'var(--ink-700)' }}>
-              No weapons match.
-            </p>
-          )}
-          {entries.map((w) => {
-            const showHeading = w.type !== lastType;
-            lastType = w.type;
-            return (
-              <React.Fragment key={w.id || w.name}>
-                {showHeading && <div className="book-page-heading">{w.type === 'melee' ? 'Melee Weapons' : 'Ranged Weapons'}</div>}
-                <div className="compendium-entry">
-                  <div className="compendium-entry-top">
-                    <span className="compendium-entry-name">
-                      {w.name}
-                      {w.id && ' (Custom)'}
-                    </span>
-                    <span className="compendium-entry-meta">
-                      {weaponDiceLabel(w)} · {formatCost(w.cost)}
-                    </span>
-                  </div>
-                  <div className="compendium-entry-detail">{w.equipableClass.join(', ')}</div>
-                  <GiveButtons item={w} heroes={heroes} onGive={onGiveItem} />
-                </div>
-              </React.Fragment>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatWeight(lb) {
-  return lb > 0 ? `${lb} lb` : '—';
-}
-
-function ItemsCompendiumModal({ onClose, heroes, onGiveItem, customItems }) {
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-
-  // The DM's custom items (Asset Storage) render right alongside the
-  // built-in catalog — never in place of it.
-  const allItems = useMemo(() => [...ITEMS, ...(customItems || [])], [customItems]);
-
-  const entries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return allItems.filter((it) => (categoryFilter === 'all' || it.category === categoryFilter) && (!q || it.name.toLowerCase().includes(q))).sort(
-      (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
-    );
-  }, [allItems, search, categoryFilter]);
-
-  let lastCategory = null;
-
-  return (
-    <div className="book-backdrop" onClick={onClose}>
-      <div className="book-card" onClick={(e) => e.stopPropagation()}>
-        <div className="book-card-header">
-          <span className="book-title">📦 Item Compendium</span>
-          <button className="popover-close" onClick={onClose} aria-label="Close compendium" title="Close">
-            ×
-          </button>
-        </div>
-
-        <div className="book-controls">
-          <input className="field" placeholder="Search items…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <select className="field" style={{ maxWidth: 180, marginBottom: 0 }} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-            <option value="all">All categories</option>
-            {ITEM_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c[0].toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
-          <span className="footer-note" style={{ border: 'none', padding: 0 }}>
-            {entries.length} of {allItems.length}
-          </span>
-        </div>
-
-        <div className="book-pages">
-          {entries.length === 0 && (
-            <p className="footer-note" style={{ border: 'none', color: 'var(--ink-700)' }}>
-              No items match.
-            </p>
-          )}
-          {entries.map((it) => {
-            const showHeading = it.category !== lastCategory;
-            lastCategory = it.category;
-            return (
-              <React.Fragment key={it.id || it.name}>
-                {showHeading && <div className="book-page-heading">{it.category[0].toUpperCase() + it.category.slice(1)}</div>}
-                <div className="compendium-entry">
-                  <div className="compendium-entry-top">
-                    <span className="compendium-entry-name">
-                      {it.name}
-                      {it.id && ' (Custom)'}
-                    </span>
-                    <span className="compendium-entry-meta">
-                      {formatCost(it.cost)} · {formatWeight(it.weight)}
-                    </span>
-                  </div>
-                  <div className="compendium-entry-detail">{it.description}</div>
-                  <GiveButtons item={it} heroes={heroes} onGive={onGiveItem} />
-                </div>
-              </React.Fragment>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const ASSET_STORAGE_TABS = [
   { key: 'monster', label: 'Monsters' },
   { key: 'weapon', label: 'Weapons' },
@@ -1952,69 +1776,3 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
   );
 }
 
-// Lets the DM hand a compendium entry (weapon or item — anything with a
-// `.name` and `.cost`) straight to a hero's Bag > Weapons & gear list.
-// "Buy" additionally deducts the cost from that hero's gold; "Give" is free.
-function GiveButtons({ item, heroes, onGive }) {
-  const [mode, setMode] = useState(null); // 'buy' | 'give' | null
-  const [heroId, setHeroId] = useState('');
-  const [feedback, setFeedback] = useState('');
-
-  function openMode(next) {
-    setMode(next);
-    setHeroId((heroes[0] && heroes[0].id) || '');
-  }
-
-  function confirm() {
-    const hero = heroes.find((h) => h.id === heroId);
-    if (!hero) return;
-    onGive(hero, item, mode === 'buy');
-    setFeedback(`${mode === 'buy' ? 'Sold to' : 'Given to'} ${hero.name}`);
-    setMode(null);
-    setTimeout(() => setFeedback(''), 2000);
-  }
-
-  return (
-    <div className="compendium-give">
-      <div className="compendium-give-actions">
-        <button
-          type="button"
-          className="compendium-give-btn"
-          disabled={heroes.length === 0}
-          title={heroes.length === 0 ? 'No heroes on the map yet' : `Buy for ${formatCost(item.cost)} and give to a hero`}
-          onClick={() => openMode('buy')}
-        >
-          Buy
-        </button>
-        <button
-          type="button"
-          className="compendium-give-btn"
-          disabled={heroes.length === 0}
-          title={heroes.length === 0 ? 'No heroes on the map yet' : 'Give to a hero for free'}
-          onClick={() => openMode('give')}
-        >
-          Give
-        </button>
-        {feedback && <span className="compendium-give-feedback">{feedback}</span>}
-      </div>
-      {mode && (
-        <div className="compendium-give-picker">
-          <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
-            {heroes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-                {h.ownerName ? ` (${h.ownerName})` : ''}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={confirm}>
-            {mode === 'buy' ? `Buy (${formatCost(item.cost)})` : 'Give'}
-          </button>
-          <button type="button" onClick={() => setMode(null)}>
-            ×
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}

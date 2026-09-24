@@ -60,6 +60,7 @@ import ClockModal from './ClockModal.jsx';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
+import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
 import { useTableAudio, defaultLoopFor } from '../lib/audioEngine.js';
 import {
   uploadAudio,
@@ -188,7 +189,7 @@ function entitiesVisibleOnLayer(state, layerId, showHiddenTraps) {
 // per-viewer convenience, so they live in this browser's localStorage and
 // the game still works (at the defaults) if that is unavailable.
 const PANEL_WIDTHS_KEY = 'hearthbound:panelwidths';
-const DEFAULT_PANEL_WIDTHS = { left: 260, right: 340 };
+const DEFAULT_PANEL_WIDTHS = { left: 248, right: 344 };
 const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
@@ -434,6 +435,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   const baseLayerId = state.layerOrder[0];
   const [hostViewLayerId, setHostViewLayerId] = useState(baseLayerId);
+  const [rulerFeet, setRulerFeet] = useState(null); // live distance from MapBoard's ruler, for the HUD readout
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
 
@@ -885,7 +887,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
     // Only a trap can be sized at placement (1 to 5 squares wide); everything
     // else starts 1x1.
-    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : 1;
+    // A compendium monster also arrives pre-sized (Large creatures are 2x2).
+    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : draft.kind === 'mob' && draft.size ? Math.min(draft.size, 4) : 1;
     // findFreeCell finds a free single square, which is the token's top-left
     // corner — pull a big trap back so it lands fully on the island rather
     // than hanging off its right/bottom edge (an island smaller than the
@@ -918,7 +921,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       size,
       hp: draft.maxHp,
       maxHp: draft.maxHp,
-      armorClass: draft.kind === 'mob' ? 10 : undefined,
+      armorClass: draft.kind === 'mob' ? draft.armorClass ?? 10 : undefined,
       // Left unassigned (rather than defaulting to the placing DM) since
       // only the DM places tokens now — the DM assigns a hero to whichever
       // player controls it afterward, via the Owner field on its inspector.
@@ -929,7 +932,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       targetCol,
       targetRow,
       conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
-      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? '' : undefined,
+      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
+      mobSheet: draft.kind === 'mob' ? draft.mobSheet : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
@@ -1908,6 +1912,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onSaveNow={saveNow}
           autosaveSecondsLeft={autosaveSecondsLeft}
           clock={state.clock}
+          onAddEntity={addEntity}
           onOpenClock={() => setShowClockModal(true)}
           audio={audioApi}
           onOpenMusic={() => setShowMusicModal(true)}
@@ -1946,11 +1951,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           collapsed={toolbarCollapsed}
           onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
           zoom={zoom}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onZoomReset={zoomReset}
-          onRecenter={() => recenterOnIsland(activeIslandId)}
         />
+        <LayerStrip
+          layers={state.layers}
+          layerOrder={state.layerOrder}
+          currentLayerId={currentLayerId}
+          layerPlayerCounts={layerPlayerCounts}
+          isHost={isHost}
+          onSwitchLayer={setHostViewLayerId}
+          feetPerSquare={currentLayer.feetPerSquare}
+          clock={state.clock}
+          phaseOverride={state.dayNightOverride}
+        />
+        <div className="stage-wrap">
         <div className="stage" ref={stageRef}>
           <MapBoard
             islands={currentLayer.islands}
@@ -1974,7 +1987,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             onEnterDoor={enterDoor}
             tool={tool}
             zoom={zoom}
+            onRulerChange={setRulerFeet}
           />
+        </div>
+        <InitiativeBar entities={layerEntities} />
+        <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+        <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
         </div>
       </div>
 

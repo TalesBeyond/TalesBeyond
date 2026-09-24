@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CONDITIONS } from '../data/conditions.js';
 import {
   ABILITIES,
@@ -24,6 +24,9 @@ import ChestContentsEditor from './ChestContentsEditor.jsx';
 import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import SoundField from './SoundField.jsx';
+
+// Seats at a table: the DM plus up to nine players.
+const MAX_SEATS = 10;
 
 export default function RightPanel({
   audio,
@@ -60,6 +63,7 @@ export default function RightPanel({
     <div className="panel right">
       <div className="panel-header">
         <span>Players</span>
+        <span className="panel-header-note">{Object.values(players).length} of {MAX_SEATS} seats</span>
         <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse players & inspector panel">
           »
         </button>
@@ -68,21 +72,23 @@ export default function RightPanel({
         {Object.values(players).length === 0 ? (
           <div className="empty-state">No one here yet.</div>
         ) : (
-          Object.values(players).map((p) => (
-            <div className="player-row" key={p.id}>
-              <span className="player-dot" style={{ background: p.color }} />
-              <span className="player-name">{p.name}</span>
-              {p.id === hostId && <span className="player-tag">HOST</span>}
-              {!p.connected && <span className="player-tag">AWAY</span>}
-            </div>
-          ))
+          Object.values(players).map((p) => {
+            const hero = Object.values(entities || {}).find((e) => e.kind === 'hero' && e.ownerId === p.id);
+            const role = p.id === hostId ? 'Dungeon Master' : hero?.name || '';
+            const tag = [role, p.connected ? '' : 'away'].filter(Boolean).join(', ');
+            return (
+              <div className="player-row" key={p.id}>
+                <span className={`player-dot${p.connected ? ' online' : ''}`} style={{ background: p.color }} />
+                <span className="player-name">{p.name}</span>
+                {tag && <span className="player-tag">{tag}</span>}
+              </div>
+            );
+          })
         )}
       </div>
 
-      <div className="panel-header" style={{ borderTop: '1px solid var(--ink-700)' }}>
-        Inspector
-      </div>
-      <div className="panel-scroll">
+      <div className="panel-scroll inspector-scroll">
+        <div className="cap">Inspector</div>
         {!selectedEntity ? (
           <div className="empty-state">Select a token on the map to see its details here.</div>
         ) : selectedEntity.kind === 'hero' ? (
@@ -233,9 +239,19 @@ function ConditionsField({ entity, isHost, onUpdate }) {
 
   return (
     <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Conditions {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
-      </label>
+      <div className="cap inspector-cap">Conditions {!isHost && <span className="cap-note">(host only can edit)</span>}</div>
+      <ul className="condition-pills" aria-label="Active conditions">
+        {activeConditions.length === 0 && <li className="condition-none">None applied</li>}
+        {activeConditions.map((key) => {
+          const c = CONDITIONS.find((cond) => cond.key === key);
+          if (!c) return null;
+          return (
+            <li key={key} className="condition-pill" title={c.description}>
+              {c.label}
+            </li>
+          );
+        })}
+      </ul>
       <div className="condition-row">
         {CONDITIONS.map((c) => {
           const active = activeConditions.includes(c.key);
@@ -252,67 +268,6 @@ function ConditionsField({ entity, isHost, onUpdate }) {
           );
         })}
       </div>
-      {activeConditions.length > 0 && (
-        <ul className="condition-list">
-          {activeConditions.map((key) => {
-            const c = CONDITIONS.find((cond) => cond.key === key);
-            if (!c) return null;
-            return (
-              <li key={key} title={c.description}>
-                <img src={c.imageUrl} alt="" width={16} height={16} />
-                {c.label}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </>
-  );
-}
-
-function HitPointsField({ entity, onUpdate, disabled }) {
-  const hpPct = entity.maxHp ? Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100)) : 0;
-  return (
-    <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Hit points
-      </label>
-      <div className="hp-row">
-        <input
-          type="number"
-          value={entity.hp}
-          disabled={disabled}
-          onChange={(e) => onUpdate(entity.id, { hp: parseInt(e.target.value, 10) || 0 })}
-        />
-        <span style={{ color: 'var(--parchment-300)' }}>/</span>
-        <input
-          type="number"
-          value={entity.maxHp}
-          disabled={disabled}
-          onChange={(e) => onUpdate(entity.id, { maxHp: parseInt(e.target.value, 10) || 0 })}
-        />
-      </div>
-      <div className="hp-bar-track">
-        <div className="hp-bar-fill" style={{ width: `${hpPct}%`, background: hpPct < 30 ? 'var(--danger)' : 'var(--moss)' }} />
-      </div>
-    </>
-  );
-}
-
-function ArmorClassField({ entity, onUpdate, disabled }) {
-  return (
-    <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Armor class
-      </label>
-      <input
-        type="number"
-        className="field"
-        style={{ maxWidth: 90 }}
-        value={entity.armorClass ?? 10}
-        disabled={disabled}
-        onChange={(e) => onUpdate(entity.id, { armorClass: parseInt(e.target.value, 10) || 0 })}
-      />
     </>
   );
 }
@@ -336,6 +291,57 @@ function SizeField({ entity, onUpdate, disabled, maxSize }) {
         ))}
       </select>
     </>
+  );
+}
+
+// The inspector's top block: the token's own face, its name, and one line of
+// context ("Hero, level 3 · square (4, 2)").
+function InspectorHeader({ entity, sub }) {
+  return (
+    <div className="inspector-head">
+      <span
+        className={`inspector-disc${entity.kind === 'hero' ? ' round' : ''}`}
+        style={{ backgroundImage: `url(${entity.imageUrl})`, '--token-color': entity.color || 'transparent' }}
+        aria-hidden="true"
+      />
+      <div className="inspector-head-text">
+        <h4>{entity.name}</h4>
+        <span className="inspector-sub">{sub}</span>
+      </div>
+    </div>
+  );
+}
+
+// Hit points and armor class in one card, above the sheet tabs. A hero's AC
+// lives on its sheet; a monster's on the entity (players see it, and hero
+// attacks roll against it).
+function VitalsCard({ entity, sheet, onUpdate, updateSheet, disabled }) {
+  const isMob = entity.kind === 'mob';
+  const hpPct = entity.maxHp ? Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100)) : 0;
+  const ac = isMob ? entity.armorClass ?? 10 : sheet.armorClass;
+  function setAc(value) {
+    const n = parseInt(value, 10) || 0;
+    if (isMob) onUpdate(entity.id, { armorClass: n });
+    else updateSheet({ armorClass: n });
+  }
+  return (
+    <div className="vitals-card">
+      <div className="vitals-row">
+        <span className="cap">Hit points</span>
+        <span className="vitals-hp">
+          <input type="number" aria-label="Current hit points" value={entity.hp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { hp: parseInt(e.target.value, 10) || 0 })} />
+          <span className="vitals-sep">/</span>
+          <input type="number" aria-label="Maximum hit points" value={entity.maxHp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { maxHp: parseInt(e.target.value, 10) || 0 })} />
+        </span>
+      </div>
+      <div className="hp-bar-track">
+        <div className="hp-bar-fill" style={{ width: `${hpPct}%`, background: hpPct < 40 ? 'var(--danger)' : 'var(--moss)' }} />
+      </div>
+      <div className="vitals-row">
+        <span className="cap">Armor class</span>
+        <input type="number" className="vitals-ac" aria-label="Armor class" value={ac} disabled={disabled} onChange={(e) => setAc(e.target.value)} />
+      </div>
+    </div>
   );
 }
 
@@ -706,20 +712,14 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
 
   return (
     <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        Monster · square ({entity.col}, {entity.row})
-      </div>
+      <InspectorHeader entity={entity} sub={`Monster · square (${entity.col}, ${entity.row})`} />
       <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <VitalsCard entity={entity} sheet={sheet} onUpdate={onUpdate} updateSheet={updateSheet} disabled={!isHost} />
+      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
       {isHost ? (
         <SheetTabs entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} targets={heroTargets} />
       ) : (
-        <>
-          <ArmorClassField entity={entity} onUpdate={onUpdate} disabled />
-          <HitPointsField entity={entity} onUpdate={onUpdate} disabled />
-          <SizeField entity={entity} onUpdate={onUpdate} disabled />
-          <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
-        </>
+        <SizeField entity={entity} onUpdate={onUpdate} disabled />
       )}
       {isHost && (
         <CollapsibleField title="Droppables">
@@ -756,6 +756,56 @@ const TABS = [
 // heroes for a monster. `isOwner` (a hero's own player, never true for a
 // monster) unlocks just the Battle Equipment, Spells, and Bag tabs — see
 // PITFALLS.md #1.
+// The tab row scrolls sideways when the panel is narrower than the tabs. Arrow
+// buttons appear on whichever side still has tabs hidden, and scroll a
+// page at a time.
+function ScrollableTabs({ children }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    function update() {
+      setEdges({
+        left: el.scrollLeft > 1,
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
+    }
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro?.disconnect();
+    };
+  }, []);
+
+  function scrollByPage(dir) {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.7, behavior: 'smooth' });
+  }
+
+  return (
+    <div className="sheet-tabs-wrap">
+      {edges.left && (
+        <button type="button" className="sheet-tabs-arrow left" aria-label="Scroll tabs left" onClick={() => scrollByPage(-1)}>
+          &#8249;
+        </button>
+      )}
+      <div className="sheet-tabs" ref={ref}>
+        {children}
+      </div>
+      {edges.right && (
+        <button type="button" className="sheet-tabs-arrow right" aria-label="Scroll tabs right" onClick={() => scrollByPage(1)}>
+          &#8250;
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targets }) {
   const [tab, setTab] = useState('overview');
   const canEditOwnTabs = isHost || isOwner;
@@ -763,7 +813,7 @@ function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targ
 
   return (
     <>
-      <div className="sheet-tabs">
+      <ScrollableTabs>
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -774,7 +824,7 @@ function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targ
             {t.label}
           </button>
         ))}
-      </div>
+      </ScrollableTabs>
 
       {!isHost && (
         <p className="footer-note" style={{ padding: '8px 2px', border: 'none' }}>
@@ -811,12 +861,11 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
 
   return (
     <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        Hero · square ({entity.col}, {entity.row})
-      </div>
+      <InspectorHeader entity={entity} sub={`Hero, level ${sheet.level} · square (${entity.col}, ${entity.row})`} />
       <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
       <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
+      <VitalsCard entity={entity} sheet={sheet} onUpdate={onUpdate} updateSheet={updateSheet} disabled={!isHost} />
+      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
 
       <SheetTabs entity={entity} sheet={sheet} isHost={isHost} isOwner={isOwner} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
 
@@ -843,19 +892,6 @@ function OverviewTab({ entity, sheet, isHost, onUpdate, updateSheet }) {
           <label className="field-label">Speed (ft)</label>
           <input type="number" className="field" value={sheet.speed} onChange={(e) => updateSheet({ speed: parseInt(e.target.value, 10) || 0 })} />
         </div>
-      </div>
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Armor class</label>
-          {/* A monster's AC lives on the entity itself (players see it, and hero
-              attacks roll against it); a hero's lives on its sheet. */}
-          {entity.kind === 'mob' ? (
-            <input type="number" className="field" value={entity.armorClass ?? 10} onChange={(e) => onUpdate(entity.id, { armorClass: parseInt(e.target.value, 10) || 0 })} />
-          ) : (
-            <input type="number" className="field" value={sheet.armorClass} onChange={(e) => updateSheet({ armorClass: parseInt(e.target.value, 10) || 0 })} />
-          )}
-        </div>
         <div>
           <label className="field-label">Initiative</label>
           <input type="number" className="field" value={sheet.initiative} onChange={(e) => updateSheet({ initiative: parseInt(e.target.value, 10) || 0 })} />
@@ -870,9 +906,7 @@ function OverviewTab({ entity, sheet, isHost, onUpdate, updateSheet }) {
         <DeathSaveDots label="Failures" count={sheet.deathSaves.failures} colorClass="failure" onSet={(n) => setDeathSave('failures', n)} />
       </div>
 
-      <HitPointsField entity={entity} onUpdate={onUpdate} />
       <SizeField entity={entity} onUpdate={onUpdate} />
-      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
     </>
   );
 }
