@@ -77,7 +77,57 @@ function CodeChip({ caption, value, copied, onCopy, title }) {
   );
 }
 
-const TOOL_ICONS = { play: '✥', edit: '✎', pan: '✋', ruler: '↔', group: '⛓' };
+const ICON_PATHS = {
+  tools: 'M5 3l10 7-5 1-2 5z',
+  play: 'M5 3l10 7-5 1-2 5z',
+  edit: 'M4 16l1-4L14 3l3 3-9 9zM12 5l3 3',
+  pan: 'M10 2v16M2 10h16M10 2L7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5',
+  ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
+  group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
+  storage: 'M3 6h14v3H3zM4 9v8h12V9M8 12h4',
+  layout: 'M3 3h14v14H3zM3 10h14M10 3v14',
+  recenter: 'M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3',
+  mapping: 'M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM13 7l-2 4-4 2 2-4z',
+  map: 'M2 5l5-2 6 2 5-2v12l-5 2-6-2-5 2zM7 3v12M13 5v12',
+  islands: 'M3 16h14M5 16c0-4 2-7 5-7s5 3 5 7',
+  layers: 'M10 3l8 4-8 4-8-4zM2 11l8 4 8-4M2 14l8 4 8-4',
+  world: 'M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM2 10h16M10 2c-3 3-3 13 0 16M10 2c3 3 3 13 0 16',
+  clock: 'M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM10 5v5l3 2',
+  daynight: 'M15 11a6 6 0 1 1-6-8 5 5 0 0 0 6 8z',
+  library: 'M4 3h9a3 3 0 0 1 3 3v11H7a3 3 0 0 1-3-3zM4 14a3 3 0 0 1 3-3h9',
+  weapons: 'M16 3h1v1L9 12l-3 1 1-3zM5 14l-2 2M4 12l4 4',
+  items: 'M3 6l7-3 7 3v8l-7 3-7-3zM3 6l7 3 7-3M10 9v8',
+  initiative: 'M4 5h12M4 10h12M4 15h8',
+  music: 'M8 15V4l8-2v11M8 15a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 13a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
+  dice: 'M4 4h12v12H4zM7.5 7.5h.01M12.5 12.5h.01M12.5 7.5h.01M7.5 12.5h.01',
+  refresh: 'M16 10a6 6 0 1 1-2-4.5M16 3v3.5h-3.5',
+  config: 'M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4',
+  save: 'M4 3h10l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5',
+  export: 'M10 3v10M6 9l4 4 4-4M4 17h12',
+  import: 'M10 13V3M6 7l4-4 4 4M4 17h12',
+  lock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 6 0v3',
+  unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
+  leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
+  timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
+};
+
+// Line icons for the toolbar (replaces the old emoji glyphs so the bar reads
+// as one consistent set and follows the palette's text color).
+function Icon({ name }) {
+  return (
+    <svg className="tool-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
+const TOOL_ICONS = {
+  play: <Icon name="play" />,
+  edit: <Icon name="edit" />,
+  pan: <Icon name="pan" />,
+  ruler: <Icon name="ruler" />,
+  group: <Icon name="group" />,
+};
 const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands' };
 
 export default function Toolbar({
@@ -276,7 +326,7 @@ export default function Toolbar({
       {/* The trigger shows the active tool's icon, so the current mode is
           still visible with the menu folded away. */}
       <ToolMenu
-        icon={TOOL_ICONS[tool] || '🛠'}
+        icon={TOOL_ICONS[tool] || <Icon name="tools" />}
         label="Tools"
         title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
         active={showAssetStorage}
@@ -322,7 +372,7 @@ export default function Toolbar({
               title="Select 2+ islands to bundle into a group that moves and titles as one"
             />
             <ToolCard
-              icon="🗃"
+              icon={<Icon name="storage" />}
               label="Storage"
               active={showAssetStorage}
               onClick={() => togglePopover('assetStorage')}
@@ -333,7 +383,7 @@ export default function Toolbar({
       </ToolMenu>
 
       <ToolMenu
-        icon="🔍"
+        icon={<Icon name="layout" />}
         label="Layout"
         title="Zoom and recenter the map"
         open={openMenu === 'layout'}
@@ -343,12 +393,12 @@ export default function Toolbar({
         <ToolCard icon="−" label="Zoom out" onClick={onZoomOut} title="Zoom out" />
         <ToolCard icon={`${Math.round((zoom ?? 1) * 100)}%`} label="Reset" onClick={onZoomReset} title="Reset zoom to 100%" />
         <ToolCard icon="+" label="Zoom in" onClick={onZoomIn} title="Zoom in" />
-        <ToolCard icon="◎" label="Recenter" onClick={onRecenter} title="Scroll back to the currently selected island" />
+        <ToolCard icon={<Icon name="recenter" />} label="Recenter" onClick={onRecenter} title="Scroll back to the currently selected island" />
       </ToolMenu>
 
       {isHost && (
         <ToolMenu
-          icon="🧭"
+          icon={<Icon name="mapping" />}
           label="Mapping"
           title="Map settings, islands, and layers"
           active={showMapSettings || showIslands || showLayers}
@@ -401,15 +451,15 @@ export default function Toolbar({
             </>
           }
         >
-          <ToolCard icon="🗺" label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
-          <ToolCard icon="🏝" label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
-          <ToolCard icon="🗂" label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
+          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
+          <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
+          <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
         </ToolMenu>
       )}
 
       {isHost && (
         <ToolMenu
-          icon="🌍"
+          icon={<Icon name="world" />}
           label="World state"
           title="In-game time and day / night"
           active={showDayNight}
@@ -428,9 +478,9 @@ export default function Toolbar({
             )
           }
         >
-          <ToolCard icon="🕒" label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
+          <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
           <ToolCard
-            icon={dayPhase ? '' : '🌓'}
+            icon={dayPhase ? '' : <Icon name="daynight" />}
             image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}
             label="Day / night"
             active={showDayNight}
@@ -455,7 +505,7 @@ export default function Toolbar({
 
       {isHost && (
         <ToolMenu
-          icon="📚"
+          icon={<Icon name="library" />}
           label="Library"
           title="Weapon and item compendiums"
           active={showCompendium || showItemCompendium}
@@ -463,8 +513,8 @@ export default function Toolbar({
           onToggle={() => toggleMenu('library')}
           onClose={closeMenu}
         >
-          <ToolCard icon="📖" label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
-          <ToolCard icon="📦" label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
+          <ToolCard icon={<Icon name="weapons" />} label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
+          <ToolCard icon={<Icon name="items" />} label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
         </ToolMenu>
       )}
 
@@ -474,7 +524,7 @@ export default function Toolbar({
       <div className="toolbar-group">
         {isHost && (
           <ToolCard
-            icon="👢"
+            icon={<Icon name="initiative" />}
             label="Initiative"
             active={showInitiative}
             onClick={() => togglePopover('initiative')}
@@ -482,14 +532,14 @@ export default function Toolbar({
           />
         )}
         <ToolCard
-          icon="🎵"
+          icon={<Icon name="music" />}
           label="Music"
           active={Boolean(audio?.playback?.nowPlaying)}
           disabled={!audio?.enabled}
           onClick={onOpenMusic}
           title={audio?.enabled ? 'Table music' : 'Music is available to the DM of a cloud or guest table only'}
         />
-        <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
+        <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceRollerPopover
             sets={diceSets}
@@ -531,7 +581,7 @@ export default function Toolbar({
               strand anyone already connected) — hide the button rather than
               offer a dead end. */}
           {!isGuestHost && (
-            <ToolCard icon="🔄" label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
+            <ToolCard icon={<Icon name="refresh" />} label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
           )}
         </div>
       )}
@@ -579,7 +629,7 @@ export default function Toolbar({
           className="autosave-countdown"
           title={`Auto-saves in ${formatCountdown(autosaveSecondsLeft)} — the Save button in Configurations still works any time`}
         >
-          ⏳ {formatCountdown(autosaveSecondsLeft)}
+          <Icon name="timer" /> {formatCountdown(autosaveSecondsLeft)}
         </span>
       )}
 
@@ -587,7 +637,7 @@ export default function Toolbar({
           "shutting the book" actions, tucked away since they're reached for
           far less often than anything above. */}
       <ToolMenu
-        icon="⚙"
+        icon={<Icon name="config" />}
         label="Configurations"
         title="Save, export, import, close, and leave"
         open={openMenu === 'configurations'}
@@ -596,12 +646,12 @@ export default function Toolbar({
       >
         {isHost && (
           <>
-            <ToolCard icon="💾" label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
-            <ToolCard icon="⬇" label="Export" onClick={() => pick(onExport)} title="Export .bmp" />
-            <ToolCard icon="⬆" label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .bmp — overwrites the whole table" />
+            <ToolCard icon={<Icon name="save" />} label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
+            <ToolCard icon={<Icon name="export" />} label="Export" onClick={() => pick(onExport)} title="Export .bmp" />
+            <ToolCard icon={<Icon name="import" />} label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .bmp — overwrites the whole table" />
             <input ref={importRef} type="file" accept="image/bmp,.bmp" style={{ display: 'none' }} onChange={handleImportFile} />
             <ToolCard
-              icon={session.isOpen ? '🔓' : '🔒'}
+              icon={<Icon name={session.isOpen ? 'unlock' : 'lock'} />}
               label={session.isOpen ? 'Close' : 'Reopen'}
               active={!session.isOpen}
               onClick={() => pick(onToggleOpen)}
@@ -609,7 +659,7 @@ export default function Toolbar({
             />
           </>
         )}
-        <ToolCard icon="🚪" label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />
+        <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />
       </ToolMenu>
     </div>
   );
