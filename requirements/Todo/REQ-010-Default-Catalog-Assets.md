@@ -150,10 +150,10 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S023 | P | Dice images table | Migration adding `catalog_dice_images` with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S024 | S | Admin script (dice images) | Extend the script to upload `dice/<slug>.webp` and upsert rows by die type. | S002, S023 | admin script |
-|  | S025 | F | Catalog dice images list | Add the list and its fetch to the catalog module and startup fetch. | S003, S004, S023 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
-|  | S026 | U | Dice tiles | Show a die's catalog image on its tile in `DiceModal` when one exists; otherwise the existing outline. | S025 | `src/components/DiceModal.jsx`, `src/styles.css` |
+| ✅ | S023 | P | Dice images table | Migration adding `catalog_dice_images` with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S024 | S | Admin script (dice images) | Extend the script to upload `dice/<slug>.webp` and upsert rows by die type. | S002, S023 | admin script |
+| ✅ | S025 | F | Catalog dice images list | Add the list and its fetch to the catalog module and startup fetch. | S003, S004, S023 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
+| ✅ | S026 | U | Dice tiles | Show a die's catalog image on its tile in `DiceModal` when one exists; otherwise the existing outline. | S025 | `src/components/DiceModal.jsx`, `src/styles.css` |
 
 ### Slice 6 — 3D dice bases
 

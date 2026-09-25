@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ModalShell from './ModalShell.jsx';
+import { useCatalog, dieImage } from '../lib/catalog.js';
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const MAX_PER_TYPE = 20;
@@ -68,6 +69,7 @@ function rollPool(pool, modifier, mode, name) {
 // The "Roll the dice" modal: tap dice into a pool, add a modifier and
 // advantage/disadvantage, roll once. Saved rolls reload a pool in one tap.
 export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose }) {
+  useCatalog(); // re-render when the catalog's dice pictures arrive
   const [pool, setPool] = useState({ 20: 1 });
   const [modifier, setModifier] = useState(0);
   const [mode, setMode] = useState('normal');
@@ -137,6 +139,7 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
             <div className="dm-tray">
               {SIDES.map((sides) => {
                 const count = pool[sides] || 0;
+                const image = dieImage(`d${sides}`);
                 return (
                   <div className="dm-die-wrap" key={sides}>
                     <button
@@ -145,9 +148,13 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
                       onClick={() => bump(sides, 1)}
                       aria-label={`Add a d${sides}`}
                     >
-                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
-                        <path d={DIE_PATHS[sides]} />
-                      </svg>
+                      {image ? (
+                        <img src={image} alt="" width="40" height="40" />
+                      ) : (
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+                          <path d={DIE_PATHS[sides]} />
+                        </svg>
+                      )}
                       <span>d{sides}</span>
                     </button>
                     {count > 0 && <span className="dm-count">{count}</span>}

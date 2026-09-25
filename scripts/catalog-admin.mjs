@@ -176,6 +176,22 @@ async function seedMonsters() {
   return `${rows.length} monsters, ${uploaded.size} pictures`;
 }
 
+const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+
+// One row per die type; its picture is dice/<die type>.webp (d4 … d100).
+async function seedDiceImages() {
+  const existing = await existingPaths('catalog_dice_images');
+  const uploaded = await uploadImages('dice', await localFiles('dice', ['.webp']));
+  const rows = DIE_TYPES.map((die) => ({
+    slug: die,
+    name: die,
+    die_type: die,
+    image_path: uploaded.has(die) ? `dice/${die}.webp` : existing.get(die) ?? null,
+  }));
+  await upsertRows('catalog_dice_images', rows);
+  return `${rows.length} dice, ${[...uploaded].filter((s) => DIE_TYPES.includes(s)).length} pictures`;
+}
+
 const titleCase = (slug) => slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 // Songs come from files alone: <assets>/audio/<slug>.mp3|wav. A new song's
@@ -206,6 +222,7 @@ const KINDS = {
   items: seedItems,
   monsters: seedMonsters,
   audio: seedAudio,
+  dice: seedDiceImages,
 };
 
 async function main() {

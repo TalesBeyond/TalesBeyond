@@ -3028,3 +3028,5 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .currency-bronze { border-color: #a9694a88; }
 .currency-silver { border-color: #b9c0c688; }
 .currency-gold { border-color: color-mix(in srgb, var(--gold-hi) 60%, transparent); }
+
+.dm-die img { width: 40px; height: 40px; object-fit: contain; }

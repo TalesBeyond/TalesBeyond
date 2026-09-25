@@ -20,8 +20,9 @@ let current = {
   items: ITEMS,
   monsters: MONSTERS,
   audio: [], // songs have no built-in fallback: the picker is simply empty
+  diceImages: [], // nor do dice pictures: a tile without one keeps its outline
   // Public picture URLs by kind, keyed by the entry's name (monsters: key).
-  images: { weapons: {}, items: {}, monsters: {} },
+  images: { weapons: {}, items: {}, monsters: {}, diceImages: {} },
 };
 const listeners = new Set();
 
@@ -99,6 +100,13 @@ const mapAudio = (row) => ({
   url: publicUrl(AUDIO_BUCKET, row.audio_path),
 });
 
+const mapDiceImage = (row) => ({ slug: row.slug, name: row.name, dieType: row.die_type });
+
+// The catalog's picture for a die ("d20"), or null.
+export function dieImage(dieType) {
+  return current.images.diceImages?.[dieType] || null;
+}
+
 // One entry per catalog list: which table feeds it, how a row becomes the
 // shape the app already uses, and which field keys its picture map.
 const SOURCES = [
@@ -106,6 +114,7 @@ const SOURCES = [
   { kind: 'items', table: 'catalog_items', map: mapItem, imageKey: (row) => row.name },
   { kind: 'monsters', table: 'catalog_monsters', map: mapMonster, imageKey: (row) => row.slug },
   { kind: 'audio', table: 'catalog_audio', map: mapAudio },
+  { kind: 'diceImages', table: 'catalog_dice_images', map: mapDiceImage, imageKey: (row) => row.die_type },
 ];
 
 async function loadSource({ kind, table, map, imageKey }) {
