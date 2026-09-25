@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { WEAPONS, DICE_TYPES } from '../data/weapons.js';
+import { playDiceSound } from '../lib/diceSound.js';
 import { ITEMS } from '../data/items.js';
 import { newDroppableItem, dropThreshold } from '../data/droppables.js';
 
@@ -80,11 +81,13 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
   }
 
   function rollOne(item) {
+    playDiceSound();
     const roll = rollD20();
     setRollResults((prev) => ({ ...prev, [item.id]: { roll, dropped: roll <= dropThreshold(item.dropChance) } }));
   }
 
   function rollAll() {
+    playDiceSound();
     const next = {};
     items.forEach((item) => {
       const roll = rollD20();

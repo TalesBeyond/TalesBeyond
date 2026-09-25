@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import { DebouncedRange } from './SoundField.jsx';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
+import { getDiceVolume, setDiceVolume, playDiceSound } from '../lib/diceSound.js';
 
 function formatSeconds(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -47,6 +48,8 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
             <MusicRow key={row.key} row={row} audio={audio} />
           ))}
 
+          <DiceSoundRow />
+
           {audio.isHost && (
             <div className="music-usage">
               <div className="music-usage-bar">
@@ -65,6 +68,43 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
               : 'The DM controls the music. Your volume slider only changes what you hear.'}
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// The built-in dice-roll sound. Local to this browser, like a player's own
+// music slider; releasing the slider plays a preview.
+function DiceSoundRow() {
+  const [volume, setVolume] = useState(getDiceVolume);
+  return (
+    <div className="music-row">
+      <div className="music-row-head">
+        <div className="music-row-main">
+          <div className="music-row-source">Dice</div>
+          <div className="music-row-name">Dice roll sound</div>
+          <div className="music-row-status">Plays whenever you roll</div>
+        </div>
+      </div>
+      <div className="music-sliders">
+        <label className="music-slider">
+          <span>Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            aria-label="Dice roll sound volume"
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setVolume(v);
+              setDiceVolume(v);
+            }}
+            onPointerUp={playDiceSound}
+            onKeyUp={playDiceSound}
+          />
+        </label>
       </div>
     </div>
   );

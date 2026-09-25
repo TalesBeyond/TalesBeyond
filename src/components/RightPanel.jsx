@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CONDITIONS } from '../data/conditions.js';
+import { playDiceSound } from '../lib/diceSound.js';
 import {
   ABILITIES,
   SKILLS,
@@ -1152,6 +1153,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
     const it = items[index];
     const weapon = weaponStatsFor(it.weaponName);
     const toHitMod = totalToHit(weapon, it.additionalModifier);
+    playDiceSound();
     const d20 = rollDie(20);
     const attackTotal = d20 + toHitMod;
     const targetAC = acOf(target);

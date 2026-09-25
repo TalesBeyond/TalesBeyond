@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
+import { playDiceSound } from '../lib/diceSound.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
@@ -1052,6 +1053,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         updateEntity(entity.id, { initiativeRoll: null, initiativeTurn: null });
       }
     }
+    if (selectedIds.length) playDiceSound();
     const rolled = selectedIds.map((id) => ({ id, roll: 1 + Math.floor(Math.random() * 20) }));
     rolled.sort((a, b) => b.roll - a.roll);
     rolled.forEach(({ id, roll }, index) => updateEntity(id, { initiativeRoll: roll, initiativeTurn: index + 1 }));

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ModalShell from './ModalShell.jsx';
+import { playDiceSound } from '../lib/diceSound.js';
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const MAX_PER_TYPE = 20;
@@ -26,25 +27,25 @@ function describePool(pool, modifier) {
   return text;
 }
 
-// Rolls the pool. With advantage/disadvantage, the first d20 is rolled twice
-// and the higher/lower one kept.
+// Rolls the pool. With advantage/disadvantage, every set of dice is thrown
+// twice and the set with the higher/lower total is kept (the first throw wins
+// a tie). Both throws are shown in the detail line.
 function rollPool(pool, modifier, mode, name) {
   let total = modifier;
   const groups = [];
   let flag = null;
+  const sum = (arr) => arr.reduce((a, b) => a + b, 0);
   for (const sides of SIDES) {
     const count = pool[sides] || 0;
     if (!count) continue;
-    const results = Array.from({ length: count }, () => d(sides));
+    let results = Array.from({ length: count }, () => d(sides));
     let text;
-    let sum = results.reduce((a, b) => a + b, 0);
-    if (sides === 20 && mode !== 'normal') {
-      const second = d(20);
-      const kept = mode === 'advantage' ? Math.max(results[0], second) : Math.min(results[0], second);
-      const rest = results.slice(1);
-      sum = kept + rest.reduce((a, b) => a + b, 0);
-      text = `${count}d20 (${results[0]}, ${second}${rest.length ? `, ${rest.join(', ')}` : ''}) keep ${kept}`;
-      results[0] = kept;
+    if (mode !== 'normal') {
+      const second = Array.from({ length: count }, () => d(sides));
+      const takeSecond = mode === 'advantage' ? sum(second) > sum(results) : sum(second) < sum(results);
+      const throws = `[${results.join(', ')} = ${sum(results)}] / [${second.join(', ')} = ${sum(second)}]`;
+      if (takeSecond) results = second;
+      text = `${count}d${sides} ${throws} keep ${sum(results)}`;
     } else {
       text = `${count}d${sides} (${results.join(', ')})`;
     }
@@ -52,7 +53,7 @@ function rollPool(pool, modifier, mode, name) {
       if (results[0] === 20) flag = 'Natural 20';
       else if (results[0] === 1) flag = 'Natural 1';
     }
-    total += sum;
+    total += sum(results);
     groups.push(text);
   }
   const detail = groups.join(' + ') + (modifier ? ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}` : '');
@@ -75,7 +76,6 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
 
   const label = describePool(pool, modifier);
   const canRoll = label !== '';
-  const hasD20 = (pool[20] || 0) > 0;
   const latest = rolls[0];
 
   function bump(sides, delta) {
@@ -89,7 +89,8 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
 
   function roll() {
     if (!canRoll) return;
-    onRoll(rollPool(pool, modifier, hasD20 ? mode : 'normal', name));
+    playDiceSound();
+    onRoll(rollPool(pool, modifier, mode, name));
   }
 
   function loadSaved(s) {
@@ -183,13 +184,13 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
             </div>
           </div>
 
-          <div className="dm-seg" role="group" aria-label="Roll mode" title={hasD20 ? undefined : 'Advantage and disadvantage apply to a d20'}>
+          <div className="dm-seg" role="group" aria-label="Roll mode" title="Every set of dice is thrown twice; the lower (disadvantage) or higher (advantage) total is kept">
             {[
               ['disadvantage', 'Disadvantage'],
               ['normal', 'Normal'],
               ['advantage', 'Advantage'],
             ].map(([key, text]) => (
-              <button key={key} type="button" className={mode === key ? 'on' : ''} disabled={!hasD20 && key !== 'normal'} onClick={() => setMode(key)}>
+              <button key={key} type="button" className={mode === key ? 'on' : ''} disabled={!canRoll} onClick={() => setMode(key)}>
                 {text}
               </button>
             ))}
