@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// Loops by default for world/layer/island sounds, not for one-shot token sounds.
+// Loops by default for world/layer sounds, not for one-shot token sounds.
 export function defaultLoopFor(targetKind) {
   return targetKind !== 'entity';
 }
@@ -19,8 +19,7 @@ export function playbackPositionSeconds(nowPlaying, durationSeconds, loop, nowMs
 }
 
 // The audibility rule (REQ-009): world and token sounds are heard by everyone;
-// a layer sound only by clients on that layer; an island sound only by clients
-// whose current layer contains that island. `expired` files are skipped.
+// a layer sound only by clients on that layer. `expired` files are skipped.
 export function audibleTrack(playback, tracks, { currentLayerId, layers, expired } = {}) {
   const np = playback?.nowPlaying;
   const track = np ? tracks?.[np.trackId] : null;
@@ -31,8 +30,6 @@ export function audibleTrack(playback, tracks, { currentLayerId, layers, expired
       return track;
     case 'layer':
       return track.targetId === currentLayerId ? track : null;
-    case 'island':
-      return layers?.[currentLayerId]?.islands?.[track.targetId] ? track : null;
     default:
       return null;
   }

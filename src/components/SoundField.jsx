@@ -28,7 +28,7 @@ export function DebouncedRange({ value, onCommit, label, disabled }) {
 }
 
 // The host's upload/replace/remove/play/loop control for one target's sound —
-// a layer or island in Map settings, a hero or mob in its inspector. Players
+// a layer in Map settings, a hero or mob in its inspector. Players
 // never see it (they get the Music modal's local slider only).
 export default function SoundField({ audio, targetKind, targetId, label = 'Sound' }) {
   const fileRef = useRef(null);

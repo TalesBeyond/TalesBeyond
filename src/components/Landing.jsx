@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
 import { generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { createEmptyGameState, MAX_PLAYERS } from '../state/store.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
@@ -439,24 +440,47 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
       </p>
 
       {pendingDelete && (
-        <div className="delete-confirm-backdrop" onClick={() => setPendingDelete(null)}>
-          <div className="delete-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Delete this table?</h4>
-            <p>
-              <strong>{pendingDelete.name}</strong> and everything in it — heroes, maps, chests, everything — will be
-              permanently removed. Make sure no one is still playing. This can't be undone.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="btn btn-secondary" onClick={() => setPendingDelete(null)}>
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={confirmDelete}>
-                Delete table
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteTableConfirm table={pendingDelete} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
       )}
+    </div>
+  );
+}
+
+// Deleting a table is permanent, so the host has to type its name to arm the button.
+function DeleteTableConfirm({ table, onCancel, onConfirm }) {
+  const [typed, setTyped] = useState('');
+  const armed = typed.trim() === String(table.name ?? '').trim();
+  return (
+    <div className="delete-confirm-backdrop" onClick={onCancel}>
+      <div className="delete-confirm-card" role="alertdialog" aria-label="Delete this table?" onClick={(e) => e.stopPropagation()}>
+        <h4>
+          <ModalIcon name="warn" />
+          Delete this table?
+        </h4>
+        <p>
+          <strong>{table.name}</strong> and everything in it — heroes, maps, chests, everything — will be
+          permanently removed. Make sure no one is still playing. This can't be undone.
+        </p>
+        <div className="delete-confirm-field">
+          <label htmlFor="delete-confirm-input">Type the table name to confirm</label>
+          <input
+            id="delete-confirm-input"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={table.name}
+            autoComplete="off"
+            autoFocus
+          />
+        </div>
+        <div className="delete-confirm-actions">
+          <button className="btn btn-secondary" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-danger" onClick={onConfirm} disabled={!armed}>
+            Delete table
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
 import { DebouncedRange } from './SoundField.jsx';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
 
@@ -17,13 +18,8 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
   for (const track of Object.values(audio.tracks)) {
     if (track.targetKind === 'layer' && layers[track.targetId]) {
       rows.push({ key: track.id, source: `Layer — ${layers[track.targetId].name}`, kind: 'layer', track, order: layerOrder.indexOf(track.targetId) });
-    } else if (track.targetKind === 'island') {
-      const island = Object.values(layers)
-        .map((layer) => layer.islands?.[track.targetId])
-        .find(Boolean);
-      if (island) rows.push({ key: track.id, source: `Island — ${island.name}`, kind: 'island', track, order: 1000 });
     } else if (track.targetKind === 'entity' && entities[track.targetId]) {
-      rows.push({ key: track.id, source: `Token — ${entities[track.targetId].name}`, kind: 'entity', track, order: 2000 });
+      rows.push({ key: track.id, source: `Token — ${entities[track.targetId].name}`, kind: 'entity', track, order: 1000 });
     }
   }
   const [world, ...rest] = rows;
@@ -40,7 +36,7 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">
-          <span className="book-title">🎵 Music</span>
+          <span className="book-title"><ModalIcon name="music" />Music</span>
           <button className="popover-close" onClick={onClose} aria-label="Close" title="Close">
             ×
           </button>
@@ -65,7 +61,7 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
             {isGuest
               ? 'Guest table: your files stay on this device and only you hear them — nothing is uploaded, and they are gone when you close the page.'
               : audio.isHost
-              ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to layers, islands and tokens from Map settings and the token inspector.'
+              ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to layers and tokens from Map settings and the token inspector.'
               : 'The DM controls the music. Your volume slider only changes what you hear.'}
           </p>
         </div>

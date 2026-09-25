@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
 import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { CHEST_SIZES } from '../data/chests.js';
@@ -264,7 +265,7 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
         <div className="book-backdrop" onClick={() => setShowTrapModal(false)}>
           <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
             <div className="book-card-header">
-              <span className="book-title">&#9888;&#65039; Configure Trap</span>
+              <span className="book-title"><ModalIcon name="warn" />Configure Trap</span>
               <button className="popover-close" onClick={() => setShowTrapModal(false)} aria-label="Close" title="Close">
                 ×
               </button>
@@ -356,7 +357,7 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
           <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
             <div className="book-card-header">
               <span className="book-title">
-                📦 Configure {CHEST_SIZES.find((s) => s.key === chestSize)?.label} Chest
+                <ModalIcon name="box" />Configure {CHEST_SIZES.find((s) => s.key === chestSize)?.label} Chest
               </span>
               <button className="popover-close" onClick={() => setShowChestModal(false)} aria-label="Close" title="Close">
                 ×

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
@@ -1411,7 +1412,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const playing = audioPlayback.nowPlaying ? audioTracks[audioPlayback.nowPlaying.trackId] : null;
     if (layerTrack) {
       if (playing?.id !== layerTrack.id && !expiredAudio.has(layerTrack.id)) playAudioTrack(layerTrack.id);
-    } else if (playing && (playing.targetKind === 'layer' || playing.targetKind === 'island')) {
+    } else if (playing && (playing.targetKind === 'layer')) {
       pauseAudio();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2072,7 +2073,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       {pendingDoor && (
         <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
           <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Open the door?</h4>
+            <h4><ModalIcon name="door" />Open the door?</h4>
             <p>
               Step through <strong>{pendingDoor.door.name}</strong> to{' '}
               <strong>{state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}</strong>?
@@ -2094,7 +2095,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       {pendingLeaveWarning && (
         <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
           <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Leave without exporting?</h4>
+            <h4><ModalIcon name="exit" />Leave without exporting?</h4>
             <p>
               Nothing about this guest table is saved anywhere but this browser. If you leave now without
               exporting, <strong>everything since it opened will be lost for good.</strong>

@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
+import ModalShell from './ModalShell.jsx';
+import DiceModal from './DiceModal.jsx';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
@@ -17,10 +20,6 @@ function formatCountdown(totalSeconds) {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function newDiceSet(overrides = {}) {
-  return { id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, title: '', sides: 20, quantity: 1, ...overrides };
 }
 
 // A small square icon card — the toolbar's basic unit. Every action (tool
@@ -202,11 +201,11 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
-  // Lifted out of DiceRollerPopover so the roll log and saved dice sets
+  // Lifted out of DiceModal so the roll log and saved dice sets
   // survive closing and reopening the popover, instead of resetting every
   // time it unmounts.
   const [diceRolls, setDiceRolls] = useState([]);
-  const [diceSets, setDiceSets] = useState([newDiceSet({ title: 'Quick roll' })]);
+  const [diceSaved, setDiceSaved] = useState([]);
 
   function closePopovers() {
     setShowMapSettings(false);
@@ -510,7 +509,7 @@ export default function Toolbar({
 
       {/* Initiative and dice stay one click away — no menu to open first.
           Everyone's dice tray is private to their own browser (see
-          diceSets/diceRolls above), so it isn't gated to the host. */}
+          diceSaved/diceRolls above), so it isn't gated to the host. */}
       <div className="toolbar-group">
         {isHost && (
           <ToolCard
@@ -531,15 +530,13 @@ export default function Toolbar({
         />
         <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
-          <DiceRollerPopover
-            sets={diceSets}
+          <DiceModal
+            saved={diceSaved}
             rolls={diceRolls}
-            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev])}
+            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev].slice(0, 50))}
             onClearRolls={() => setDiceRolls([])}
-            onAddSet={() => setDiceSets((prev) => [...prev, newDiceSet()])}
-            onUpdateSet={(id, patch) => setDiceSets((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))}
-            onRemoveSet={(id) => setDiceSets((prev) => prev.filter((s) => s.id !== id))}
-            onClearSets={() => setDiceSets([])}
+            onSave={(entry) => setDiceSaved((prev) => [...prev, entry])}
+            onRemoveSaved={(id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id))}
             onClose={() => setShowDice(false)}
           />
         )}
@@ -805,28 +802,7 @@ function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIsla
   }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 260,
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Map settings
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close map settings" title="Close">
-          ×
-        </button>
-      </div>
+    <ModalShell title="Map settings" icon="map" closeLabel="Close map settings" onClose={onClose}>
 
       <div className="section-label" style={{ marginTop: 0 }}>
         This island
@@ -848,7 +824,6 @@ function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIsla
       <IslandConditionsField island={island} isHost={isHost} onPatch={onIslandPatch} />
 
       <SoundField audio={audio} targetKind="layer" targetId={layer.id} label="Layer sound (plays for players on this layer)" />
-      <SoundField audio={audio} targetKind="island" targetId={island.id} label="Island sound (played by the DM, heard on this layer)" />
 
       <label className="field-label" style={{ marginTop: 10 }}>
         Day / night
@@ -894,7 +869,7 @@ function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIsla
         </>
       )}
       {!isHost && <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>Only the host can change map settings.</p>}
-    </div>
+    </ModalShell>
   );
 }
 
@@ -921,28 +896,7 @@ function LayerSwitcherPopover({
   }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 280,
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Layers
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close layers panel" title="Close">
-          ×
-        </button>
-      </div>
+    <ModalShell title="Layers" icon="layers" closeLabel="Close layers panel" onClose={onClose}>
       {(layerOrder || []).map((id, i) => {
         const layer = layers?.[id];
         if (!layer) return null;
@@ -996,7 +950,7 @@ function LayerSwitcherPopover({
       <button className="btn btn-primary btn-block" onClick={addLayer} style={{ marginTop: 8 }}>
         + Add layer
       </button>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1034,28 +988,7 @@ function IslandManagerPopover({
   }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 280,
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Islands on this layer
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close islands panel" title="Close">
-          ×
-        </button>
-      </div>
+    <ModalShell title="Islands on this layer" icon="islands" closeLabel="Close islands panel" onClose={onClose}>
       {(islandOrder || []).map((id, i) => {
         const island = islands?.[id];
         if (!island) return null;
@@ -1126,7 +1059,7 @@ function IslandManagerPopover({
       <p className="footer-note" style={{ border: 'none', padding: '8px 0 0' }}>
         Drag an island's background on the map to reposition it.
       </p>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1150,156 +1083,6 @@ function GroupRow({ group, onRename, onUngroup }) {
           Ungroup
         </button>
       </div>
-    </div>
-  );
-}
-
-const DICE_TYPES = [4, 6, 8, 10, 12, 20, 100];
-
-function DiceRollerPopover({ sets, rolls, onRoll, onClearRolls, onAddSet, onUpdateSet, onRemoveSet, onClearSets, onClose }) {
-  function rollSet(set) {
-    const results = Array.from({ length: set.quantity }, () => 1 + Math.floor(Math.random() * set.sides));
-    const total = results.reduce((sum, n) => sum + n, 0);
-    onRoll({
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      title: set.title.trim() || `${set.quantity} × d${set.sides}`,
-      sides: set.sides,
-      quantity: set.quantity,
-      results,
-      total,
-    });
-  }
-
-  // Rolls every configured set in one go. Reversed so the history list (each
-  // onRoll prepends) ends up reading top-to-bottom in the same order the
-  // sets are listed, instead of backwards.
-  function rollAll() {
-    [...sets].reverse().forEach(rollSet);
-  }
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 300,
-        maxHeight: '70vh',
-        overflowY: 'auto',
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Roll the dice
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close dice roller" title="Close">
-          ×
-        </button>
-      </div>
-
-      <button
-        type="button"
-        className="btn btn-primary btn-block"
-        style={{ marginBottom: 10 }}
-        onClick={rollAll}
-        disabled={sets.length === 0}
-        title="Roll every set below at once"
-      >
-        🎲 Roll All ({sets.length})
-      </button>
-
-      {sets.map((set) => (
-        <div className="dice-set" key={set.id}>
-          <div className="dice-set-header">
-            <input
-              className="field dice-set-title"
-              placeholder="e.g. Attack roll"
-              value={set.title}
-              onChange={(e) => onUpdateSet(set.id, { title: e.target.value })}
-            />
-            <button
-              type="button"
-              className="btn btn-danger btn-sm"
-              title="Remove this set"
-              onClick={() => onRemoveSet(set.id)}
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="dice-type-row">
-            {DICE_TYPES.map((d) => (
-              <button
-                key={d}
-                type="button"
-                className={`dice-type-btn${set.sides === d ? ' active' : ''}`}
-                onClick={() => onUpdateSet(set.id, { sides: d })}
-              >
-                d{d}
-              </button>
-            ))}
-          </div>
-
-          <div className="dice-set-footer">
-            <input
-              type="number"
-              min={1}
-              max={20}
-              className="field dice-set-qty"
-              value={set.quantity}
-              onChange={(e) => onUpdateSet(set.id, { quantity: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1)) })}
-            />
-            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => rollSet(set)}>
-              Roll {set.quantity} × d{set.sides}
-            </button>
-          </div>
-        </div>
-      ))}
-
-      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-        <button type="button" className="btn btn-secondary btn-block" onClick={onAddSet}>
-          + Add another set
-        </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={onClearSets}
-          disabled={sets.length === 0}
-          title="Remove every dice set below"
-        >
-          Clear all dice
-        </button>
-      </div>
-
-      {rolls.length > 0 && (
-        <div className="dice-history">
-          <div className="popover-header" style={{ marginBottom: 4 }}>
-            <span className="section-label" style={{ margin: 0 }}>
-              Roll history
-            </span>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClearRolls} title="Clear roll history">
-              Clear
-            </button>
-          </div>
-          {rolls.map((r) => (
-            <div className="dice-roll-row" key={r.id}>
-              <div>
-                <span className="dice-roll-name">{r.title}</span>
-                <span className="dice-roll-detail">
-                  {r.quantity} × d{r.sides} ({r.results.join(', ')})
-                </span>
-              </div>
-              <span className="dice-roll-total">{r.total}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1344,7 +1127,7 @@ function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
     <div className="book-backdrop" onClick={onClose}>
       <div className="book-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="book-card-header">
-          <span className="book-title">👢 Roll for Initiative</span>
+          <span className="book-title"><ModalIcon name="bolt" />Roll for Initiative</span>
           <button className="popover-close" onClick={onClose} aria-label="Close initiative roller" title="Close">
             ×
           </button>
@@ -1517,7 +1300,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
     <div className="book-backdrop" onClick={onClose}>
       <div className="book-card" onClick={(e) => e.stopPropagation()}>
         <div className="book-card-header">
-          <span className="book-title">🗃 Asset Storage</span>
+          <span className="book-title"><ModalIcon name="archive" />Asset Storage</span>
           <button className="popover-close" onClick={onClose} aria-label="Close asset storage" title="Close">
             ×
           </button>

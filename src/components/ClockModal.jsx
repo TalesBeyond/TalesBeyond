@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
 import {
   DEFAULT_CYCLE,
   clockTotalMinutes,
@@ -64,7 +65,7 @@ export default function ClockModal({ clock, onSave, onRemove, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">
-          <span className="book-title">🕒 Ingame time</span>
+          <span className="book-title"><ModalIcon name="clock" />Ingame time</span>
           <button className="popover-close" onClick={onClose} aria-label="Close" title="Close">
             ×
           </button>

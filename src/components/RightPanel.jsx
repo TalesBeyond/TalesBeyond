@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { CONDITIONS } from '../data/conditions.js';
 import {
   ABILITIES,
@@ -230,6 +230,7 @@ function RemoveButton({ entity, onRemove }) {
 
 function ConditionsField({ entity, isHost, onUpdate }) {
   const activeConditions = entity.conditions || [];
+  const [adding, setAdding] = useState(false);
 
   function toggleCondition(key) {
     if (!isHost) return;
@@ -237,37 +238,37 @@ function ConditionsField({ entity, isHost, onUpdate }) {
     onUpdate(entity.id, { conditions: next });
   }
 
+  const chip = (c, active) => (
+    <button
+      key={c.key}
+      type="button"
+      className={`condition-chip${active ? ' active' : ''}`}
+      title={`${c.label} — ${c.description}`}
+      disabled={!isHost}
+      aria-pressed={active}
+      onClick={() => toggleCondition(c.key)}
+    >
+      <span className="condition-chip-icon" style={{ backgroundImage: `url(${c.imageUrl})` }} aria-hidden="true" />
+      {c.label}
+      {active && isHost && <span aria-hidden="true">×</span>}
+    </button>
+  );
+
   return (
     <>
       <div className="cap inspector-cap">Conditions {!isHost && <span className="cap-note">(host only can edit)</span>}</div>
-      <ul className="condition-pills" aria-label="Active conditions">
-        {activeConditions.length === 0 && <li className="condition-none">None applied</li>}
-        {activeConditions.map((key) => {
-          const c = CONDITIONS.find((cond) => cond.key === key);
-          if (!c) return null;
-          return (
-            <li key={key} className="condition-pill" title={c.description}>
-              {c.label}
-            </li>
-          );
-        })}
-      </ul>
-      <div className="condition-row">
-        {CONDITIONS.map((c) => {
-          const active = activeConditions.includes(c.key);
-          return (
-            <button
-              key={c.key}
-              type="button"
-              className={`condition-badge${active ? ' active' : ''}`}
-              style={{ backgroundImage: `url(${c.imageUrl})` }}
-              title={`${c.label} — ${c.description}`}
-              disabled={!isHost}
-              onClick={() => toggleCondition(c.key)}
-            />
-          );
-        })}
+      <div className="condition-chips" aria-label="Active conditions">
+        {activeConditions.length === 0 && !isHost && <span className="condition-none">None applied</span>}
+        {CONDITIONS.filter((c) => activeConditions.includes(c.key)).map((c) => chip(c, true))}
+        {isHost && (
+          <button type="button" className="condition-chip add" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
+            {adding ? 'Done' : '+ Condition'}
+          </button>
+        )}
       </div>
+      {isHost && adding && (
+        <div className="condition-chips condition-picker">{CONDITIONS.filter((c) => !activeConditions.includes(c.key)).map((c) => chip(c, false))}</div>
+      )}
     </>
   );
 }
@@ -296,7 +297,7 @@ function SizeField({ entity, onUpdate, disabled, maxSize }) {
 
 // The inspector's top block: the token's own face, its name, and one line of
 // context ("Hero, level 3 · square (4, 2)").
-function InspectorHeader({ entity, sub }) {
+function InspectorHeader({ entity, sub, onUpdate, disabled }) {
   return (
     <div className="inspector-head">
       <span
@@ -305,7 +306,13 @@ function InspectorHeader({ entity, sub }) {
         aria-hidden="true"
       />
       <div className="inspector-head-text">
-        <h4>{entity.name}</h4>
+        <input
+          className="inspector-name"
+          aria-label="Name"
+          value={entity.name}
+          disabled={disabled}
+          onChange={(e) => onUpdate(entity.id, { name: e.target.value })}
+        />
         <span className="inspector-sub">{sub}</span>
       </div>
     </div>
@@ -319,27 +326,54 @@ function VitalsCard({ entity, sheet, onUpdate, updateSheet, disabled }) {
   const isMob = entity.kind === 'mob';
   const hpPct = entity.maxHp ? Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100)) : 0;
   const ac = isMob ? entity.armorClass ?? 10 : sheet.armorClass;
+  // A monster's sheet is DM-only, so players only see its HP and armor.
+  const showSheetStats = !(isMob && disabled);
   function setAc(value) {
     const n = parseInt(value, 10) || 0;
     if (isMob) onUpdate(entity.id, { armorClass: n });
     else updateSheet({ armorClass: n });
   }
+  function stepHp(delta) {
+    onUpdate(entity.id, { hp: Math.max(0, (entity.hp || 0) + delta) });
+  }
   return (
     <div className="vitals-card">
-      <div className="vitals-row">
-        <span className="cap">Hit points</span>
-        <span className="vitals-hp">
-          <input type="number" aria-label="Current hit points" value={entity.hp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { hp: parseInt(e.target.value, 10) || 0 })} />
-          <span className="vitals-sep">/</span>
-          <input type="number" aria-label="Maximum hit points" value={entity.maxHp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { maxHp: parseInt(e.target.value, 10) || 0 })} />
-        </span>
+      <div className="vitals-hp-row">
+        <button type="button" className="vitals-step" aria-label="Lose 1 hit point" disabled={disabled} onClick={() => stepHp(-1)}>
+          −
+        </button>
+        <div className="vitals-hp-main">
+          <span className="vitals-hp">
+            <input type="number" aria-label="Current hit points" value={entity.hp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { hp: parseInt(e.target.value, 10) || 0 })} />
+            <span className="vitals-sep">/</span>
+            <input type="number" aria-label="Maximum hit points" value={entity.maxHp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { maxHp: parseInt(e.target.value, 10) || 0 })} />
+          </span>
+          <span className="cap">Hit points</span>
+        </div>
+        <button type="button" className="vitals-step" aria-label="Gain 1 hit point" disabled={disabled} onClick={() => stepHp(1)}>
+          +
+        </button>
       </div>
       <div className="hp-bar-track">
         <div className="hp-bar-fill" style={{ width: `${hpPct}%`, background: hpPct < 40 ? 'var(--danger)' : 'var(--moss)' }} />
       </div>
-      <div className="vitals-row">
-        <span className="cap">Armor class</span>
-        <input type="number" className="vitals-ac" aria-label="Armor class" value={ac} disabled={disabled} onChange={(e) => setAc(e.target.value)} />
+      <div className="vitals-tiles">
+        <label className="vitals-tile">
+          <input type="number" className="vitals-ac" aria-label="Armor class" value={ac} disabled={disabled} onChange={(e) => setAc(e.target.value)} />
+          <span>Armor</span>
+        </label>
+        {showSheetStats && (
+          <>
+            <label className="vitals-tile">
+              <input type="number" aria-label="Initiative" value={sheet.initiative} disabled={disabled} onChange={(e) => updateSheet({ initiative: parseInt(e.target.value, 10) || 0 })} />
+              <span>Initiative</span>
+            </label>
+            <label className="vitals-tile">
+              <input type="number" aria-label="Speed in feet" value={sheet.speed} disabled={disabled} onChange={(e) => updateSheet({ speed: parseInt(e.target.value, 10) || 0 })} />
+              <span>Speed ft</span>
+            </label>
+          </>
+        )}
       </div>
     </div>
   );
@@ -712,8 +746,7 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
 
   return (
     <div className="inspector-card">
-      <InspectorHeader entity={entity} sub={`Monster · square (${entity.col}, ${entity.row})`} />
-      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <InspectorHeader entity={entity} sub={`Monster · square (${entity.col}, ${entity.row})`} onUpdate={onUpdate} disabled={!isHost} />
       <VitalsCard entity={entity} sheet={sheet} onUpdate={onUpdate} updateSheet={updateSheet} disabled={!isHost} />
       <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
       {isHost ? (
@@ -733,9 +766,13 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
           />
         </CollapsibleField>
       )}
-      {isHost && <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />}
-      {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this monster…" />}
-      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+      {isHost && (
+        <CollapsibleField title="DM tools">
+          <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />
+          <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this monster…" />
+          <RemoveButton entity={entity} onRemove={onRemove} />
+        </CollapsibleField>
+      )}
     </div>
   );
 }
@@ -743,13 +780,53 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
 // ---------- hero (full 5e-flavored sheet, tabbed) ----------
 
 const TABS = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'abilities', label: 'Abilities' },
-  { key: 'saves', label: 'Saves & Skills' },
-  { key: 'attacks', label: 'Battle Equipment' },
-  { key: 'spells', label: 'Spells' },
-  { key: 'bag', label: 'Bag' },
+  { key: 'overview', label: 'Overview', title: 'Overview' },
+  { key: 'abilities', label: 'Abilities', title: 'Abilities' },
+  { key: 'saves', label: 'Skills', title: 'Saves & Skills' },
+  { key: 'attacks', label: 'Battle', title: 'Battle Equipment' },
+  { key: 'spells', label: 'Spells', title: 'Spells' },
+  { key: 'bag', label: 'Bag', title: 'Bag' },
 ];
+
+const TAB_ICONS = {
+  overview: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c1-4 4-6 8-6s7 2 8 6" />
+    </>
+  ),
+  abilities: (
+    <>
+      <path d="M12 2l9 5v10l-9 5-9-5V7z" />
+      <path d="M12 8v8M8 10l8 4M16 10l-8 4" />
+    </>
+  ),
+  saves: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12.5l3 3 5-6" />
+    </>
+  ),
+  attacks: (
+    <>
+      <path d="M14 4l6-1-1 6-9 9-3-3z" />
+      <path d="M6 15l-3 3 3 3 3-3" />
+    </>
+  ),
+  spells: (
+    <>
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+      <path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z" />
+    </>
+  ),
+  bag: (
+    <>
+      <path d="M7 8a5 5 0 0 1 10 0" />
+      <rect x="4" y="8" width="16" height="13" rx="3" />
+      <path d="M9 14h6" />
+    </>
+  ),
+};
 
 // The six-tab character sheet shared by heroes and monsters. `targets` is
 // who this creature's Battle Equipment can attack: monsters for a hero,
@@ -759,53 +836,6 @@ const TABS = [
 // The tab row scrolls sideways when the panel is narrower than the tabs. Arrow
 // buttons appear on whichever side still has tabs hidden, and scroll a
 // page at a time.
-function ScrollableTabs({ children }) {
-  const ref = useRef(null);
-  const [edges, setEdges] = useState({ left: false, right: false });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-    function update() {
-      setEdges({
-        left: el.scrollLeft > 1,
-        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
-      });
-    }
-    update();
-    el.addEventListener('scroll', update, { passive: true });
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
-    ro?.observe(el);
-    return () => {
-      el.removeEventListener('scroll', update);
-      ro?.disconnect();
-    };
-  }, []);
-
-  function scrollByPage(dir) {
-    const el = ref.current;
-    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.7, behavior: 'smooth' });
-  }
-
-  return (
-    <div className="sheet-tabs-wrap">
-      {edges.left && (
-        <button type="button" className="sheet-tabs-arrow left" aria-label="Scroll tabs left" onClick={() => scrollByPage(-1)}>
-          &#8249;
-        </button>
-      )}
-      <div className="sheet-tabs" ref={ref}>
-        {children}
-      </div>
-      {edges.right && (
-        <button type="button" className="sheet-tabs-arrow right" aria-label="Scroll tabs right" onClick={() => scrollByPage(1)}>
-          &#8250;
-        </button>
-      )}
-    </div>
-  );
-}
-
 function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targets }) {
   const [tab, setTab] = useState('overview');
   const canEditOwnTabs = isHost || isOwner;
@@ -813,18 +843,24 @@ function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targ
 
   return (
     <>
-      <ScrollableTabs>
+      <div className="sheet-tabs" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
+            role="tab"
+            aria-selected={tab === t.key}
+            title={t.title}
             className={`sheet-tab${tab === t.key ? ' active' : ''}`}
             onClick={() => setTab(t.key)}
           >
-            {t.label}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {TAB_ICONS[t.key]}
+            </svg>
+            <span>{t.label}</span>
           </button>
         ))}
-      </ScrollableTabs>
+      </div>
 
       {!isHost && (
         <p className="footer-note" style={{ padding: '8px 2px', border: 'none' }}>
@@ -861,17 +897,25 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
 
   return (
     <div className="inspector-card">
-      <InspectorHeader entity={entity} sub={`Hero, level ${sheet.level} · square (${entity.col}, ${entity.row})`} />
-      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      <InspectorHeader
+        entity={entity}
+        sub={`Hero · Level ${sheet.level}${players?.[entity.ownerId] ? ` · played by ${players[entity.ownerId].name}` : ''}`}
+        onUpdate={onUpdate}
+        disabled={!isHost}
+      />
       <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
       <VitalsCard entity={entity} sheet={sheet} onUpdate={onUpdate} updateSheet={updateSheet} disabled={!isHost} />
       <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
 
       <SheetTabs entity={entity} sheet={sheet} isHost={isHost} isOwner={isOwner} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
 
-      {isHost && <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />}
-      {isHost && <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />}
-      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
+      {isHost && (
+        <CollapsibleField title="DM tools">
+          <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />
+          <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />
+          <RemoveButton entity={entity} onRemove={onRemove} />
+        </CollapsibleField>
+      )}
     </div>
   );
 }
@@ -887,14 +931,6 @@ function OverviewTab({ entity, sheet, isHost, onUpdate, updateSheet }) {
         <div>
           <label className="field-label">Level</label>
           <input type="number" className="field" min={1} max={20} value={sheet.level} onChange={(e) => updateSheet({ level: parseInt(e.target.value, 10) || 1 })} />
-        </div>
-        <div>
-          <label className="field-label">Speed (ft)</label>
-          <input type="number" className="field" value={sheet.speed} onChange={(e) => updateSheet({ speed: parseInt(e.target.value, 10) || 0 })} />
-        </div>
-        <div>
-          <label className="field-label">Initiative</label>
-          <input type="number" className="field" value={sheet.initiative} onChange={(e) => updateSheet({ initiative: parseInt(e.target.value, 10) || 0 })} />
         </div>
       </div>
 
@@ -941,9 +977,19 @@ function AbilitiesTab({ sheet, updateSheet }) {
         const score = sheet.abilities[a.key] ?? 10;
         return (
           <div className="ability-cell" key={a.key}>
-            <label className="field-label">{a.label}</label>
-            <input type="number" className="field" value={score} onChange={(e) => setAbility(a.key, parseInt(e.target.value, 10) || 0)} />
+            <label className="field-label" title={a.label} htmlFor={`ability-${a.key}`}>
+              {a.label.slice(0, 3)}
+            </label>
             <span className="ability-mod">{formatModifier(abilityModifier(score))}</span>
+            <div className="stepper">
+              <button type="button" aria-label={`Lower ${a.label}`} onClick={() => setAbility(a.key, score - 1)}>
+                −
+              </button>
+              <input id={`ability-${a.key}`} type="number" value={score} onChange={(e) => setAbility(a.key, parseInt(e.target.value, 10) || 0)} />
+              <button type="button" aria-label={`Raise ${a.label}`} onClick={() => setAbility(a.key, score + 1)}>
+                +
+              </button>
+            </div>
           </div>
         );
       })}
@@ -1147,46 +1193,59 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
         const result = results[i];
         return (
           <div className="attack-item" key={i}>
-            <div className="attack-row">
-              <select className="field" value={weapon.name} onChange={(e) => updateItem(i, { weaponName: e.target.value })}>
+            <div className="attack-head">
+              <select className="field" aria-label="Weapon" value={weapon.name} onChange={(e) => updateItem(i, { weaponName: e.target.value })}>
                 {weaponOptions.map((w) => (
                   <option key={w.id} value={w.name}>
                     {w.name}
                   </option>
                 ))}
               </select>
-              <input
-                type="number"
-                className="field"
-                placeholder="Mod"
-                title="Additional modifier — stacks on top of the weapon's own bonus for the attack roll"
-                value={it.additionalModifier ?? 0}
-                onChange={(e) => updateItem(i, { additionalModifier: parseInt(e.target.value, 10) || 0 })}
-              />
-              <input
-                type="number"
-                className="field"
-                placeholder="Dmg"
-                title="Additional damage — stacks on top of the weapon's own damage"
-                value={it.additionalDamage ?? 0}
-                onChange={(e) => updateItem(i, { additionalDamage: parseInt(e.target.value, 10) || 0 })}
-              />
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={targets.length === 0}
-                title={targets.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
-                onClick={() => openTargetPicker(i)}
-              >
-                Roll attack
-              </button>
-              <button type="button" className="btn btn-danger btn-sm" onClick={() => removeItem(i)}>
+              <button type="button" className="icon-btn" aria-label="Remove this attack" onClick={() => removeItem(i)}>
                 ×
               </button>
             </div>
-            <div className="attack-item-summary">
-              To hit {formatModifier(totalToHit(weapon, it.additionalModifier))} · Damage {totalDamageLabel(weapon, it.additionalDamage)}
+            <div className="attack-stats">
+              <div>
+                <b>{formatModifier(totalToHit(weapon, it.additionalModifier))}</b>
+                <span>To hit</span>
+              </div>
+              <div>
+                <b>{totalDamageLabel(weapon, it.additionalDamage)}</b>
+                <span>Damage</span>
+              </div>
             </div>
+            <div className="field-row">
+              <div>
+                <label className="field-label">Extra to hit</label>
+                <input
+                  type="number"
+                  className="field"
+                  title="Stacks on top of the weapon's own bonus for the attack roll"
+                  value={it.additionalModifier ?? 0}
+                  onChange={(e) => updateItem(i, { additionalModifier: parseInt(e.target.value, 10) || 0 })}
+                />
+              </div>
+              <div>
+                <label className="field-label">Extra damage</label>
+                <input
+                  type="number"
+                  className="field"
+                  title="Stacks on top of the weapon's own damage"
+                  value={it.additionalDamage ?? 0}
+                  onChange={(e) => updateItem(i, { additionalDamage: parseInt(e.target.value, 10) || 0 })}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              disabled={targets.length === 0}
+              title={targets.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
+              onClick={() => openTargetPicker(i)}
+            >
+              Roll attack
+            </button>
 
             {pickingIndex === i && (
               <div className="attack-target-picker">
@@ -1321,19 +1380,32 @@ function SpellsTab({ sheet, updateSheet }) {
             {activeLevel === 0 ? 'Cantrips' : `Level ${activeLevel}`}
           </span>
           {activeLevel > 0 && (
-            <div className="spell-slots" title="Slots total / expended">
+            <div className="spell-slots">
+              <div className="slot-pips" role="group" aria-label="Spell slots — tap to spend or restore">
+                {Array.from({ length: Math.min(level.slotsTotal, 9) }, (_, i) => {
+                  const available = Math.max(0, level.slotsTotal - level.slotsExpended);
+                  const filled = i < available;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`slot-pip${filled ? ' filled' : ''}`}
+                      aria-label={`Slot ${i + 1}, ${filled ? 'available' : 'spent'}`}
+                      onClick={() => updateLevel(activeLevel, { slotsExpended: level.slotsTotal - (filled ? i : i + 1) })}
+                    />
+                  );
+                })}
+              </div>
+              <span className="slot-count">
+                {Math.max(0, level.slotsTotal - level.slotsExpended)}/{level.slotsTotal}
+              </span>
               <input
                 type="number"
                 min={0}
+                title="Total slots at this level"
+                aria-label="Total slots at this level"
                 value={level.slotsTotal}
-                onChange={(e) => updateLevel(activeLevel, { slotsTotal: parseInt(e.target.value, 10) || 0 })}
-              />
-              <span>/</span>
-              <input
-                type="number"
-                min={0}
-                value={level.slotsExpended}
-                onChange={(e) => updateLevel(activeLevel, { slotsExpended: parseInt(e.target.value, 10) || 0 })}
+                onChange={(e) => updateLevel(activeLevel, { slotsTotal: parseInt(e.target.value, 10) || 0, slotsExpended: 0 })}
               />
             </div>
           )}
@@ -1459,13 +1531,15 @@ function EquipmentCategory({ hint, items, onAdd, onUpdate, onRemove }) {
             value={item.name}
             onChange={(e) => onUpdate(item.id, { name: e.target.value })}
           />
-          <input
-            type="number"
-            className="field"
-            min={0}
-            value={item.qty}
-            onChange={(e) => onUpdate(item.id, { qty: parseInt(e.target.value, 10) || 0 })}
-          />
+          <div className="stepper">
+            <button type="button" aria-label="Fewer" onClick={() => onUpdate(item.id, { qty: Math.max(0, item.qty - 1) })}>
+              −
+            </button>
+            <input type="number" aria-label="Quantity" min={0} value={item.qty} onChange={(e) => onUpdate(item.id, { qty: parseInt(e.target.value, 10) || 0 })} />
+            <button type="button" aria-label="More" onClick={() => onUpdate(item.id, { qty: item.qty + 1 })}>
+              +
+            </button>
+          </div>
           <button type="button" className="btn btn-danger btn-sm" onClick={() => onRemove(item.id)}>
             ×
           </button>
