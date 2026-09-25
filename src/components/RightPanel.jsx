@@ -51,11 +51,19 @@ export default function RightPanel({
   if (collapsed) {
     return (
       <div className="panel right collapsed">
-        <div className="panel-header">
-          <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Expand players & inspector panel">
-            «
-          </button>
-        </div>
+        {/* Names the selected token on the rail, so a pick on the map is
+            still acknowledged while the inspector is folded away. */}
+        <button
+          type="button"
+          className={`panel-rail${selectedEntity ? ' has-selection' : ''}`}
+          onClick={onToggleCollapsed}
+          title="Expand players & inspector panel"
+        >
+          <span className="panel-rail-chevron" aria-hidden="true">«</span>
+          <span className="panel-rail-label">
+            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Players & inspector'}
+          </span>
+        </button>
       </div>
     );
   }

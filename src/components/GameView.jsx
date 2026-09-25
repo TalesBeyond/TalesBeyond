@@ -196,6 +196,10 @@ const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
 const COLLAPSED_PANEL_WIDTH = 36;
+// Below this window width both side panels can't sit beside the map without
+// crushing it, so they become drawers that slide over the map instead — one
+// open at a time, both folded to their rails by default.
+const DRAWER_LAYOUT_BELOW = 1200;
 
 function loadPanelWidths() {
   try {
@@ -328,8 +332,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // marker Slice 4 adds), just enough to warn on Leave if they haven't.
   const [hasExportedGuestTable, setHasExportedGuestTable] = useState(false);
   const [pendingLeaveWarning, setPendingLeaveWarning] = useState(false);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
+  const [rightCollapsed, setRightCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
   const [showClockModal, setShowClockModal] = useState(false);
@@ -348,6 +352,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     window.addEventListener('resize', onWindowResize);
     return () => window.removeEventListener('resize', onWindowResize);
   }, []);
+
+  const drawerLayout = viewportWidth < DRAWER_LAYOUT_BELOW;
+
+  // Crossing the breakpoint resets the panels to that layout's default:
+  // folded to rails as drawers, both open side by side on a wide window.
+  useEffect(() => {
+    setLeftCollapsed(drawerLayout);
+    setRightCollapsed(drawerLayout);
+  }, [drawerLayout]);
+
+  // As drawers, opening one folds the other so they never stack over the map.
+  function togglePanel(side) {
+    const opening = side === 'left' ? leftCollapsed : rightCollapsed;
+    (side === 'left' ? setLeftCollapsed : setRightCollapsed)(!opening);
+    if (opening && drawerLayout) (side === 'left' ? setRightCollapsed : setLeftCollapsed)(true);
+  }
 
   useEffect(() => {
     try {
@@ -1883,260 +1903,267 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
 
+  // The toolbar spans the whole window above the panels rather than sitting
+  // in the map's column: its commands are table-wide, and the full width is
+  // what lets it keep its labels on an ordinary laptop screen.
   return (
-    <div
-      className={`game-layout${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
-      style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
-    >
-      <TokenSidebar
+    <div className="game-screen">
+      <Toolbar
+        isHost={isHost}
+        isGuestHost={isGuestHost}
+        layer={currentLayer}
+        activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
+        tool={tool}
+        onToolChange={setTool}
+        onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
+        onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
+        session={state.session}
+        onRegenerateCode={regenerateCode}
+        onToggleOpen={toggleOpen}
+        onSaveNow={saveNow}
+        autosaveSecondsLeft={autosaveSecondsLeft}
+        clock={state.clock}
         onAddEntity={addEntity}
+        onOpenClock={() => setShowClockModal(true)}
+        audio={audioApi}
+        onOpenMusic={() => setShowMusicModal(true)}
+        onSetClockRunning={setClockRunning}
+        dayPhase={tablePhase}
+        dayNightOverride={state.dayNightOverride}
+        onSetDayNightOverride={updateDayNightOverride}
+        onExport={exportTable}
+        onImport={importTable}
+        onLeave={leaveTable}
+        lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
         currentLayerId={currentLayerId}
-        isHost={isHost}
-        customAssets={state.customAssets}
-        collapsed={leftCollapsed}
-        onToggleCollapsed={() => setLeftCollapsed((c) => !c)}
-      />
-
-      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-        <Toolbar
-          isHost={isHost}
-          isGuestHost={isGuestHost}
-          layer={currentLayer}
-          activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
-          tool={tool}
-          onToolChange={setTool}
-          onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
-          onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
-          session={state.session}
-          onRegenerateCode={regenerateCode}
-          onToggleOpen={toggleOpen}
-          onSaveNow={saveNow}
-          autosaveSecondsLeft={autosaveSecondsLeft}
-          clock={state.clock}
-          onAddEntity={addEntity}
-          onOpenClock={() => setShowClockModal(true)}
-          audio={audioApi}
-          onOpenMusic={() => setShowMusicModal(true)}
-          onSetClockRunning={setClockRunning}
-          dayPhase={tablePhase}
-          dayNightOverride={state.dayNightOverride}
-          onSetDayNightOverride={updateDayNightOverride}
-          onExport={exportTable}
-          onImport={importTable}
-          onLeave={leaveTable}
-          lastSavedLabel={savedAgo}
-          layers={state.layers}
-          layerOrder={state.layerOrder}
-          currentLayerId={currentLayerId}
-          layerPlayerCounts={layerPlayerCounts}
-          onSwitchLayer={setHostViewLayerId}
-          onCreateLayer={createLayer}
-          onRemoveLayer={removeLayer}
-          activeIslandId={activeIslandId}
-          onSelectIsland={setActiveIslandId}
-          onCreateIsland={createIsland}
-          onRemoveIsland={removeIsland}
-          onDownloadIsland={downloadIsland}
-          onDownloadIslandImage={downloadIslandImage}
-          onImportIsland={importIsland}
-          onUngroupIslands={ungroupIslands}
-          onRenameGroup={renameGroup}
-          heroes={heroes}
-          onUpdateEntity={updateEntity}
-          initiativeHeroes={initiativeHeroes}
-          initiativeMobs={initiativeMobs}
-          onRollInitiative={rollInitiative}
-          customAssets={state.customAssets}
-          onAddCustomAsset={addCustomAsset}
-          onRemoveCustomAsset={removeCustomAsset}
-          collapsed={toolbarCollapsed}
-          onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
-          zoom={zoom}
-        />
-        <LayerStrip
-          layers={state.layers}
-          layerOrder={state.layerOrder}
-          currentLayerId={currentLayerId}
-          layerPlayerCounts={layerPlayerCounts}
-          isHost={isHost}
-          onSwitchLayer={setHostViewLayerId}
-          feetPerSquare={currentLayer.feetPerSquare}
-          clock={state.clock}
-          phaseOverride={state.dayNightOverride}
-        />
-        <div className="stage-wrap">
-        <div className="stage" ref={stageRef}>
-          <MapBoard
-            islands={currentLayer.islands}
-            islandOrder={currentLayer.islandOrder}
-            islandGroups={currentLayer.islandGroups || {}}
-            pendingGroupIslandIds={pendingGroupIslandIds}
-            dayPhase={tablePhase}
-            onToggleGroupCandidate={toggleGroupCandidate}
-            onMoveIslandGroup={moveIslandGroup}
-            feetPerSquare={currentLayer.feetPerSquare}
-            activeIslandId={activeIslandId}
-            onSelectIsland={setActiveIslandId}
-            onMoveIsland={moveIsland}
-            entities={layerEntities}
-            entityOrder={layerEntityOrder}
-            selectedId={selectedId}
-            onSelectEntity={setSelectedId}
-            onMoveEntity={moveEntity}
-            canMoveEntity={canMoveEntity}
-            isHost={isHost}
-            onEnterDoor={enterDoor}
-            tool={tool}
-            zoom={zoom}
-            onRulerChange={setRulerFeet}
-          />
-        </div>
-        <InitiativeBar entities={layerEntities} />
-        <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-        <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
-        </div>
-      </div>
-
-      <RightPanel
-        audio={audioApi}
-        players={state.players}
-        hostId={state.session.hostPlayerId}
-        layers={state.layers}
-        layerOrder={state.layerOrder}
-        entities={layerEntities}
-        selectedEntity={selectedEntity}
-        isHost={isHost}
-        meId={me.id}
-        onUpdateEntity={updateEntity}
-        onRemoveEntity={removeEntity}
-        tool={tool}
+        layerPlayerCounts={layerPlayerCounts}
+        onSwitchLayer={setHostViewLayerId}
+        onCreateLayer={createLayer}
+        onRemoveLayer={removeLayer}
+        activeIslandId={activeIslandId}
+        onSelectIsland={setActiveIslandId}
+        onCreateIsland={createIsland}
+        onRemoveIsland={removeIsland}
+        onDownloadIsland={downloadIsland}
+        onDownloadIslandImage={downloadIslandImage}
+        onImportIsland={importIsland}
+        onUngroupIslands={ungroupIslands}
+        onRenameGroup={renameGroup}
         heroes={heroes}
-        onGiveChestItem={giveChestItemToHero}
-        onTakeChestItem={takeChestItem}
-        collapsed={rightCollapsed}
-        onToggleCollapsed={() => setRightCollapsed((c) => !c)}
+        onUpdateEntity={updateEntity}
+        initiativeHeroes={initiativeHeroes}
+        initiativeMobs={initiativeMobs}
+        onRollInitiative={rollInitiative}
+        customAssets={state.customAssets}
+        onAddCustomAsset={addCustomAsset}
+        onRemoveCustomAsset={removeCustomAsset}
+        collapsed={toolbarCollapsed}
+        onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
+        zoom={zoom}
       />
 
-      {showMusicModal && audioEnabled && (
-        <MusicModal
-          audio={audioApi}
-          worldTrack={worldTrack}
-          worldTargetId={audioScope}
+      <div
+        className={`game-layout${drawerLayout ? ' drawers' : ''}${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
+        style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
+      >
+        <TokenSidebar
+          onAddEntity={addEntity}
           layers={state.layers}
           layerOrder={state.layerOrder}
-          entities={state.entities}
-          isGuest={isGuest}
-          onClose={() => setShowMusicModal(false)}
+          currentLayerId={currentLayerId}
+          isHost={isHost}
+          customAssets={state.customAssets}
+          collapsed={leftCollapsed}
+          onToggleCollapsed={() => togglePanel('left')}
         />
-      )}
 
-      {audioBlocked && (
-        <button className="audio-unlock-banner" onClick={unlockAudio}>
-          🔊 Tap to enable sound
-        </button>
-      )}
+        <div className="game-center">
+          <LayerStrip
+            layers={state.layers}
+            layerOrder={state.layerOrder}
+            currentLayerId={currentLayerId}
+            layerPlayerCounts={layerPlayerCounts}
+            isHost={isHost}
+            onSwitchLayer={setHostViewLayerId}
+            feetPerSquare={currentLayer.feetPerSquare}
+            clock={state.clock}
+            phaseOverride={state.dayNightOverride}
+          />
+          <div className="stage-wrap">
+          <div className="stage" ref={stageRef}>
+            <MapBoard
+              islands={currentLayer.islands}
+              islandOrder={currentLayer.islandOrder}
+              islandGroups={currentLayer.islandGroups || {}}
+              pendingGroupIslandIds={pendingGroupIslandIds}
+              dayPhase={tablePhase}
+              onToggleGroupCandidate={toggleGroupCandidate}
+              onMoveIslandGroup={moveIslandGroup}
+              feetPerSquare={currentLayer.feetPerSquare}
+              activeIslandId={activeIslandId}
+              onSelectIsland={setActiveIslandId}
+              onMoveIsland={moveIsland}
+              entities={layerEntities}
+              entityOrder={layerEntityOrder}
+              selectedId={selectedId}
+              onSelectEntity={setSelectedId}
+              onMoveEntity={moveEntity}
+              canMoveEntity={canMoveEntity}
+              isHost={isHost}
+              onEnterDoor={enterDoor}
+              tool={tool}
+              zoom={zoom}
+              onRulerChange={setRulerFeet}
+            />
+          </div>
+          <InitiativeBar entities={layerEntities} />
+          <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
+          </div>
+        </div>
 
-      {showClockModal && isHost && (
-        <ClockModal
-          clock={state.clock}
-          onSave={(clock) => {
-            updateClock(clock);
-            setShowClockModal(false);
-          }}
-          onRemove={() => {
-            updateClock(null);
-            setShowClockModal(false);
-          }}
-          onClose={() => setShowClockModal(false)}
+        <RightPanel
+          audio={audioApi}
+          players={state.players}
+          hostId={state.session.hostPlayerId}
+          layers={state.layers}
+          layerOrder={state.layerOrder}
+          entities={layerEntities}
+          selectedEntity={selectedEntity}
+          isHost={isHost}
+          meId={me.id}
+          onUpdateEntity={updateEntity}
+          onRemoveEntity={removeEntity}
+          tool={tool}
+          heroes={heroes}
+          onGiveChestItem={giveChestItemToHero}
+          onTakeChestItem={takeChestItem}
+          collapsed={rightCollapsed}
+          onToggleCollapsed={() => togglePanel('right')}
         />
-      )}
 
-      {!leftCollapsed && (
-        <PanelResizer
-          side="left"
-          width={shownPanelWidths.left}
-          label="Resize tokens panel"
-          onResize={(w) => resizePanel('left', w)}
-          onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
-        />
-      )}
-      {!rightCollapsed && (
-        <PanelResizer
-          side="right"
-          width={shownPanelWidths.right}
-          label="Resize players and inspector panel"
-          onResize={(w) => resizePanel('right', w)}
-          onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
-        />
-      )}
+        {showMusicModal && audioEnabled && (
+          <MusicModal
+            audio={audioApi}
+            worldTrack={worldTrack}
+            worldTargetId={audioScope}
+            layers={state.layers}
+            layerOrder={state.layerOrder}
+            entities={state.entities}
+            isGuest={isGuest}
+            onClose={() => setShowMusicModal(false)}
+          />
+        )}
 
-      {pendingDoor && (
-        <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
-          <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4><ModalIcon name="door" />Open the door?</h4>
-            <p>
-              Step through <strong>{pendingDoor.door.name}</strong> to{' '}
-              <strong>{state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}</strong>?
-            </p>
-            <div className="door-confirm-actions">
-              <button className="btn btn-secondary" onClick={cancelEnterDoor}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={confirmEnterDoor}>
-                Open door
-              </button>
+        {audioBlocked && (
+          <button className="audio-unlock-banner" onClick={unlockAudio}>
+            🔊 Tap to enable sound
+          </button>
+        )}
+
+        {showClockModal && isHost && (
+          <ClockModal
+            clock={state.clock}
+            onSave={(clock) => {
+              updateClock(clock);
+              setShowClockModal(false);
+            }}
+            onRemove={() => {
+              updateClock(null);
+              setShowClockModal(false);
+            }}
+            onClose={() => setShowClockModal(false)}
+          />
+        )}
+
+        {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
+        {!leftCollapsed && !drawerLayout && (
+          <PanelResizer
+            side="left"
+            width={shownPanelWidths.left}
+            label="Resize tokens panel"
+            onResize={(w) => resizePanel('left', w)}
+            onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
+          />
+        )}
+        {!rightCollapsed && !drawerLayout && (
+          <PanelResizer
+            side="right"
+            width={shownPanelWidths.right}
+            label="Resize players and inspector panel"
+            onResize={(w) => resizePanel('right', w)}
+            onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
+          />
+        )}
+
+        {pendingDoor && (
+          <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
+            <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
+              <h4><ModalIcon name="door" />Open the door?</h4>
+              <p>
+                Step through <strong>{pendingDoor.door.name}</strong> to{' '}
+                <strong>{state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}</strong>?
+              </p>
+              <div className="door-confirm-actions">
+                <button className="btn btn-secondary" onClick={cancelEnterDoor}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmEnterDoor}>
+                  Open door
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+        {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
 
-      {pendingLeaveWarning && (
-        <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
-          <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4><ModalIcon name="exit" />Leave without exporting?</h4>
-            <p>
-              Nothing about this guest table is saved anywhere but this browser. If you leave now without
-              exporting, <strong>everything since it opened will be lost for good.</strong>
-            </p>
-            <div className="door-confirm-actions">
-              <button className="btn btn-secondary" onClick={cancelLeaveWarning}>
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={confirmLeaveWithoutExporting}>
-                Leave anyway
-              </button>
-              <button className="btn btn-primary" onClick={exportThenLeave}>
-                Export &amp; leave
-              </button>
+        {pendingLeaveWarning && (
+          <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
+            <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
+              <h4><ModalIcon name="exit" />Leave without exporting?</h4>
+              <p>
+                Nothing about this guest table is saved anywhere but this browser. If you leave now without
+                exporting, <strong>everything since it opened will be lost for good.</strong>
+              </p>
+              <div className="door-confirm-actions">
+                <button className="btn btn-secondary" onClick={cancelLeaveWarning}>
+                  Cancel
+                </button>
+                <button className="btn btn-danger" onClick={confirmLeaveWithoutExporting}>
+                  Leave anyway
+                </button>
+                <button className="btn btn-primary" onClick={exportThenLeave}>
+                  Export &amp; leave
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {reconnectUi.blocked && (
-        <div className="reconnect-scrim">
-          <div className="reconnect-card">
-            <p>Reconnecting…</p>
-            {reconnectUi.resyncFailed >= 4 && (
-              <button className="btn btn-primary" onClick={() => window.location.reload()}>
-                Still trying — reload the page
-              </button>
-            )}
+        {reconnectUi.blocked && (
+          <div className="reconnect-scrim">
+            <div className="reconnect-card">
+              <p>Reconnecting…</p>
+              {reconnectUi.resyncFailed >= 4 && (
+                <button className="btn btn-primary" onClick={() => window.location.reload()}>
+                  Still trying — reload the page
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {hostAbsentBanner && (
-        <div className="host-absent-banner">
-          The host has left the table. This session will end in{' '}
-          {String(Math.floor(hostAbsentSecondsLeft / 60)).padStart(2, '0')}:
-          {String(hostAbsentSecondsLeft % 60).padStart(2, '0')} unless they return.
-        </div>
-      )}
+        {hostAbsentBanner && (
+          <div className="host-absent-banner">
+            The host has left the table. This session will end in{' '}
+            {String(Math.floor(hostAbsentSecondsLeft / 60)).padStart(2, '0')}:
+            {String(hostAbsentSecondsLeft % 60).padStart(2, '0')} unless they return.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
