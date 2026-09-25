@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CLASSES } from '../data/weapons.js';
-import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
+import { ITEM_CATEGORIES } from '../data/items.js';
 import { MONSTERS, monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { compendiumImage } from '../data/compendiumImages.js';
@@ -110,7 +110,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const pagesRef = useRef(null);
   const timers = useRef([]);
 
-  const { weapons } = useCatalog();
+  const { weapons, items } = useCatalog();
   const isWeapons = kind === 'weapons';
   const isMonsters = kind === 'monsters';
   const chapter = isWeapons ? 'Weapons Compendium' : isMonsters ? 'Monster Compendium' : 'Item Compendium';
@@ -163,7 +163,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
           image: w.id ? null : entryImage('weapons', w.name, baseWeaponName(w.name)),
         }));
     }
-    const all = [...ITEMS, ...(customItems || [])];
+    const all = [...items, ...(customItems || [])];
     return all
       .filter((it) => (categoryFilter === 'all' || it.category === categoryFilter) && (!q || it.name.toLowerCase().includes(q)))
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -175,15 +175,15 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         small: formatWeight(it.weight),
         detail: it.description,
         item: it,
-        image: it.id ? null : compendiumImage('items', it.name),
+        image: it.id ? null : entryImage('items', it.name),
       }));
-  }, [isWeapons, isMonsters, weapons, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
+  }, [isWeapons, isMonsters, weapons, items, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
 
   const totalCount = isWeapons
     ? weapons.length + (customWeapons || []).length
     : isMonsters
       ? MONSTERS.length + (customMonsters || []).length
-      : ITEMS.length + (customItems || []).length;
+      : items.length + (customItems || []).length;
   const pageCount = Math.max(2, Math.ceil(entries.length / perPage));
   const spreads = Math.ceil(pageCount / 2);
   const shownSpread = Math.min(spread, spreads - 1);

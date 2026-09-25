@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { DICE_TYPES } from '../data/weapons.js';
 import { useCatalog } from '../lib/catalog.js';
-import { ITEMS } from '../data/items.js';
 import { newDroppableItem, dropThreshold } from '../data/droppables.js';
 
 function formatCost(gp) {
@@ -36,7 +35,7 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
   const [customChance, setCustomChance] = useState(50);
   const [rollResults, setRollResults] = useState({});
 
-  const { weapons } = useCatalog();
+  const { weapons, items: catalogItems } = useCatalog();
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
@@ -47,7 +46,7 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
       diceType: w.diceType,
       modifier: w.modifier,
     }));
-    const itemMatches = ITEMS.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
+    const itemMatches = catalogItems.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
       name: it.name,
       cost: it.cost,
       numberOfDice: 0,
@@ -55,7 +54,7 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
       modifier: 0,
     }));
     return [...weaponMatches, ...itemMatches].slice(0, 20);
-  }, [search, weapons]);
+  }, [search, weapons, catalogItems]);
 
   function addFromCatalog(entry) {
     onAddItem(newDroppableItem({ ...entry, dropChance: 50 }));

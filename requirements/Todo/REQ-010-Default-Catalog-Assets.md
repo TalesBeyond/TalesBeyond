@@ -111,10 +111,10 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S008 | P | Items table | Migration adding `catalog_items` with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S009 | S | Admin script (items) | Extend the script to seed `ITEMS` and upload `items/<slug>.webp`. | S002, S008 | admin script |
-|  | S010 | F | Catalog items list | Add the items list and its fetch to the catalog module and startup fetch. | S003, S004, S008 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
-|  | S011 | U | Item consumers | Switch `CompendiumBook`, `ChestContentsEditor`, `DroppablesEditor` and `Toolbar` to the catalog's items, with image resolution as in S006. | S010 | `src/components/CompendiumBook.jsx`, `ChestContentsEditor.jsx`, `DroppablesEditor.jsx`, `Toolbar.jsx` |
+| ✅ | S008 | P | Items table | Migration adding `catalog_items` with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S009 | S | Admin script (items) | Extend the script to seed `ITEMS` and upload `items/<slug>.webp`. | S002, S008 | admin script |
+| ✅ | S010 | F | Catalog items list | Add the items list and its fetch to the catalog module and startup fetch. | S003, S004, S008 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
+| ✅ | S011 | U | Item consumers | Switch `CompendiumBook`, `ChestContentsEditor`, `DroppablesEditor` and `Toolbar` to the catalog's items, with image resolution as in S006. | S010 | `src/components/CompendiumBook.jsx`, `ChestContentsEditor.jsx`, `DroppablesEditor.jsx`, `Toolbar.jsx` |
 
 ### Slice 3 — Monsters from the catalog
 

@@ -141,3 +141,4 @@ Supabase, or an empty or unreachable catalog table, nothing changes.
 | Table | Bucket | Path in bucket |
 | ----- | ------ | -------------- |
 | `catalog_weapons` | `catalog-images` | `weapons/<slug>.webp` |
+| `catalog_items` | `catalog-images` | `items/<slug>.webp` |

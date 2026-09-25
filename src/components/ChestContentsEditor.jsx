@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { DICE_TYPES } from '../data/weapons.js';
 import { useCatalog } from '../lib/catalog.js';
-import { ITEMS } from '../data/items.js';
 import { newChestItem } from '../data/chests.js';
 
 function formatCost(gp) {
@@ -32,7 +31,7 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
 
   const full = items.length >= capacity;
 
-  const { weapons } = useCatalog();
+  const { weapons, items: catalogItems } = useCatalog();
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
@@ -43,7 +42,7 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
       diceType: w.diceType,
       modifier: w.modifier,
     }));
-    const itemMatches = ITEMS.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
+    const itemMatches = catalogItems.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
       name: it.name,
       cost: it.cost,
       numberOfDice: 0,
@@ -51,7 +50,7 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
       modifier: 0,
     }));
     return [...weaponMatches, ...itemMatches].slice(0, 20);
-  }, [search, weapons]);
+  }, [search, weapons, catalogItems]);
 
   function addFromCatalog(entry) {
     if (full) return;

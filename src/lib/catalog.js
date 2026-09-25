@@ -7,14 +7,16 @@
 import { useSyncExternalStore } from 'react';
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
 import { WEAPONS } from '../data/weapons.js';
+import { ITEMS } from '../data/items.js';
 import { compendiumImage } from '../data/compendiumImages.js';
 
 const IMAGE_BUCKET = 'catalog-images';
 
 let current = {
   weapons: WEAPONS,
+  items: ITEMS,
   // Public picture URLs by kind, keyed by the entry's name (monsters: key).
-  images: { weapons: {} },
+  images: { weapons: {}, items: {} },
 };
 const listeners = new Set();
 
@@ -59,9 +61,20 @@ const mapWeapon = (row) => ({
   equipableClass: row.equipable_class || [],
 });
 
+const mapItem = (row) => ({
+  category: row.category,
+  name: row.name,
+  cost: Number(row.cost),
+  weight: Number(row.weight),
+  description: row.description || '',
+});
+
 // One entry per catalog list: which table feeds it, how a row becomes the
 // shape the app already uses, and which field keys its picture map.
-const SOURCES = [{ kind: 'weapons', table: 'catalog_weapons', map: mapWeapon, imageKey: (row) => row.name }];
+const SOURCES = [
+  { kind: 'weapons', table: 'catalog_weapons', map: mapWeapon, imageKey: (row) => row.name },
+  { kind: 'items', table: 'catalog_items', map: mapItem, imageKey: (row) => row.name },
+];
 
 async function loadSource({ kind, table, map, imageKey }) {
   try {

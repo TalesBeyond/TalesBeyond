@@ -20,6 +20,7 @@ import { createClient } from '@supabase/supabase-js';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { WEAPONS } from '../src/data/weapons.js';
+import { ITEMS } from '../src/data/items.js';
 import { slugify } from '../src/data/slugify.js';
 
 const args = process.argv.slice(2);
@@ -127,8 +128,28 @@ async function seedWeapons() {
   return `${rows.length} weapons, ${uploaded.size} pictures`;
 }
 
+async function seedItems() {
+  const existing = await existingPaths('catalog_items');
+  const uploaded = await uploadImages('items', await localFiles('items', ['.webp']));
+  const rows = ITEMS.map((it) => {
+    const slug = slugify(it.name);
+    return {
+      slug,
+      name: it.name,
+      category: it.category,
+      cost: it.cost,
+      weight: it.weight,
+      description: it.description || '',
+      image_path: uploaded.has(slug) ? `items/${slug}.webp` : existing.get(slug) ?? null,
+    };
+  });
+  await upsertRows('catalog_items', rows);
+  return `${rows.length} items, ${uploaded.size} pictures`;
+}
+
 const KINDS = {
   weapons: seedWeapons,
+  items: seedItems,
 };
 
 async function main() {
