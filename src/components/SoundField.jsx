@@ -1,4 +1,31 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { isCatalogTrack } from '../lib/audioEngine.js';
+
+// "Choose from catalog…": attaches one of the Default catalog's songs to a
+// target. Renders nothing while the catalog has no songs.
+export function CatalogSongSelect({ audio, targetKind, targetId, onError }) {
+  const songs = audio.catalog || [];
+  if (!audio.attachCatalog || songs.length === 0) return null;
+  async function choose(e) {
+    const song = songs.find((s) => s.slug === e.target.value);
+    if (!song) return;
+    try {
+      await audio.attachCatalog(targetKind, targetId, song);
+    } catch (err) {
+      onError?.(err.message || 'Could not attach that song.');
+    }
+  }
+  return (
+    <select className="field catalog-song-select" aria-label="Choose a song from the catalog" value="" onChange={choose}>
+      <option value="">Choose from catalog…</option>
+      {songs.map((s) => (
+        <option key={s.slug} value={s.slug}>
+          {s.name}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 // A range input that reports its value locally at once but only commits (a
 // database write, a broadcast) once the slider has settled — dragging a synced
@@ -66,7 +93,7 @@ export default function SoundField({ audio, targetKind, targetId, label = 'Sound
         <>
           {track && (
             <div className="sound-field-file" title={track.name}>
-              {expired ? 'File expired — re-upload' : track.name}
+              {expired ? (isCatalogTrack(track) ? 'Unavailable — pick another song' : 'File expired — re-upload') : track.name}
             </div>
           )}
           <div className="sound-field-actions">
@@ -90,6 +117,7 @@ export default function SoundField({ audio, targetKind, targetId, label = 'Sound
               </button>
             )}
           </div>
+          <CatalogSongSelect audio={audio} targetKind={targetKind} targetId={targetId} onError={setError} />
           {track && (
             <label className="checkbox-row" style={{ marginTop: 6 }}>
               <input type="checkbox" checked={track.loop} onChange={(e) => audio.patch(track.id, { loop: e.target.checked })} />

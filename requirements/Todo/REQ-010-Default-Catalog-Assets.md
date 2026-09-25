@@ -135,13 +135,13 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S016 | P | Audio table and bucket | Migration adding `catalog_audio` with the same RLS shape and the public `catalog-audio` bucket (MP3 and WAV, 10 MB). Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S017 | S | Admin script (songs) | Extend the script to upload `audio/<slug>.<ext>` files and upsert their rows with mime and size. | S002, S016 | admin script |
-|  | S018 | F | Catalog audio list | Add the songs list and its fetch to the catalog module and startup fetch. | S003, S004, S016 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
-|  | S019 | S | Attach a catalog track | DM action that creates the track record with the catalog URL, empty storage path and zero size, through the existing dispatch, remote-write and guest-broadcast sequence, replacing any track on that target. | S018 | `src/components/GameView.jsx`, `src/lib/remoteApi.js` |
-|  | S020 | U | Music modal picker | "Choose from catalog" on each DM track row, listing songs by name. | S019 | `src/components/MusicModal.jsx`, `src/styles.css` |
-|  | S021 | S | Catalog file unavailable | Distinguish a catalog track whose file cannot be fetched from an expired guest upload: show "Unavailable" and let the DM re-pick. | S019 | `src/lib/audioEngine.js`, `src/components/MusicModal.jsx` |
-|  | S022 | D | Docs | Document catalog songs in `supabase/README.md`; add Catalog track to `THESAURUS.md`. | S019 | `supabase/README.md`, `THESAURUS.md` |
+| ✅ | S016 | P | Audio table and bucket | Migration adding `catalog_audio` with the same RLS shape and the public `catalog-audio` bucket (MP3 and WAV, 10 MB). Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S017 | S | Admin script (songs) | Extend the script to upload `audio/<slug>.<ext>` files and upsert their rows with mime and size. | S002, S016 | admin script |
+| ✅ | S018 | F | Catalog audio list | Add the songs list and its fetch to the catalog module and startup fetch. | S003, S004, S016 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
+| ✅ | S019 | S | Attach a catalog track | DM action that creates the track record with the catalog URL, empty storage path and zero size, through the existing dispatch, remote-write and guest-broadcast sequence, replacing any track on that target. | S018 | `src/components/GameView.jsx`, `src/lib/remoteApi.js` |
+| ✅ | S020 | U | Music modal picker | "Choose from catalog" on each DM track row, listing songs by name. | S019 | `src/components/MusicModal.jsx`, `src/styles.css` |
+| ✅ | S021 | S | Catalog file unavailable | Distinguish a catalog track whose file cannot be fetched from an expired guest upload: show "Unavailable" and let the DM re-pick. | S019 | `src/lib/audioEngine.js`, `src/components/MusicModal.jsx` |
+| ✅ | S022 | D | Docs | Document catalog songs in `supabase/README.md`; add Catalog track to `THESAURUS.md`. | S019 | `supabase/README.md`, `THESAURUS.md` |
 
 ### Slice 5 — Dice images
 

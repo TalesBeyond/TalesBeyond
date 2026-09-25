@@ -50,6 +50,9 @@ const supabase = createClient(url, key, { auth: { persistSession: false, autoRef
 
 const IMAGE_BUCKET = 'catalog-images';
 const IMAGE_MAX_BYTES = 1024 * 1024;
+const AUDIO_BUCKET = 'catalog-audio';
+const AUDIO_MAX_BYTES = 10 * 1024 * 1024;
+const AUDIO_TYPES = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
 
 // Files in <assets>/<folder> with one of `extensions`, as Map<slug, filename>.
 async function localFiles(folder, extensions) {
@@ -70,8 +73,9 @@ async function localFiles(folder, extensions) {
 
 async function upload(bucket, objectPath, filePath, contentType) {
   const size = (await stat(filePath)).size;
-  if (bucket === IMAGE_BUCKET && size > IMAGE_MAX_BYTES) {
-    console.warn(`  skip ${objectPath}: ${(size / 1024).toFixed(0)} KB is over the 1 MB image limit`);
+  const limit = bucket === IMAGE_BUCKET ? IMAGE_MAX_BYTES : bucket === AUDIO_BUCKET ? AUDIO_MAX_BYTES : Infinity;
+  if (size > limit) {
+    console.warn(`  skip ${objectPath}: ${(size / 1048576).toFixed(1)} MB is over the ${limit / 1048576} MB limit for ${bucket}`);
     return false;
   }
   if (dryRun) return true;
@@ -172,10 +176,36 @@ async function seedMonsters() {
   return `${rows.length} monsters, ${uploaded.size} pictures`;
 }
 
+const titleCase = (slug) => slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Songs come from files alone: <assets>/audio/<slug>.mp3|wav. A new song's
+// name is its file name; an existing song keeps whatever name it has.
+async function seedAudio() {
+  const local = await localFiles('audio', Object.keys(AUDIO_TYPES));
+  const existing = await existingPaths('catalog_audio', 'audio_path');
+  let count = 0;
+  for (const [slug, name] of local) {
+    const ext = path.extname(name).toLowerCase();
+    const filePath = path.join(assetsDir, 'audio', name);
+    const objectPath = `audio/${slug}${ext}`;
+    if (!(await upload(AUDIO_BUCKET, objectPath, filePath, AUDIO_TYPES[ext]))) continue;
+    const fields = { audio_path: objectPath, mime: AUDIO_TYPES[ext], size_bytes: (await stat(filePath)).size };
+    if (!dryRun) {
+      const { error } = existing.has(slug)
+        ? await supabase.from('catalog_audio').update(fields).eq('slug', slug)
+        : await supabase.from('catalog_audio').insert({ slug, name: titleCase(slug), ...fields });
+      if (error) throw new Error(`write catalog_audio ${slug}: ${error.message}`);
+    }
+    count += 1;
+  }
+  return `${count} songs`;
+}
+
 const KINDS = {
   weapons: seedWeapons,
   items: seedItems,
   monsters: seedMonsters,
+  audio: seedAudio,
 };
 
 async function main() {

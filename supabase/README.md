@@ -142,4 +142,5 @@ Supabase, or an empty or unreachable catalog table, nothing changes.
 | ----- | ------ | -------------- |
 | `catalog_weapons` | `catalog-images` | `weapons/<slug>.webp` |
 | `catalog_items` | `catalog-images` | `items/<slug>.webp` |
+| `catalog_audio` | `catalog-audio` | `audio/<slug>.mp3` or `.wav` (10 MB max; a new song is named after its file) |
 | `catalog_monsters` | `catalog-images` | `monsters/<key>.webp` (the monster's key, e.g. `giant-rat`) |

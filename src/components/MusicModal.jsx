@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { DebouncedRange } from './SoundField.jsx';
+import { DebouncedRange, CatalogSongSelect } from './SoundField.jsx';
+import { isCatalogTrack } from '../lib/audioEngine.js';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
 
 function formatSeconds(ms) {
@@ -81,7 +82,7 @@ function MusicRow({ row, audio, worldTargetId }) {
   const resumeMs = track ? audio.playback.resume[track.id] : undefined;
   let status = 'No file yet';
   if (track) {
-    if (expired) status = audio.isHost ? 'File expired — re-upload' : 'Unavailable';
+    if (expired) status = audio.isHost && !isCatalogTrack(track) ? 'File expired — re-upload' : 'Unavailable';
     else status = isPlaying ? 'Now playing' : resumeMs ? `Paused at ${formatSeconds(resumeMs)}` : 'Stopped';
   }
 
@@ -167,7 +168,17 @@ function MusicRow({ row, audio, worldTargetId }) {
           )}
         </div>
       )}
-      {audio.isHost && expired && row.kind !== 'world' && (
+      {audio.isHost && (row.kind === 'world' || track) && (
+        <div style={{ marginTop: 8 }}>
+          <CatalogSongSelect
+            audio={audio}
+            targetKind={row.kind === 'world' ? 'world' : track.targetKind}
+            targetId={row.kind === 'world' ? worldTargetId : track.targetId}
+            onError={setError}
+          />
+        </div>
+      )}
+      {audio.isHost && expired && row.kind !== 'world' && !isCatalogTrack(track) && (
         <p className="footer-note" style={{ border: 'none', padding: '6px 0 0' }}>
           Re-upload it from Map settings or the token inspector.
         </p>

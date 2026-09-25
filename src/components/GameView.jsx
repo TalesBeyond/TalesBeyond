@@ -58,6 +58,7 @@ import RightPanel from './RightPanel.jsx';
 import Toolbar from './Toolbar.jsx';
 import PanelResizer from './PanelResizer.jsx';
 import ClockModal from './ClockModal.jsx';
+import { useCatalog } from '../lib/catalog.js';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
@@ -1253,6 +1254,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   // ---- Synced Table Audio (REQ-009): the DM alone uploads, plays, pauses ----
 
+  const { audio: catalogSongs } = useCatalog();
   const audioTracks = state.audio?.tracks || {};
   const audioPlayback = state.audio?.playback || { nowPlaying: null, resume: {} };
   const audioUsedBytes = Object.values(audioTracks).reduce((sum, t) => sum + (t.sizeBytes || 0), 0);
@@ -1341,14 +1343,45 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         throw friendlyAudioError(err);
       }
     }
-    if (existing) {
-      // The replaced file is gone: stop it for everyone and forget its position.
-      const { [existing.id]: _drop, ...resume } = audioPlayback.resume;
-      if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
-        writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
-      }
-      releaseAudioFiles([existing]);
+    retireReplacedTrack(existing);
+    dispatch({ type: 'SET_AUDIO_TRACK', track });
+  }
+
+  // The replaced file is gone: stop it for everyone and forget its position.
+  function retireReplacedTrack(existing) {
+    if (!existing) return;
+    const { [existing.id]: _drop, ...resume } = audioPlayback.resume;
+    if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
+      writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
     }
+    releaseAudioFiles([existing]);
+  }
+
+  // Attach a Default catalog song: the track just points at its public URL, so
+  // nothing is uploaded, no quota is used, and there is no file of ours to purge.
+  async function attachCatalogAudio(targetKind, targetId, song) {
+    if (!isHost || !audioEnabled) return;
+    const existing = findAudioTrack(targetKind, targetId);
+    const track = {
+      id: existing?.id ?? generateEntityId(),
+      targetKind,
+      targetId: String(targetId),
+      name: song.name,
+      url: song.url,
+      storagePath: '',
+      mime: song.mime,
+      sizeBytes: 0,
+      baseVolume: existing?.baseVolume ?? 1,
+      loop: existing?.loop ?? defaultLoopFor(targetKind),
+    };
+    if (isRemote) {
+      try {
+        await upsertAudioTrackRemote(state.session.tableId, track);
+      } catch (err) {
+        throw friendlyAudioError(err);
+      }
+    }
+    retireReplacedTrack(existing);
     dispatch({ type: 'SET_AUDIO_TRACK', track });
   }
 
@@ -1386,6 +1419,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     usedBytes: audioUsedBytes,
     findTrack: findAudioTrack,
     attach: attachAudio,
+    catalog: catalogSongs,
+    attachCatalog: attachCatalogAudio,
     patch: patchAudioTrack,
     remove: removeAudioTrack,
     play: playAudioTrack,

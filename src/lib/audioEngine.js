@@ -18,6 +18,13 @@ export function playbackPositionSeconds(nowPlaying, durationSeconds, loop, nowMs
   return raw >= durationSeconds ? null : raw;
 }
 
+// A track that points at a Default catalog song: a public URL, but no file of
+// the table's own (cloud uploads always have a storage path, a guest DM's local
+// files are blob: URLs).
+export function isCatalogTrack(track) {
+  return Boolean(track) && !track.storagePath && !String(track.url).startsWith('blob:');
+}
+
 // The audibility rule (REQ-009): world and token sounds are heard by everyone;
 // a layer sound only by clients on that layer. `expired` files are skipped.
 export function audibleTrack(playback, tracks, { currentLayerId, layers, expired } = {}) {

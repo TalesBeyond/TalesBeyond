@@ -13,11 +13,13 @@ import { makeIconDataUrl } from '../data/defaultTokens.js';
 import { compendiumImage } from '../data/compendiumImages.js';
 
 const IMAGE_BUCKET = 'catalog-images';
+const AUDIO_BUCKET = 'catalog-audio';
 
 let current = {
   weapons: WEAPONS,
   items: ITEMS,
   monsters: MONSTERS,
+  audio: [], // songs have no built-in fallback: the picker is simply empty
   // Public picture URLs by kind, keyed by the entry's name (monsters: key).
   images: { weapons: {}, items: {}, monsters: {} },
 };
@@ -89,24 +91,37 @@ const mapMonster = (row) => ({
   imageUrl: makeIconDataUrl(row.icon, row.color),
 });
 
+const mapAudio = (row) => ({
+  slug: row.slug,
+  name: row.name,
+  mime: row.mime,
+  sizeBytes: Number(row.size_bytes),
+  url: publicUrl(AUDIO_BUCKET, row.audio_path),
+});
+
 // One entry per catalog list: which table feeds it, how a row becomes the
 // shape the app already uses, and which field keys its picture map.
 const SOURCES = [
   { kind: 'weapons', table: 'catalog_weapons', map: mapWeapon, imageKey: (row) => row.name },
   { kind: 'items', table: 'catalog_items', map: mapItem, imageKey: (row) => row.name },
   { kind: 'monsters', table: 'catalog_monsters', map: mapMonster, imageKey: (row) => row.slug },
+  { kind: 'audio', table: 'catalog_audio', map: mapAudio },
 ];
 
 async function loadSource({ kind, table, map, imageKey }) {
   try {
     const { data, error } = await supabase.from(table).select('*').order('name');
     if (error || !data?.length) return;
-    const images = {};
-    for (const row of data) {
-      const url = publicUrl(IMAGE_BUCKET, row.image_path);
-      if (url) images[imageKey(row)] = url;
+    const patch = { [kind]: data.map(map).filter((entry) => entry.url !== null) };
+    if (imageKey) {
+      const images = {};
+      for (const row of data) {
+        const url = publicUrl(IMAGE_BUCKET, row.image_path);
+        if (url) images[imageKey(row)] = url;
+      }
+      patch.images = { ...current.images, [kind]: images };
     }
-    update({ [kind]: data.map(map), images: { ...current.images, [kind]: images } });
+    update(patch);
   } catch (err) {
     console.warn(`catalog ${table}:`, err);
   }
