@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ModalShell from './ModalShell.jsx';
-import { playDiceSound } from '../lib/diceSound.js';
+import { playDiceSound } from '../lib/sfx.js';
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const MAX_PER_TYPE = 20;

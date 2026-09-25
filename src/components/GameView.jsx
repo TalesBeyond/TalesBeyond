@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { playDiceSound } from '../lib/diceSound.js';
+import { playDiceSound } from '../lib/sfx.js';
+import { DEMO_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
@@ -1292,6 +1293,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   // Cloud files live in Storage; a guest DM's are blob URLs in this tab.
   function releaseAudioFiles(tracks) {
+    tracks = tracks.filter((t) => !isBuiltinTrackUrl(t.url));
     if (isGuest) tracks.forEach((t) => URL.revokeObjectURL(t.url));
     else removeAudioFiles(tracks.map((t) => t.storagePath));
   }
@@ -1374,6 +1376,42 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     dispatch({ type: 'SET_AUDIO_TRACK', track });
   }
 
+  // Use a bundled demo track (src/data/defaultAudio.js) instead of a file: no
+  // upload, no quota. The row stores `builtin:<id>`, resolved at play time.
+  async function attachDemoAudio(targetKind, targetId, demoId) {
+    if (!isHost || !audioEnabled) return;
+    const demo = DEMO_MUSIC.find((m) => m.id === demoId);
+    if (!demo) return;
+    const existing = findAudioTrack(targetKind, targetId);
+    const track = {
+      id: existing?.id ?? generateEntityId(),
+      targetKind,
+      targetId: String(targetId),
+      name: demo.name,
+      url: builtinTrackUrl(demo.id),
+      storagePath: '',
+      mime: 'audio/mpeg',
+      sizeBytes: 0,
+      baseVolume: existing?.baseVolume ?? 1,
+      loop: existing?.loop ?? demo.loop ?? defaultLoopFor(targetKind),
+    };
+    if (isRemote) {
+      try {
+        await upsertAudioTrackRemote(state.session.tableId, track);
+      } catch (err) {
+        throw friendlyAudioError(err);
+      }
+    }
+    if (existing) {
+      const { [existing.id]: _drop, ...resume } = audioPlayback.resume;
+      if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
+        writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
+      }
+      releaseAudioFiles([existing]);
+    }
+    dispatch({ type: 'SET_AUDIO_TRACK', track });
+  }
+
   // Loop and base volume. Cloud rows are upserted whole (the host may write).
   function patchAudioTrack(trackId, patch) {
     const track = audioTracks[trackId];
@@ -1408,6 +1446,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     usedBytes: audioUsedBytes,
     findTrack: findAudioTrack,
     attach: attachAudio,
+    attachDemo: attachDemoAudio,
     patch: patchAudioTrack,
     remove: removeAudioTrack,
     play: playAudioTrack,

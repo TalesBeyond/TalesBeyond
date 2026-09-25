@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { DEMO_MUSIC } from '../data/defaultAudio.js';
 
 // A range input that reports its value locally at once but only commits (a
 // database write, a broadcast) once the slider has settled — dragging a synced
@@ -24,6 +25,42 @@ export function DebouncedRange({ value, onCommit, label, disabled }) {
         timer.current = setTimeout(() => onCommit(next), 200);
       }}
     />
+  );
+}
+
+// The DM's picker for the bundled demo music (src/data/defaultAudio.js) —
+// an alternative to uploading a file. Hidden while the library is empty.
+export function DemoTrackPicker({ audio, targetKind, targetId, disabled }) {
+  const [error, setError] = useState('');
+  if (!audio.isHost || DEMO_MUSIC.length === 0) return null;
+  return (
+    <>
+      <select
+        className="field"
+        style={{ width: 'auto', padding: '4px 8px' }}
+        aria-label="Use a demo track"
+        disabled={disabled}
+        value=""
+        onChange={async (e) => {
+          const id = e.target.value;
+          if (!id) return;
+          setError('');
+          try {
+            await audio.attachDemo(targetKind, targetId, id);
+          } catch (err) {
+            setError(err.message || 'Could not use that track.');
+          }
+        }}
+      >
+        <option value="">Use a demo track…</option>
+        {DEMO_MUSIC.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name}
+          </option>
+        ))}
+      </select>
+      {error && <p className="error-note">{error}</p>}
+    </>
   );
 }
 
@@ -84,6 +121,7 @@ export default function SoundField({ audio, targetKind, targetId, label = 'Sound
             <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
               {busy ? 'Uploading…' : track ? 'Replace' : 'Upload MP3 / WAV'}
             </button>
+            <DemoTrackPicker audio={audio} targetKind={targetKind} targetId={targetId} disabled={busy} />
             {track && (
               <button type="button" className="btn btn-danger btn-sm" disabled={busy} onClick={() => audio.remove(track.id)}>
                 Remove

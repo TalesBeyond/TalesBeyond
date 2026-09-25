@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { WEAPONS, DICE_TYPES } from '../data/weapons.js';
-import { playDiceSound } from '../lib/diceSound.js';
+import { playDiceSound } from '../lib/sfx.js';
 import { ITEMS } from '../data/items.js';
 import { newDroppableItem, dropThreshold } from '../data/droppables.js';
 

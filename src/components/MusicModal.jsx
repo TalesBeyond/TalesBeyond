@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { DebouncedRange } from './SoundField.jsx';
+import { DebouncedRange, DemoTrackPicker } from './SoundField.jsx';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
-import { getDiceVolume, setDiceVolume, playDiceSound } from '../lib/diceSound.js';
+import { getSfxVolume, setSfxVolume, playSfx } from '../lib/sfx.js';
+import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 
 function formatSeconds(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -48,7 +49,9 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
             <MusicRow key={row.key} row={row} audio={audio} />
           ))}
 
-          <DiceSoundRow />
+          {SOUND_EFFECTS.map((effect) => (
+            <SoundEffectRow key={effect.id} effect={effect} />
+          ))}
 
           {audio.isHost && (
             <div className="music-usage">
@@ -73,17 +76,18 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
   );
 }
 
-// The built-in dice-roll sound. Local to this browser, like a player's own
+// One built-in sound effect. Local to this browser, like a player's own
 // music slider; releasing the slider plays a preview.
-function DiceSoundRow() {
-  const [volume, setVolume] = useState(getDiceVolume);
+function SoundEffectRow({ effect }) {
+  const [volume, setVolume] = useState(() => getSfxVolume(effect.id));
+  const preview = () => playSfx(effect.id);
   return (
     <div className="music-row">
       <div className="music-row-head">
         <div className="music-row-main">
-          <div className="music-row-source">Dice</div>
-          <div className="music-row-name">Dice roll sound</div>
-          <div className="music-row-status">Plays whenever you roll</div>
+          <div className="music-row-source">Sound effect</div>
+          <div className="music-row-name">{effect.name}</div>
+          <div className="music-row-status">{effect.when}</div>
         </div>
       </div>
       <div className="music-sliders">
@@ -95,14 +99,14 @@ function DiceSoundRow() {
             max={1}
             step={0.01}
             value={volume}
-            aria-label="Dice roll sound volume"
+            aria-label={`${effect.name} volume`}
             onChange={(e) => {
               const v = Number(e.target.value);
               setVolume(v);
-              setDiceVolume(v);
+              setSfxVolume(effect.id, v);
             }}
-            onPointerUp={playDiceSound}
-            onKeyUp={playDiceSound}
+            onPointerUp={preview}
+            onKeyUp={preview}
           />
         </label>
       </div>
@@ -198,6 +202,7 @@ function MusicRow({ row, audio, worldTargetId }) {
               <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
                 {busy ? 'Uploading…' : track ? 'Replace file' : 'Upload MP3 or WAV'}
               </button>
+              <DemoTrackPicker audio={audio} targetKind="world" targetId={worldTargetId} disabled={busy} />
             </>
           )}
           {track && (

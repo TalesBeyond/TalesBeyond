@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CONDITIONS } from '../data/conditions.js';
-import { playDiceSound } from '../lib/diceSound.js';
+import { playDiceSound, playSfx } from '../lib/sfx.js';
 import {
   ABILITIES,
   SKILLS,
@@ -880,7 +880,15 @@ function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targ
       )}
       {isOwnedTab ? (
         <fieldset disabled={!canEditOwnTabs} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
-          {tab === 'attacks' && <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={targets} onAttackTarget={onUpdate} />}
+          {tab === 'attacks' && (
+            <BattleEquipmentTab
+              sheet={sheet}
+              updateSheet={updateSheet}
+              targets={targets}
+              onAttackTarget={onUpdate}
+              playSoundOnHit={entity.kind === 'hero'}
+            />
+          )}
           {tab === 'spells' && <SpellsTab sheet={sheet} updateSheet={updateSheet} />}
           {tab === 'bag' && <BagTab sheet={sheet} updateSheet={updateSheet} />}
         </fieldset>
@@ -1127,7 +1135,9 @@ function weaponStatsFor(name) {
   return { name, numberOfDice: 1, diceType: 'd4', modifier: 0 };
 }
 
-function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
+const ATTACK_BEAT_MS = 700;
+
+function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit }) {
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
   const [pickingIndex, setPickingIndex] = useState(null);
@@ -1155,18 +1165,51 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
     setPickTargetId((targets[0] && targets[0].id) || '');
   }
 
+  // An attack plays out in beats: a pause, the dice sound, another pause,
+  // then the result appears with its hit/miss sound. The roll itself happens
+  // at the end, against the target's HP as it is by then. Leaving the tab
+  // mid-roll cancels the attack.
+  const [rollingIndex, setRollingIndex] = useState(null);
+  const timers = useRef([]);
+  const latest = useRef({ items, targets });
+  latest.current = { items, targets };
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
   function confirmAttack(index) {
-    const target = targets.find((t) => t.id === pickTargetId);
-    if (!target) return;
+    const targetId = pickTargetId;
+    if (!targets.some((t) => t.id === targetId)) return;
+    setPickingIndex(null);
+    setRollingIndex(index);
+    setResults((prev) => {
+      const { [index]: _drop, ...rest } = prev;
+      return rest;
+    });
+    timers.current = [
+      setTimeout(playDiceSound, ATTACK_BEAT_MS),
+      setTimeout(() => {
+        setRollingIndex(null);
+        resolveAttack(index, targetId);
+      }, ATTACK_BEAT_MS * 2),
+    ];
+  }
+
+  function resolveAttack(index, targetId) {
+    const { items, targets } = latest.current;
+    const target = targets.find((t) => t.id === targetId);
     const it = items[index];
+    if (!target || !it) return;
     const weapon = weaponStatsFor(it.weaponName);
     const toHitMod = totalToHit(weapon, it.additionalModifier);
-    playDiceSound();
     const d20 = rollDie(20);
     const attackTotal = d20 + toHitMod;
     const targetAC = acOf(target);
     const hit = attackTotal >= targetAC;
     let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
+
+    if (playSoundOnHit) {
+      if (hit) playSfx('hit');
+      else playSfx('miss');
+    }
 
     if (hit) {
       const sides = parseInt(weapon.diceType.slice(1), 10);
@@ -1180,7 +1223,6 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
     }
 
     setResults((prev) => ({ ...prev, [index]: result }));
-    setPickingIndex(null);
   }
 
   return (
@@ -1250,11 +1292,11 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
             <button
               type="button"
               className="btn btn-primary btn-block"
-              disabled={targets.length === 0}
+              disabled={targets.length === 0 || rollingIndex !== null}
               title={targets.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
               onClick={() => openTargetPicker(i)}
             >
-              Roll attack
+              {rollingIndex === i ? 'Rolling…' : 'Roll attack'}
             </button>
 
             {pickingIndex === i && (
