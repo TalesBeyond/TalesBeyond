@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { WEAPONS, DICE_TYPES } from '../data/weapons.js';
+import { DICE_TYPES } from '../data/weapons.js';
+import { useCatalog } from '../lib/catalog.js';
 import { ITEMS } from '../data/items.js';
 import { newDroppableItem, dropThreshold } from '../data/droppables.js';
 
@@ -35,10 +36,11 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
   const [customChance, setCustomChance] = useState(50);
   const [rollResults, setRollResults] = useState({});
 
+  const { weapons } = useCatalog();
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    const weaponMatches = WEAPONS.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
+    const weaponMatches = weapons.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
       name: w.name,
       cost: w.cost,
       numberOfDice: w.numberOfDice,
@@ -53,7 +55,7 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
       modifier: 0,
     }));
     return [...weaponMatches, ...itemMatches].slice(0, 20);
-  }, [search]);
+  }, [search, weapons]);
 
   function addFromCatalog(entry) {
     onAddItem(newDroppableItem({ ...entry, dropChance: 50 }));

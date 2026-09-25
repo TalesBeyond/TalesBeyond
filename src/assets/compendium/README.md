@@ -1,5 +1,8 @@
 # Compendium images
 
+These bundled pictures are the fallback. When the Default catalog (Supabase)
+has a picture for an entry, that one is shown instead — see `src/lib/catalog.js`.
+
 Drop a picture here and it appears as a small square on that entry's row in the
 compendium book. Entries without a picture are left as they are.
 

@@ -15,7 +15,7 @@ import {
   CURRENCIES,
   normalizeCurrency,
 } from '../data/characterSheet.js';
-import { WEAPONS } from '../data/weapons.js';
+import { useCatalog, getCatalog } from '../lib/catalog.js';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
 import { parseTrapNumber, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
@@ -1113,12 +1113,13 @@ function acOf(target) {
 // dice; a homebrew name with no catalog match still equips, just with a
 // plain 1d4/no-modifier baseline the player can tune via Mod/Dmg.
 function weaponStatsFor(name) {
-  const match = WEAPONS.find((w) => w.name.toLowerCase() === (name || '').trim().toLowerCase());
+  const match = getCatalog().weapons.find((w) => w.name.toLowerCase() === (name || '').trim().toLowerCase());
   if (match) return match;
   return { name, numberOfDice: 1, diceType: 'd4', modifier: 0 };
 }
 
 function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget }) {
+  useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
   const [pickingIndex, setPickingIndex] = useState(null);

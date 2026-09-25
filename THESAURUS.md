@@ -9,17 +9,20 @@ feature's own plan — this seed only records terms that already exist.
 
 | Term | Definition | Notes |
 | ---- | ---------- | ----- |
+| Admin script | The local Node script (`scripts/catalog-admin.mjs`, `npm run catalog:seed`) the admin runs with the service-role key to load the Default catalog's rows and files into Supabase. Idempotent; the only writer of the catalog. | `scripts/catalog-admin.mjs` |
 | Audio track | One MP3/WAV file attached to a target — the table (World music), a layer, an island, or a hero/mob token — with a name, synced Base volume and a Loop flag. One track per target; stored in `audio_tracks` and Storage (cloud), or only as a local blob URL in the DM's browser (guest tables, where nobody else hears it). The DM alone uploads, plays and pauses; only one plays at a time. | `src/lib/audioEngine.js`, `supabase/migrations/20250101000038_synced_table_audio.sql` |
 | Base island | The permanent, undeletable first island in an island's `islandOrder` — where new players land on that layer. | `src/state/store.jsx` |
 | Base layer | The permanent, undeletable first layer in `layerOrder[0]` — every table has one. | `src/state/store.jsx` |
 | Bag | A hero's inventory: freeform gear/other-items lists plus bronze/silver/gold currency. | `src/components/RightPanel.jsx` |
 | Base volume | The DM-set, table-wide volume (0–1) of an Audio track, synced to everyone. The audible level is Base volume × Local volume. | `src/components/MusicModal.jsx` |
+| Catalog asset | One entry of the Default catalog: a weapon, item, monster, song or dice image, keyed by `slug`, with an optional file in a catalog bucket. | `src/lib/catalog.js`, `supabase/migrations/20250101000042_catalog_weapons.sql` |
 | Chest | A lootable container entity kind with a size tier, an opened/closed state, and item contents. | `src/data/chests.js`, `supabase/11_chests.sql` |
 | Cloud mode | The mode the app runs in when `VITE_SUPABASE_PROJECT_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` are set — actions go over the network through Supabase, live-synced via Realtime. | `src/lib/supabaseClient.js` |
 | Day/night cycle | The four phases of the in-game day - Dawn, Day, Dusk, Night - derived from the Ingame clock and the DM's chosen sunrise and sunset; each island follows it, or is set to always day / always night, shown as a tint and a sun/moon badge. The DM can also set the phase by hand at any time (the toolbar's Day / night button, `dayNightOverride`), which takes priority over the clock until they choose "Follow the clock". | `src/utils/gameClock.js`, `src/data/dayPhases.js` |
 | Compendium | A searchable catalog of weapons or items a host can buy/give directly into a hero's Bag. | `src/data/weapons.js`, `src/data/items.js` |
 | Conditions | The fixed catalog of visual/informational status badges (Poisoned, Stunned, Prone, Shocked, Bleeding) toggleable on hero and mob tokens. | `src/data/conditions.js` |
 | Connection grace period | The 1.5s window after a realtime channel drops during which the app stays silent, in case it's just a blip — only a drop that outlasts it surfaces the "Reconnecting…" scrim. | `src/components/GameView.jsx` |
+| Default catalog | The read-only, admin-written set of weapons, items, monsters, songs and dice images that every table shares, stored in `catalog_*` tables and public `catalog-*` buckets. The app starts from the code data in `src/data` and swaps in the catalog's rows when Supabase returns them. Distinct from a table's own Custom assets. | `src/lib/catalog.js`, `supabase/README.md` |
 | DM code | A guest table's private `session.hostKey`, shown only to its DM — required, alongside its exported file, to resume as host (checked as a hash, never stored in the file itself). | `src/state/store.jsx`, `src/components/Landing.jsx` (`GuestResumeForm`) |
 | DM notes | Private, host-only free text on a hero or mob entity, never visible to other players. | `supabase/15_entity_dm_data_privacy.sql` |
 | Door | A bidirectional portal entity kind linking two layers, with independently placed positions on each side. | `supabase/05_layers.sql`, `supabase/07_door_positions.sql` |

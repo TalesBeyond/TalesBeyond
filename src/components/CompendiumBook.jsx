@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { WEAPONS, CLASSES } from '../data/weapons.js';
+import { CLASSES } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
 import { MONSTERS, monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { compendiumImage } from '../data/compendiumImages.js';
+import { useCatalog, entryImage } from '../lib/catalog.js';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
 // table), so it is there next time the book opens on any table.
@@ -109,6 +110,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const pagesRef = useRef(null);
   const timers = useRef([]);
 
+  const { weapons } = useCatalog();
   const isWeapons = kind === 'weapons';
   const isMonsters = kind === 'monsters';
   const chapter = isWeapons ? 'Weapons Compendium' : isMonsters ? 'Monster Compendium' : 'Item Compendium';
@@ -144,7 +146,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
       return [...builtIn, ...(crFilter === 'all' ? custom : [])].filter((e) => !q || e.name.toLowerCase().includes(q));
     }
     if (isWeapons) {
-      const all = [...WEAPONS, ...(customWeapons || [])];
+      const all = [...weapons, ...(customWeapons || [])];
       return all
         .filter((w) => (typeFilter === 'all' || w.type === typeFilter) && (!q || w.name.toLowerCase().includes(q)))
         .sort((a, b) => baseWeaponName(a.name).localeCompare(baseWeaponName(b.name)) || a.modifier - b.modifier)
@@ -158,7 +160,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
             w.equipableClass.length >= CLASSES.length ? 'Any class.' : cap(w.equipableClass.join(', '))
           }`,
           item: w,
-          image: w.id ? null : compendiumImage('weapons', baseWeaponName(w.name)),
+          image: w.id ? null : entryImage('weapons', w.name, baseWeaponName(w.name)),
         }));
     }
     const all = [...ITEMS, ...(customItems || [])];
@@ -175,10 +177,10 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         item: it,
         image: it.id ? null : compendiumImage('items', it.name),
       }));
-  }, [isWeapons, isMonsters, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
+  }, [isWeapons, isMonsters, weapons, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
 
   const totalCount = isWeapons
-    ? WEAPONS.length + (customWeapons || []).length
+    ? weapons.length + (customWeapons || []).length
     : isMonsters
       ? MONSTERS.length + (customMonsters || []).length
       : ITEMS.length + (customItems || []).length;

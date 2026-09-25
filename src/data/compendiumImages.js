@@ -10,6 +10,8 @@
 // png, jpg, jpeg, webp, gif and svg all work. Drop a file in and it shows up in
 // the book on the next reload; an entry with no file just shows no picture.
 
+import { slugify } from './slugify.js';
+
 const files = import.meta.glob('../assets/compendium/*/*.{png,jpg,jpeg,webp,gif,svg}', {
   eager: true,
   query: '?url',
@@ -22,12 +24,7 @@ for (const [path, url] of Object.entries(files)) {
   if (m) INDEX[`${m[1]}/${m[2].toLowerCase()}`] = url;
 }
 
-export function slugify(name) {
-  return String(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+export { slugify };
 
 // The picture for one entry, or null when the folder has none.
 export function compendiumImage(kind, name) {

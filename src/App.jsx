@@ -9,11 +9,17 @@ import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { ensureAnonymousSession } from './lib/auth.js';
 import { fetchTableSnapshot } from './lib/remoteApi.js';
 import { useTheme } from './state/theme.js';
+import { loadCatalog } from './lib/catalog.js';
 
 export default function App() {
   const [entry, setEntry] = useState(null); // { state, me, mode }
   const [checkedResume, setCheckedResume] = useState(false);
   const [theme, setTheme] = useTheme();
+
+  // The Default catalog loads once per page load, in the background.
+  useEffect(() => {
+    loadCatalog();
+  }, []);
 
   // On first load, try to silently resume whatever table this browser
   // tab was last sitting at (e.g. after a refresh) — in either mode.

@@ -110,3 +110,34 @@ nothing else about the app changes.
   can synchronously write to localStorage from a `beforeunload`/`pagehide`
   handler, cloud mode would need a reliable server-side presence signal
   (e.g. Supabase Realtime Presence) to detect that, which isn't wired up.
+
+## Default catalog (REQ-010)
+
+The game content every table shares — weapons, items, monsters, songs and dice
+images — lives in read-only `catalog_*` tables and public `catalog-*` storage
+buckets. Everyone (including anonymous players and guest tables) can read it;
+nothing in the app can write it. Only the **admin script** can, using the
+project's service-role key, which bypasses RLS.
+
+The app always starts from the data built into `src/data/`, and swaps in a
+catalog list once Supabase returns rows for it (`src/lib/catalog.js`). With no
+Supabase, or an empty or unreachable catalog table, nothing changes.
+
+### Loading the catalog
+
+1. Apply the migrations (`catalog_*` tables and the `catalog-images` bucket).
+2. Put the service-role key in `.env` as `SUPABASE_SERVICE_ROLE_KEY` (Project
+   Settings → API Keys → secret key). It must **not** be prefixed `VITE_`, or
+   Vite would bundle it into the app.
+3. Export each picture as one optimized WebP (about 256 px for items and
+   monsters, under 1 MB) and drop it in `catalog-assets/<kind>/<slug>.webp`
+   (git-ignored). `<slug>` is the entry's name in lower case with runs of other
+   characters turned into `-`; a weapon's +1/+2 versions use the base weapon's
+   file (`weapons/longsword.webp`).
+4. Run `npm run catalog:seed`. Options: `-- --assets <dir>`, `-- --only weapons`,
+   `-- --dry-run`. It is safe to run again: rows are upserted, files
+   overwritten, and an entry with no local file keeps the picture it has.
+
+| Table | Bucket | Path in bucket |
+| ----- | ------ | -------------- |
+| `catalog_weapons` | `catalog-images` | `weapons/<slug>.webp` |

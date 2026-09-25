@@ -5,6 +5,9 @@ node_modules
 dist
 dist-ssr
 
+# Default catalog source files (pictures, songs, models) for the admin script
+catalog-assets/
+
 # Environment secrets — never commit real Supabase credentials
 .env
 .env.local
