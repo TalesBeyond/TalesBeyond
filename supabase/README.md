@@ -142,3 +142,4 @@ Supabase, or an empty or unreachable catalog table, nothing changes.
 | ----- | ------ | -------------- |
 | `catalog_weapons` | `catalog-images` | `weapons/<slug>.webp` |
 | `catalog_items` | `catalog-images` | `items/<slug>.webp` |
+| `catalog_monsters` | `catalog-images` | `monsters/<key>.webp` (the monster's key, e.g. `giant-rat`) |

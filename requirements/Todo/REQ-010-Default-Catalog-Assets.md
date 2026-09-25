@@ -123,10 +123,10 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S012 | P | Monsters table | Migration adding `catalog_monsters` (abilities as jsonb) with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S013 | S | Admin script (monsters) | Extend the script to seed `MONSTERS` (slug = key) and upload `monsters/<slug>.webp`. | S002, S012 | admin script |
-|  | S014 | F | Catalog monsters list | Add the monsters list and its fetch to the catalog module and startup fetch. | S003, S004, S012 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
-|  | S015 | U | Monster consumers | Switch `CompendiumBook`'s monster chapter and `monsterToDraft` to the catalog's monsters; keep the per-browser image override first in the image order. | S014 | `src/components/CompendiumBook.jsx`, `src/data/monsters.js` |
+| ✅ | S012 | P | Monsters table | Migration adding `catalog_monsters` (abilities as jsonb) with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S013 | S | Admin script (monsters) | Extend the script to seed `MONSTERS` (slug = key) and upload `monsters/<slug>.webp`. | S002, S012 | admin script |
+| ✅ | S014 | F | Catalog monsters list | Add the monsters list and its fetch to the catalog module and startup fetch. | S003, S004, S012 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
+| ✅ | S015 | U | Monster consumers | Switch `CompendiumBook`'s monster chapter and `monsterToDraft` to the catalog's monsters; keep the per-browser image override first in the image order. | S014 | `src/components/CompendiumBook.jsx`, `src/data/monsters.js` |
 
 ### Slice 4 — Catalog songs
 

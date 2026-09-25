@@ -1,9 +1,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CLASSES } from '../data/weapons.js';
 import { ITEM_CATEGORIES } from '../data/items.js';
-import { MONSTERS, monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
+import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
-import { compendiumImage } from '../data/compendiumImages.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
@@ -110,7 +109,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const pagesRef = useRef(null);
   const timers = useRef([]);
 
-  const { weapons, items } = useCatalog();
+  const { weapons, items, monsters } = useCatalog();
   const isWeapons = kind === 'weapons';
   const isMonsters = kind === 'monsters';
   const chapter = isWeapons ? 'Weapons Compendium' : isMonsters ? 'Monster Compendium' : 'Item Compendium';
@@ -131,7 +130,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         draft: customMonsterToDraft(m),
         custom: true,
       }));
-      const builtIn = MONSTERS.filter((m) => crFilter === 'all' || crBand(m.cr) === crFilter).map((m) => ({
+      const builtIn = monsters.filter((m) => crFilter === 'all' || crBand(m.cr) === crFilter).map((m) => ({
         key: `m:${m.key}`,
         name: m.name,
         sub: `${m.kind} · CR ${m.cr}`,
@@ -141,7 +140,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         monster: m,
         draft: { ...monsterToDraft(m), ...(monsterImages[m.key] ? { imageUrl: monsterImages[m.key] } : {}) },
         ownImage: Boolean(monsterImages[m.key]),
-        image: monsterImages[m.key] || compendiumImage('monsters', m.name),
+        image: monsterImages[m.key] || entryImage('monsters', m.key, m.name),
       }));
       return [...builtIn, ...(crFilter === 'all' ? custom : [])].filter((e) => !q || e.name.toLowerCase().includes(q));
     }
@@ -177,12 +176,12 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         item: it,
         image: it.id ? null : entryImage('items', it.name),
       }));
-  }, [isWeapons, isMonsters, weapons, items, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
+  }, [isWeapons, isMonsters, weapons, items, monsters, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
 
   const totalCount = isWeapons
     ? weapons.length + (customWeapons || []).length
     : isMonsters
-      ? MONSTERS.length + (customMonsters || []).length
+      ? monsters.length + (customMonsters || []).length
       : items.length + (customItems || []).length;
   const pageCount = Math.max(2, Math.ceil(entries.length / perPage));
   const spreads = Math.ceil(pageCount / 2);

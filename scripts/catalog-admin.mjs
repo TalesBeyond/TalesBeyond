@@ -21,6 +21,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { WEAPONS } from '../src/data/weapons.js';
 import { ITEMS } from '../src/data/items.js';
+import { MONSTERS } from '../src/data/monsters.js';
 import { slugify } from '../src/data/slugify.js';
 
 const args = process.argv.slice(2);
@@ -147,9 +148,34 @@ async function seedItems() {
   return `${rows.length} items, ${uploaded.size} pictures`;
 }
 
+// A monster's row slug is its key; its picture is monsters/<key>.webp.
+async function seedMonsters() {
+  const existing = await existingPaths('catalog_monsters');
+  const uploaded = await uploadImages('monsters', await localFiles('monsters', ['.webp']));
+  const rows = MONSTERS.map((m) => ({
+    slug: m.key,
+    name: m.name,
+    kind: m.kind,
+    cr: m.cr,
+    hp: m.hp,
+    ac: m.ac,
+    speed: m.speed,
+    abilities: m.abilities,
+    size: m.size,
+    icon: m.icon,
+    color: m.color,
+    attack: m.attack,
+    description: m.description,
+    image_path: uploaded.has(m.key) ? `monsters/${m.key}.webp` : existing.get(m.key) ?? null,
+  }));
+  await upsertRows('catalog_monsters', rows);
+  return `${rows.length} monsters, ${uploaded.size} pictures`;
+}
+
 const KINDS = {
   weapons: seedWeapons,
   items: seedItems,
+  monsters: seedMonsters,
 };
 
 async function main() {
