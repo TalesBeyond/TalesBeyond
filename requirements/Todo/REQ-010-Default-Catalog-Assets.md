@@ -162,10 +162,10 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S027 | P | Models and skins tables | Migration adding `catalog_dice_models`, `catalog_dice_skins` (skin may reference a model or a die type) and the public `catalog-models` bucket (GLB, 8 MB), with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-|  | S028 | S | Admin script (models and skins) | Extend the script to upload `dice-models/<slug>.glb` and `dice-skins/<slug>.webp` and upsert their rows. | S002, S027 | admin script |
-|  | S029 | D | Docs and thesaurus | Add Dice model and Dice skin to `THESAURUS.md`; document the tables and buckets in `supabase/README.md`. | S027 | `THESAURUS.md`, `supabase/README.md` |
-|  | S030 | X | Final sweep | Confirm every content type falls back to code data when its table is empty, and that a production build contains no service-role key. | S011, S015, S021, S026, S028 | — |
+| ✅ | S027 | P | Models and skins tables | Migration adding `catalog_dice_models`, `catalog_dice_skins` (skin may reference a model or a die type) and the public `catalog-models` bucket (GLB, 8 MB), with the same RLS shape. Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
+| ✅ | S028 | S | Admin script (models and skins) | Extend the script to upload `dice-models/<slug>.glb` and `dice-skins/<slug>.webp` and upsert their rows. | S002, S027 | admin script |
+| ✅ | S029 | D | Docs and thesaurus | Add Dice model and Dice skin to `THESAURUS.md`; document the tables and buckets in `supabase/README.md`. | S027 | `THESAURUS.md`, `supabase/README.md` |
+| ✅ | S030 | X | Final sweep | Confirm every content type falls back to code data when its table is empty, and that a production build contains no service-role key. | S011, S015, S021, S026, S028 | — |
 
 ### Dependency graph
 
@@ -202,7 +202,7 @@ Supersedes: nothing. The custom assets in `custom_assets` (Asset Storage) are un
 
 ## Open Questions
 
-- [ ] **Q1 — Local seed folder.** Where the admin's source images, songs and models live on disk (inside the repo and git-ignored, or outside it). Deferred until the first real upload session.
+- [x] **Q1 — Resolved.** Source files live in `catalog-assets/` at the repo root (git-ignored); `--assets <dir>` points the script elsewhere. *(Blaxine)*
 - [ ] **Q2 — Dice skin persistence.** Where a player's chosen skin is stored when there are no accounts. Deferred until the 3D dice requirement is written.
 - [ ] **Q3 — Song categories.** Whether songs need a category or tag column for browsing. Deferred until the library passes about ten songs.
 - [ ] **Q4 — Catalog vs. `DEFAULT_MOBS`.** Whether the six token-list monsters in `defaultTokens.js` should read from `catalog_monsters`. Deferred until the monsters slice ships and the two lists are compared.
@@ -254,3 +254,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-09-24 | Blaxine | Initial plan. |
+| 2026-09-24 | Blaxine | Implemented slices 1-6; resolved Q1. Toolbar.jsx needed no change (its WEAPONS/ITEMS imports were unused). |

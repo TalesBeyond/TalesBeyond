@@ -144,4 +144,6 @@ Supabase, or an empty or unreachable catalog table, nothing changes.
 | `catalog_items` | `catalog-images` | `items/<slug>.webp` |
 | `catalog_audio` | `catalog-audio` | `audio/<slug>.mp3` or `.wav` (10 MB max; a new song is named after its file) |
 | `catalog_dice_images` | `catalog-images` | `dice/d4.webp` … `dice/d100.webp` (one per die type) |
+| `catalog_dice_models` | `catalog-models` | `dice-models/<die type>-<name>.glb`, optional preview `dice-models/<slug>.webp` in `catalog-images` (8 MB max) |
+| `catalog_dice_skins` | `catalog-images` | `dice-skins/<slug>.webp`; name it `<model slug>__<name>` or `<die type>__<name>` to attach it |
 | `catalog_monsters` | `catalog-images` | `monsters/<key>.webp` (the monster's key, e.g. `giant-rat`) |
