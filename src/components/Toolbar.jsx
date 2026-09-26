@@ -368,17 +368,22 @@ export default function Toolbar({
         onCopy={copyCode}
         title="Click to copy the invite code players join with"
       />
-      <CodeChip
-        caption={isGuestHost ? 'DM code' : 'Host key'}
-        value={session.hostKey}
-        copied={copiedHostKey}
-        onCopy={copyHostKey}
-        title={
-          isGuestHost
-            ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
-            : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
-        }
-      />
+      {/* Local and guest tables only: a signed-in cloud table has no host
+          key (fetchTableSnapshot never returns one — the DM's own account
+          re-seats them), so the chip would just copy "undefined". */}
+      {session.hostKey && (
+        <CodeChip
+          caption={isGuestHost ? 'DM code' : 'Host key'}
+          value={session.hostKey}
+          copied={copiedHostKey}
+          onCopy={copyHostKey}
+          title={
+            isGuestHost
+              ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
+              : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
+          }
+        />
+      )}
       {/* Regenerating isn't supported for a guest table (GameView.jsx's
           regenerateCode just alerts and bails — the invite code doubles
           as the peer broadcast channel's name, so rotating it would
