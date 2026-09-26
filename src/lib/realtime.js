@@ -39,10 +39,19 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
   }
 
   channel
+    // Supabase answers a subscription it can't serve — most often a table
+    // missing from the supabase_realtime publication (50_realtime_publication
+    // .sql) — with an error here, and then drops every postgres_changes
+    // binding on the channel while the channel itself still reports
+    // SUBSCRIBED. Nothing else would ever surface that.
+    .on('system', {}, (message) => {
+      if (message?.status === 'error') console.error(`[realtime] table:${tableId} live updates refused:`, message.message);
+    })
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'entities', filter: `table_id=eq.${tableId}` },
       (payload) => {
+        console.debug(`[realtime] entities ${payload.eventType}`, payload.new?.name ?? payload.old?.id);
         if (payload.eventType === 'INSERT') {
           dispatch({ type: 'ADD_ENTITY', entity: mapDbEntity(payload.new) });
         } else if (payload.eventType === 'UPDATE') {
@@ -148,7 +157,11 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         if (!payload.new.revoked_at) dispatch({ type: 'REGENERATE_INVITE_CODE', code: payload.new.code });
       }
     )
-    .subscribe((status) => {
+    .subscribe((status, err) => {
+      // A channel that fails to join (or drops) otherwise fails silently —
+      // the table just stops updating — so say so in the console.
+      if (status === 'SUBSCRIBED') console.info(`[realtime] table:${tableId} connected`);
+      else console.warn(`[realtime] table:${tableId} ${status}`, err?.message || err || '');
       if (status === 'SUBSCRIBED' && !hasJoinedOnce) {
         hasJoinedOnce = true;
         onStatusChange?.(status, true);
