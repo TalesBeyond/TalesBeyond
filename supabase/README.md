@@ -62,6 +62,7 @@ The sixteen migrations, in order:
 18. `..._audio_volume_loop.sql` — per-track synced base volume and loop flag
 19. `..._audio_cleanup.sql` — triggers that delete a track's row when its layer, island or token is deleted (the Storage file is removed by the client)
 20. `..._audio_quota.sql` — a database check rejecting more than 50 MB of audio per table
+21. `..._no_guest_uploads.sql` — guest (anonymous) sessions can't upload any file to Storage; only signed-in accounts can. Guest tables keep everything local, and their audio must be re-picked after a reload
 
 ## 3. Enable anonymous sign-in
 
@@ -142,7 +143,7 @@ Supabase, or an empty or unreachable catalog table, nothing changes.
 | ----- | ------ | -------------- |
 | `catalog_weapons` | `catalog-images` | `weapons/<slug>.webp` |
 | `catalog_items` | `catalog-images` | `items/<slug>.webp` |
-| `catalog_audio` | `catalog-audio` | `audio/<slug>.mp3` or `.wav` (10 MB max; a new song is named after its file) |
+| `catalog_audio` | `catalog-audio` | **Not seeded any more** — music ships with the app in `src/assets/audio/music/` (`DEMO_MUSIC` in `src/data/defaultAudio.js`). The table stays so songs already uploaded keep playing. |
 | `catalog_dice_images` | `catalog-images` | `dice/d4.webp` … `dice/d100.webp` (one per die type) |
 | `catalog_dice_models` | `catalog-models` | `dice-models/<die type>-<name>.glb`, optional preview `dice-models/<slug>.webp` in `catalog-images` (8 MB max) |
 | `catalog_dice_skins` | `catalog-images` | `dice-skins/<slug>.webp`; name it `<model slug>__<name>` or `<die type>__<name>` to attach it |

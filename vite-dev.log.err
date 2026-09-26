@@ -1,0 +1,31 @@
+[2m9:05:14 AM[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+[2m9:05:14 AM[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+[2m9:05:14 AM[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/User/Videos/TalesBeyond/src/lib/storageUpload.js[39m:26:85
+[33m  24 |    const user = data.session?.user;
+  25 |    if (!user || user.is_anonymous) {
+  26 |      throw new Error('Guests can't upload files — everything stays on this device.');
+     |                                                                                      ^
+  27 |    }
+  28 |  }[39m
+      at TransformPluginContext._formatError (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at TransformPluginContext.transform (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64259:14)
+      at async PluginContainer.transform (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m9:05:14 AM[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/User/Videos/TalesBeyond/src/lib/storageUpload.js[39m:26:85
+[33m  24 |    const user = data.session?.user;
+  25 |    if (!user || user.is_anonymous) {
+  26 |      throw new Error('Guests can't upload files — everything stays on this device.');
+     |                                                                                      ^
+  27 |    }
+  28 |  }[39m
+      at TransformPluginContext._formatError (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at TransformPluginContext.transform (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64259:14)
+      at async PluginContainer.transform (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/User/Videos/TalesBeyond/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m9:05:14 AM[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
