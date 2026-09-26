@@ -49,11 +49,10 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
   if (collapsed) {
     return (
       <div className="panel collapsed">
-        <div className="panel-header">
-          <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Expand tokens panel">
-            »
-          </button>
-        </div>
+        <button type="button" className="panel-rail" onClick={onToggleCollapsed} title="Expand tokens panel">
+          <span className="panel-rail-chevron" aria-hidden="true">»</span>
+          <span className="panel-rail-label">Tokens</span>
+        </button>
       </div>
     );
   }

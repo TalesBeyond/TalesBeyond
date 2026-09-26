@@ -152,7 +152,21 @@ input, select {
   opacity: 0.6;
 }
 
+/* Everything in the bar stays on one line; on a narrow window the session
+   chip gives way (ellipsis) and the brand's subtitle drops out. */
+.top-bar { gap: 16px; }
+.brand { flex-shrink: 0; white-space: nowrap; }
+.top-bar-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.top-bar-actions .btn { white-space: nowrap; }
+@media (max-width: 1023px) {
+  .brand-sub { display: none; }
+}
+
 .session-chip {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: 13px;
   background: var(--ink-800);
@@ -484,6 +498,14 @@ input, select {
 
 /* ---------- Game layout ---------- */
 
+/* Full-width toolbar on top, the panels-and-map grid filling the rest. */
+.game-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* The side panels' widths are set from GameView (--left-w / --right-w) so
    they can be dragged to a new size; the fallbacks are the defaults. */
 .game-layout {
@@ -496,6 +518,81 @@ input, select {
 .game-layout.left-collapsed { grid-template-columns: 36px 1fr var(--right-w, 340px); }
 .game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
+
+/* Pinned to their columns so an expanded drawer (taken out of flow below)
+   doesn't let the map slide into column 1. */
+.game-layout > .panel { grid-column: 1; grid-row: 1; }
+.game-layout > .panel.right { grid-column: 3; }
+.game-center {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Narrower windows (GameView's DRAWER_LAYOUT_BELOW): the map keeps the
+   whole middle and an expanded panel slides over it from its rail. */
+.game-layout.drawers { grid-template-columns: 36px 1fr 36px; }
+.game-layout.drawers > .panel:not(.collapsed) {
+  /* Spanning every column makes the whole grid its containing block, so the
+     100% below is the layout's width rather than the 36px rail column's. */
+  grid-column: 1 / -1;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  width: min(var(--left-w, 260px), calc(100% - 96px));
+  border-right-color: var(--gold-line);
+  box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
+  animation: drawer-in-left 0.18s ease-out;
+}
+.game-layout.drawers > .panel.right:not(.collapsed) {
+  left: auto;
+  right: 0;
+  width: min(var(--right-w, 340px), calc(100% - 96px));
+  border-left-color: var(--gold-line);
+  box-shadow: -24px 0 48px -16px rgba(0, 0, 0, 0.65);
+  animation-name: drawer-in-right;
+}
+@keyframes drawer-in-left { from { transform: translateX(-24px); opacity: 0; } }
+@keyframes drawer-in-right { from { transform: translateX(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .game-layout.drawers > .panel:not(.collapsed) { animation: none; }
+}
+
+/* A folded panel: the whole rail is the expand button, labelled on its side. */
+.panel-rail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 0;
+  padding: 14px 0;
+  background: transparent;
+  border: 0;
+  color: var(--parchment-300);
+  overflow: hidden;
+}
+.panel-rail:hover { color: var(--parchment-100); background: var(--ink-800); }
+.panel-rail:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: -3px; }
+.panel-rail-chevron { font-size: 15px; line-height: 1; }
+.panel-rail-label {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 100%;
+}
+.panel-rail.has-selection { color: var(--gold-hi); }
 
 /* Drag handles straddling each panel's inner edge. Wider than the visible
    line so it's easy to grab; the line only shows on hover/focus/drag. */
@@ -737,17 +834,26 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   padding: 8px 20px;
   border-bottom: 1px solid var(--ink-700);
   background: var(--ink-900);
-  flex-wrap: wrap;
+  /* One row — Toolbar.jsx steps through TOOLBAR_DENSITIES to make it fit,
+     and only as a last resort sets data-overflow="wrap". */
+  flex-wrap: nowrap;
   flex-shrink: 0;
 }
+.toolbar[data-overflow='wrap'] { flex-wrap: wrap; }
 
 .toolbar .spacer { flex: 1; }
 
+.toolbar-status { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.toolbar-status .autosave-countdown { border-left: none; padding: 0; }
 .toolbar-saved { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--parchment-300); white-space: nowrap; }
 .toolbar-saved-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moss); }
 .toolbar-leave {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   height: 44px;
-  padding: 0 16px;
+  padding: 0 14px;
   flex-shrink: 0;
   background: transparent;
   border: 1px solid var(--gold-line);
@@ -839,6 +945,40 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   box-shadow: 0 20px 40px rgba(0,0,0,0.5);
 }
 .toolbar-menu .tool-card:hover:not(:disabled) { background: var(--ink-700); }
+.toolbar-menu.align-end { left: auto; right: 0; }
+
+/* ----- Toolbar densities (see TOOLBAR_DENSITIES in Toolbar.jsx) ----- */
+
+/* codes: the two code chips move into the "Invite" menu. */
+.toolbar-codes-menu { display: none; }
+.toolbar[data-density~='codes'] .toolbar-codes-inline { display: none; }
+.toolbar[data-density~='codes'] .toolbar-codes-menu { display: flex; }
+
+/* icons: bar-level cards drop their labels (menu items keep theirs). The
+   labels are visually hidden, not removed, so each card keeps its name. */
+.toolbar[data-density~='icons'] .toolbar-group > .tool-card { min-width: 44px; width: 44px; height: 44px; }
+.toolbar[data-density~='icons'] .toolbar-group > .tool-card .tool-card-label,
+.toolbar[data-density~='tight'] .toolbar-saved-text,
+.toolbar[data-density~='tight'] .toolbar-leave-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* tight: less air, the clock shows just its time, Leave goes icon-only. */
+.toolbar[data-density~='tight'] { gap: 4px; padding-left: 12px; padding-right: 12px; }
+.toolbar[data-density~='tight'] .toolbar-group { gap: 4px; padding: 4px 5px; }
+.toolbar[data-density~='tight'] .toolbar-group:first-child { padding-left: 0; }
+.toolbar[data-density~='tight'] .clock-readout-caption,
+.toolbar[data-density~='tight'] .clock-readout-sub { display: none; }
+.toolbar[data-density~='tight'] .toolbar-leave { width: 44px; padding: 0; }
+.toolbar[data-density~='tight'] .toolbar-status { flex-direction: row; align-items: center; gap: 8px; }
 
 /* Click-to-copy code readout (player code, host key). */
 .code-chip {

@@ -100,7 +100,7 @@ export default function App() {
             virtual table · {isSupabaseConfigured ? 'cloud mode' : 'local demo mode'}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="top-bar-actions">
           {entry && (
             <span className="session-chip">
               {entry.state.layers?.[entry.state.layerOrder?.[0]]?.name} · {entry.me.name}

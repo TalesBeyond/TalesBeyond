@@ -3,6 +3,7 @@
 // (offsetMs + Date.now() - anchorMs), so nothing is written per tick.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isBuiltinTrackUrl, resolveTrackUrl } from '../data/defaultAudio.js';
 
 // Loops by default for world/layer sounds, not for one-shot token sounds.
 export function defaultLoopFor(targetKind) {
@@ -64,7 +65,7 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
 
   const track = enabled ? audibleTrack(playback, tracks, { currentLayerId, layers, expired }) : null;
   const nowPlaying = track ? playback.nowPlaying : null;
-  const url = track?.url ?? null;
+  const url = track ? resolveTrackUrl(track.url) : null;
   const loop = track?.loop ?? true;
   const volume = track ? clamp01(track.baseVolume ?? 1) * clamp01(localVolumes?.[track.id] ?? 1) : 0;
 
@@ -81,6 +82,11 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
     if (!enabled || !checkFiles) return undefined;
     let cancelled = false;
     for (const t of Object.values(tracks || {})) {
+      if (isBuiltinTrackUrl(t.url)) {
+        // Bundled with the app: only missing if a later build dropped it.
+        if (!resolveTrackUrl(t.url)) markExpired(t.id);
+        continue;
+      }
       if (t.url.startsWith('blob:')) {
         // A guest DM's local file: a blob URL from an earlier page load is dead.
         fetch(t.url).then(

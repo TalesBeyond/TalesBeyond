@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
 import DiceModal from './DiceModal.jsx';
@@ -39,7 +39,10 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
 // ToolCards below it. Closes on an outside click or Escape. `popovers` render
 // in the same relatively-positioned wrapper, so a menu item can hand off to a
 // popover that opens exactly where the menu was.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children }) {
+// `align="end"` opens the menu leftward from the trigger's right edge — for
+// entries near the right end of the bar, whose menus would otherwise run
+// off-screen.
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', align }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -59,9 +62,9 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
   }, [open, onClose]);
 
   return (
-    <div className="toolbar-group" ref={ref}>
+    <div className={`toolbar-group ${className}`} ref={ref}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} />
-      {open && <div className="toolbar-menu">{children}</div>}
+      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}`}>{children}</div>}
       {popovers}
     </div>
   );
@@ -109,7 +112,13 @@ const ICON_PATHS = {
   unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
+  invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
 };
+
+// How the bar sheds width when it can't fit on one row, cheapest first. Each
+// step keeps everything the previous one applied; the tokens are matched in
+// CSS with [data-density~='…'].
+const TOOLBAR_DENSITIES = ['', 'codes', 'codes icons', 'codes icons tight'];
 
 // Line icons for the toolbar (replaces the old emoji glyphs so the bar reads
 // as one consistent set and follows the palette's text color).
@@ -206,6 +215,47 @@ export default function Toolbar({
   // time it unmounts.
   const [diceRolls, setDiceRolls] = useState([]);
   const [diceSaved, setDiceSaved] = useState([]);
+
+  // Keep the bar on a single row: try each density from roomiest to
+  // tightest and settle on the first where Leave (always the last item) ends
+  // inside the bar. Only if even the tightest overflows is it allowed to wrap.
+  // Written straight onto the DOM node, before paint, so there is no flash
+  // of the wrong density and no extra render.
+  const barRef = useRef(null);
+  const leaveRef = useRef(null);
+  const fitToolbar = useCallback(() => {
+    const bar = barRef.current;
+    const leave = leaveRef.current;
+    if (!bar || !leave) return;
+    delete bar.dataset.overflow;
+    for (const density of TOOLBAR_DENSITIES) {
+      bar.dataset.density = density;
+      const limit = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
+      if (leave.getBoundingClientRect().right <= limit + 0.5) return;
+    }
+    bar.dataset.overflow = 'wrap';
+  }, []);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar || typeof ResizeObserver === 'undefined') return undefined;
+    // Only refit on a width change: a density swap changes the bar's height,
+    // and reacting to that would just recompute the same answer.
+    let lastWidth = null;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      if (width === lastWidth) return;
+      lastWidth = width;
+      fitToolbar();
+    });
+    observer.observe(bar);
+    // Web fonts landing late change every label's width.
+    document.fonts?.ready.then(fitToolbar);
+    return () => observer.disconnect();
+  }, [collapsed, fitToolbar]);
+
+  // Content that changes the bar's width without resizing it.
+  useLayoutEffect(fitToolbar, [fitToolbar, collapsed, isHost, isGuestHost, Boolean(clock), dayPhase, lastSavedLabel, session.isOpen]);
 
   function closePopovers() {
     setShowMapSettings(false);
@@ -307,6 +357,37 @@ export default function Toolbar({
     .filter((item) => item.assetType === 'item')
     .map((item) => ({ id: item.id, ...item.data }));
 
+  const codeChips = isHost && (
+    <>
+      <CodeChip
+        caption="Player code"
+        value={session.code}
+        copied={copied}
+        onCopy={copyCode}
+        title="Click to copy the invite code players join with"
+      />
+      <CodeChip
+        caption={isGuestHost ? 'DM code' : 'Host key'}
+        value={session.hostKey}
+        copied={copiedHostKey}
+        onCopy={copyHostKey}
+        title={
+          isGuestHost
+            ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
+            : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
+        }
+      />
+      {/* Regenerating isn't supported for a guest table (GameView.jsx's
+          regenerateCode just alerts and bails — the invite code doubles
+          as the peer broadcast channel's name, so rotating it would
+          strand anyone already connected) — hide the button rather than
+          offer a dead end. */}
+      {!isGuestHost && (
+        <ToolCard icon={<Icon name="refresh" />} label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
+      )}
+    </>
+  );
+
   if (collapsed) {
     return (
       <div className="toolbar collapsed">
@@ -318,7 +399,7 @@ export default function Toolbar({
   }
 
   return (
-    <div className="toolbar">
+    <div className="toolbar" ref={barRef}>
       <button className="toolbar-collapse-btn" onClick={onToggleCollapsed} title="Collapse toolbar">
         ▴
       </button>
@@ -542,35 +623,22 @@ export default function Toolbar({
         )}
       </div>
 
+      {/* The codes sit in the bar when there's room; on a narrower bar the
+          same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
+          are always rendered — CSS shows one. */}
+      {isHost && <div className="toolbar-group toolbar-codes-inline">{codeChips}</div>}
       {isHost && (
-        <div className="toolbar-group">
-          <CodeChip
-            caption="Player code"
-            value={session.code}
-            copied={copied}
-            onCopy={copyCode}
-            title="Click to copy the invite code players join with"
-          />
-          <CodeChip
-            caption={isGuestHost ? 'DM code' : 'Host key'}
-            value={session.hostKey}
-            copied={copiedHostKey}
-            onCopy={copyHostKey}
-            title={
-              isGuestHost
-                ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
-                : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
-            }
-          />
-          {/* Regenerating isn't supported for a guest table (GameView.jsx's
-              regenerateCode just alerts and bails — the invite code doubles
-              as the peer broadcast channel's name, so rotating it would
-              strand anyone already connected) — hide the button rather than
-              offer a dead end. */}
-          {!isGuestHost && (
-            <ToolCard icon={<Icon name="refresh" />} label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
-          )}
-        </div>
+        <ToolMenu
+          className="toolbar-codes-menu"
+          icon={<Icon name="invite" />}
+          label="Invite"
+          title="Player code and DM code — click a code to copy it"
+          open={openMenu === 'codes'}
+          onToggle={() => toggleMenu('codes')}
+          onClose={closeMenu}
+        >
+          {codeChips}
+        </ToolMenu>
       )}
 
       {isHost && (showCompendium || showItemCompendium || showMonsterCompendium) && (
@@ -613,23 +681,27 @@ export default function Toolbar({
 
       <div className="spacer" />
 
-      {isHost && lastSavedLabel && (
-        <span className="toolbar-saved" role="status">
-          <span className="toolbar-saved-dot" aria-hidden="true" />
-          {lastSavedLabel}
-        </span>
-      )}
-
-      {/* A host-only safety net alongside the manual Save inside
-          Configurations below — counts down from 5:00 and autosaves the
-          same way that button does, in case the DM forgets. */}
+      {/* Saved state over the autosave countdown, stacked so the pair costs
+          one narrow column instead of two side by side. */}
       {isHost && (
-        <span
-          className="autosave-countdown"
-          title={`Auto-saves in ${formatCountdown(autosaveSecondsLeft)} — the Save button in Configurations still works any time`}
-        >
-          <Icon name="timer" /> {formatCountdown(autosaveSecondsLeft)}
-        </span>
+        <div className="toolbar-status">
+          {lastSavedLabel && (
+            <span className="toolbar-saved" role="status" title={lastSavedLabel}>
+              <span className="toolbar-saved-dot" aria-hidden="true" />
+              <span className="toolbar-saved-text">{lastSavedLabel}</span>
+            </span>
+          )}
+
+          {/* A host-only safety net alongside the manual Save inside
+              Configurations below — counts down from 5:00 and autosaves the
+              same way that button does, in case the DM forgets. */}
+          <span
+            className="autosave-countdown"
+            title={`Auto-saves in ${formatCountdown(autosaveSecondsLeft)} — the Save button in Configurations still works any time`}
+          >
+            <Icon name="timer" /> {formatCountdown(autosaveSecondsLeft)}
+          </span>
+        </div>
       )}
 
       {/* The very last group: save/export/import/close/leave — the
@@ -642,6 +714,7 @@ export default function Toolbar({
         open={openMenu === 'configurations'}
         onToggle={() => toggleMenu('configurations')}
         onClose={closeMenu}
+        align="end"
       >
         {isHost && (
           <>
@@ -660,8 +733,9 @@ export default function Toolbar({
         )}
       </ToolMenu>
 
-      <button type="button" className="toolbar-leave" onClick={onLeave} title="Leave the table">
-        Leave
+      <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
+        <Icon name="leave" />
+        <span className="toolbar-leave-label">Leave</span>
       </button>
     </div>
   );
