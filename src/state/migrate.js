@@ -47,6 +47,8 @@ export function migrateLegacyState(raw) {
   // includes the field instead of silently omitting it.
   if (!state.customAssets) state = { ...state, customAssets: {} };
   if (!state.customAssetOrder) state = { ...state, customAssetOrder: [] };
+  // REQ-009's audio slice, same backfill reasoning.
+  if (!state.audio) state = { ...state, audio: { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } } };
 
   // session.hostKey (the local/guest "rejoin as host" code — see
   // store.jsx's createEmptyGameState) is likewise a field added after

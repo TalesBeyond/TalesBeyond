@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland } from '../state/store.jsx';
+import ModalIcon from './ModalIcon.jsx';
+import { playDiceSound } from '../lib/sfx.js';
+import { DEMO_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
+import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds } from '../utils/grid.js';
@@ -15,10 +18,13 @@ import {
   downloadIslandAsFile,
   downloadDataUrl,
   readJsonFromFile,
+  readEncodedJsonFromFile,
   saveIdentity,
   clearCurrentPointer,
   sessionExists,
   markGuestClean,
+  loadLocalAudioVolumes,
+  saveLocalAudioVolumes,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { subscribeToTable } from '../lib/realtime.js';
@@ -38,6 +44,9 @@ import {
   addCustomAssetRemote,
   removeCustomAssetRemote,
   updateTableClockRemote,
+  upsertAudioTrackRemote,
+  removeAudioTrackRemote,
+  updateAudioPlaybackRemote,
   updateTableDayNightOverrideRemote,
   regenerateInviteCodeRemote,
   setTableOpenRemote,
@@ -51,8 +60,19 @@ import RightPanel from './RightPanel.jsx';
 import Toolbar from './Toolbar.jsx';
 import PanelResizer from './PanelResizer.jsx';
 import ClockModal from './ClockModal.jsx';
+import { useCatalog } from '../lib/catalog.js';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
+import MusicModal from './MusicModal.jsx';
+import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import { useTableAudio, defaultLoopFor } from '../lib/audioEngine.js';
+import {
+  uploadAudio,
+  removeAudioFiles,
+  validateAudioFile,
+  localAudioFile,
+  AUDIO_TABLE_QUOTA_BYTES,
+} from '../lib/storageUpload.js';
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
@@ -73,6 +93,12 @@ const RESYNC_BACKOFF_MS = [2000, 4000, 8000, 16000, 30000];
 // that "ends all sessions" — they all just expire around the same time.
 const HOST_ABSENCE_GRACE_MS = 5000;
 const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
+
+// A host-only safety net alongside the manual Save button (Toolbar's
+// Configurations menu) — periodically calls the same save path in case they
+// forget. Meaningless in cloud mode (isRemote syncs every mutation as it
+// happens; saveNow there just relabels the toolbar), but harmless there too.
+const AUTOSAVE_INTERVAL_SECONDS = 15 * 60;
 
 function clampZoom(z) {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));
@@ -101,6 +127,41 @@ function findFreeCell(entities, islandId, cols, rows) {
 // side sits on. Every other entity kind stays scoped to its own layerId
 // (and islandId) only. Returns a dict keyed by id, with col/row/islandId
 // already resolved for viewing `layerId`.
+// Where a hero lands after walking through a door: one square off the
+// door itself, on whichever side is being entered — never standing on the
+// door's own square. `doorEntity` must be the raw entity (state.entities[id]),
+// not a view-resolved one (entitiesVisibleOnLayer overrides col/row/islandId
+// for a door viewed from its target side, which would give the wrong "home
+// side" position here). Falls back to the first free cell on that island if
+// every orthogonal neighbor is occupied or off the grid.
+function arrivalCellNearDoor(state, doorEntity, destinationLayerId) {
+  const enteringTargetSide = destinationLayerId === doorEntity.targetLayerId;
+  const islandId = enteringTargetSide ? state.layers[destinationLayerId]?.islandOrder[0] : doorEntity.islandId;
+  const col = enteringTargetSide ? doorEntity.targetCol ?? doorEntity.col : doorEntity.col;
+  const row = enteringTargetSide ? doorEntity.targetRow ?? doorEntity.row : doorEntity.row;
+  const island = state.layers[destinationLayerId]?.islands[islandId];
+  if (!island) return { islandId, col, row };
+
+  const entitiesOnDestination = entitiesVisibleOnLayer(state, destinationLayerId, true);
+  const occupied = new Set(
+    Object.values(entitiesOnDestination)
+      .filter((e) => e.islandId === islandId)
+      .map((e) => `${e.col},${e.row}`)
+  );
+  const candidates = [
+    { col, row: row + 1 },
+    { col, row: row - 1 },
+    { col: col + 1, row },
+    { col: col - 1, row },
+  ];
+  for (const c of candidates) {
+    if (c.col < 0 || c.row < 0 || c.col >= island.cols || c.row >= island.rows) continue;
+    if (!occupied.has(`${c.col},${c.row}`)) return { islandId, col: c.col, row: c.row };
+  }
+  const free = findFreeCell(entitiesOnDestination, islandId, island.cols, island.rows);
+  return { islandId, col: free.col, row: free.row };
+}
+
 function entitiesVisibleOnLayer(state, layerId, showHiddenTraps) {
   const result = {};
   const targetLayer = state.layers[layerId];
@@ -132,11 +193,15 @@ function entitiesVisibleOnLayer(state, layerId, showHiddenTraps) {
 // per-viewer convenience, so they live in this browser's localStorage and
 // the game still works (at the defaults) if that is unavailable.
 const PANEL_WIDTHS_KEY = 'hearthbound:panelwidths';
-const DEFAULT_PANEL_WIDTHS = { left: 260, right: 340 };
+const DEFAULT_PANEL_WIDTHS = { left: 248, right: 344 };
 const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
 const COLLAPSED_PANEL_WIDTH = 36;
+// Below this window width both side panels can't sit beside the map without
+// crushing it, so they become drawers that slide over the map instead — one
+// open at a time, both folded to their rails by default.
+const DRAWER_LAYOUT_BELOW = 1200;
 
 function loadPanelWidths() {
   try {
@@ -240,14 +305,17 @@ function toGuestSnapshot(fullState) {
     if (isHiddenTrap(entity)) continue;
     entities[id] = withoutDmOnlyKeys(entity);
   }
-  return { ...fullState, entities, entityOrder: fullState.entityOrder.filter((id) => entities[id]) };
+  // A guest DM's audio never leaves their browser (files are local blob URLs
+  // only the DM can play), so players get no tracks and no playback.
+  const audio = { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } };
+  return { ...fullState, entities, entityOrder: fullState.entityOrder.filter((id) => entities[id]), audio };
 }
 
 function saveOrWarn(code, nextState) {
   const ok = saveSession(code, nextState);
   if (!ok) {
     alert(
-      'Could not save — your browser storage is full. Try removing a background image or some custom-uploaded token art, or use Export .json to back up this table.'
+      'Could not save — your browser storage is full. Try removing a background image or some custom-uploaded token art, or use Export .bmp to back up this table.'
     );
   }
   return ok;
@@ -259,14 +327,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const [tool, setTool] = useState('play');
   const [selectedId, setSelectedId] = useState(null);
   const [savedAgo, setSavedAgo] = useState(mode === 'remote' ? 'Synced to the cloud' : 'Saved just now');
+  const [autosaveSecondsLeft, setAutosaveSecondsLeft] = useState(AUTOSAVE_INTERVAL_SECONDS);
   const [pendingDoor, setPendingDoor] = useState(null);
   // REQ-008: whether this guest DM has exported at least once since opening
   // this table — purely in-memory, per-mount (not the localStorage clean
   // marker Slice 4 adds), just enough to warn on Leave if they haven't.
   const [hasExportedGuestTable, setHasExportedGuestTable] = useState(false);
   const [pendingLeaveWarning, setPendingLeaveWarning] = useState(false);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
+  const [rightCollapsed, setRightCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
   const [showClockModal, setShowClockModal] = useState(false);
@@ -285,6 +354,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     window.addEventListener('resize', onWindowResize);
     return () => window.removeEventListener('resize', onWindowResize);
   }, []);
+
+  const drawerLayout = viewportWidth < DRAWER_LAYOUT_BELOW;
+
+  // Crossing the breakpoint resets the panels to that layout's default:
+  // folded to rails as drawers, both open side by side on a wide window.
+  useEffect(() => {
+    setLeftCollapsed(drawerLayout);
+    setRightCollapsed(drawerLayout);
+  }, [drawerLayout]);
+
+  // As drawers, opening one folds the other so they never stack over the map.
+  function togglePanel(side) {
+    const opening = side === 'left' ? leftCollapsed : rightCollapsed;
+    (side === 'left' ? setLeftCollapsed : setRightCollapsed)(!opening);
+    if (opening && drawerLayout) (side === 'left' ? setRightCollapsed : setLeftCollapsed)(true);
+  }
 
   useEffect(() => {
     try {
@@ -374,8 +459,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   const baseLayerId = state.layerOrder[0];
   const [hostViewLayerId, setHostViewLayerId] = useState(baseLayerId);
+  const [rulerFeet, setRulerFeet] = useState(null); // live distance from MapBoard's ruler, for the HUD readout
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
+
+  // REQ-009 Synced Table Audio. Cloud tables sync audio through Storage. A
+  // guest DM keeps their files on their own device only (nothing is uploaded
+  // anywhere, so players hear nothing); guest players and local demo tables
+  // have no audio, and there the Music button is disabled.
+  const audioEnabled = isRemote || isGuestHost;
+  const audioScope = isRemote ? state.session.tableId : state.session.code;
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  // Each player's own level per track — this browser only.
+  const [localAudioVolumes, setLocalAudioVolumes] = useState(() => loadLocalAudioVolumes(audioScope));
+  const { blocked: audioBlocked, unlock: unlockAudio, expired: expiredAudio } = useTableAudio({
+    enabled: audioEnabled,
+    playback: state.audio?.playback,
+    tracks: state.audio?.tracks,
+    currentLayerId,
+    layers: state.layers,
+    localVolumes: localAudioVolumes,
+    checkFiles: isGuest,
+  });
 
   // Which island new tokens/doors get placed onto, and which island is
   // highlighted for editing — a local viewing choice (like hostViewLayerId),
@@ -749,6 +854,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // mob's hp (RightPanel.jsx's confirmAttack). Bounded to a plain decrease
   // so this only ever reads as "apply attack damage," never "edit a
   // monster's hp."
+  // A player taking an item from an opened chest (RightPanel's "Take"
+  // button) removes exactly one whole item stack from the chest's `items`
+  // — same as the host's "Give" — and nothing else. Bounded so this only
+  // ever reads as "loot one stack," never "edit a chest's contents."
+  function isTakeChestItemPatch(entity, patch) {
+    const keys = Object.keys(patch);
+    if (keys.length !== 1 || keys[0] !== 'items') return false;
+    const oldItems = entity.items || [];
+    const newItems = patch.items || [];
+    if (newItems.length !== oldItems.length - 1) return false;
+    const removed = oldItems.filter((it) => !newItems.some((n) => n.id === it.id));
+    if (removed.length !== 1) return false;
+    // Every remaining item must be byte-for-byte unchanged — a value
+    // compare, not a reference compare, since a guest's patch arrives here
+    // after a round trip through Realtime broadcast (see
+    // isHeroOwnerSheetPatch above for why that matters).
+    return newItems.every((it) => JSON.stringify(it) === JSON.stringify(oldItems.find((o) => o.id === it.id)));
+  }
+
   function canDamageMob(entity, patch) {
     const keys = Object.keys(patch);
     if (keys.length !== 1 || keys[0] !== 'hp') return false;
@@ -764,7 +888,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function canPlayerUpdateEntity(entity, patch, playerId) {
     if (!entity) return false;
     if (entity.kind === 'chest') {
-      return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
+      return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key)) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch);
@@ -787,7 +911,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
     // Only a trap can be sized at placement (1 to 5 squares wide); everything
     // else starts 1x1.
-    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : 1;
+    // A compendium monster also arrives pre-sized (Large creatures are 2x2).
+    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : draft.kind === 'mob' && draft.size ? Math.min(draft.size, 4) : 1;
     // findFreeCell finds a free single square, which is the token's top-left
     // corner — pull a big trap back so it lands fully on the island rather
     // than hanging off its right/bottom edge (an island smaller than the
@@ -820,7 +945,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       size,
       hp: draft.maxHp,
       maxHp: draft.maxHp,
-      armorClass: draft.kind === 'mob' ? 10 : undefined,
+      armorClass: draft.kind === 'mob' ? draft.armorClass ?? 10 : undefined,
       // Left unassigned (rather than defaulting to the placing DM) since
       // only the DM places tokens now — the DM assigns a hero to whichever
       // player controls it afterward, via the Owner field on its inspector.
@@ -831,7 +956,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       targetCol,
       targetRow,
       conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
-      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? '' : undefined,
+      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
+      mobSheet: draft.kind === 'mob' ? draft.mobSheet : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
@@ -866,7 +992,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
-  function moveEntity(id, col, row, islandId) {
+  // `layerId` is only ever passed by confirmEnterDoor, to carry a hero
+  // across to the door's other side along with the col/row/islandId move —
+  // every other caller (MapBoard's drag) leaves it undefined and this
+  // behaves exactly as before.
+  function moveEntity(id, col, row, islandId, layerId) {
     const entity = state.entities[id];
     if (!canMoveEntity(entity)) return;
     // Dragging a door while viewing it from its target-layer side repositions
@@ -883,12 +1013,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // apply — never an optimistic local dispatch (see Architectural
     // decisions: the DM's browser is the sole source of truth).
     if (isGuest && !isGuestHost) {
-      guestChannelRef.current?.sendIntent({ type: 'MOVE_ENTITY', id, col, row, islandId }, me.id);
+      guestChannelRef.current?.sendIntent({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId }, me.id);
       return;
     }
-    dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId });
-    if (isRemote) moveEntityRemote(id, col, row, islandId).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId });
+    dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
+    if (isRemote) moveEntityRemote(id, col, row, islandId, layerId).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
   }
 
   function updateEntity(id, patch) {
@@ -921,10 +1051,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   function removeEntity(id) {
     if (!isHost) return;
+    const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_ENTITY', id }) : null;
     dispatch({ type: 'REMOVE_ENTITY', id });
     if (selectedId === id) setSelectedId(null);
     if (isRemote) removeEntityRemote(id).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
+    if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
 
   // Roll for Initiative: DM-only, rolls a d20 for every selected hero/mob
@@ -943,6 +1075,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         updateEntity(entity.id, { initiativeRoll: null, initiativeTurn: null });
       }
     }
+    if (selectedIds.length) playDiceSound();
     const rolled = selectedIds.map((id) => ({ id, roll: 1 + Math.floor(Math.random() * 20) }));
     rolled.sort((a, b) => b.roll - a.roll);
     rolled.forEach(({ id, roll }, index) => updateEntity(id, { initiativeRoll: roll, initiativeTurn: index + 1 }));
@@ -980,6 +1113,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
     updateEntity(hero.id, { sheet: { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } } });
     updateEntity(chestEntity.id, { items: (chestEntity.items || []).filter((it) => it.id !== item.id) });
+  }
+
+  // The player-facing counterpart to giveChestItemToHero above: a player
+  // loots an opened chest into their own hero's Bag — never anyone else's,
+  // since the target hero is resolved from `me.id` here rather than taking
+  // a heroId from the caller (RightPanel's ChestInspector doesn't have one
+  // to offer a player anyway — see isTakeChestItemPatch for the write-side
+  // guard against taking more than one stack).
+  function takeChestItem(chestEntity, item) {
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    if (!myHero) return;
+    giveChestItemToHero(chestEntity, item, myHero.id);
   }
 
   function updateLayer(layerId, patch) {
@@ -1129,6 +1274,246 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
+
+  // ---- Synced Table Audio (REQ-009): the DM alone uploads, plays, pauses ----
+
+  const { audio: catalogSongs } = useCatalog();
+  const audioTracks = state.audio?.tracks || {};
+  const audioPlayback = state.audio?.playback || { nowPlaying: null, resume: {} };
+  const audioUsedBytes = Object.values(audioTracks).reduce((sum, t) => sum + (t.sizeBytes || 0), 0);
+  const findAudioTrack = (targetKind, targetId) =>
+    Object.values(audioTracks).find((t) => t.targetKind === targetKind && t.targetId === String(targetId)) || null;
+  const worldTrack = findAudioTrack('world', audioScope);
+
+  // The same write pattern as updateClock: local dispatch, then the remote
+  // write. Guest tables keep tracks and playback in the DM's state only —
+  // never broadcast, since players have no way to fetch the files.
+  function syncAudio(action, remoteWrite) {
+    dispatch(action);
+    if (isRemote) remoteWrite?.().catch(reportError);
+  }
+
+  // Cloud files live in Storage; a guest DM's are blob URLs in this tab.
+  function releaseAudioFiles(tracks) {
+    tracks = tracks.filter((t) => !isBuiltinTrackUrl(t.url));
+    if (isGuest) tracks.forEach((t) => URL.revokeObjectURL(t.url));
+    else removeAudioFiles(tracks.map((t) => t.storagePath));
+  }
+
+  function writeAudioPlayback(playback) {
+    if (!isHost || !audioEnabled) return;
+    syncAudio({ type: 'SET_AUDIO_PLAYBACK', playback }, () => updateAudioPlaybackRemote(state.session.tableId, playback));
+  }
+
+  const positionNow = (np) => np.offsetMs + (Date.now() - np.anchorMs);
+
+  // Starting a sound pauses the one playing (its position goes into `resume`)
+  // and continues the new one from its own resume offset, else 0.
+  function playAudioTrack(trackId) {
+    const { nowPlaying, resume } = audioPlayback;
+    const next = { ...resume };
+    if (nowPlaying && nowPlaying.trackId !== trackId) next[nowPlaying.trackId] = positionNow(nowPlaying);
+    const offsetMs = next[trackId] ?? (nowPlaying?.trackId === trackId ? positionNow(nowPlaying) : 0);
+    delete next[trackId];
+    writeAudioPlayback({ nowPlaying: { trackId, anchorMs: Date.now(), offsetMs }, resume: next });
+  }
+
+  function pauseAudio() {
+    const { nowPlaying, resume } = audioPlayback;
+    if (!nowPlaying) return;
+    writeAudioPlayback({ nowPlaying: null, resume: { ...resume, [nowPlaying.trackId]: positionNow(nowPlaying) } });
+  }
+
+  function friendlyAudioError(err) {
+    const message = String(err?.message || err);
+    if (/quota|50 MB/i.test(message)) return new Error("This table's audio is full (50 MB limit). Remove a file first.");
+    if (/mime|not supported|invalid.*type/i.test(message)) return new Error('Only MP3 or WAV files are supported.');
+    if (/maximum allowed size|too large|413/i.test(message)) return new Error('That file is over the 10 MB limit.');
+    return err instanceof Error ? err : new Error(message);
+  }
+
+  // Attach (or replace) the sound on a target. Throws an Error whose message
+  // the UI shows inline.
+  async function attachAudio(targetKind, targetId, file) {
+    if (!isHost || !audioEnabled) return;
+    const problem = validateAudioFile(file);
+    if (problem) throw new Error(problem);
+    const existing = findAudioTrack(targetKind, targetId);
+    const usedByOthers = audioUsedBytes - (existing?.sizeBytes || 0);
+    if (usedByOthers + file.size > AUDIO_TABLE_QUOTA_BYTES) {
+      const left = Math.max(0, AUDIO_TABLE_QUOTA_BYTES - usedByOthers) / 1048576;
+      throw new Error(`Not enough room: this table's audio limit is 50 MB and ${left.toFixed(1)} MB is left.`);
+    }
+    let uploaded;
+    try {
+      uploaded = isGuest ? localAudioFile(file) : await uploadAudio(file, audioScope);
+    } catch (err) {
+      throw friendlyAudioError(err);
+    }
+    const track = {
+      id: existing?.id ?? generateEntityId(),
+      targetKind,
+      targetId: String(targetId),
+      name: file.name,
+      ...uploaded,
+      baseVolume: existing?.baseVolume ?? 1,
+      loop: existing?.loop ?? defaultLoopFor(targetKind),
+    };
+    if (isRemote) {
+      try {
+        await upsertAudioTrackRemote(state.session.tableId, track);
+      } catch (err) {
+        releaseAudioFiles([uploaded]);
+        throw friendlyAudioError(err);
+      }
+    }
+    retireReplacedTrack(existing);
+    dispatch({ type: 'SET_AUDIO_TRACK', track });
+  }
+
+  // The replaced file is gone: stop it for everyone and forget its position.
+  function retireReplacedTrack(existing) {
+    if (!existing) return;
+    const { [existing.id]: _drop, ...resume } = audioPlayback.resume;
+    if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
+      writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
+    }
+    releaseAudioFiles([existing]);
+  }
+
+  // Attach a Default catalog song: the track just points at its public URL, so
+  // nothing is uploaded, no quota is used, and there is no file of ours to purge.
+  async function attachCatalogAudio(targetKind, targetId, song) {
+    if (!isHost || !audioEnabled) return;
+    const existing = findAudioTrack(targetKind, targetId);
+    const track = {
+      id: existing?.id ?? generateEntityId(),
+      targetKind,
+      targetId: String(targetId),
+      name: song.name,
+      url: song.url,
+      storagePath: '',
+      mime: song.mime,
+      sizeBytes: 0,
+      baseVolume: existing?.baseVolume ?? 1,
+      loop: existing?.loop ?? defaultLoopFor(targetKind),
+    };
+    if (isRemote) {
+      try {
+        await upsertAudioTrackRemote(state.session.tableId, track);
+      } catch (err) {
+        throw friendlyAudioError(err);
+      }
+    }
+    retireReplacedTrack(existing);
+    dispatch({ type: 'SET_AUDIO_TRACK', track });
+  }
+
+  // Use a bundled demo track (src/data/defaultAudio.js) instead of a file: no
+  // upload, no quota. The row stores `builtin:<id>`, resolved at play time.
+  async function attachDemoAudio(targetKind, targetId, demoId) {
+    if (!isHost || !audioEnabled) return;
+    const demo = DEMO_MUSIC.find((m) => m.id === demoId);
+    if (!demo) return;
+    const existing = findAudioTrack(targetKind, targetId);
+    const track = {
+      id: existing?.id ?? generateEntityId(),
+      targetKind,
+      targetId: String(targetId),
+      name: demo.name,
+      url: builtinTrackUrl(demo.id),
+      storagePath: '',
+      mime: 'audio/mpeg',
+      sizeBytes: 0,
+      baseVolume: existing?.baseVolume ?? 1,
+      loop: existing?.loop ?? demo.loop ?? defaultLoopFor(targetKind),
+    };
+    if (isRemote) {
+      try {
+        await upsertAudioTrackRemote(state.session.tableId, track);
+      } catch (err) {
+        throw friendlyAudioError(err);
+      }
+    }
+    if (existing) {
+      const { [existing.id]: _drop, ...resume } = audioPlayback.resume;
+      if (audioPlayback.nowPlaying?.trackId === existing.id || existing.id in audioPlayback.resume) {
+        writeAudioPlayback({ nowPlaying: audioPlayback.nowPlaying?.trackId === existing.id ? null : audioPlayback.nowPlaying, resume });
+      }
+      releaseAudioFiles([existing]);
+    }
+    dispatch({ type: 'SET_AUDIO_TRACK', track });
+  }
+
+  // Loop and base volume. Cloud rows are upserted whole (the host may write).
+  function patchAudioTrack(trackId, patch) {
+    const track = audioTracks[trackId];
+    if (!isHost || !track) return;
+    const next = { ...track, ...patch };
+    syncAudio({ type: 'SET_AUDIO_TRACK', track: next }, () => upsertAudioTrackRemote(state.session.tableId, next));
+  }
+
+  // Delete tracks' rows and files, and clean the playback value. `audio` is the
+  // slice as it will be once they are gone (see previewAudioCascade).
+  function dropAudioTracks(removed, audio) {
+    if (!removed.length) return;
+    if (isRemote) for (const t of removed) removeAudioTrackRemote(t.id).catch(reportError);
+    releaseAudioFiles(removed);
+    if (audio && JSON.stringify(audio.playback) !== JSON.stringify(audioPlayback)) writeAudioPlayback(audio.playback);
+  }
+
+  function removeAudioTrack(trackId) {
+    if (!isHost || !audioTracks[trackId]) return;
+    const audio = pruneAudio(state.audio, [trackId]);
+    dispatch({ type: 'REMOVE_AUDIO_TRACK', id: trackId });
+    dropAudioTracks([audioTracks[trackId]], audio);
+  }
+
+  // What the layer/island/token UI needs, bundled so it can be passed down once.
+  const audioApi = {
+    enabled: audioEnabled,
+    isHost,
+    tracks: audioTracks,
+    playback: audioPlayback,
+    expired: expiredAudio,
+    usedBytes: audioUsedBytes,
+    findTrack: findAudioTrack,
+    attach: attachAudio,
+    catalog: catalogSongs,
+    attachCatalog: attachCatalogAudio,
+    attachDemo: attachDemoAudio,
+    patch: patchAudioTrack,
+    remove: removeAudioTrack,
+    play: playAudioTrack,
+    pause: pauseAudio,
+    localVolumes: localAudioVolumes,
+    setLocalVolume: (trackId, value) =>
+      setLocalAudioVolumes((prev) => {
+        const next = { ...prev, [trackId]: value };
+        saveLocalAudioVolumes(audioScope, next);
+        return next;
+      }),
+  };
+
+  // Auto-follow: when the DM switches the layer they are viewing, a layer sound
+  // starts (interrupting whatever played); with none, a playing layer or island
+  // sound pauses. World and token sounds are never touched. Deliberately keyed
+  // on the change, not the mount, so a DM page refresh never restarts anything.
+  const previousViewLayerRef = useRef(hostViewLayerId);
+  useEffect(() => {
+    if (previousViewLayerRef.current === hostViewLayerId) return;
+    previousViewLayerRef.current = hostViewLayerId;
+    if (!isHost || !audioEnabled) return;
+    const layerTrack = findAudioTrack('layer', hostViewLayerId);
+    const playing = audioPlayback.nowPlaying ? audioTracks[audioPlayback.nowPlaying.trackId] : null;
+    if (layerTrack) {
+      if (playing?.id !== layerTrack.id && !expiredAudio.has(layerTrack.id)) playAudioTrack(layerTrack.id);
+    } else if (playing && (playing.targetKind === 'layer')) {
+      pauseAudio();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostViewLayerId]);
+
   // Pause or resume the clock from the toolbar. Re-bases the anchor to the
   // current time first (withClockRunning) so pausing freezes what is on screen
   // and resuming carries on from there.
@@ -1164,9 +1549,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const isSoleIsland = layer.islandOrder.length === 1;
     if (islandId === layer.islandOrder[0] && !isSoleIsland) return; // base island stays put while a sibling exists
 
+    const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_ISLAND', layerId: currentLayerId, islandId }) : null;
     dispatch({ type: 'REMOVE_ISLAND', layerId: currentLayerId, islandId });
     if (isRemote) removeIslandRemote(islandId).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ISLAND', layerId: currentLayerId, islandId });
+    if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
 
     if (isSoleIsland) {
       // The canvas, active-island selection, and map settings all assume a
@@ -1265,10 +1652,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function removeLayer(layerId) {
     if (!isHost) return;
     if (layerId === baseLayerId) return;
+    const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_LAYER', id: layerId }) : null;
     dispatch({ type: 'REMOVE_LAYER', id: layerId });
     if (hostViewLayerId === layerId) setHostViewLayerId(baseLayerId);
     if (isRemote) removeLayerRemote(layerId).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_LAYER', id: layerId });
+    if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
 
   function enterDoor(doorEntity) {
@@ -1284,6 +1673,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const pending = pendingDoor;
     setPendingDoor(null);
     if (!pending) return;
+    // Move the player's own hero off the square it was standing on and
+    // onto the new layer, one square clear of the door rather than sitting
+    // on top of it — the door itself is always the raw entity (never the
+    // target-side view-resolved copy MapBoard's onEnterDoor handed
+    // enterDoor), so arrivalCellNearDoor sees its true home/target
+    // col/row regardless of which side was clicked.
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    if (myHero) {
+      const rawDoor = state.entities[pending.door.id];
+      if (rawDoor) {
+        const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
+        moveEntity(myHero.id, arrival.col, arrival.row, arrival.islandId, pending.destinationLayerId);
+      }
+    }
     const patch = { currentLayerId: pending.destinationLayerId };
     // REQ-008: only a player ever reaches this (enterDoor excludes the
     // host), so this is always the guest-player intent branch, never the
@@ -1342,12 +1745,44 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   function saveNow() {
     console.log('Save clicked — saving table', state.session.code);
+    autosaveSecondsRef.current = AUTOSAVE_INTERVAL_SECONDS;
+    setAutosaveSecondsLeft(AUTOSAVE_INTERVAL_SECONDS);
     if (isRemote) {
       setSavedAgo('Synced to the cloud');
       return;
     }
     if (saveOrWarn(state.session.code, state)) setSavedAgo('Saved just now');
   }
+
+  // `saveNow` closes over this render's `state`, so the interval below can't
+  // call it directly — a setInterval callback keeps whatever closure was
+  // live when the effect last ran, which (since the effect only depends on
+  // isHost) would mean saving the same stale snapshot every 15 minutes
+  // forever. Stashing the latest `saveNow` in a ref, reassigned every
+  // render, sidesteps that — same trick as `stateRef` above for the guest
+  // channel's handlers.
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+  // The actual countdown lives in a ref, mutated directly by the interval —
+  // `autosaveSecondsLeft` state only mirrors it for display. Driving the
+  // countdown through a setState *updater* instead would mean calling
+  // saveNowRef.current() (a real side effect: writes to localStorage)
+  // from inside that updater function, which React may invoke more than
+  // once per tick (e.g. Strict Mode's double-invoke) and could double-save.
+  const autosaveSecondsRef = useRef(AUTOSAVE_INTERVAL_SECONDS);
+
+  useEffect(() => {
+    if (!isHost) return undefined;
+    const tick = setInterval(() => {
+      autosaveSecondsRef.current -= 1;
+      if (autosaveSecondsRef.current <= 0) {
+        saveNowRef.current();
+      } else {
+        setAutosaveSecondsLeft(autosaveSecondsRef.current);
+      }
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [isHost]);
 
   function exportTable() {
     if (isGuestHost) {
@@ -1366,7 +1801,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // Overwrites the entire shared table — DM only (see PITFALLS.md #1).
     if (!isHost) return;
     try {
-      const raw = await readJsonFromFile(file);
+      const raw = await readEncodedJsonFromFile(file);
       if (!raw?.session?.code || !(raw?.map || raw?.layers)) {
         alert('That file does not look like a Hearthbound table export.');
         return;
@@ -1423,7 +1858,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // leave path funnels through (whether or not they exported first) — a
     // tab that just closes or crashes never reaches this line, which is
     // exactly the "unclean" signal findUnclosedGuestTable looks for.
-    if (isGuestHost) markGuestClean(state.session.code);
+    if (isGuestHost) {
+      markGuestClean(state.session.code);
+      releaseAudioFiles(Object.values(audioTracks));
+    }
     // A signed-in host leaving their own cloud table must NOT delete their
     // own player row. "members can read their table" (02_policies.sql) is
     // tables' only SELECT policy, and it requires a live players row for
@@ -1539,222 +1977,267 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
 
+  // The toolbar spans the whole window above the panels rather than sitting
+  // in the map's column: its commands are table-wide, and the full width is
+  // what lets it keep its labels on an ordinary laptop screen.
   return (
-    <div
-      className={`game-layout${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
-      style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
-    >
-      <TokenSidebar
+    <div className="game-screen">
+      <Toolbar
+        isHost={isHost}
+        isGuestHost={isGuestHost}
+        layer={currentLayer}
+        activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
+        tool={tool}
+        onToolChange={setTool}
+        onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
+        onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
+        session={state.session}
+        onRegenerateCode={regenerateCode}
+        onToggleOpen={toggleOpen}
+        onSaveNow={saveNow}
+        autosaveSecondsLeft={autosaveSecondsLeft}
+        clock={state.clock}
         onAddEntity={addEntity}
+        onOpenClock={() => setShowClockModal(true)}
+        audio={audioApi}
+        onOpenMusic={() => setShowMusicModal(true)}
+        onSetClockRunning={setClockRunning}
+        dayPhase={tablePhase}
+        dayNightOverride={state.dayNightOverride}
+        onSetDayNightOverride={updateDayNightOverride}
+        onExport={exportTable}
+        onImport={importTable}
+        onLeave={leaveTable}
+        lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
         currentLayerId={currentLayerId}
-        isHost={isHost}
+        layerPlayerCounts={layerPlayerCounts}
+        onSwitchLayer={setHostViewLayerId}
+        onCreateLayer={createLayer}
+        onRemoveLayer={removeLayer}
+        activeIslandId={activeIslandId}
+        onSelectIsland={setActiveIslandId}
+        onCreateIsland={createIsland}
+        onRemoveIsland={removeIsland}
+        onDownloadIsland={downloadIsland}
+        onDownloadIslandImage={downloadIslandImage}
+        onImportIsland={importIsland}
+        onUngroupIslands={ungroupIslands}
+        onRenameGroup={renameGroup}
+        heroes={heroes}
+        onUpdateEntity={updateEntity}
+        initiativeHeroes={initiativeHeroes}
+        initiativeMobs={initiativeMobs}
+        onRollInitiative={rollInitiative}
         customAssets={state.customAssets}
-        collapsed={leftCollapsed}
-        onToggleCollapsed={() => setLeftCollapsed((c) => !c)}
+        onAddCustomAsset={addCustomAsset}
+        onRemoveCustomAsset={removeCustomAsset}
+        collapsed={toolbarCollapsed}
+        onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
+        zoom={zoom}
       />
 
-      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-        <Toolbar
-          isHost={isHost}
-          isGuestHost={isGuestHost}
-          layer={currentLayer}
-          activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
-          tool={tool}
-          onToolChange={setTool}
-          onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
-          onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
-          session={state.session}
-          onRegenerateCode={regenerateCode}
-          onToggleOpen={toggleOpen}
-          onSaveNow={saveNow}
-          clock={state.clock}
-          onOpenClock={() => setShowClockModal(true)}
-          onSetClockRunning={setClockRunning}
-          dayPhase={tablePhase}
-          dayNightOverride={state.dayNightOverride}
-          onSetDayNightOverride={updateDayNightOverride}
-          onExport={exportTable}
-          onImport={importTable}
-          onLeave={leaveTable}
-          lastSavedLabel={savedAgo}
+      <div
+        className={`game-layout${drawerLayout ? ' drawers' : ''}${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
+        style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
+      >
+        <TokenSidebar
+          onAddEntity={addEntity}
           layers={state.layers}
           layerOrder={state.layerOrder}
           currentLayerId={currentLayerId}
-          layerPlayerCounts={layerPlayerCounts}
-          onSwitchLayer={setHostViewLayerId}
-          onCreateLayer={createLayer}
-          onRemoveLayer={removeLayer}
-          activeIslandId={activeIslandId}
-          onSelectIsland={setActiveIslandId}
-          onCreateIsland={createIsland}
-          onRemoveIsland={removeIsland}
-          onDownloadIsland={downloadIsland}
-          onDownloadIslandImage={downloadIslandImage}
-          onImportIsland={importIsland}
-          onUngroupIslands={ungroupIslands}
-          onRenameGroup={renameGroup}
-          heroes={heroes}
-          onUpdateEntity={updateEntity}
-          initiativeHeroes={initiativeHeroes}
-          initiativeMobs={initiativeMobs}
-          onRollInitiative={rollInitiative}
+          isHost={isHost}
           customAssets={state.customAssets}
-          onAddCustomAsset={addCustomAsset}
-          onRemoveCustomAsset={removeCustomAsset}
-          collapsed={toolbarCollapsed}
-          onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
-          zoom={zoom}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onZoomReset={zoomReset}
-          onRecenter={() => recenterOnIsland(activeIslandId)}
+          collapsed={leftCollapsed}
+          onToggleCollapsed={() => togglePanel('left')}
         />
-        <div className="stage" ref={stageRef}>
-          <MapBoard
-            islands={currentLayer.islands}
-            islandOrder={currentLayer.islandOrder}
-            islandGroups={currentLayer.islandGroups || {}}
-            pendingGroupIslandIds={pendingGroupIslandIds}
-            dayPhase={tablePhase}
-            onToggleGroupCandidate={toggleGroupCandidate}
-            onMoveIslandGroup={moveIslandGroup}
-            feetPerSquare={currentLayer.feetPerSquare}
-            activeIslandId={activeIslandId}
-            onSelectIsland={setActiveIslandId}
-            onMoveIsland={moveIsland}
-            entities={layerEntities}
-            entityOrder={layerEntityOrder}
-            selectedId={selectedId}
-            onSelectEntity={setSelectedId}
-            onMoveEntity={moveEntity}
-            canMoveEntity={canMoveEntity}
+
+        <div className="game-center">
+          <LayerStrip
+            layers={state.layers}
+            layerOrder={state.layerOrder}
+            currentLayerId={currentLayerId}
+            layerPlayerCounts={layerPlayerCounts}
             isHost={isHost}
-            onEnterDoor={enterDoor}
-            tool={tool}
-            zoom={zoom}
+            onSwitchLayer={setHostViewLayerId}
+            feetPerSquare={currentLayer.feetPerSquare}
+            clock={state.clock}
+            phaseOverride={state.dayNightOverride}
           />
+          <div className="stage-wrap">
+          <div className="stage" ref={stageRef}>
+            <MapBoard
+              islands={currentLayer.islands}
+              islandOrder={currentLayer.islandOrder}
+              islandGroups={currentLayer.islandGroups || {}}
+              pendingGroupIslandIds={pendingGroupIslandIds}
+              dayPhase={tablePhase}
+              onToggleGroupCandidate={toggleGroupCandidate}
+              onMoveIslandGroup={moveIslandGroup}
+              feetPerSquare={currentLayer.feetPerSquare}
+              activeIslandId={activeIslandId}
+              onSelectIsland={setActiveIslandId}
+              onMoveIsland={moveIsland}
+              entities={layerEntities}
+              entityOrder={layerEntityOrder}
+              selectedId={selectedId}
+              onSelectEntity={setSelectedId}
+              onMoveEntity={moveEntity}
+              canMoveEntity={canMoveEntity}
+              isHost={isHost}
+              onEnterDoor={enterDoor}
+              tool={tool}
+              zoom={zoom}
+              onRulerChange={setRulerFeet}
+            />
+          </div>
+          <InitiativeBar entities={layerEntities} />
+          <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
+          </div>
         </div>
+
+        <RightPanel
+          audio={audioApi}
+          players={state.players}
+          hostId={state.session.hostPlayerId}
+          layers={state.layers}
+          layerOrder={state.layerOrder}
+          entities={layerEntities}
+          selectedEntity={selectedEntity}
+          isHost={isHost}
+          meId={me.id}
+          onUpdateEntity={updateEntity}
+          onRemoveEntity={removeEntity}
+          tool={tool}
+          heroes={heroes}
+          onGiveChestItem={giveChestItemToHero}
+          onTakeChestItem={takeChestItem}
+          collapsed={rightCollapsed}
+          onToggleCollapsed={() => togglePanel('right')}
+        />
+
+        {showMusicModal && audioEnabled && (
+          <MusicModal
+            audio={audioApi}
+            worldTrack={worldTrack}
+            worldTargetId={audioScope}
+            layers={state.layers}
+            layerOrder={state.layerOrder}
+            entities={state.entities}
+            isGuest={isGuest}
+            onClose={() => setShowMusicModal(false)}
+          />
+        )}
+
+        {audioBlocked && (
+          <button className="audio-unlock-banner" onClick={unlockAudio}>
+            🔊 Tap to enable sound
+          </button>
+        )}
+
+        {showClockModal && isHost && (
+          <ClockModal
+            clock={state.clock}
+            onSave={(clock) => {
+              updateClock(clock);
+              setShowClockModal(false);
+            }}
+            onRemove={() => {
+              updateClock(null);
+              setShowClockModal(false);
+            }}
+            onClose={() => setShowClockModal(false)}
+          />
+        )}
+
+        {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
+        {!leftCollapsed && !drawerLayout && (
+          <PanelResizer
+            side="left"
+            width={shownPanelWidths.left}
+            label="Resize tokens panel"
+            onResize={(w) => resizePanel('left', w)}
+            onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
+          />
+        )}
+        {!rightCollapsed && !drawerLayout && (
+          <PanelResizer
+            side="right"
+            width={shownPanelWidths.right}
+            label="Resize players and inspector panel"
+            onResize={(w) => resizePanel('right', w)}
+            onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
+          />
+        )}
+
+        {pendingDoor && (
+          <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
+            <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
+              <h4><ModalIcon name="door" />Open the door?</h4>
+              <p>
+                Step through <strong>{pendingDoor.door.name}</strong> to{' '}
+                <strong>{state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}</strong>?
+              </p>
+              <div className="door-confirm-actions">
+                <button className="btn btn-secondary" onClick={cancelEnterDoor}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmEnterDoor}>
+                  Open door
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+
+        {pendingLeaveWarning && (
+          <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
+            <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
+              <h4><ModalIcon name="exit" />Leave without exporting?</h4>
+              <p>
+                Nothing about this guest table is saved anywhere but this browser. If you leave now without
+                exporting, <strong>everything since it opened will be lost for good.</strong>
+              </p>
+              <div className="door-confirm-actions">
+                <button className="btn btn-secondary" onClick={cancelLeaveWarning}>
+                  Cancel
+                </button>
+                <button className="btn btn-danger" onClick={confirmLeaveWithoutExporting}>
+                  Leave anyway
+                </button>
+                <button className="btn btn-primary" onClick={exportThenLeave}>
+                  Export &amp; leave
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {reconnectUi.blocked && (
+          <div className="reconnect-scrim">
+            <div className="reconnect-card">
+              <p>Reconnecting…</p>
+              {reconnectUi.resyncFailed >= 4 && (
+                <button className="btn btn-primary" onClick={() => window.location.reload()}>
+                  Still trying — reload the page
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hostAbsentBanner && (
+          <div className="host-absent-banner">
+            The host has left the table. This session will end in{' '}
+            {String(Math.floor(hostAbsentSecondsLeft / 60)).padStart(2, '0')}:
+            {String(hostAbsentSecondsLeft % 60).padStart(2, '0')} unless they return.
+          </div>
+        )}
       </div>
-
-      <RightPanel
-        players={state.players}
-        hostId={state.session.hostPlayerId}
-        layers={state.layers}
-        layerOrder={state.layerOrder}
-        entities={layerEntities}
-        selectedEntity={selectedEntity}
-        isHost={isHost}
-        meId={me.id}
-        onUpdateEntity={updateEntity}
-        onRemoveEntity={removeEntity}
-        tool={tool}
-        heroes={heroes}
-        onGiveChestItem={giveChestItemToHero}
-        collapsed={rightCollapsed}
-        onToggleCollapsed={() => setRightCollapsed((c) => !c)}
-      />
-
-      {showClockModal && isHost && (
-        <ClockModal
-          clock={state.clock}
-          onSave={(clock) => {
-            updateClock(clock);
-            setShowClockModal(false);
-          }}
-          onRemove={() => {
-            updateClock(null);
-            setShowClockModal(false);
-          }}
-          onClose={() => setShowClockModal(false)}
-        />
-      )}
-
-      {!leftCollapsed && (
-        <PanelResizer
-          side="left"
-          width={shownPanelWidths.left}
-          label="Resize tokens panel"
-          onResize={(w) => resizePanel('left', w)}
-          onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
-        />
-      )}
-      {!rightCollapsed && (
-        <PanelResizer
-          side="right"
-          width={shownPanelWidths.right}
-          label="Resize players and inspector panel"
-          onResize={(w) => resizePanel('right', w)}
-          onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
-        />
-      )}
-
-      {pendingDoor && (
-        <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
-          <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Open the door?</h4>
-            <p>
-              Step through <strong>{pendingDoor.door.name}</strong> to{' '}
-              <strong>{state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}</strong>?
-            </p>
-            <div className="door-confirm-actions">
-              <button className="btn btn-secondary" onClick={cancelEnterDoor}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={confirmEnterDoor}>
-                Open door
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
-
-      {pendingLeaveWarning && (
-        <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
-          <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Leave without exporting?</h4>
-            <p>
-              Nothing about this guest table is saved anywhere but this browser. If you leave now without
-              exporting, <strong>everything since it opened will be lost for good.</strong>
-            </p>
-            <div className="door-confirm-actions">
-              <button className="btn btn-secondary" onClick={cancelLeaveWarning}>
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={confirmLeaveWithoutExporting}>
-                Leave anyway
-              </button>
-              <button className="btn btn-primary" onClick={exportThenLeave}>
-                Export &amp; leave
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {reconnectUi.blocked && (
-        <div className="reconnect-scrim">
-          <div className="reconnect-card">
-            <p>Reconnecting…</p>
-            {reconnectUi.resyncFailed >= 4 && (
-              <button className="btn btn-primary" onClick={() => window.location.reload()}>
-                Still trying — reload the page
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {hostAbsentBanner && (
-        <div className="host-absent-banner">
-          The host has left the table. This session will end in{' '}
-          {String(Math.floor(hostAbsentSecondsLeft / 60)).padStart(2, '0')}:
-          {String(hostAbsentSecondsLeft % 60).padStart(2, '0')} unless they return.
-        </div>
-      )}
     </div>
   );
 }

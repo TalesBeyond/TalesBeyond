@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
 import { generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { createEmptyGameState, MAX_PLAYERS } from '../state/store.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
@@ -9,7 +10,7 @@ import {
   sessionExists,
   listLocalSessionCodes,
   hashGuestCode,
-  readJsonFromFile,
+  readEncodedJsonFromFile,
   markGuestActive,
   clearGuestMeta,
   findUnclosedGuestTable,
@@ -29,56 +30,131 @@ import { requestGuestJoin } from '../lib/guestRealtime.js';
 
 const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#b23a3a', '#3a6ea5', '#c98a3b'];
 
+// Temporary: host accounts (Sign up / Log in) are hidden for now — hosting
+// only offers a guest table (start new or resume) until this flips back on.
+const SHOW_HOST_LOGIN = false;
+
 export default function Landing({ onEnter }) {
   const [mode, setMode] = useState('host');
 
+  const cardCopy =
+    mode === 'join'
+      ? { title: 'Take your seat', lede: 'Enter the invitation code your host shared with you.' }
+      : { title: 'Run your own table', lede: 'You will be the Dungeon Master. Up to nine players can join you.' };
+
   return (
     <div className="centered-column">
-      <div className="lobby-card">
-        <h1>Hearthbound</h1>
-        <p className="lede">
-          A shared virtual table for your D&amp;D group — build a battle map, drop in heroes and
-          monsters, and pick up right where you left off.
-        </p>
-        <p className="footer-note" style={{ border: 'none', padding: '0 0 18px', margin: 0 }}>
-          {isSupabaseConfigured
-            ? 'Connected to the cloud backend — tables sync live across devices.'
-            : 'Running in local demo mode (no backend configured) — see supabase/README.md to connect one.'}
-        </p>
+      <div className="landing-shell">
+        <LandingHero />
 
-        {mode === 'hostkey' ? (
-          <>
-            <RejoinHostForm onEnter={onEnter} />
-            <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
-              <button type="button" className="link-btn" onClick={() => setMode('host')}>
-                ← Back
-              </button>
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="mode-toggle">
-              <button className={mode === 'host' ? 'active' : ''} onClick={() => setMode('host')}>
-                Host a table
-              </button>
-              <button className={mode === 'join' ? 'active' : ''} onClick={() => setMode('join')}>
-                Join a table
-              </button>
-            </div>
-
-            {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
-
-            {!isSupabaseConfigured && (
-              <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
-                Testing only —{' '}
-                <button type="button" className="link-btn" onClick={() => setMode('hostkey')}>
-                  rejoin as host with a host key
+        <div className="lobby-card">
+          {mode === 'hostkey' ? (
+            <>
+              <RejoinHostForm onEnter={onEnter} />
+              <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+                <button type="button" className="link-btn" onClick={() => setMode('host')}>
+                  ← Back
                 </button>
-                .
               </p>
-            )}
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              <div className="mode-toggle">
+                <button className={mode === 'host' ? 'active' : ''} onClick={() => setMode('host')}>
+                  Host a table
+                </button>
+                <button className={mode === 'join' ? 'active' : ''} onClick={() => setMode('join')}>
+                  Join a table
+                </button>
+              </div>
+
+              <h2>{cardCopy.title}</h2>
+              <p className="lede">{cardCopy.lede}</p>
+
+              {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
+
+              {!isSupabaseConfigured && (
+                <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
+                  Testing only —{' '}
+                  <button type="button" className="link-btn" onClick={() => setMode('hostkey')}>
+                    rejoin as host with a host key
+                  </button>
+                  .
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Left side of the landing screen: brand, the connection status, the pitch and
+// a static picture of a battle map (purely decorative, so hidden from
+// assistive tech except for its short label).
+function LandingHero() {
+  return (
+    <div className="landing-hero">
+      <div className={`landing-status ${isSupabaseConfigured ? '' : 'local'}`}>
+        <span className="landing-status-dot" />
+        <span>
+          {isSupabaseConfigured
+            ? 'Cloud mode: tables sync live across devices'
+            : 'Local demo mode: no backend configured (see supabase/README.md)'}
+        </span>
+      </div>
+
+      <div className="landing-eyebrow">A shared virtual table for D&amp;D</div>
+      <h1>Gather round the table, wherever you are.</h1>
+      <p className="landing-lede">
+        Build a battle map, drop in heroes and monsters, and pick up right where you left off. One
+        invitation code brings your whole party to the same board.
+      </p>
+
+      <div className="landing-map">
+        <svg viewBox="0 0 640 270" role="img" aria-label="A sample battle map with hero tokens, monster tokens, a chest and a ruler measuring 25 feet">
+          <rect x="0" y="0" width="640" height="270" fill="#2b241c" />
+          <g stroke="#3f3628" strokeWidth="1">
+            <path d="M0 30H640M0 60H640M0 90H640M0 120H640M0 150H640M0 180H640M0 210H640M0 240H640" />
+            <path d="M40 0V270M80 0V270M120 0V270M160 0V270M200 0V270M240 0V270M280 0V270M320 0V270M360 0V270M400 0V270M440 0V270M480 0V270M520 0V270M560 0V270M600 0V270" />
+          </g>
+          <rect x="60" y="30" width="330" height="210" fill="#3a3024" stroke="#a9853f" strokeWidth="3" />
+          <rect x="390" y="110" width="80" height="50" fill="#3a3024" stroke="#a9853f" strokeWidth="3" />
+          <rect x="470" y="0" width="170" height="270" fill="#17140f" opacity="0.88" />
+          <rect x="216" y="92" width="26" height="20" rx="3" fill="#a9853f" stroke="#f2e9d4" strokeWidth="1.5" />
+          <path d="M120 150 L296 190" stroke="#f2e9d4" strokeWidth="2" strokeDasharray="6 5" fill="none" />
+          <rect x="176" y="154" width="64" height="24" rx="12" fill="#17140f" stroke="#f2e9d4" strokeWidth="1" />
+          <text x="208" y="171" textAnchor="middle" fontFamily="IBM Plex Mono, monospace" fontSize="12" fill="#f2e9d4">25 ft</text>
+          <circle cx="120" cy="150" r="16" fill="#b84a2a" stroke="#f2e9d4" strokeWidth="2" />
+          <text x="120" y="155" textAnchor="middle" fontFamily="Spectral, serif" fontWeight="700" fontSize="15" fill="#fff">M</text>
+          <circle cx="160" cy="90" r="16" fill="#4c7a86" stroke="#f2e9d4" strokeWidth="2" />
+          <text x="160" y="95" textAnchor="middle" fontFamily="Spectral, serif" fontWeight="700" fontSize="15" fill="#fff">T</text>
+          <circle cx="100" cy="210" r="16" fill="#62795a" stroke="#f2e9d4" strokeWidth="2" />
+          <text x="100" y="215" textAnchor="middle" fontFamily="Spectral, serif" fontWeight="700" fontSize="15" fill="#fff">A</text>
+          <rect x="282" y="176" width="28" height="28" rx="4" fill="#7a2a2a" stroke="#f2e9d4" strokeWidth="2" />
+          <rect x="330" y="80" width="28" height="28" rx="4" fill="#7a2a2a" stroke="#f2e9d4" strokeWidth="2" />
+          <g transform="translate(454 20)">
+            <rect x="0" y="0" width="160" height="34" rx="8" fill="#17140f" stroke="#a9853f" strokeWidth="1" />
+            <text x="12" y="22" fontFamily="Instrument Sans, sans-serif" fontSize="12" fill="#d9c89e">Invite code</text>
+            <text x="148" y="22" textAnchor="end" fontFamily="IBM Plex Mono, monospace" fontSize="14" letterSpacing="1.5" fill="#f2e9d4">K7Q2MZ</text>
+          </g>
+        </svg>
+      </div>
+
+      <div className="landing-features">
+        <div className="landing-feature">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><rect x="2" y="2" width="16" height="16" rx="1" /><path d="M2 8h16M2 13h16M8 2v16M13 2v16" /></svg>
+          <span>Square-grid maps</span>
+        </div>
+        <div className="landing-feature">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7" /><circle cx="10" cy="10" r="2.5" /></svg>
+          <span>Hero and monster tokens</span>
+        </div>
+        <div className="landing-feature">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M3 16L16 3M6 13l2 2M9 10l2 2M12 7l2 2" /></svg>
+          <span>Ruler and distance</span>
+        </div>
       </div>
     </div>
   );
@@ -172,20 +248,22 @@ function HostForm({ onEnter }) {
             </div>
           </div>
         )}
-        <button type="button" className="btn btn-primary btn-block" onClick={() => setHostChoice('account')}>
-          Sign up / Log in
-        </button>
+        {SHOW_HOST_LOGIN && (
+          <button type="button" className="btn btn-primary btn-block" onClick={() => setHostChoice('account')}>
+            Sign up / Log in
+          </button>
+        )}
         <button
           type="button"
-          className="btn btn-secondary btn-block"
+          className="btn btn-primary btn-block"
           onClick={() => setHostChoice('guest')}
-          style={{ marginTop: 8 }}
+          style={SHOW_HOST_LOGIN ? { marginTop: 8 } : undefined}
         >
           Start a guest table
         </button>
         <button
           type="button"
-          className="btn btn-primary btn-block"
+          className="btn btn-secondary btn-block"
           onClick={() => setHostChoice('resumeGuest')}
           style={{ marginTop: 8 }}
         >
@@ -362,24 +440,47 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
       </p>
 
       {pendingDelete && (
-        <div className="delete-confirm-backdrop" onClick={() => setPendingDelete(null)}>
-          <div className="delete-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Delete this table?</h4>
-            <p>
-              <strong>{pendingDelete.name}</strong> and everything in it — heroes, maps, chests, everything — will be
-              permanently removed. Make sure no one is still playing. This can't be undone.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="btn btn-secondary" onClick={() => setPendingDelete(null)}>
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={confirmDelete}>
-                Delete table
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteTableConfirm table={pendingDelete} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
       )}
+    </div>
+  );
+}
+
+// Deleting a table is permanent, so the host has to type its name to arm the button.
+function DeleteTableConfirm({ table, onCancel, onConfirm }) {
+  const [typed, setTyped] = useState('');
+  const armed = typed.trim() === String(table.name ?? '').trim();
+  return (
+    <div className="delete-confirm-backdrop" onClick={onCancel}>
+      <div className="delete-confirm-card" role="alertdialog" aria-label="Delete this table?" onClick={(e) => e.stopPropagation()}>
+        <h4>
+          <ModalIcon name="warn" />
+          Delete this table?
+        </h4>
+        <p>
+          <strong>{table.name}</strong> and everything in it — heroes, maps, chests, everything — will be
+          permanently removed. Make sure no one is still playing. This can't be undone.
+        </p>
+        <div className="delete-confirm-field">
+          <label htmlFor="delete-confirm-input">Type the table name to confirm</label>
+          <input
+            id="delete-confirm-input"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={table.name}
+            autoComplete="off"
+            autoFocus
+          />
+        </div>
+        <div className="delete-confirm-actions">
+          <button className="btn btn-secondary" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-danger" onClick={onConfirm} disabled={!armed}>
+            Delete table
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -682,7 +783,7 @@ function GuestResumeForm({ onEnter, onBack }) {
     if (!file) return;
     setFileName(file.name);
     setError('');
-    readJsonFromFile(file)
+    readEncodedJsonFromFile(file)
       .then((raw) => setFileContents(raw))
       .catch(() => {
         setFileContents(null);
@@ -736,7 +837,7 @@ function GuestResumeForm({ onEnter, onBack }) {
       {error && <div className="error-note">{error}</div>}
 
       <label className="field-label">Exported table file</label>
-      <input className="field" type="file" accept="application/json" onChange={handleFile} />
+      <input className="field" type="file" accept="image/bmp,.bmp" onChange={handleFile} />
       {fileName && (
         <p className="footer-note" style={{ border: 'none', padding: '6px 2px 0', margin: 0 }}>
           {fileName}

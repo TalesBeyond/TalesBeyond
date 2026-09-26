@@ -1472,3 +1472,692 @@ alter table tables add constraint tables_day_night_override_check
 alter table entities drop constraint if exists entities_size_check;
 alter table entities add constraint entities_size_check
   check (size between 1 and 4 or (kind = 'trap' and size = 5));
+
+-- ======================================================================
+-- 35_player_battle_equipment.sql
+-- ======================================================================
+-- Hearthbound — 35_player_battle_equipment.sql
+-- Loosens the DM-only edit model from PITFALLS.md #1 / 16_dm_only_edits.sql:
+-- a player can now use their own hero's Battle Equipment tab (change
+-- weapon, add modifiers, roll attacks — including applying the resulting
+-- damage to the target), Spells tab (spellcasting), and Bag tab (equipment,
+-- currency). Everything else on a hero's sheet (level, abilities, saves,
+-- skills) stays DM-only, and a player still can't touch a monster except to
+-- apply attack damage to its HP.
+--
+-- Client-side, the same shape is enforced in GameView.jsx's
+-- canUpdateEntity (isHeroOwnerSheetPatch / canDamageMob) — this migration
+-- is what makes it a real security boundary in cloud mode rather than a UI
+-- convention a player could bypass with a direct API call.
+--
+-- (Superseded by 37_player_door_layer_move.sql below, which rebuilds this
+-- same function to also allow a hero's layer_id to change and a chest's
+-- chest_items to shrink by one stack — kept here so the trigger's history
+-- in this file matches the numbered migrations on disk.)
+
+create or replace function enforce_entity_write_permissions() returns trigger as $$
+declare
+  v_is_host boolean;
+  v_player_id uuid;
+begin
+  select is_host, id into v_is_host, v_player_id
+    from players where table_id = new.table_id and auth_user_id = auth.uid();
+
+  if v_is_host then
+    return new;
+  end if;
+
+  if old.kind = 'hero' and old.owner_id = v_player_id then
+    if new.name is distinct from old.name
+      or new.image_url is distinct from old.image_url
+      or new.color is distinct from old.color
+      or new.size is distinct from old.size
+      or new.hp is distinct from old.hp
+      or new.max_hp is distinct from old.max_hp
+      or new.armor_class is distinct from old.armor_class
+      or new.owner_id is distinct from old.owner_id
+      or new.layer_id is distinct from old.layer_id
+      or new.target_layer_id is distinct from old.target_layer_id
+      or new.target_col is distinct from old.target_col
+      or new.target_row is distinct from old.target_row
+      or new.conditions is distinct from old.conditions
+      or new.chest_size is distinct from old.chest_size
+      or new.opened is distinct from old.opened
+      or new.chest_items is distinct from old.chest_items
+      -- A hero's whole tabbed sheet lives in one jsonb column, so the only
+      -- way to allow "just Battle Equipment/Spells/Bag" is to require every
+      -- key except those tabs' own to be byte-for-byte unchanged.
+      or (coalesce(new.sheet, '{}'::jsonb) - array['attacks', 'spellcasting', 'equipment', 'currency'])
+        is distinct from (coalesce(old.sheet, '{}'::jsonb) - array['attacks', 'spellcasting', 'equipment', 'currency'])
+    then
+      raise exception 'Only the DM can edit token information — players may only move their own hero and manage its Battle Equipment, Spells, and Bag';
+    end if;
+    return new;
+  end if;
+
+  if old.kind = 'chest' then
+    if new.name is distinct from old.name
+      or new.color is distinct from old.color
+      or new.col is distinct from old.col
+      or new.row is distinct from old.row
+      or new.size is distinct from old.size
+      or new.island_id is distinct from old.island_id
+      or new.chest_size is distinct from old.chest_size
+      or new.chest_items is distinct from old.chest_items
+    then
+      raise exception 'Only the DM can edit chest contents or move it — players may only open or close a chest';
+    end if;
+    return new;
+  end if;
+
+  -- A hit rolled from a hero's Battle Equipment tab applies its damage to
+  -- the target mob's hp (RightPanel.jsx's confirmAttack). Bounded to a
+  -- plain decrease (never below 0, never above the mob's current hp) so
+  -- this stays "apply attack damage," not "edit a monster's hp."
+  if old.kind = 'mob' then
+    if new.name is not distinct from old.name
+      and new.image_url is not distinct from old.image_url
+      and new.color is not distinct from old.color
+      and new.col is not distinct from old.col
+      and new.row is not distinct from old.row
+      and new.size is not distinct from old.size
+      and new.max_hp is not distinct from old.max_hp
+      and new.armor_class is not distinct from old.armor_class
+      and new.owner_id is not distinct from old.owner_id
+      and new.layer_id is not distinct from old.layer_id
+      and new.island_id is not distinct from old.island_id
+      and new.conditions is not distinct from old.conditions
+      and new.drop_items is not distinct from old.drop_items
+      and new.hp is not null
+      and new.hp >= 0
+      and new.hp <= coalesce(old.hp, old.max_hp, 0)
+    then
+      return new;
+    end if;
+    raise exception 'Only the DM can edit this monster — players may only apply attack damage to its HP';
+  end if;
+
+  raise exception 'Only the DM can edit this token';
+end;
+$$ language plpgsql;
+
+-- ======================================================================
+-- 36_custom_assets.sql
+-- ======================================================================
+-- Hearthbound — 36_custom_assets.sql
+-- "Asset Storage": a DM-only button (Toolbar.jsx) for authoring custom
+-- monsters, weapons, and items and dropping them into this table's
+-- Weapons/Item Compendiums and monster token list, alongside (never instead
+-- of) the app's built-in default catalogs (src/data/weapons.js, items.js,
+-- defaultTokens.js DEFAULT_MOBS — those stay hardcoded and unaffected).
+--
+-- Each row is one custom entry. `data` holds the whole entry in the same
+-- shape its catalog counterpart already uses — {type, name, numberOfDice,
+-- diceType, modifier, damage, cost, equipableClass} for a weapon,
+-- {category, name, cost, weight, description} for an item, {name, color,
+-- icon, imageUrl} for a monster — so the client can render/filter/sort a
+-- custom entry with the exact same code path as a built-in one, just
+-- concatenated onto the same list. See mappers.js's mapDbCustomAsset.
+--
+-- Host-only to add or remove, same trust model as placing/removing a token
+-- (PITFALLS.md #1 / 16_dm_only_edits.sql) — read is open to the whole table
+-- since a row here carries no more sensitive information than an entities
+-- row already world-readable to every seated member.
+
+create table if not exists custom_assets (
+  id            uuid primary key default gen_random_uuid(),
+  table_id      uuid not null references tables(id) on delete cascade,
+  asset_type    text not null check (asset_type in ('monster', 'weapon', 'item')),
+  data          jsonb not null,
+  created_at    timestamptz not null default now()
+);
+create index if not exists custom_assets_table_idx on custom_assets (table_id);
+
+alter table custom_assets enable row level security;
+
+drop policy if exists "members can read custom assets at their table" on custom_assets;
+create policy "members can read custom assets at their table"
+  on custom_assets for select
+  using (table_id in (select table_id from players where auth_user_id = auth.uid()));
+
+drop policy if exists "host can insert custom assets at their table" on custom_assets;
+create policy "host can insert custom assets at their table"
+  on custom_assets for insert
+  with check (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+drop policy if exists "host can delete custom assets at their table" on custom_assets;
+create policy "host can delete custom assets at their table"
+  on custom_assets for delete
+  using (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+-- ======================================================================
+-- 37_player_door_layer_move.sql
+-- ======================================================================
+-- Hearthbound — 37_player_door_layer_move.sql
+-- Walking through a door (GameView.jsx's confirmEnterDoor) now actually
+-- relocates the player's own hero to the door's other side — one square
+-- clear of the door, not standing on it — instead of only switching which
+-- layer that player is *viewing* while their token stays behind. That move
+-- sets the hero's layer_id (in addition to the col/row/island_id a player
+-- could already change), which the trigger above explicitly blocked for a
+-- non-host. Same trust model col/row/island_id already had: the trigger
+-- only enforces "you may only move your own hero," not "to a legal
+-- destination" — GameView.jsx's arrivalCellNearDoor is what keeps a
+-- legitimate client's move sane, same as it already did for col/row/island_id.
+--
+-- Also closes a gap from the chest "Take" feature (RightPanel.jsx's
+-- ChestInspector): a player looting an opened chest patches its
+-- `chest_items` (removing the one item they took) via GameView.jsx's
+-- isTakeChestItemPatch, which was likewise still blocked above for a
+-- non-host. Loosened on the same trust basis: the client-side validator is
+-- what limits it to removing exactly one whole stack.
+
+create or replace function enforce_entity_write_permissions() returns trigger as $$
+declare
+  v_is_host boolean;
+  v_player_id uuid;
+begin
+  select is_host, id into v_is_host, v_player_id
+    from players where table_id = new.table_id and auth_user_id = auth.uid();
+
+  if v_is_host then
+    return new;
+  end if;
+
+  if old.kind = 'hero' and old.owner_id = v_player_id then
+    if new.name is distinct from old.name
+      or new.image_url is distinct from old.image_url
+      or new.color is distinct from old.color
+      or new.size is distinct from old.size
+      or new.hp is distinct from old.hp
+      or new.max_hp is distinct from old.max_hp
+      or new.armor_class is distinct from old.armor_class
+      or new.owner_id is distinct from old.owner_id
+      or new.target_layer_id is distinct from old.target_layer_id
+      or new.target_col is distinct from old.target_col
+      or new.target_row is distinct from old.target_row
+      or new.conditions is distinct from old.conditions
+      or new.chest_size is distinct from old.chest_size
+      or new.opened is distinct from old.opened
+      or new.chest_items is distinct from old.chest_items
+      or (coalesce(new.sheet, '{}'::jsonb) - array['attacks', 'spellcasting', 'equipment', 'currency'])
+        is distinct from (coalesce(old.sheet, '{}'::jsonb) - array['attacks', 'spellcasting', 'equipment', 'currency'])
+    then
+      raise exception 'Only the DM can edit token information — players may only move their own hero (including between layers via a door) and manage its Battle Equipment, Spells, and Bag';
+    end if;
+    return new;
+  end if;
+
+  if old.kind = 'chest' then
+    if new.name is distinct from old.name
+      or new.color is distinct from old.color
+      or new.col is distinct from old.col
+      or new.row is distinct from old.row
+      or new.size is distinct from old.size
+      or new.island_id is distinct from old.island_id
+      or new.chest_size is distinct from old.chest_size
+    then
+      raise exception 'Only the DM can edit chest contents or move it — players may only open, close, or loot a chest';
+    end if;
+    return new;
+  end if;
+
+  if old.kind = 'mob' then
+    if new.name is not distinct from old.name
+      and new.image_url is not distinct from old.image_url
+      and new.color is not distinct from old.color
+      and new.col is not distinct from old.col
+      and new.row is not distinct from old.row
+      and new.size is not distinct from old.size
+      and new.max_hp is not distinct from old.max_hp
+      and new.armor_class is not distinct from old.armor_class
+      and new.owner_id is not distinct from old.owner_id
+      and new.layer_id is not distinct from old.layer_id
+      and new.island_id is not distinct from old.island_id
+      and new.conditions is not distinct from old.conditions
+      and new.drop_items is not distinct from old.drop_items
+      and new.hp is not null
+      and new.hp >= 0
+      and new.hp <= coalesce(old.hp, old.max_hp, 0)
+    then
+      return new;
+    end if;
+    raise exception 'Only the DM can edit this monster — players may only apply attack damage to its HP';
+  end if;
+
+  raise exception 'Only the DM can edit this token';
+end;
+$$ language plpgsql;
+
+-- ======================================================================
+-- 38_synced_table_audio.sql
+-- ======================================================================
+-- Hearthbound — 38_synced_table_audio.sql
+-- REQ-009 Synced Table Audio, Slice 1 (world music in a cloud table).
+--
+-- audio_tracks: one row per sound attached to a target (the table's world
+-- music now; layers/islands/tokens in later slices). Same trust model as
+-- custom_assets — every seated member reads, only the host writes.
+--
+-- tables.audio_playback: one jsonb per table naming the single sound playing
+-- right now, `{ nowPlaying: { trackId, anchorMs, offsetMs } | null, resume:
+-- { [trackId]: offsetMs } }`. Clients derive the playback position from the
+-- anchor locally, so the column only changes when the DM presses play/pause,
+-- never per tick (same idea as tables.game_clock, 32_game_clock.sql). Writing
+-- it is already host-only ("host can update their table", 02_policies.sql).
+--
+-- table-audio bucket: public-read (so <audio src> works with a plain URL),
+-- host-only insert/delete scoped to a table the caller hosts, and a 10 MB
+-- object limit + MP3/WAV allow-list enforced by the bucket itself.
+
+create table if not exists audio_tracks (
+  id            uuid primary key,
+  table_id      uuid not null references tables(id) on delete cascade,
+  target_kind   text not null check (target_kind in ('world', 'layer', 'island', 'entity')),
+  target_id     text not null,
+  name          text not null,
+  url           text not null,
+  storage_path  text not null,
+  mime          text not null,
+  size_bytes    bigint not null check (size_bytes >= 0),
+  created_at    timestamptz not null default now(),
+  unique (table_id, target_kind, target_id)
+);
+create index if not exists audio_tracks_table_idx on audio_tracks (table_id);
+
+alter table audio_tracks enable row level security;
+
+drop policy if exists "members can read audio tracks at their table" on audio_tracks;
+create policy "members can read audio tracks at their table"
+  on audio_tracks for select
+  using (table_id in (select table_id from players where auth_user_id = auth.uid()));
+
+drop policy if exists "host can insert audio tracks at their table" on audio_tracks;
+create policy "host can insert audio tracks at their table"
+  on audio_tracks for insert
+  with check (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+drop policy if exists "host can update audio tracks at their table" on audio_tracks;
+create policy "host can update audio tracks at their table"
+  on audio_tracks for update
+  using (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host))
+  with check (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+drop policy if exists "host can delete audio tracks at their table" on audio_tracks;
+create policy "host can delete audio tracks at their table"
+  on audio_tracks for delete
+  using (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+alter table tables add column if not exists audio_playback jsonb;
+
+-- Storage bucket. Paths are `${tableId}/${randomFileName}`, so the policies
+-- check the first path segment against a table the caller hosts.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('table-audio', 'table-audio', true, 10485760,
+          array['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave'])
+  on conflict (id) do update
+    set file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view table audio" on storage.objects;
+create policy "public can view table audio"
+  on storage.objects for select
+  using (bucket_id = 'table-audio');
+
+drop policy if exists "host can upload table audio" on storage.objects;
+create policy "host can upload table audio"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'table-audio'
+    and auth.uid() is not null
+    and (storage.foldername(name))[1]::uuid in (
+      select table_id from players where auth_user_id = auth.uid() and is_host
+    )
+  );
+
+drop policy if exists "host can delete table audio" on storage.objects;
+create policy "host can delete table audio"
+  on storage.objects for delete
+  using (
+    bucket_id = 'table-audio'
+    and (storage.foldername(name))[1]::uuid in (
+      select table_id from players where auth_user_id = auth.uid() and is_host
+    )
+  );
+
+-- Realtime (REQ-009 Q3): no earlier migration adds a table to the
+-- supabase_realtime publication, so the existing ones were enabled from the
+-- dashboard. Do it explicitly here — guarded so it is a no-op for a table
+-- that is already published — so audio_tracks and the tables.audio_playback
+-- column actually stream.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'audio_tracks') then
+      alter publication supabase_realtime add table public.audio_tracks;
+    end if;
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'tables') then
+      alter publication supabase_realtime add table public.tables;
+    end if;
+  end if;
+end $$;
+
+-- ======================================================================
+-- 39_audio_volume_loop.sql
+-- ======================================================================
+-- Hearthbound — 39_audio_volume_loop.sql
+-- REQ-009 Slice 2: per-track synced base volume (0-1, DM-set) and loop flag.
+-- Each player's own local volume never reaches the database — it lives in
+-- that browser only (src/state/persistence.js).
+
+alter table audio_tracks add column if not exists base_volume real not null default 1;
+alter table audio_tracks drop constraint if exists audio_tracks_base_volume_check;
+alter table audio_tracks add constraint audio_tracks_base_volume_check check (base_volume >= 0 and base_volume <= 1);
+
+alter table audio_tracks add column if not exists loop boolean not null default true;
+
+-- ======================================================================
+-- 40_audio_cleanup.sql
+-- ======================================================================
+-- Hearthbound — 40_audio_cleanup.sql
+-- REQ-009 Slice 4: deleting a layer, island or token removes the sound
+-- attached to it. audio_tracks.target_id is text (it also holds the table id
+-- for world music and, later, guest codes), so it cannot be a foreign key —
+-- these triggers keep it honest instead, whichever client (or cascade) does
+-- the delete.
+--
+-- Only the ROW is removed here. Deleting from storage.objects with SQL does
+-- not free the backing file, so the client removes the Storage object through
+-- the Storage API (src/lib/storageUpload.js removeAudioFiles) and
+-- deleteTableStorage sweeps the whole table folder when a table is deleted.
+
+create or replace function delete_audio_for_target() returns trigger as $$
+declare
+  kind text := tg_argv[0];
+begin
+  delete from audio_tracks
+    where table_id = old.table_id and target_kind = kind and target_id = old.id::text;
+  return old;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists layers_delete_audio on layers;
+create trigger layers_delete_audio after delete on layers
+  for each row execute function delete_audio_for_target('layer');
+
+drop trigger if exists islands_delete_audio on islands;
+create trigger islands_delete_audio after delete on islands
+  for each row execute function delete_audio_for_target('island');
+
+drop trigger if exists entities_delete_audio on entities;
+create trigger entities_delete_audio after delete on entities
+  for each row execute function delete_audio_for_target('entity');
+
+-- ======================================================================
+-- 41_audio_quota.sql
+-- ======================================================================
+-- Hearthbound — 41_audio_quota.sql
+-- REQ-009 Slice 6: a table's audio may not exceed 50 MB in total.
+--
+-- Enforced in the database so a modified client cannot skip it. A row that
+-- REPLACES the sound on the same target (same table, kind and target) is not
+-- counted against itself, so swapping a 9 MB file for another 9 MB file never
+-- trips the limit. Guest tables have no row to enforce this on — the client
+-- checks it for them (REQ-009 Out of Scope: server-side guest quota).
+
+create or replace function enforce_audio_quota() returns trigger as $$
+declare
+  used bigint;
+begin
+  select coalesce(sum(size_bytes), 0) into used
+    from audio_tracks
+    where table_id = new.table_id
+      and not (target_kind = new.target_kind and target_id = new.target_id);
+  if used + new.size_bytes > 52428800 then
+    raise exception 'Audio quota exceeded: a table may hold at most 50 MB of audio'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists audio_tracks_quota on audio_tracks;
+create trigger audio_tracks_quota
+  before insert or update of size_bytes, table_id, target_kind, target_id on audio_tracks
+  for each row execute function enforce_audio_quota();
+
+-- ======================================================================
+-- Hearthbound — 42_catalog_weapons.sql
+-- REQ-010 Default Catalog Assets, Slice 1 (weapons).
+--
+-- The Default catalog: game content every table shares, read by everyone
+-- (including anonymous players and guest tables) and written only by the
+-- admin script (scripts/catalog-admin.mjs) using the service-role key, which
+-- bypasses RLS. There is deliberately no insert/update/delete policy for any
+-- other role, so a browser client cannot change it.
+--
+-- Rows mirror the shape src/data/weapons.js already uses; `image_path` is a
+-- path inside the public `catalog-images` bucket. The app falls back to the
+-- code data when this table is empty or unreachable.
+
+create table if not exists catalog_weapons (
+  slug             text primary key,
+  name             text not null,
+  type             text not null check (type in ('melee', 'ranged')),
+  number_of_dice   integer not null check (number_of_dice >= 1),
+  dice_type        text not null check (dice_type in ('d4', 'd6', 'd8', 'd10', 'd12')),
+  modifier         integer not null default 0,
+  damage           numeric not null,
+  cost             numeric not null check (cost >= 0),
+  equipable_class  text[] not null default '{}',
+  image_path       text,
+  created_at       timestamptz not null default now()
+);
+
+alter table catalog_weapons enable row level security;
+
+drop policy if exists "anyone can read catalog weapons" on catalog_weapons;
+create policy "anyone can read catalog weapons"
+  on catalog_weapons for select
+  to anon, authenticated
+  using (true);
+
+-- Catalog pictures: one optimized WebP per entry, public-read, admin-write
+-- only (no insert/delete policy on storage.objects for this bucket).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('catalog-images', 'catalog-images', true, 1048576, array['image/webp'])
+  on conflict (id) do update
+    set file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view catalog images" on storage.objects;
+create policy "public can view catalog images"
+  on storage.objects for select
+  using (bucket_id = 'catalog-images');
+
+-- ======================================================================
+-- Hearthbound — 43_catalog_items.sql
+-- REQ-010 Default Catalog Assets, Slice 2 (items).
+--
+-- Same trust model as catalog_weapons (42): readable by everyone, writable
+-- only through the service-role admin script. Rows mirror src/data/items.js;
+-- `image_path` is a path inside the public `catalog-images` bucket.
+
+create table if not exists catalog_items (
+  slug         text primary key,
+  name         text not null,
+  category     text not null,
+  cost         numeric not null check (cost >= 0),
+  weight       numeric not null check (weight >= 0),
+  description  text not null default '',
+  image_path   text,
+  created_at   timestamptz not null default now()
+);
+
+alter table catalog_items enable row level security;
+
+drop policy if exists "anyone can read catalog items" on catalog_items;
+create policy "anyone can read catalog items"
+  on catalog_items for select
+  to anon, authenticated
+  using (true);
+
+-- ======================================================================
+-- Hearthbound — 44_catalog_monsters.sql
+-- REQ-010 Default Catalog Assets, Slice 3 (monsters).
+--
+-- Same trust model as catalog_weapons (42): readable by everyone, writable
+-- only through the service-role admin script. Rows mirror src/data/monsters.js;
+-- `slug` is the monster's key there, `abilities` is { str, dex, con, int, wis,
+-- cha }, and `image_path` is a path inside the public `catalog-images` bucket.
+
+create table if not exists catalog_monsters (
+  slug         text primary key,
+  name         text not null,
+  kind         text not null,
+  cr           text not null,
+  hp           integer not null check (hp >= 0),
+  ac           integer not null check (ac >= 0),
+  speed        integer not null check (speed >= 0),
+  abilities    jsonb not null,
+  size         integer not null default 1 check (size >= 1),
+  icon         text not null,
+  color        text not null,
+  attack       text not null default '',
+  description  text not null default '',
+  image_path   text,
+  created_at   timestamptz not null default now()
+);
+
+alter table catalog_monsters enable row level security;
+
+drop policy if exists "anyone can read catalog monsters" on catalog_monsters;
+create policy "anyone can read catalog monsters"
+  on catalog_monsters for select
+  to anon, authenticated
+  using (true);
+
+-- ======================================================================
+-- Hearthbound — 45_catalog_audio.sql
+-- REQ-010 Default Catalog Assets, Slice 4 (songs).
+--
+-- Same trust model as catalog_weapons (42): readable by everyone, writable
+-- only through the service-role admin script. A DM can attach a catalog song
+-- to a table's audio; that writes an ordinary audio_tracks row whose `url` is
+-- the public URL below, `storage_path` is empty and `size_bytes` is 0, so it
+-- uses none of the table's 50 MB quota and is never purged with the table.
+
+create table if not exists catalog_audio (
+  slug        text primary key,
+  name        text not null,
+  audio_path  text not null,
+  mime        text not null,
+  size_bytes  bigint not null check (size_bytes >= 0),
+  created_at  timestamptz not null default now()
+);
+
+alter table catalog_audio enable row level security;
+
+drop policy if exists "anyone can read catalog audio" on catalog_audio;
+create policy "anyone can read catalog audio"
+  on catalog_audio for select
+  to anon, authenticated
+  using (true);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('catalog-audio', 'catalog-audio', true, 10485760,
+          array['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave'])
+  on conflict (id) do update
+    set file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view catalog audio" on storage.objects;
+create policy "public can view catalog audio"
+  on storage.objects for select
+  using (bucket_id = 'catalog-audio');
+
+-- ======================================================================
+-- Hearthbound — 46_catalog_dice_images.sql
+-- REQ-010 Default Catalog Assets, Slice 5 (dice images).
+--
+-- One picture per die type, shown on the Dice modal's tiles. Same trust model
+-- as catalog_weapons (42): readable by everyone, writable only through the
+-- service-role admin script. `image_path` is a path inside the public
+-- `catalog-images` bucket (dice/<die type>.webp).
+
+create table if not exists catalog_dice_images (
+  slug        text primary key,
+  name        text not null,
+  die_type    text not null unique check (die_type in ('d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100')),
+  image_path  text,
+  created_at  timestamptz not null default now()
+);
+
+alter table catalog_dice_images enable row level security;
+
+drop policy if exists "anyone can read catalog dice images" on catalog_dice_images;
+create policy "anyone can read catalog dice images"
+  on catalog_dice_images for select
+  to anon, authenticated
+  using (true);
+
+-- ======================================================================
+-- Hearthbound — 47_catalog_dice_models.sql
+-- REQ-010 Default Catalog Assets, Slice 6 (3D dice bases).
+--
+-- Groundwork only: the tables and bucket a later 3D-dice feature will read.
+-- Nothing in the app uses them yet.
+--
+-- catalog_dice_models: a 3D model (a .glb file) for one die type.
+-- catalog_dice_skins: a texture image wrapped onto a model — either one
+-- specific model (`model_slug`) or any model of a die type (`die_type`).
+--
+-- Same trust model as catalog_weapons (42): readable by everyone, writable
+-- only through the service-role admin script. Models live in the public
+-- `catalog-models` bucket; skin textures and model previews are WebP images in
+-- the `catalog-images` bucket (1 MB each).
+
+create table if not exists catalog_dice_models (
+  slug                 text primary key,
+  name                 text not null,
+  die_type             text not null check (die_type in ('d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100')),
+  model_path           text not null,
+  preview_image_path   text,
+  created_at           timestamptz not null default now()
+);
+
+create table if not exists catalog_dice_skins (
+  slug          text primary key,
+  name          text not null,
+  texture_path  text not null,
+  model_slug    text references catalog_dice_models (slug) on delete set null,
+  die_type      text check (die_type in ('d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100')),
+  created_at    timestamptz not null default now()
+);
+
+alter table catalog_dice_models enable row level security;
+alter table catalog_dice_skins enable row level security;
+
+drop policy if exists "anyone can read catalog dice models" on catalog_dice_models;
+create policy "anyone can read catalog dice models"
+  on catalog_dice_models for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "anyone can read catalog dice skins" on catalog_dice_skins;
+create policy "anyone can read catalog dice skins"
+  on catalog_dice_skins for select
+  to anon, authenticated
+  using (true);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('catalog-models', 'catalog-models', true, 8388608,
+          array['model/gltf-binary', 'application/octet-stream'])
+  on conflict (id) do update
+    set file_size_limit = excluded.file_size_limit,
+        allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view catalog models" on storage.objects;
+create policy "public can view catalog models"
+  on storage.objects for select
+  using (bucket_id = 'catalog-models');

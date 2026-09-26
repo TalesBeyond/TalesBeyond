@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useLayoutEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { pixelToCell, feetDistance, computeCanvasBounds } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
@@ -37,6 +37,7 @@ export default function MapBoard({
   onEnterDoor,
   tool, // 'play' | 'edit' | 'pan' | 'ruler'
   zoom = 1,
+  onRulerChange,
 }) {
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
@@ -47,7 +48,8 @@ export default function MapBoard({
   // updater, which React disallows and which can cascade into an infinite
   // render loop for callbacks that themselves call a state setter.
   const dragRef = useRef(null); // { id, entity, downX, downY, locked }
-  const [dragPos, setDragPos] = useState(null); // { id, x, y } — visual position only
+  const [dragPos, setDragPos] = useState(null); // { id, x, y, pendingCol?, pendingRow?, pendingIslandId? } — visual position only
+  const dragHoldTimeoutRef = useRef(null); // clears a stuck pending drop if confirmation never arrives
   const islandDragRef = useRef(null); // { id, downX, downY, startX, startY }
   const [islandDragPos, setIslandDragPos] = useState(null); // { id, x, y } — visual position only
   const groupDragRef = useRef(null); // { groupId, downX, downY, dx, dy }
@@ -213,32 +215,75 @@ export default function MapBoard({
     setDragPos({ id: dragRef.current.id, x: p.x, y: p.y });
   }
 
+  // Holds the token at its (snapped) drop position instead of releasing it
+  // back to `entity`'s own col/row. For a guest (non-host) player, moveEntity
+  // only sends a network intent — the local entity doesn't update until the
+  // DM's client validates and echoes it back — so clearing dragPos right
+  // away would let the token fall back to its stale origin and then jump to
+  // the new square once confirmed. Holding it here keeps the drop visually
+  // in place the whole time; the effect below releases the hold once
+  // `entities` actually catches up (or after a timeout, in case the move
+  // was rejected or the confirmation never arrives).
+  function holdDragAt(id, size, col, row, islandId, rect) {
+    clearTimeout(dragHoldTimeoutRef.current);
+    setDragPos({
+      id,
+      x: rect.left + col * rect.cellSize + (rect.cellSize * size) / 2,
+      y: rect.top + row * rect.cellSize + (rect.cellSize * size) / 2,
+      pendingCol: col,
+      pendingRow: row,
+      pendingIslandId: islandId,
+    });
+    dragHoldTimeoutRef.current = setTimeout(() => {
+      setDragPos((dp) => (dp?.id === id ? null : dp));
+    }, 4000);
+  }
+
   function onTokenDragUp(e) {
     window.removeEventListener('pointermove', onTokenDragMove);
     window.removeEventListener('pointerup', onTokenDragUp);
     const current = dragRef.current;
     dragRef.current = null;
-    setDragPos(null);
-    if (!current) return;
+    if (!current) {
+      setDragPos(null);
+      return;
+    }
 
     const p = getRelativePoint(e.clientX, e.clientY);
     const moved = Math.hypot(p.x - current.downX, p.y - current.downY);
     const isClick = moved < CLICK_MOVE_THRESHOLD_PX;
     const found = findIslandAt(p.x, p.y);
+    const size = current.entity.size || 1;
+    // Re-check here, not just at drag-start/move: a viewer who can't
+    // reposition this token (e.g. a player dragging a hero that isn't
+    // theirs, or any non-host dragging a door) must never see it visually
+    // land at the drop point — holdDragAt would otherwise hold it there
+    // until the rejected move's timeout expires, which reads as "it moved,
+    // then snapped back" instead of "it never moved."
+    const allowed = canMoveEntity?.(current.entity);
 
     if (current.entity.kind === 'door') {
       // Clicking a door (occupied or not) always offers to open it. Dragging
       // only repositions it when nothing is currently standing on it.
-      if (isClick && !isHost) onEnterDoor?.(current.entity);
-      else if (!isClick && !current.locked && found) {
+      if (isClick && !isHost) {
+        setDragPos(null);
+        onEnterDoor?.(current.entity);
+      } else if (allowed && !isClick && !current.locked && found) {
         const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+        holdDragAt(current.id, size, col, row, found.island.id, found);
         onMoveEntity(current.id, col, row, found.island.id);
+      } else {
+        setDragPos(null);
       }
       return;
     }
 
-    if (!found) return; // dropped in the empty space between islands — invalid, leave it where it was
+    if (!allowed || !found) {
+      setDragPos(null); // not this viewer's token to move, or dropped in the empty space between islands — leave it where it was
+      return;
+    }
     const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+    holdDragAt(current.id, size, col, row, found.island.id, found);
     onMoveEntity(current.id, col, row, found.island.id);
     // Landing a hero token on a door's square (via an actual drag, not a
     // bare click/reselect) offers to walk through it.
@@ -250,6 +295,17 @@ export default function MapBoard({
       }
     }
   }
+
+  // Releases a held drop once the authoritative entity position (from
+  // `entities`) actually matches where we're holding it — see holdDragAt.
+  useEffect(() => {
+    if (dragPos?.pendingCol === undefined) return;
+    const entity = entities[dragPos.id];
+    if (!entity || (entity.col === dragPos.pendingCol && entity.row === dragPos.pendingRow && entity.islandId === dragPos.pendingIslandId)) {
+      clearTimeout(dragHoldTimeoutRef.current);
+      setDragPos(null);
+    }
+  }, [entities, dragPos]);
 
   // ---- Island dragging / selection ----
   // Entirely pointer-driven (not the native click event) so click-vs-drag
@@ -432,6 +488,12 @@ export default function MapBoard({
     }
   }
 
+  // Report the live measurement upward so the HUD can show it.
+  const rulerFeet = rulerLine ? rulerLine.feet : null;
+  useEffect(() => {
+    onRulerChange?.(rulerFeet);
+  }, [rulerFeet, onRulerChange]);
+
   return (
     <div
       ref={wrapRef}
@@ -555,7 +617,7 @@ export default function MapBoard({
                 left: cx - size / 2,
                 top: cy - size / 2,
                 backgroundImage: `url(${entity.imageUrl})`,
-                borderColor: entity.color || 'rgba(0,0,0,0.55)',
+                '--token-color': entity.color || 'transparent',
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
               onClick={(e) => e.stopPropagation()}
@@ -567,6 +629,14 @@ export default function MapBoard({
                   👢{entity.initiativeTurn}
                 </span>
               )}
+              {entity.kind !== 'door' && entity.maxHp ? (
+                <span className="token-hpbar" aria-hidden="true">
+                  <span
+                    className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`}
+                    style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
+                  />
+                </span>
+              ) : null}
               {entity.kind !== 'door' && entity.maxHp ? (
                 <span className="token-hp">
                   {entity.hp}/{entity.maxHp}

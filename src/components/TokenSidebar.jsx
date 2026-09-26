@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { DEFAULT_HEROES, DEFAULT_MOBS, makeIconDataUrl } from '../data/defaultTokens.js';
+import ModalIcon from './ModalIcon.jsx';
+import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
@@ -9,30 +10,30 @@ import DiceInput from './DiceInput.jsx';
 
 const TOKEN_IMAGE_MAX_DIM = 256; // tokens render small; no need to keep a multi-megapixel upload
 
-// An expand/collapse wrapper for one block of the sidebar (Add your own
-// image / Default heroes / Default monsters / Doors) — each opens and
-// closes independently so a long token gallery doesn't force scrolling
-// past sections you don't currently need.
-function CollapsibleSection({ title, defaultOpen = true, children }) {
-  const [open, setOpen] = useState(defaultOpen);
+// One captioned block of the sidebar (Default heroes / Default monsters /
+// Placeable / Add your own image). Always open — the palette is short enough
+// to read at a glance, so there is nothing to fold away.
+function SidebarSection({ title, children }) {
   return (
-    <div className="sidebar-section">
-      <button type="button" className="sidebar-section-header" onClick={() => setOpen((o) => !o)}>
-        <span>{title}</span>
-        <span className="sidebar-section-chevron">{open ? '▾' : '▸'}</span>
-      </button>
-      {open && <div className="sidebar-section-body">{children}</div>}
-    </div>
+    <section className="sidebar-block">
+      <div className="cap">{title}</div>
+      {children}
+    </section>
+  );
+}
+
+// A token card is one button: the whole tile places the token on the map.
+function TokenCard({ name, imageUrl, shape, onPlace }) {
+  return (
+    <button type="button" className={`token-card ${shape}`} aria-label={`Place ${name}`} onClick={onPlace}>
+      <img src={imageUrl} alt="" />
+      <span>{name}</span>
+    </button>
   );
 }
 
 export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed }) {
   const fileInputRef = useRef(null);
-  // DM-authored monsters from Toolbar's Asset Storage modal (36_custom_assets.sql)
-  // — shown in their own section, alongside (never instead of) Default monsters.
-  const customMonsters = Object.values(customAssets || {})
-    .filter((item) => item.assetType === 'monster')
-    .map((item) => ({ id: item.id, ...item.data }));
   const [pendingKind, setPendingKind] = useState('hero');
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
   const [placeableKind, setPlaceableKind] = useState('door');
@@ -48,11 +49,10 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
   if (collapsed) {
     return (
       <div className="panel collapsed">
-        <div className="panel-header">
-          <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Expand tokens panel">
-            »
-          </button>
-        </div>
+        <button type="button" className="panel-rail" onClick={onToggleCollapsed} title="Expand tokens panel">
+          <span className="panel-rail-chevron" aria-hidden="true">»</span>
+          <span className="panel-rail-label">Tokens</span>
+        </button>
       </div>
     );
   }
@@ -152,104 +152,35 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
     <div className="panel">
       <div className="panel-header">
         <span>Tokens</span>
+        <span className="panel-header-note">DM only</span>
         <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse tokens panel">
           «
         </button>
       </div>
-      <div className="panel-scroll">
-        <CollapsibleSection title="Add your own image">
-          <div className="two-col" style={{ marginBottom: 10 }}>
-            <button
-              className={`tool-btn ${pendingKind === 'hero' ? 'active' : ''}`}
-              onClick={() => setPendingKind('hero')}
-            >
-              Hero
-            </button>
-            <button
-              className={`tool-btn ${pendingKind === 'mob' ? 'active' : ''}`}
-              onClick={() => setPendingKind('mob')}
-            >
-              Monster
-            </button>
-          </div>
-          <button className="upload-drop btn-block" onClick={() => fileInputRef.current?.click()} style={{ border: '1px dashed var(--ink-700)', background: 'transparent', color: 'var(--parchment-300)', width: '100%' }}>
-            Upload image &amp; place on map
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChosen} />
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Default heroes">
+      <div className="panel-scroll sidebar-blocks">
+        <SidebarSection title="Default heroes">
           <div className="token-grid">
             {DEFAULT_HEROES.map((h) => (
-              <div className="token-card" key={h.key}>
-                <img src={h.imageUrl} alt={h.name} />
-                <span>{h.name}</span>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() =>
-                    onAddEntity({ kind: 'hero', name: h.name, imageUrl: h.imageUrl, color: h.color, maxHp: 20 })
-                  }
-                >
-                  Place
-                </button>
-              </div>
+              <TokenCard
+                key={h.key}
+                name={h.name}
+                imageUrl={h.imageUrl}
+                shape="round"
+                onPlace={() => onAddEntity({ kind: 'hero', name: h.name, imageUrl: h.imageUrl, color: h.color, maxHp: 20 })}
+              />
             ))}
           </div>
-        </CollapsibleSection>
+        </SidebarSection>
 
-        <CollapsibleSection title="Default monsters">
-          <div className="token-grid">
-            {DEFAULT_MOBS.map((m) => (
-              <div className="token-card" key={m.key}>
-                <img src={m.imageUrl} alt={m.name} />
-                <span>{m.name}</span>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() =>
-                    onAddEntity({ kind: 'mob', name: m.name, imageUrl: m.imageUrl, color: m.color, maxHp: 15, mobKey: m.key })
-                  }
-                >
-                  Place
-                </button>
-              </div>
-            ))}
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Custom monsters">
-          {customMonsters.length === 0 ? (
-            <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-              No custom monsters yet — add some from Asset Storage in the toolbar.
-            </p>
-          ) : (
-            <div className="token-grid">
-              {customMonsters.map((m) => (
-                <div className="token-card" key={m.id}>
-                  <img src={m.imageUrl} alt={m.name} />
-                  <span>{m.name}</span>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() =>
-                      onAddEntity({ kind: 'mob', name: m.name, imageUrl: m.imageUrl, color: m.color, maxHp: m.maxHp || 15 })
-                    }
-                  >
-                    Place
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Placeable">
-          <div className="two-col" style={{ marginBottom: 10, gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            <button className={`tool-btn ${placeableKind === 'door' ? 'active' : ''}`} onClick={() => setPlaceableKind('door')}>
+        <SidebarSection title="Placeable">
+          <div className="side-btn-row">
+            <button className={`side-btn${placeableKind === 'door' ? ' active' : ''}`} aria-pressed={placeableKind === 'door'} onClick={() => setPlaceableKind('door')}>
               Door
             </button>
-            <button className={`tool-btn ${placeableKind === 'chest' ? 'active' : ''}`} onClick={() => setPlaceableKind('chest')}>
+            <button className={`side-btn${placeableKind === 'chest' ? ' active' : ''}`} aria-pressed={placeableKind === 'chest'} onClick={() => setPlaceableKind('chest')}>
               Chest
             </button>
-            <button className={`tool-btn ${placeableKind === 'trap' ? 'active' : ''}`} onClick={() => setPlaceableKind('trap')}>
+            <button className={`side-btn${placeableKind === 'trap' ? ' active' : ''}`} aria-pressed={placeableKind === 'trap'} onClick={() => setPlaceableKind('trap')}>
               Trap
             </button>
           </div>
@@ -310,14 +241,30 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
               </button>
             </>
           )}
-        </CollapsibleSection>
+        </SidebarSection>
+
+        <SidebarSection title="Add your own image">
+          <div className="side-btn-row two">
+            <button type="button" className={`side-btn${pendingKind === 'hero' ? ' active' : ''}`} aria-pressed={pendingKind === 'hero'} onClick={() => setPendingKind('hero')}>
+              Hero
+            </button>
+            <button type="button" className={`side-btn${pendingKind === 'mob' ? ' active' : ''}`} aria-pressed={pendingKind === 'mob'} onClick={() => setPendingKind('mob')}>
+              Monster
+            </button>
+          </div>
+          <button type="button" className="add-image-drop" onClick={() => fileInputRef.current?.click()}>
+            Add your own image
+            <span>PNG or JPG, placed on the map</span>
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChosen} />
+        </SidebarSection>
       </div>
 
       {showTrapModal && (
         <div className="book-backdrop" onClick={() => setShowTrapModal(false)}>
           <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
             <div className="book-card-header">
-              <span className="book-title">&#9888;&#65039; Configure Trap</span>
+              <span className="book-title"><ModalIcon name="warn" />Configure Trap</span>
               <button className="popover-close" onClick={() => setShowTrapModal(false)} aria-label="Close" title="Close">
                 ×
               </button>
@@ -409,7 +356,7 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
           <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
             <div className="book-card-header">
               <span className="book-title">
-                📦 Configure {CHEST_SIZES.find((s) => s.key === chestSize)?.label} Chest
+                <ModalIcon name="box" />Configure {CHEST_SIZES.find((s) => s.key === chestSize)?.label} Chest
               </span>
               <button className="popover-close" onClick={() => setShowChestModal(false)} aria-label="Close" title="Close">
                 ×

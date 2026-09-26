@@ -38,7 +38,61 @@ export async function uploadImage(file, bucket, tableId, maxDim = 512) {
   return data.publicUrl;
 }
 
-const TABLE_STORAGE_BUCKETS = ['token-art', 'map-backgrounds'];
+// REQ-009 Synced Table Audio. The bucket (38_synced_table_audio.sql) enforces
+// the same limit and MIME allow-list server-side; this is the friendly check.
+export const AUDIO_BUCKET = 'table-audio';
+export const AUDIO_MAX_BYTES = 10 * 1024 * 1024;
+const AUDIO_TYPES = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav' };
+
+// Returns an error message, or null when the file is an acceptable MP3/WAV.
+export function validateAudioFile(file) {
+  const ext = file.name?.split('.').pop()?.toLowerCase();
+  const typeOk = Boolean(AUDIO_TYPES[file.type]) || (!file.type && (ext === 'mp3' || ext === 'wav'));
+  if (!typeOk) return 'Only MP3 or WAV files are supported.';
+  if (file.size > AUDIO_MAX_BYTES) return `That file is ${(file.size / 1048576).toFixed(1)} MB — the limit is 10 MB.`;
+  return null;
+}
+
+// Cloud tables cap total audio at 50 MB (enforced by the database, see
+// 41_audio_quota.sql); guest tables have no row to enforce it on, so the same
+// cap is checked client-side only.
+export const AUDIO_TABLE_QUOTA_BYTES = 50 * 1024 * 1024;
+
+function audioMime(file) {
+  return AUDIO_TYPES[file.type] ? file.type : file.name.toLowerCase().endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
+}
+
+/**
+ * A guest DM's audio is never uploaded anywhere: it plays from a blob URL in
+ * their own tab, so only they hear it. Same shape as uploadAudio's result.
+ */
+export function localAudioFile(file) {
+  return { url: URL.createObjectURL(file), storagePath: '', mime: audioMime(file), sizeBytes: file.size };
+}
+
+/**
+ * Uploads an audio file to `table-audio/${tableId}/...` and returns what a
+ * track record needs. Host-only (enforced by the bucket's insert policy).
+ */
+export async function uploadAudio(file, tableId) {
+  const error = validateAudioFile(file);
+  if (error) throw new Error(error);
+  const mime = audioMime(file);
+  const path = `${tableId}/${randomFileName(AUDIO_TYPES[mime])}`;
+  const { error: uploadError } = await supabase.storage.from(AUDIO_BUCKET).upload(path, file, { contentType: mime, upsert: false });
+  if (uploadError) throw new Error(`upload to ${AUDIO_BUCKET}: ${uploadError.message}`);
+  const { data } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(path);
+  return { url: data.publicUrl, storagePath: path, mime, sizeBytes: file.size };
+}
+
+export async function removeAudioFiles(storagePaths) {
+  const paths = storagePaths.filter(Boolean);
+  if (!paths.length) return;
+  const { error } = await supabase.storage.from(AUDIO_BUCKET).remove(paths);
+  if (error) console.error('removeAudioFiles:', error.message);
+}
+
+const TABLE_STORAGE_BUCKETS = ['token-art', 'map-backgrounds', AUDIO_BUCKET];
 const STORAGE_LIST_PAGE_SIZE = 100; // Supabase Storage's own default page size
 
 // Pages through every object under `${tableId}/` in one bucket — `.list()`

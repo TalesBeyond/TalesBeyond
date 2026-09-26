@@ -35,6 +35,69 @@ export function createInitialLayer(overrides = {}) {
   };
 }
 
+// REQ-009: deleting a layer, island or token removes the sounds attached to it.
+// Rather than teach each REMOVE_* case, every one is followed by this pass,
+// which drops any track whose target no longer exists and clears the
+// nowPlaying/resume entries that pointed at it.
+const AUDIO_CASCADE_ACTIONS = new Set(['REMOVE_LAYER', 'REMOVE_ISLAND', 'REMOVE_ENTITY']);
+
+function audioTargetExists(state, track) {
+  switch (track.targetKind) {
+    case 'layer':
+      return Boolean(state.layers[track.targetId]);
+    case 'island':
+      return Object.values(state.layers).some((layer) => layer.islands?.[track.targetId]);
+    case 'entity':
+      return Boolean(state.entities[track.targetId]);
+    default:
+      return true; // world music belongs to the table itself
+  }
+}
+
+export function pruneAudio(audio, doomedIds) {
+  if (!doomedIds.length) return audio;
+  const doomed = new Set(doomedIds);
+  const tracks = {};
+  for (const [id, track] of Object.entries(audio.tracks)) if (!doomed.has(id)) tracks[id] = track;
+  const resume = {};
+  for (const [id, offset] of Object.entries(audio.playback.resume || {})) if (!doomed.has(id)) resume[id] = offset;
+  const nowPlaying = audio.playback.nowPlaying && doomed.has(audio.playback.nowPlaying.trackId) ? null : audio.playback.nowPlaying;
+  return {
+    tracks,
+    trackOrder: audio.trackOrder.filter((id) => !doomed.has(id)),
+    playback: { nowPlaying, resume },
+  };
+}
+
+function reconcileAudio(state) {
+  if (!state.audio) return state;
+  const doomed = Object.values(state.audio.tracks)
+    .filter((track) => !audioTargetExists(state, track))
+    .map((track) => track.id);
+  return doomed.length ? { ...state, audio: pruneAudio(state.audio, doomed) } : state;
+}
+
+function reducer(state, action) {
+  const next = baseReducer(state, action);
+  return next !== state && AUDIO_CASCADE_ACTIONS.has(action.type) ? reconcileAudio(next) : next;
+}
+
+// The tracks (and resulting audio slice) a REMOVE_* action would take with it,
+// so the host can delete their database rows and Storage files too.
+export function previewAudioCascade(state, action) {
+  const next = reducer(state, action);
+  const removed = Object.values(state.audio?.tracks || {}).filter((track) => !next.audio?.tracks?.[track.id]);
+  return { removed, audio: next.audio };
+}
+
+const EMPTY_AUDIO = { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } };
+
+// A null/partial playback value (no column yet, or a row nobody has played on)
+// becomes the empty shape every consumer can rely on.
+export function normalizePlayback(playback) {
+  return { nowPlaying: playback?.nowPlaying ?? null, resume: playback?.resume ?? {} };
+}
+
 export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }) {
   const baseLayer = createInitialLayer();
   return {
@@ -68,6 +131,11 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     // of — the static WEAPONS/ITEMS/DEFAULT_MOBS catalogs.
     customAssets: {},
     customAssetOrder: [],
+    // REQ-009 Synced Table Audio: `tracks` keyed by id, `trackOrder` for
+    // stable listing, `playback` = { nowPlaying: { trackId, anchorMs,
+    // offsetMs } | null, resume: { [trackId]: offsetMs } } — see
+    // 38_synced_table_audio.sql. Cloud tables only in Slice 1.
+    audio: { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } },
     players: {
       [hostPlayerId]: {
         id: hostPlayerId,
@@ -82,7 +150,7 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
   };
 }
 
-function reducer(state, action) {
+function baseReducer(state, action) {
   switch (action.type) {
     case 'HYDRATE':
       return action.state;
@@ -328,6 +396,9 @@ function reducer(state, action) {
             col: action.col,
             row: action.row,
             ...(action.islandId ? { islandId: action.islandId } : {}),
+            // Only set by confirmEnterDoor, to carry a hero across to a
+            // door's other layer along with its col/row/islandId.
+            ...(action.layerId ? { layerId: action.layerId } : {}),
           },
         },
       };
@@ -353,6 +424,31 @@ function reducer(state, action) {
           : [...(state.customAssetOrder || []), action.item.id],
       };
     }
+
+    case 'SET_AUDIO_TRACK': {
+      const audio = state.audio || EMPTY_AUDIO;
+      const alreadyPresent = Boolean(audio.tracks[action.track.id]);
+      return {
+        ...state,
+        audio: {
+          ...audio,
+          tracks: { ...audio.tracks, [action.track.id]: action.track },
+          trackOrder: alreadyPresent ? audio.trackOrder : [...audio.trackOrder, action.track.id],
+        },
+      };
+    }
+
+    case 'REMOVE_AUDIO_TRACK': {
+      const audio = state.audio || EMPTY_AUDIO;
+      const { [action.id]: _removed, ...tracks } = audio.tracks;
+      return {
+        ...state,
+        audio: { ...audio, tracks, trackOrder: audio.trackOrder.filter((id) => id !== action.id) },
+      };
+    }
+
+    case 'SET_AUDIO_PLAYBACK':
+      return { ...state, audio: { ...(state.audio || EMPTY_AUDIO), playback: normalizePlayback(action.playback) } };
 
     case 'REMOVE_CUSTOM_ASSET': {
       const { [action.id]: _removed, ...rest } = state.customAssets || {};

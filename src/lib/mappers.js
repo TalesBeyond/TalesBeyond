@@ -201,6 +201,40 @@ export function mapDbCustomAsset(row) {
   };
 }
 
+// Audio tracks (38_synced_table_audio.sql). `targetId` is text so the world
+// track can use the table's own id and later kinds can use layer/island/entity
+// ids without a per-kind column.
+export function mapDbAudioTrack(row) {
+  return {
+    id: row.id,
+    targetKind: row.target_kind,
+    targetId: row.target_id,
+    name: row.name,
+    url: row.url,
+    storagePath: row.storage_path,
+    mime: row.mime,
+    sizeBytes: Number(row.size_bytes),
+    baseVolume: row.base_volume ?? 1,
+    loop: row.loop ?? true,
+  };
+}
+
+export function audioTrackToDb(tableId, track) {
+  return {
+    id: track.id,
+    table_id: tableId,
+    target_kind: track.targetKind,
+    target_id: track.targetId,
+    name: track.name,
+    url: track.url,
+    storage_path: track.storagePath,
+    mime: track.mime,
+    size_bytes: track.sizeBytes,
+    base_volume: track.baseVolume ?? 1,
+    loop: track.loop ?? true,
+  };
+}
+
 export function mapDbPlayer(row) {
   return {
     id: row.id,

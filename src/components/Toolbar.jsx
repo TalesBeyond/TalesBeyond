@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import ModalIcon from './ModalIcon.jsx';
+import ModalShell from './ModalShell.jsx';
+import DiceModal from './DiceModal.jsx';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
@@ -8,11 +11,15 @@ import { defaultCharacterSheet, normalizeEquipment, normalizeCurrency, newEquipm
 import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
+import SoundField from './SoundField.jsx';
+import CompendiumBook from './CompendiumBook.jsx';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
-function newDiceSet(overrides = {}) {
-  return { id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, title: '', sides: 20, quantity: 1, ...overrides };
+function formatCountdown(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // A small square icon card — the toolbar's basic unit. Every action (tool
@@ -32,7 +39,10 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
 // ToolCards below it. Closes on an outside click or Escape. `popovers` render
 // in the same relatively-positioned wrapper, so a menu item can hand off to a
 // popover that opens exactly where the menu was.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children }) {
+// `align="end"` opens the menu leftward from the trigger's right edge — for
+// entries near the right end of the bar, whose menus would otherwise run
+// off-screen.
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', align }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -52,9 +62,9 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
   }, [open, onClose]);
 
   return (
-    <div className="toolbar-group" ref={ref}>
+    <div className={`toolbar-group ${className}`} ref={ref}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} />
-      {open && <div className="toolbar-menu">{children}</div>}
+      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}`}>{children}</div>}
       {popovers}
     </div>
   );
@@ -70,7 +80,63 @@ function CodeChip({ caption, value, copied, onCopy, title }) {
   );
 }
 
-const TOOL_ICONS = { play: '✥', edit: '✎', pan: '✋', ruler: '↔', group: '⛓' };
+const ICON_PATHS = {
+  tools: 'M5 3l10 7-5 1-2 5z',
+  play: 'M5 3l10 7-5 1-2 5z',
+  edit: 'M4 16l1-4L14 3l3 3-9 9zM12 5l3 3',
+  pan: 'M10 2v16M2 10h16M10 2L7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5',
+  ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
+  group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
+  storage: 'M3 6h14v3H3zM4 9v8h12V9M8 12h4',
+  layout: 'M3 3h14v14H3zM3 10h14M10 3v14',
+  recenter: 'M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3',
+  mapping: 'M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM13 7l-2 4-4 2 2-4z',
+  map: 'M2 5l5-2 6 2 5-2v12l-5 2-6-2-5 2zM7 3v12M13 5v12',
+  islands: 'M3 16h14M5 16c0-4 2-7 5-7s5 3 5 7',
+  layers: 'M10 3l8 4-8 4-8-4zM2 11l8 4 8-4M2 14l8 4 8-4',
+  world: 'M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM2 10h16M10 2c-3 3-3 13 0 16M10 2c3 3 3 13 0 16',
+  clock: 'M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM10 5v5l3 2',
+  daynight: 'M15 11a6 6 0 1 1-6-8 5 5 0 0 0 6 8z',
+  library: 'M4 3h9a3 3 0 0 1 3 3v11H7a3 3 0 0 1-3-3zM4 14a3 3 0 0 1 3-3h9',
+  weapons: 'M16 3h1v1L9 12l-3 1 1-3zM5 14l-2 2M4 12l4 4',
+  items: 'M3 6l7-3 7 3v8l-7 3-7-3zM3 6l7 3 7-3M10 9v8',
+  initiative: 'M4 5h12M4 10h12M4 15h8',
+  music: 'M8 15V4l8-2v11M8 15a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 13a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
+  dice: 'M4 4h12v12H4zM7.5 7.5h.01M12.5 12.5h.01M12.5 7.5h.01M7.5 12.5h.01',
+  refresh: 'M16 10a6 6 0 1 1-2-4.5M16 3v3.5h-3.5',
+  config: 'M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4',
+  save: 'M4 3h10l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5',
+  export: 'M10 3v10M6 9l4 4 4-4M4 17h12',
+  import: 'M10 13V3M6 7l4-4 4 4M4 17h12',
+  lock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 6 0v3',
+  unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
+  leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
+  timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
+  invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
+};
+
+// How the bar sheds width when it can't fit on one row, cheapest first. Each
+// step keeps everything the previous one applied; the tokens are matched in
+// CSS with [data-density~='…'].
+const TOOLBAR_DENSITIES = ['', 'codes', 'codes icons', 'codes icons tight'];
+
+// Line icons for the toolbar (replaces the old emoji glyphs so the bar reads
+// as one consistent set and follows the palette's text color).
+function Icon({ name }) {
+  return (
+    <svg className="tool-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
+const TOOL_ICONS = {
+  play: <Icon name="play" />,
+  edit: <Icon name="edit" />,
+  pan: <Icon name="pan" />,
+  ruler: <Icon name="ruler" />,
+  group: <Icon name="group" />,
+};
 const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands' };
 
 export default function Toolbar({
@@ -86,8 +152,11 @@ export default function Toolbar({
   onRegenerateCode,
   onToggleOpen,
   onSaveNow,
+  autosaveSecondsLeft,
   clock,
   onOpenClock,
+  audio,
+  onOpenMusic,
   onSetClockRunning,
   dayPhase,
   dayNightOverride,
@@ -118,15 +187,11 @@ export default function Toolbar({
   initiativeMobs,
   onRollInitiative,
   customAssets,
+  onAddEntity,
   onAddCustomAsset,
   onRemoveCustomAsset,
   collapsed,
   onToggleCollapsed,
-  zoom,
-  onZoomIn,
-  onZoomOut,
-  onZoomReset,
-  onRecenter,
 }) {
   const importRef = useRef(null);
   // Only one popover open at a time — clicking a card closes the others and
@@ -138,17 +203,59 @@ export default function Toolbar({
   const [showInitiative, setShowInitiative] = useState(false);
   const [showCompendium, setShowCompendium] = useState(false);
   const [showItemCompendium, setShowItemCompendium] = useState(false);
+  const [showMonsterCompendium, setShowMonsterCompendium] = useState(false);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   const [showDayNight, setShowDayNight] = useState(false);
-  // Which grouped menu (tools / layout / mapping / world / library) is open.
+  // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
-  // Lifted out of DiceRollerPopover so the roll log and saved dice sets
+  // Lifted out of DiceModal so the roll log and saved dice sets
   // survive closing and reopening the popover, instead of resetting every
   // time it unmounts.
   const [diceRolls, setDiceRolls] = useState([]);
-  const [diceSets, setDiceSets] = useState([newDiceSet({ title: 'Quick roll' })]);
+  const [diceSaved, setDiceSaved] = useState([]);
+
+  // Keep the bar on a single row: try each density from roomiest to
+  // tightest and settle on the first where Leave (always the last item) ends
+  // inside the bar. Only if even the tightest overflows is it allowed to wrap.
+  // Written straight onto the DOM node, before paint, so there is no flash
+  // of the wrong density and no extra render.
+  const barRef = useRef(null);
+  const leaveRef = useRef(null);
+  const fitToolbar = useCallback(() => {
+    const bar = barRef.current;
+    const leave = leaveRef.current;
+    if (!bar || !leave) return;
+    delete bar.dataset.overflow;
+    for (const density of TOOLBAR_DENSITIES) {
+      bar.dataset.density = density;
+      const limit = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
+      if (leave.getBoundingClientRect().right <= limit + 0.5) return;
+    }
+    bar.dataset.overflow = 'wrap';
+  }, []);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar || typeof ResizeObserver === 'undefined') return undefined;
+    // Only refit on a width change: a density swap changes the bar's height,
+    // and reacting to that would just recompute the same answer.
+    let lastWidth = null;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      if (width === lastWidth) return;
+      lastWidth = width;
+      fitToolbar();
+    });
+    observer.observe(bar);
+    // Web fonts landing late change every label's width.
+    document.fonts?.ready.then(fitToolbar);
+    return () => observer.disconnect();
+  }, [collapsed, fitToolbar]);
+
+  // Content that changes the bar's width without resizing it.
+  useLayoutEffect(fitToolbar, [fitToolbar, collapsed, isHost, isGuestHost, Boolean(clock), dayPhase, lastSavedLabel, session.isOpen]);
 
   function closePopovers() {
     setShowMapSettings(false);
@@ -243,9 +350,43 @@ export default function Toolbar({
   const customWeapons = Object.values(customAssets || {})
     .filter((item) => item.assetType === 'weapon')
     .map((item) => ({ id: item.id, ...item.data }));
+  const customMonsters = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'monster')
+    .map((item) => ({ id: item.id, ...item.data }));
   const customItems = Object.values(customAssets || {})
     .filter((item) => item.assetType === 'item')
     .map((item) => ({ id: item.id, ...item.data }));
+
+  const codeChips = isHost && (
+    <>
+      <CodeChip
+        caption="Player code"
+        value={session.code}
+        copied={copied}
+        onCopy={copyCode}
+        title="Click to copy the invite code players join with"
+      />
+      <CodeChip
+        caption={isGuestHost ? 'DM code' : 'Host key'}
+        value={session.hostKey}
+        copied={copiedHostKey}
+        onCopy={copyHostKey}
+        title={
+          isGuestHost
+            ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
+            : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
+        }
+      />
+      {/* Regenerating isn't supported for a guest table (GameView.jsx's
+          regenerateCode just alerts and bails — the invite code doubles
+          as the peer broadcast channel's name, so rotating it would
+          strand anyone already connected) — hide the button rather than
+          offer a dead end. */}
+      {!isGuestHost && (
+        <ToolCard icon={<Icon name="refresh" />} label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
+      )}
+    </>
+  );
 
   if (collapsed) {
     return (
@@ -258,7 +399,7 @@ export default function Toolbar({
   }
 
   return (
-    <div className="toolbar">
+    <div className="toolbar" ref={barRef}>
       <button className="toolbar-collapse-btn" onClick={onToggleCollapsed} title="Collapse toolbar">
         ▴
       </button>
@@ -266,7 +407,7 @@ export default function Toolbar({
       {/* The trigger shows the active tool's icon, so the current mode is
           still visible with the menu folded away. */}
       <ToolMenu
-        icon={TOOL_ICONS[tool] || '🛠'}
+        icon={TOOL_ICONS[tool] || <Icon name="tools" />}
         label="Tools"
         title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
         active={showAssetStorage}
@@ -312,7 +453,7 @@ export default function Toolbar({
               title="Select 2+ islands to bundle into a group that moves and titles as one"
             />
             <ToolCard
-              icon="🗃"
+              icon={<Icon name="storage" />}
               label="Storage"
               active={showAssetStorage}
               onClick={() => togglePopover('assetStorage')}
@@ -322,23 +463,9 @@ export default function Toolbar({
         )}
       </ToolMenu>
 
-      <ToolMenu
-        icon="🔍"
-        label="Layout"
-        title="Zoom and recenter the map"
-        open={openMenu === 'layout'}
-        onToggle={() => toggleMenu('layout')}
-        onClose={closeMenu}
-      >
-        <ToolCard icon="−" label="Zoom out" onClick={onZoomOut} title="Zoom out" />
-        <ToolCard icon={`${Math.round((zoom ?? 1) * 100)}%`} label="Reset" onClick={onZoomReset} title="Reset zoom to 100%" />
-        <ToolCard icon="+" label="Zoom in" onClick={onZoomIn} title="Zoom in" />
-        <ToolCard icon="◎" label="Recenter" onClick={onRecenter} title="Scroll back to the currently selected island" />
-      </ToolMenu>
-
       {isHost && (
         <ToolMenu
-          icon="🧭"
+          icon={<Icon name="mapping" />}
           label="Mapping"
           title="Map settings, islands, and layers"
           active={showMapSettings || showIslands || showLayers}
@@ -352,6 +479,7 @@ export default function Toolbar({
                   layer={layer}
                   island={activeIsland}
                   isHost={isHost}
+                  audio={audio}
                   onLayerPatch={onLayerPatch}
                   onIslandPatch={onIslandPatch}
                   onBackgroundFile={handleBackgroundFile}
@@ -390,15 +518,15 @@ export default function Toolbar({
             </>
           }
         >
-          <ToolCard icon="🗺" label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
-          <ToolCard icon="🏝" label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
-          <ToolCard icon="🗂" label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
+          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
+          <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
+          <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
         </ToolMenu>
       )}
 
       {isHost && (
         <ToolMenu
-          icon="🌍"
+          icon={<Icon name="world" />}
           label="World state"
           title="In-game time and day / night"
           active={showDayNight}
@@ -417,9 +545,9 @@ export default function Toolbar({
             )
           }
         >
-          <ToolCard icon="🕒" label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
+          <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
           <ToolCard
-            icon={dayPhase ? '' : '🌓'}
+            icon={dayPhase ? '' : <Icon name="daynight" />}
             image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}
             label="Day / night"
             active={showDayNight}
@@ -443,86 +571,94 @@ export default function Toolbar({
       )}
 
       {isHost && (
-        <ToolMenu
-          icon="📚"
-          label="Library"
-          title="Weapon and item compendiums"
-          active={showCompendium || showItemCompendium}
-          open={openMenu === 'library'}
-          onToggle={() => toggleMenu('library')}
-          onClose={closeMenu}
-        >
-          <ToolCard icon="📖" label="Weapons" active={showCompendium} onClick={() => togglePopover('compendium')} title="Weapons Compendium" />
-          <ToolCard icon="📦" label="Items" active={showItemCompendium} onClick={() => togglePopover('itemCompendium')} title="Item Compendium" />
-        </ToolMenu>
+        <div className="toolbar-group">
+          <ToolCard
+            icon={<Icon name="library" />}
+            label="Compendium"
+            active={showCompendium || showItemCompendium || showMonsterCompendium}
+            onClick={() => {
+              const open = showCompendium || showItemCompendium || showMonsterCompendium;
+              setOpenMenu(null);
+              setShowCompendium(!open);
+              setShowItemCompendium(false);
+              setShowMonsterCompendium(false);
+            }}
+            title="Open the compendium of weapons, items, and monsters"
+          />
+        </div>
       )}
 
       {/* Initiative and dice stay one click away — no menu to open first.
           Everyone's dice tray is private to their own browser (see
-          diceSets/diceRolls above), so it isn't gated to the host. */}
+          diceSaved/diceRolls above), so it isn't gated to the host. */}
       <div className="toolbar-group">
         {isHost && (
           <ToolCard
-            icon="👢"
+            icon={<Icon name="initiative" />}
             label="Initiative"
             active={showInitiative}
             onClick={() => togglePopover('initiative')}
             title="Roll for Initiative"
           />
         )}
-        <ToolCard icon="🎲" label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
+        <ToolCard
+          icon={<Icon name="music" />}
+          label="Music"
+          active={Boolean(audio?.playback?.nowPlaying)}
+          disabled={!audio?.enabled}
+          onClick={onOpenMusic}
+          title={audio?.enabled ? 'Table music' : 'Music is available to the DM of a cloud or guest table only'}
+        />
+        <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
-          <DiceRollerPopover
-            sets={diceSets}
+          <DiceModal
+            saved={diceSaved}
             rolls={diceRolls}
-            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev])}
+            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev].slice(0, 50))}
             onClearRolls={() => setDiceRolls([])}
-            onAddSet={() => setDiceSets((prev) => [...prev, newDiceSet()])}
-            onUpdateSet={(id, patch) => setDiceSets((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))}
-            onRemoveSet={(id) => setDiceSets((prev) => prev.filter((s) => s.id !== id))}
-            onClearSets={() => setDiceSets([])}
+            onSave={(entry) => setDiceSaved((prev) => [...prev, entry])}
+            onRemoveSaved={(id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id))}
             onClose={() => setShowDice(false)}
           />
         )}
       </div>
 
+      {/* The codes sit in the bar when there's room; on a narrower bar the
+          same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
+          are always rendered — CSS shows one. */}
+      {isHost && <div className="toolbar-group toolbar-codes-inline">{codeChips}</div>}
       {isHost && (
-        <div className="toolbar-group">
-          <CodeChip
-            caption="Player code"
-            value={session.code}
-            copied={copied}
-            onCopy={copyCode}
-            title="Click to copy the invite code players join with"
-          />
-          <CodeChip
-            caption={isGuestHost ? 'DM code' : 'Host key'}
-            value={session.hostKey}
-            copied={copiedHostKey}
-            onCopy={copyHostKey}
-            title={
-              isGuestHost
-                ? 'Click to copy your private DM code — save it, along with an exported .json, to resume this table later via "Resume guest session" on the Landing screen'
-                : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
-            }
-          />
-          <ToolCard icon="🔄" label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
-        </div>
+        <ToolMenu
+          className="toolbar-codes-menu"
+          icon={<Icon name="invite" />}
+          label="Invite"
+          title="Player code and DM code — click a code to copy it"
+          open={openMenu === 'codes'}
+          onToggle={() => toggleMenu('codes')}
+          onClose={closeMenu}
+        >
+          {codeChips}
+        </ToolMenu>
       )}
 
-      {isHost && showCompendium && (
-        <WeaponsCompendiumModal
-          onClose={() => setShowCompendium(false)}
+      {isHost && (showCompendium || showItemCompendium || showMonsterCompendium) && (
+        <CompendiumBook
+          kind={showCompendium ? 'weapons' : showItemCompendium ? 'items' : 'monsters'}
+          onClose={() => {
+            setShowCompendium(false);
+            setShowItemCompendium(false);
+            setShowMonsterCompendium(false);
+          }}
+          onSwitchKind={(k) => {
+            setShowCompendium(k === 'weapons');
+            setShowItemCompendium(k === 'items');
+            setShowMonsterCompendium(k === 'monsters');
+          }}
+          onAddMonster={onAddEntity}
+          customMonsters={customMonsters}
           heroes={heroes || []}
           onGiveItem={giveItemToHero}
           customWeapons={customWeapons}
-        />
-      )}
-      {isHost && showItemCompendium && (
-        <ItemsCompendiumModal
-          onClose={() => setShowItemCompendium(false)}
-          heroes={heroes || []}
-          onGiveItem={giveItemToHero}
           customItems={customItems}
         />
       )}
@@ -545,25 +681,49 @@ export default function Toolbar({
 
       <div className="spacer" />
 
+      {/* Saved state over the autosave countdown, stacked so the pair costs
+          one narrow column instead of two side by side. */}
+      {isHost && (
+        <div className="toolbar-status">
+          {lastSavedLabel && (
+            <span className="toolbar-saved" role="status" title={lastSavedLabel}>
+              <span className="toolbar-saved-dot" aria-hidden="true" />
+              <span className="toolbar-saved-text">{lastSavedLabel}</span>
+            </span>
+          )}
+
+          {/* A host-only safety net alongside the manual Save inside
+              Configurations below — counts down from 5:00 and autosaves the
+              same way that button does, in case the DM forgets. */}
+          <span
+            className="autosave-countdown"
+            title={`Auto-saves in ${formatCountdown(autosaveSecondsLeft)} — the Save button in Configurations still works any time`}
+          >
+            <Icon name="timer" /> {formatCountdown(autosaveSecondsLeft)}
+          </span>
+        </div>
+      )}
+
       {/* The very last group: save/export/import/close/leave — the
           "shutting the book" actions, tucked away since they're reached for
           far less often than anything above. */}
       <ToolMenu
-        icon="⚙"
+        icon={<Icon name="config" />}
         label="Configurations"
         title="Save, export, import, close, and leave"
         open={openMenu === 'configurations'}
         onToggle={() => toggleMenu('configurations')}
         onClose={closeMenu}
+        align="end"
       >
         {isHost && (
           <>
-            <ToolCard icon="💾" label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
-            <ToolCard icon="⬇" label="Export" onClick={() => pick(onExport)} title="Export .json" />
-            <ToolCard icon="⬆" label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .json — overwrites the whole table" />
-            <input ref={importRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+            <ToolCard icon={<Icon name="save" />} label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
+            <ToolCard icon={<Icon name="export" />} label="Export" onClick={() => pick(onExport)} title="Export .bmp" />
+            <ToolCard icon={<Icon name="import" />} label="Import" onClick={() => pick(() => importRef.current?.click())} title="Import .bmp — overwrites the whole table" />
+            <input ref={importRef} type="file" accept="image/bmp,.bmp" style={{ display: 'none' }} onChange={handleImportFile} />
             <ToolCard
-              icon={session.isOpen ? '🔓' : '🔒'}
+              icon={<Icon name={session.isOpen ? 'unlock' : 'lock'} />}
               label={session.isOpen ? 'Close' : 'Reopen'}
               active={!session.isOpen}
               onClick={() => pick(onToggleOpen)}
@@ -571,8 +731,12 @@ export default function Toolbar({
             />
           </>
         )}
-        <ToolCard icon="🚪" label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />
       </ToolMenu>
+
+      <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
+        <Icon name="leave" />
+        <span className="toolbar-leave-label">Leave</span>
+      </button>
     </div>
   );
 }
@@ -694,7 +858,7 @@ function IslandConditionsField({ island, isHost, onPatch }) {
   );
 }
 
-function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
+function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
   const [rows, setRows] = useState(island.rows);
@@ -712,28 +876,7 @@ function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch
   }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 260,
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Map settings
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close map settings" title="Close">
-          ×
-        </button>
-      </div>
+    <ModalShell title="Map settings" icon="map" closeLabel="Close map settings" onClose={onClose}>
 
       <div className="section-label" style={{ marginTop: 0 }}>
         This island
@@ -753,6 +896,8 @@ function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch
       </div>
 
       <IslandConditionsField island={island} isHost={isHost} onPatch={onIslandPatch} />
+
+      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label="Layer sound (plays for players on this layer)" />
 
       <label className="field-label" style={{ marginTop: 10 }}>
         Day / night
@@ -798,7 +943,7 @@ function MapSettingsPopover({ layer, island, isHost, onLayerPatch, onIslandPatch
         </>
       )}
       {!isHost && <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>Only the host can change map settings.</p>}
-    </div>
+    </ModalShell>
   );
 }
 
@@ -825,28 +970,7 @@ function LayerSwitcherPopover({
   }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 280,
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Layers
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close layers panel" title="Close">
-          ×
-        </button>
-      </div>
+    <ModalShell title="Layers" icon="layers" closeLabel="Close layers panel" onClose={onClose}>
       {(layerOrder || []).map((id, i) => {
         const layer = layers?.[id];
         if (!layer) return null;
@@ -900,7 +1024,7 @@ function LayerSwitcherPopover({
       <button className="btn btn-primary btn-block" onClick={addLayer} style={{ marginTop: 8 }}>
         + Add layer
       </button>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -938,28 +1062,7 @@ function IslandManagerPopover({
   }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 280,
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Islands on this layer
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close islands panel" title="Close">
-          ×
-        </button>
-      </div>
+    <ModalShell title="Islands on this layer" icon="islands" closeLabel="Close islands panel" onClose={onClose}>
       {(islandOrder || []).map((id, i) => {
         const island = islands?.[id];
         if (!island) return null;
@@ -1030,7 +1133,7 @@ function IslandManagerPopover({
       <p className="footer-note" style={{ border: 'none', padding: '8px 0 0' }}>
         Drag an island's background on the map to reposition it.
       </p>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1054,156 +1157,6 @@ function GroupRow({ group, onRename, onUngroup }) {
           Ungroup
         </button>
       </div>
-    </div>
-  );
-}
-
-const DICE_TYPES = [4, 6, 8, 10, 12, 20, 100];
-
-function DiceRollerPopover({ sets, rolls, onRoll, onClearRolls, onAddSet, onUpdateSet, onRemoveSet, onClearSets, onClose }) {
-  function rollSet(set) {
-    const results = Array.from({ length: set.quantity }, () => 1 + Math.floor(Math.random() * set.sides));
-    const total = results.reduce((sum, n) => sum + n, 0);
-    onRoll({
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      title: set.title.trim() || `${set.quantity} × d${set.sides}`,
-      sides: set.sides,
-      quantity: set.quantity,
-      results,
-      total,
-    });
-  }
-
-  // Rolls every configured set in one go. Reversed so the history list (each
-  // onRoll prepends) ends up reading top-to-bottom in the same order the
-  // sets are listed, instead of backwards.
-  function rollAll() {
-    [...sets].reverse().forEach(rollSet);
-  }
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 54,
-        left: 0,
-        background: 'var(--ink-800)',
-        border: '1px solid var(--gold-line)',
-        borderRadius: 6,
-        padding: 16,
-        width: 300,
-        maxHeight: '70vh',
-        overflowY: 'auto',
-        zIndex: 100,
-        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-      }}
-    >
-      <div className="popover-header">
-        <span className="section-label" style={{ margin: 0 }}>
-          Roll the dice
-        </span>
-        <button className="popover-close" onClick={onClose} aria-label="Close dice roller" title="Close">
-          ×
-        </button>
-      </div>
-
-      <button
-        type="button"
-        className="btn btn-primary btn-block"
-        style={{ marginBottom: 10 }}
-        onClick={rollAll}
-        disabled={sets.length === 0}
-        title="Roll every set below at once"
-      >
-        🎲 Roll All ({sets.length})
-      </button>
-
-      {sets.map((set) => (
-        <div className="dice-set" key={set.id}>
-          <div className="dice-set-header">
-            <input
-              className="field dice-set-title"
-              placeholder="e.g. Attack roll"
-              value={set.title}
-              onChange={(e) => onUpdateSet(set.id, { title: e.target.value })}
-            />
-            <button
-              type="button"
-              className="btn btn-danger btn-sm"
-              title="Remove this set"
-              onClick={() => onRemoveSet(set.id)}
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="dice-type-row">
-            {DICE_TYPES.map((d) => (
-              <button
-                key={d}
-                type="button"
-                className={`dice-type-btn${set.sides === d ? ' active' : ''}`}
-                onClick={() => onUpdateSet(set.id, { sides: d })}
-              >
-                d{d}
-              </button>
-            ))}
-          </div>
-
-          <div className="dice-set-footer">
-            <input
-              type="number"
-              min={1}
-              max={20}
-              className="field dice-set-qty"
-              value={set.quantity}
-              onChange={(e) => onUpdateSet(set.id, { quantity: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1)) })}
-            />
-            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => rollSet(set)}>
-              Roll {set.quantity} × d{set.sides}
-            </button>
-          </div>
-        </div>
-      ))}
-
-      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-        <button type="button" className="btn btn-secondary btn-block" onClick={onAddSet}>
-          + Add another set
-        </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={onClearSets}
-          disabled={sets.length === 0}
-          title="Remove every dice set below"
-        >
-          Clear all dice
-        </button>
-      </div>
-
-      {rolls.length > 0 && (
-        <div className="dice-history">
-          <div className="popover-header" style={{ marginBottom: 4 }}>
-            <span className="section-label" style={{ margin: 0 }}>
-              Roll history
-            </span>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClearRolls} title="Clear roll history">
-              Clear
-            </button>
-          </div>
-          {rolls.map((r) => (
-            <div className="dice-roll-row" key={r.id}>
-              <div>
-                <span className="dice-roll-name">{r.title}</span>
-                <span className="dice-roll-detail">
-                  {r.quantity} × d{r.sides} ({r.results.join(', ')})
-                </span>
-              </div>
-              <span className="dice-roll-total">{r.total}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1248,7 +1201,7 @@ function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
     <div className="book-backdrop" onClick={onClose}>
       <div className="book-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="book-card-header">
-          <span className="book-title">👢 Roll for Initiative</span>
+          <span className="book-title"><ModalIcon name="bolt" />Roll for Initiative</span>
           <button className="popover-close" onClick={onClose} aria-label="Close initiative roller" title="Close">
             ×
           </button>
@@ -1327,187 +1280,6 @@ function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
               ))}
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function baseWeaponName(name) {
-  return name.replace(/^\+\d+ /, '');
-}
-
-function weaponDiceLabel(w) {
-  const mod = w.modifier ? (w.modifier > 0 ? `+${w.modifier}` : `${w.modifier}`) : '';
-  return `${w.numberOfDice}${w.diceType}${mod}`;
-}
-
-function formatCost(gp) {
-  if (gp >= 1) return `${Math.round(gp * 100) / 100} gp`;
-  const cp = Math.round(gp * 100);
-  return cp % 10 === 0 ? `${cp / 10} sp` : `${cp} cp`;
-}
-
-const WEAPON_TYPE_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'melee', label: 'Melee' },
-  { key: 'ranged', label: 'Ranged' },
-];
-
-function WeaponsCompendiumModal({ onClose, heroes, onGiveItem, customWeapons }) {
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-
-  // The DM's custom weapons (Asset Storage) render right alongside the
-  // built-in catalog — never in place of it.
-  const allWeapons = useMemo(() => [...WEAPONS, ...(customWeapons || [])], [customWeapons]);
-
-  const entries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return allWeapons.filter((w) => (typeFilter === 'all' || w.type === typeFilter) && (!q || w.name.toLowerCase().includes(q))).sort(
-      (a, b) => a.type.localeCompare(b.type) || baseWeaponName(a.name).localeCompare(baseWeaponName(b.name)) || a.modifier - b.modifier
-    );
-  }, [allWeapons, search, typeFilter]);
-
-  let lastType = null;
-
-  return (
-    <div className="book-backdrop" onClick={onClose}>
-      <div className="book-card" onClick={(e) => e.stopPropagation()}>
-        <div className="book-card-header">
-          <span className="book-title">📖 Weapons Compendium</span>
-          <button className="popover-close" onClick={onClose} aria-label="Close compendium" title="Close">
-            ×
-          </button>
-        </div>
-
-        <div className="book-controls">
-          <input className="field" placeholder="Search weapons…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <div className="book-type-filter">
-            {WEAPON_TYPE_FILTERS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`tool-btn ${typeFilter === t.key ? 'active' : ''}`}
-                onClick={() => setTypeFilter(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <span className="footer-note" style={{ border: 'none', padding: 0 }}>
-            {entries.length} of {allWeapons.length}
-          </span>
-        </div>
-
-        <div className="book-pages">
-          {entries.length === 0 && (
-            <p className="footer-note" style={{ border: 'none', color: 'var(--ink-700)' }}>
-              No weapons match.
-            </p>
-          )}
-          {entries.map((w) => {
-            const showHeading = w.type !== lastType;
-            lastType = w.type;
-            return (
-              <React.Fragment key={w.id || w.name}>
-                {showHeading && <div className="book-page-heading">{w.type === 'melee' ? 'Melee Weapons' : 'Ranged Weapons'}</div>}
-                <div className="compendium-entry">
-                  <div className="compendium-entry-top">
-                    <span className="compendium-entry-name">
-                      {w.name}
-                      {w.id && ' (Custom)'}
-                    </span>
-                    <span className="compendium-entry-meta">
-                      {weaponDiceLabel(w)} · {formatCost(w.cost)}
-                    </span>
-                  </div>
-                  <div className="compendium-entry-detail">{w.equipableClass.join(', ')}</div>
-                  <GiveButtons item={w} heroes={heroes} onGive={onGiveItem} />
-                </div>
-              </React.Fragment>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatWeight(lb) {
-  return lb > 0 ? `${lb} lb` : '—';
-}
-
-function ItemsCompendiumModal({ onClose, heroes, onGiveItem, customItems }) {
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-
-  // The DM's custom items (Asset Storage) render right alongside the
-  // built-in catalog — never in place of it.
-  const allItems = useMemo(() => [...ITEMS, ...(customItems || [])], [customItems]);
-
-  const entries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return allItems.filter((it) => (categoryFilter === 'all' || it.category === categoryFilter) && (!q || it.name.toLowerCase().includes(q))).sort(
-      (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
-    );
-  }, [allItems, search, categoryFilter]);
-
-  let lastCategory = null;
-
-  return (
-    <div className="book-backdrop" onClick={onClose}>
-      <div className="book-card" onClick={(e) => e.stopPropagation()}>
-        <div className="book-card-header">
-          <span className="book-title">📦 Item Compendium</span>
-          <button className="popover-close" onClick={onClose} aria-label="Close compendium" title="Close">
-            ×
-          </button>
-        </div>
-
-        <div className="book-controls">
-          <input className="field" placeholder="Search items…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <select className="field" style={{ maxWidth: 180, marginBottom: 0 }} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-            <option value="all">All categories</option>
-            {ITEM_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c[0].toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
-          <span className="footer-note" style={{ border: 'none', padding: 0 }}>
-            {entries.length} of {allItems.length}
-          </span>
-        </div>
-
-        <div className="book-pages">
-          {entries.length === 0 && (
-            <p className="footer-note" style={{ border: 'none', color: 'var(--ink-700)' }}>
-              No items match.
-            </p>
-          )}
-          {entries.map((it) => {
-            const showHeading = it.category !== lastCategory;
-            lastCategory = it.category;
-            return (
-              <React.Fragment key={it.id || it.name}>
-                {showHeading && <div className="book-page-heading">{it.category[0].toUpperCase() + it.category.slice(1)}</div>}
-                <div className="compendium-entry">
-                  <div className="compendium-entry-top">
-                    <span className="compendium-entry-name">
-                      {it.name}
-                      {it.id && ' (Custom)'}
-                    </span>
-                    <span className="compendium-entry-meta">
-                      {formatCost(it.cost)} · {formatWeight(it.weight)}
-                    </span>
-                  </div>
-                  <div className="compendium-entry-detail">{it.description}</div>
-                  <GiveButtons item={it} heroes={heroes} onGive={onGiveItem} />
-                </div>
-              </React.Fragment>
-            );
-          })}
         </div>
       </div>
     </div>
@@ -1602,7 +1374,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
     <div className="book-backdrop" onClick={onClose}>
       <div className="book-card" onClick={(e) => e.stopPropagation()}>
         <div className="book-card-header">
-          <span className="book-title">🗃 Asset Storage</span>
+          <span className="book-title"><ModalIcon name="archive" />Asset Storage</span>
           <button className="popover-close" onClick={onClose} aria-label="Close asset storage" title="Close">
             ×
           </button>
@@ -1861,69 +1633,3 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
   );
 }
 
-// Lets the DM hand a compendium entry (weapon or item — anything with a
-// `.name` and `.cost`) straight to a hero's Bag > Weapons & gear list.
-// "Buy" additionally deducts the cost from that hero's gold; "Give" is free.
-function GiveButtons({ item, heroes, onGive }) {
-  const [mode, setMode] = useState(null); // 'buy' | 'give' | null
-  const [heroId, setHeroId] = useState('');
-  const [feedback, setFeedback] = useState('');
-
-  function openMode(next) {
-    setMode(next);
-    setHeroId((heroes[0] && heroes[0].id) || '');
-  }
-
-  function confirm() {
-    const hero = heroes.find((h) => h.id === heroId);
-    if (!hero) return;
-    onGive(hero, item, mode === 'buy');
-    setFeedback(`${mode === 'buy' ? 'Sold to' : 'Given to'} ${hero.name}`);
-    setMode(null);
-    setTimeout(() => setFeedback(''), 2000);
-  }
-
-  return (
-    <div className="compendium-give">
-      <div className="compendium-give-actions">
-        <button
-          type="button"
-          className="compendium-give-btn"
-          disabled={heroes.length === 0}
-          title={heroes.length === 0 ? 'No heroes on the map yet' : `Buy for ${formatCost(item.cost)} and give to a hero`}
-          onClick={() => openMode('buy')}
-        >
-          Buy
-        </button>
-        <button
-          type="button"
-          className="compendium-give-btn"
-          disabled={heroes.length === 0}
-          title={heroes.length === 0 ? 'No heroes on the map yet' : 'Give to a hero for free'}
-          onClick={() => openMode('give')}
-        >
-          Give
-        </button>
-        {feedback && <span className="compendium-give-feedback">{feedback}</span>}
-      </div>
-      {mode && (
-        <div className="compendium-give-picker">
-          <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
-            {heroes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-                {h.ownerName ? ` (${h.ownerName})` : ''}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={confirm}>
-            {mode === 'buy' ? `Buy (${formatCost(item.cost)})` : 'Give'}
-          </button>
-          <button type="button" onClick={() => setMode(null)}>
-            ×
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}

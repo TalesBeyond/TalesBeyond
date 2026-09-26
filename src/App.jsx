@@ -9,11 +9,17 @@ import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { ensureAnonymousSession } from './lib/auth.js';
 import { fetchTableSnapshot } from './lib/remoteApi.js';
 import { useTheme } from './state/theme.js';
+import { loadCatalog } from './lib/catalog.js';
 
 export default function App() {
   const [entry, setEntry] = useState(null); // { state, me, mode }
   const [checkedResume, setCheckedResume] = useState(false);
   const [theme, setTheme] = useTheme();
+
+  // The Default catalog loads once per page load, in the background.
+  useEffect(() => {
+    loadCatalog();
+  }, []);
 
   // On first load, try to silently resume whatever table this browser
   // tab was last sitting at (e.g. after a refresh) — in either mode.
@@ -94,7 +100,7 @@ export default function App() {
             virtual table · {isSupabaseConfigured ? 'cloud mode' : 'local demo mode'}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="top-bar-actions">
           {entry && (
             <span className="session-chip">
               {entry.state.layers?.[entry.state.layerOrder?.[0]]?.name} · {entry.me.name}

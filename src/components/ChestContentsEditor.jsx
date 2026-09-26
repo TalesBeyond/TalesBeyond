@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { WEAPONS, DICE_TYPES } from '../data/weapons.js';
-import { ITEMS } from '../data/items.js';
+import { DICE_TYPES } from '../data/weapons.js';
+import { useCatalog } from '../lib/catalog.js';
 import { newChestItem } from '../data/chests.js';
 
 function formatCost(gp) {
@@ -31,17 +31,18 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
 
   const full = items.length >= capacity;
 
+  const { weapons, items: catalogItems } = useCatalog();
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    const weaponMatches = WEAPONS.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
+    const weaponMatches = weapons.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
       name: w.name,
       cost: w.cost,
       numberOfDice: w.numberOfDice,
       diceType: w.diceType,
       modifier: w.modifier,
     }));
-    const itemMatches = ITEMS.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
+    const itemMatches = catalogItems.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
       name: it.name,
       cost: it.cost,
       numberOfDice: 0,
@@ -49,7 +50,7 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
       modifier: 0,
     }));
     return [...weaponMatches, ...itemMatches].slice(0, 20);
-  }, [search]);
+  }, [search, weapons, catalogItems]);
 
   function addFromCatalog(entry) {
     if (full) return;

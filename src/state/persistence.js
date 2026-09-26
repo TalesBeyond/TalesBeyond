@@ -61,12 +61,116 @@ export function listLocalSessionCodes() {
 // ---- Manual export / import, so a table can be backed up or handed
 // ---- between machines even before real-time sync exists. ----
 
+// A whole-table export is packed into a real, viewable 24-bit BMP before it
+// hits disk — the pixel data literally *is* the file's bytes, laid out as a
+// valid bitmap — so opening the file shows a (visually meaningless, staticky)
+// image instead of plain fields a DM could hand-edit (HP, gold, chest
+// contents, ...) and reimport. Not real security (it's a reversible
+// byte-for-byte repacking, not encryption or compression — an uncompressed
+// bitmap is actually about the same size as the JSON it holds), just enough
+// friction that the game stays the source of truth for its own values.
+//
+// Layout: standard BMP file header (14 bytes) + BITMAPINFOHEADER (40 bytes),
+// then pixel data as plain BGR triples (no palette, no alpha) with each row
+// padded to a 4-byte boundary per the BMP spec. Height is stored negative so
+// rows are top-down, letting the payload be written/read in one straight
+// pass with no bottom-up row reversal. The pixel bytes are, in order: a
+// 4-byte little-endian length prefix, then that many bytes of UTF-8 JSON,
+// then zero padding out to the image's full pixel capacity.
+const BMP_FILE_HEADER_SIZE = 14;
+const BMP_DIB_HEADER_SIZE = 40;
+const BMP_PIXEL_DATA_OFFSET = BMP_FILE_HEADER_SIZE + BMP_DIB_HEADER_SIZE;
+const BMP_BYTES_PER_PIXEL = 3; // 24-bit BGR, no alpha
+const BMP_LENGTH_PREFIX_BYTES = 4; // uint32 LE byte-length of the JSON payload that follows
+
+function encodeTableBitmap(jsonString) {
+  const jsonBytes = new TextEncoder().encode(jsonString);
+  const payload = new Uint8Array(BMP_LENGTH_PREFIX_BYTES + jsonBytes.length);
+  new DataView(payload.buffer).setUint32(0, jsonBytes.length, true);
+  payload.set(jsonBytes, BMP_LENGTH_PREFIX_BYTES);
+
+  const pixelCount = Math.max(1, Math.ceil(payload.length / BMP_BYTES_PER_PIXEL));
+  const width = Math.max(1, Math.ceil(Math.sqrt(pixelCount)));
+  const height = Math.max(1, Math.ceil(pixelCount / width));
+  const rowDataBytes = width * BMP_BYTES_PER_PIXEL;
+  const rowSize = Math.ceil(rowDataBytes / 4) * 4; // BMP rows always pad to a 4-byte boundary
+  const pixelArraySize = rowSize * height;
+  const fileSize = BMP_PIXEL_DATA_OFFSET + pixelArraySize;
+
+  const file = new Uint8Array(fileSize);
+  const view = new DataView(file.buffer);
+
+  file[0] = 0x42; // 'B'
+  file[1] = 0x4d; // 'M'
+  view.setUint32(2, fileSize, true);
+  view.setUint32(6, 0, true); // reserved
+  view.setUint32(10, BMP_PIXEL_DATA_OFFSET, true);
+
+  view.setUint32(14, BMP_DIB_HEADER_SIZE, true);
+  view.setInt32(18, width, true);
+  view.setInt32(22, -height, true); // negative = top-down rows
+  view.setUint16(26, 1, true); // color planes
+  view.setUint16(28, BMP_BYTES_PER_PIXEL * 8, true); // bit depth
+  view.setUint32(30, 0, true); // BI_RGB, uncompressed
+  view.setUint32(34, pixelArraySize, true);
+  view.setInt32(38, 0, true); // x pixels/meter — unused
+  view.setInt32(42, 0, true); // y pixels/meter — unused
+  view.setUint32(46, 0, true); // colors used
+  view.setUint32(50, 0, true); // important colors
+
+  let cursor = 0;
+  let offset = BMP_PIXEL_DATA_OFFSET;
+  for (let row = 0; row < height; row++) {
+    for (let i = 0; i < rowDataBytes; i++) {
+      file[offset + i] = cursor < payload.length ? payload[cursor] : 0;
+      cursor++;
+    }
+    offset += rowSize; // bytes beyond rowDataBytes are left 0 — the row's alignment padding
+  }
+  return file;
+}
+
+// The counterpart to encodeTableBitmap above — parses the same header
+// layout back out and reassembles the payload bytes in the order they were
+// written, then reads its length prefix to know exactly where the real JSON
+// ends and the image's leftover zero padding begins.
+function decodeTableBitmap(bytes) {
+  if (bytes.length < BMP_PIXEL_DATA_OFFSET || bytes[0] !== 0x42 || bytes[1] !== 0x4d) {
+    throw new Error('Not a Hearthbound bitmap export');
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const pixelDataOffset = view.getUint32(10, true);
+  const width = view.getInt32(18, true);
+  const height = view.getInt32(22, true);
+  const bitCount = view.getUint16(28, true);
+  const compression = view.getUint32(30, true);
+  if (bitCount !== BMP_BYTES_PER_PIXEL * 8 || compression !== 0) {
+    throw new Error('Unsupported bitmap format');
+  }
+  const rowDataBytes = width * BMP_BYTES_PER_PIXEL;
+  const rowSize = Math.ceil(rowDataBytes / 4) * 4;
+  const rowCount = Math.abs(height);
+  const topDown = height < 0;
+
+  const payload = new Uint8Array(rowDataBytes * rowCount);
+  let cursor = 0;
+  for (let r = 0; r < rowCount; r++) {
+    const row = topDown ? r : rowCount - 1 - r;
+    const rowStart = pixelDataOffset + row * rowSize;
+    for (let i = 0; i < rowDataBytes; i++) payload[cursor++] = bytes[rowStart + i];
+  }
+
+  const jsonLength = new DataView(payload.buffer).getUint32(0, true);
+  const jsonBytes = payload.subarray(BMP_LENGTH_PREFIX_BYTES, BMP_LENGTH_PREFIX_BYTES + jsonLength);
+  return new TextDecoder().decode(jsonBytes);
+}
+
 export function downloadSessionAsFile(state) {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const blob = new Blob([encodeTableBitmap(JSON.stringify(state))], { type: 'image/bmp' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${state.session?.code || 'table'}.json`;
+  a.download = `${state.session?.code || 'table'}.bmp`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -93,11 +197,11 @@ export async function downloadGuestSessionAsFile(state) {
   const { hostKey, ...sessionRest } = state.session;
   const hostKeyHash = await hashGuestCode(hostKey);
   const exportState = { ...state, session: { ...sessionRest, hostKeyHash } };
-  const blob = new Blob([JSON.stringify(exportState, null, 2)], { type: 'application/json' });
+  const blob = new Blob([encodeTableBitmap(JSON.stringify(exportState))], { type: 'image/bmp' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${state.session?.code || 'table'}.json`;
+  a.download = `${state.session?.code || 'table'}.bmp`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -224,9 +328,10 @@ export function clearCurrentPointer() {
   window.localStorage.removeItem(CURRENT_KEY);
 }
 
-// Generic file → parsed-JSON reader, shared by the whole-table import and
-// the island-shell import (REQ-002) — neither cares about the other's
-// shape, only that the file is valid JSON.
+// Generic file → parsed-JSON reader, for plain-JSON files — used by the
+// island-shell import (REQ-002), which is still plain text (see
+// readEncodedJsonFromFile below for the whole-table import, which is
+// packed into a bitmap on export).
 export function readJsonFromFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -240,4 +345,48 @@ export function readJsonFromFile(file) {
     reader.onerror = reject;
     reader.readAsText(file);
   });
+}
+
+// Counterpart to downloadSessionAsFile/downloadGuestSessionAsFile's bitmap
+// packing — reads the file's raw bytes, unpacks the BMP back into its JSON
+// payload, then parses it. Rejects the same way readJsonFromFile does (not a
+// bitmap, wrong bitmap format, or bad JSON all just reject) so existing
+// callers' "not a valid export" error handling doesn't need to change.
+export function readEncodedJsonFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        resolve(JSON.parse(decodeTableBitmap(new Uint8Array(reader.result))));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// REQ-009 Synced Table Audio — each player's own volume per track, this
+// browser only. Keyed per table (its id in cloud tables, its code in guest
+// tables) and tolerant of storage being unavailable: reads fall back to {}
+// and writes are silently skipped.
+const AUDIO_VOLUME_NAMESPACE = 'hearthbound:audiovol:';
+
+export function loadLocalAudioVolumes(tableKey) {
+  try {
+    const raw = window.localStorage.getItem(AUDIO_VOLUME_NAMESPACE + tableKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalAudioVolumes(tableKey, volumes) {
+  try {
+    window.localStorage.setItem(AUDIO_VOLUME_NAMESPACE + tableKey, JSON.stringify(volumes));
+  } catch {
+    // storage blocked or full - the level just won't survive a refresh
+  }
 }

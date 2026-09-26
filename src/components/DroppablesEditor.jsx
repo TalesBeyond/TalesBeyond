@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { WEAPONS, DICE_TYPES } from '../data/weapons.js';
-import { ITEMS } from '../data/items.js';
+import { DICE_TYPES } from '../data/weapons.js';
+import { useCatalog } from '../lib/catalog.js';
+import { playDiceSound } from '../lib/sfx.js';
 import { newDroppableItem, dropThreshold } from '../data/droppables.js';
 
 function formatCost(gp) {
@@ -35,17 +36,18 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
   const [customChance, setCustomChance] = useState(50);
   const [rollResults, setRollResults] = useState({});
 
+  const { weapons, items: catalogItems } = useCatalog();
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    const weaponMatches = WEAPONS.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
+    const weaponMatches = weapons.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
       name: w.name,
       cost: w.cost,
       numberOfDice: w.numberOfDice,
       diceType: w.diceType,
       modifier: w.modifier,
     }));
-    const itemMatches = ITEMS.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
+    const itemMatches = catalogItems.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
       name: it.name,
       cost: it.cost,
       numberOfDice: 0,
@@ -53,7 +55,7 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
       modifier: 0,
     }));
     return [...weaponMatches, ...itemMatches].slice(0, 20);
-  }, [search]);
+  }, [search, weapons, catalogItems]);
 
   function addFromCatalog(entry) {
     onAddItem(newDroppableItem({ ...entry, dropChance: 50 }));
@@ -80,11 +82,13 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
   }
 
   function rollOne(item) {
+    playDiceSound();
     const roll = rollD20();
     setRollResults((prev) => ({ ...prev, [item.id]: { roll, dropped: roll <= dropThreshold(item.dropChance) } }));
   }
 
   function rollAll() {
+    playDiceSound();
     const next = {};
     items.forEach((item) => {
       const roll = rollD20();
