@@ -19,16 +19,59 @@ import diceRollUrl from '../assets/audio/dice-roll.mp3';
 import swordSliceUrl from '../assets/audio/sword-slice.mp3';
 import swooshMissUrl from '../assets/audio/swoosh-miss.mp3';
 import pageFlipUrl from '../assets/audio/page-flip.mp3';
+import villageConsortUrl from '../assets/audio/music/village-consort.mp3';
+
+// Where the built-in sounds come from, shown next to each one in the Music
+// modal. Add `author` (the Pixabay uploader) and `url` (the sound's own
+// Pixabay page) when known; otherwise the credit links to Pixabay itself.
+export const PIXABAY = { name: 'Pixabay', url: 'https://pixabay.com/' };
 
 export const SOUND_EFFECTS = [
-  { id: 'dice', name: 'Dice roll', when: 'Plays whenever you roll', url: diceRollUrl },
-  { id: 'hit', name: 'Attack hits', when: "Plays when your hero's attack hits", url: swordSliceUrl },
-  { id: 'miss', name: 'Attack misses', when: "Plays when your hero's attack misses", url: swooshMissUrl },
-  { id: 'page', name: 'Page flip', when: 'Plays when you turn a page in the compendium', url: pageFlipUrl },
+  {
+    id: 'dice',
+    name: 'Dice roll',
+    when: 'Plays whenever you roll',
+    description: 'Dice tumbling across a table.',
+    source: { ...PIXABAY, author: 'freesound_community', url: 'https://pixabay.com/sound-effects/household-diceland-90279/' },
+    url: diceRollUrl,
+  },
+  {
+    id: 'hit',
+    name: 'Attack hits',
+    when: "Plays when your hero's attack hits",
+    description: 'A sharp sword slice.',
+    source: PIXABAY,
+    url: swordSliceUrl,
+  },
+  {
+    id: 'miss',
+    name: 'Attack misses',
+    when: "Plays when your hero's attack misses",
+    description: 'A blade swooshing through empty air.',
+    source: PIXABAY,
+    url: swooshMissUrl,
+  },
+  {
+    id: 'page',
+    name: 'Page flip',
+    when: 'Plays when you turn a page in the compendium',
+    description: 'A single paper page turning.',
+    source: { ...PIXABAY, author: 'freesound_community', url: 'https://pixabay.com/sound-effects/film-special-effects-small-page-103398/' },
+    url: pageFlipUrl,
+  },
 ];
 
-// { id, name, url, loop } — see the note above.
-export const DEMO_MUSIC = [];
+// { id, name, url, loop, description, source } — see the note above. `source`
+// is PIXABAY (optionally with an `author`), shown as the song's credit.
+export const DEMO_MUSIC = [
+  {
+    id: 'village-consort',
+    name: 'Village Consort',
+    description: 'A light medieval tune for villages, taverns and market squares.',
+    url: villageConsortUrl,
+    loop: true,
+  },
+];
 
 const BUILTIN_PREFIX = 'builtin:';
 
