@@ -124,6 +124,7 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         if ('game_clock' in payload.new) dispatch({ type: 'SET_CLOCK', clock: payload.new.game_clock ?? null });
         if ('audio_playback' in payload.new) dispatch({ type: 'SET_AUDIO_PLAYBACK', playback: payload.new.audio_playback });
         if ('day_night_override' in payload.new) dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase: payload.new.day_night_override ?? null });
+        if ('encounter' in payload.new) dispatch({ type: 'SET_ENCOUNTER', encounter: payload.new.encounter ?? null });
       }
     )
     .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_assets', filter: `table_id=eq.${tableId}` }, (payload) => {

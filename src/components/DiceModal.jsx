@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ModalShell from './ModalShell.jsx';
 import { useCatalog, dieImage } from '../lib/catalog.js';
 import { playDiceSound } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const MAX_PER_TYPE = 20;
@@ -92,7 +93,10 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
   function roll() {
     if (!canRoll) return;
     playDiceSound();
-    onRoll(rollPool(pool, modifier, mode, name));
+    const result = rollPool(pool, modifier, mode, name);
+    onRoll(result);
+    emitFx({ type: 'log', tone: 'roll', text: `You rolled ${result.title}: ${result.total}${result.flag ? ` (${result.flag})` : ''}` });
+    if (result.flag) emitFx({ type: 'nat', value: result.flag === 'Natural 20' ? 20 : 1 });
   }
 
   function loadSaved(s) {

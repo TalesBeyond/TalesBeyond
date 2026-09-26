@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { playDiceSound } from '../lib/sfx.js';
+import { playDiceSound, playSfx } from '../lib/sfx.js';
+import { emitFx, useFx, takeCrit } from '../lib/fx.js';
+import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
 import { DEMO_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
@@ -48,6 +50,8 @@ import {
   removeAudioTrackRemote,
   updateAudioPlaybackRemote,
   updateTableDayNightOverrideRemote,
+  updateTableEncounterRemote,
+  endEncounterTurnRemote,
   regenerateInviteCodeRemote,
   setTableOpenRemote,
   removePlayerRemote,
@@ -65,6 +69,8 @@ import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
 import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import { TurnOrderRibbon, EncounterActions } from './EncounterHud.jsx';
+import FxLayer from './FxLayer.jsx';
 import { useTableAudio, defaultLoopFor } from '../lib/audioEngine.js';
 import {
   uploadAudio,
@@ -549,6 +555,30 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   const selectedEntity = selectedId ? layerEntities[selectedId] : null;
 
+  // ---- Encounter (utils/encounter.js) ----
+  // Whose turn it is and how far they can still walk. Everyone sees the
+  // same encounter; only the DM and the acting hero's owner can end a turn.
+  const encounter = state.encounter || null;
+  const actorId = currentActorId(encounter);
+  const actor = actorId ? state.entities[actorId] || null : null;
+  const isMyTurn = Boolean(actor && actor.kind === 'hero' && actor.ownerId === me.id);
+  const canEndTurn = Boolean(encounter && actor && (isHost || isMyTurn));
+  let moveRange = null;
+  let movement = null;
+  if (encounter && actor) {
+    const speed = speedOf(actor);
+    const start = encounter.turnStart?.id === actor.id ? encounter.turnStart : null;
+    if (start && actor.layerId === currentLayerId) {
+      moveRange = {
+        islandId: start.islandId,
+        cells: reachableCells(currentLayer.islands[start.islandId], start, speed, currentLayer.feetPerSquare),
+      };
+    }
+    const actorLayer = state.layers[actor.layerId] || currentLayer;
+    const moved = feetMoved(encounter, actor, actorLayer.feetPerSquare);
+    movement = { total: speed, left: moved == null ? 0 : Math.max(0, speed - moved) };
+  }
+
   // Every hero token across every layer — the Buy/Give compendium controls
   // need to reach a hero regardless of which layer the host is currently
   // viewing.
@@ -664,6 +694,85 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // ---- Game-feel moments (lib/fx.js, drawn by MapBoard and FxLayer) ----
+
+  // The combat log: this browser's own rolls and attacks, plus every HP
+  // change and turn change it sees (those come from synced state, so every
+  // player's log agrees on them).
+  const [combatLog, setCombatLog] = useState([]);
+  const logSeq = useRef(0);
+  useFx((event) => {
+    if (event.type !== 'log') return;
+    const entry = { id: ++logSeq.current, text: event.text, tone: event.tone };
+    setCombatLog((prev) => [entry, ...prev].slice(0, 80));
+  });
+
+  // Hit numbers and loot reveals, derived from what changed in synced state
+  // rather than from who changed it, so every client shows the same blow.
+  // An HP change is settled for a moment before it's shown, so typing a new
+  // value into the HP field reads as one change, not one per keystroke.
+  const seenEntitiesRef = useRef(null);
+  const pendingHpRef = useRef({});
+  useEffect(() => {
+    const prev = seenEntitiesRef.current;
+    const seen = {};
+    for (const e of Object.values(state.entities)) seen[e.id] = { hp: e.hp, opened: e.opened };
+    seenEntitiesRef.current = seen;
+    if (!prev) return;
+    for (const e of Object.values(state.entities)) {
+      const before = prev[e.id];
+      if (!before) continue;
+      if (e.kind !== 'door' && e.maxHp && typeof before.hp === 'number' && typeof e.hp === 'number' && e.hp !== before.hp) {
+        const pending = pendingHpRef.current[e.id] || { baseHp: before.hp };
+        clearTimeout(pending.timer);
+        pending.timer = setTimeout(() => {
+          delete pendingHpRef.current[e.id];
+          const now = stateRef.current.entities[e.id];
+          if (!now || typeof now.hp !== 'number') return;
+          const delta = now.hp - pending.baseHp;
+          if (!delta) return;
+          if (delta < 0) {
+            emitFx({ type: 'float', entityId: e.id, kind: takeCrit(e.id) ? 'crit' : 'dmg', amount: -delta });
+            emitFx({ type: 'log', tone: 'hit', text: `${now.name} took ${-delta} damage (${now.hp}/${now.maxHp})` });
+          } else {
+            emitFx({ type: 'float', entityId: e.id, kind: 'heal', amount: delta });
+            emitFx({ type: 'log', tone: 'heal', text: `${now.name} healed ${delta} (${now.hp}/${now.maxHp})` });
+          }
+        }, 450);
+        pendingHpRef.current[e.id] = pending;
+      }
+      if (e.kind === 'chest' && before.opened === false && e.opened === true && e.layerId === currentLayerId) {
+        emitFx({ type: 'loot', title: e.name || 'Chest', items: e.items || [] });
+      }
+    }
+  }, [state.entities, currentLayerId]);
+  useEffect(() => () => Object.values(pendingHpRef.current).forEach((p) => clearTimeout(p.timer)), []);
+
+  // The turn banner, once per new turn (not on first load — joining a fight
+  // already in progress shouldn't replay it).
+  const turnKey = encounter ? `${encounter.round}:${encounter.turn}` : null;
+  const lastTurnKeyRef = useRef(undefined);
+  useEffect(() => {
+    const prevKey = lastTurnKeyRef.current;
+    lastTurnKeyRef.current = turnKey;
+    if (prevKey === undefined || turnKey === prevKey) return;
+    if (!turnKey) {
+      emitFx({ type: 'log', tone: 'turn', text: 'The encounter ended' });
+      return;
+    }
+    if (!actor) return;
+    const mine = actor.kind === 'hero' && actor.ownerId === me.id;
+    emitFx({
+      type: 'banner',
+      title: mine ? 'Your Turn' : `${actor.name}'s Turn`,
+      sub: `Round ${encounter.round} · ${speedOf(actor)} ft to move`,
+      tone: mine ? 'mine' : actor.kind === 'mob' ? 'enemy' : 'ally',
+    });
+    emitFx({ type: 'log', tone: 'turn', text: `Round ${encounter.round}: ${actor.name}'s turn` });
+    playSfx('page');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnKey]);
+
   // REQ-008 Guest DM Sessions: the guest channel's send methods, stashed in
   // a ref so moveEntity (and, as later slices extend this, every other
   // mutation) can reach them without this subscription effect re-running on
@@ -706,6 +815,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         // Self-removal only (leaving the table) — never remove someone else.
         if (action.id !== senderId) return;
         applyAndBroadcast(action);
+      } else if (action.type === 'END_TURN') {
+        // A player may only end the turn of a hero they own, and only the
+        // current one — the host works out who is next, not the sender.
+        const current = stateRef.current.encounter;
+        const acting = stateRef.current.entities[currentActorId(current)];
+        if (!acting || acting.kind !== 'hero' || acting.ownerId !== senderId) return;
+        applyAndBroadcast({ type: 'SET_ENCOUNTER', encounter: advanceEncounter(current, stateRef.current.entities) });
       }
     }
 
@@ -1067,7 +1183,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // this new roll (or the whole roll is being cleared) has it stripped
   // first. Returns the sorted results so the modal can show the turn order
   // without re-deriving it.
-  function rollInitiative(selectedIds) {
+  function rollInitiative(selectedIds, { startEncounter = false } = {}) {
     if (!isHost) return [];
     const selected = new Set(selectedIds);
     for (const entity of Object.values(state.entities)) {
@@ -1079,7 +1195,54 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const rolled = selectedIds.map((id) => ({ id, roll: 1 + Math.floor(Math.random() * 20) }));
     rolled.sort((a, b) => b.roll - a.roll);
     rolled.forEach(({ id, roll }, index) => updateEntity(id, { initiativeRoll: roll, initiativeTurn: index + 1 }));
+    // A fresh roll replaces any fight already running; clearing ends it.
+    if (!rolled.length) setEncounter(null);
+    else if (startEncounter) setEncounter(createEncounter(rolled, state.entities));
     return rolled.map(({ id, roll }, index) => ({ id, roll, turn: index + 1 }));
+  }
+
+  // The encounter itself (49_encounter.sql) — the DM starts, advances and
+  // ends it; written the same way as the clock.
+  function setEncounter(next) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_ENCOUNTER', encounter: next });
+    if (isRemote) {
+      updateTableEncounterRemote(state.session.tableId, next).catch(reportError);
+    } else if (isGuestHost) {
+      broadcastGuestChange({ type: 'SET_ENCOUNTER', encounter: next });
+    } else {
+      saveOrWarn(state.session.code, { ...state, encounter: next });
+    }
+  }
+
+  // The InitiativeModal's "Start encounter" box, ticked or unticked after
+  // the roll: starts a fight from those results, or ends the running one.
+  function toggleEncounter(active, results) {
+    if (!active) setEncounter(null);
+    else if (results?.length) setEncounter(createEncounter(results, state.entities));
+  }
+
+  // End turn: the DM for anyone, a player for their own hero. A cloud
+  // player can't write the tables row, so theirs goes through an RPC that
+  // re-checks it's really their turn; a guest player's is an intent the
+  // DM's client validates.
+  function endTurn() {
+    if (!canEndTurn) return;
+    const next = advanceEncounter(encounter, state.entities);
+    if (isHost) {
+      setEncounter(next);
+    } else if (isGuest) {
+      guestChannelRef.current?.sendIntent({ type: 'END_TURN' }, me.id);
+    } else {
+      dispatch({ type: 'SET_ENCOUNTER', encounter: next });
+      if (isRemote) {
+        endEncounterTurnRemote(state.session.tableId, next).catch((err) => {
+          reportError(err);
+          dispatch({ type: 'SET_ENCOUNTER', encounter }); // refused — put the turn back
+        });
+      }
+      else saveOrWarn(state.session.code, { ...state, encounter: next });
+    }
   }
 
   // Asset Storage (Toolbar.jsx): the DM authoring a custom monster/weapon/
@@ -2030,6 +2193,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         initiativeHeroes={initiativeHeroes}
         initiativeMobs={initiativeMobs}
         onRollInitiative={rollInitiative}
+        encounterActive={Boolean(encounter)}
+        onToggleEncounter={toggleEncounter}
         customAssets={state.customAssets}
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
@@ -2090,9 +2255,24 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
               tool={tool}
               zoom={zoom}
               onRulerChange={setRulerFeet}
+              moveRange={moveRange}
+              actorId={actorId}
             />
           </div>
-          <InitiativeBar entities={layerEntities} />
+          {encounter ? <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} /> : <InitiativeBar entities={layerEntities} />}
+          {encounter && (
+            <EncounterActions
+              actor={actor}
+              canEndTurn={canEndTurn}
+              isMyTurn={isMyTurn}
+              onEndTurn={endTurn}
+              isHost={isHost}
+              onEndEncounter={() => setEncounter(null)}
+              movement={movement}
+              log={combatLog}
+            />
+          )}
+          <FxLayer />
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
           <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
           </div>
@@ -2116,6 +2296,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onTakeChestItem={takeChestItem}
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
+          encounterActor={actor}
         />
 
         {showMusicModal && audioEnabled && (

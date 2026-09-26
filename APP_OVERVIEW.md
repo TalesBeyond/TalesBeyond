@@ -217,22 +217,29 @@ rule (`src/utils/grid.js`'s `feetDistance`).
   XLarge=12 item slots) → opens a configuration modal (shared
   `ChestContentsEditor`, see below) before placing.
 
-### Right panel — inspector (`RightPanel.jsx`)
+### Right panel — inspector (`RightPanel.jsx`, `CreatureCard.jsx`)
 
-Selecting a token shows a kind-specific inspector card:
+Selecting a hero or monster shows its whole inspector as one collectible
+**card**: the name (and a hero's level) on the title bar, the token art with
+an armor-class shield and a hit-point heart, the owner picker ("played by",
+DM-only), a life bar with −/+ steppers, Initiative / Speed / Size plaques,
+the six ability scores, death saves (heroes), condition chips, and a tab
+ribbon:
 
-- **Hero** — a tabbed 5e character sheet: **Overview** (level, speed, AC,
-  initiative, death saves, HP, size, conditions), **Abilities** (6
-  scores + auto-computed modifiers), **Saves & Skills** (proficiency
-  checkboxes + hand-adjustable bonus per save/skill, for Expertise etc.),
-  **Battle Equipment** (attacks picked from a small default weapon list,
-  each rollable: d20 to-hit vs. a picked mob's AC, then damage dice
-  straight off that mob's HP), **Spells** (per-level slots + prepared
-  spell list, levels 0–9), **Bag** (freeform gear + other-items lists,
-  plus bronze/silver/gold currency). DM notes appear at the bottom,
-  host-only.
-- **Mob** — name, AC, HP, size, conditions, a collapsible **Droppables**
-  section (see below), and DM notes — all host-only where noted.
+- **Hero** — Battle (attacks from a small default weapon list, each
+  rollable: d20 to-hit vs. a picked mob's AC, then damage dice straight off
+  that mob's HP), Spells (per-level slots + prepared list, levels 0–9), Bag
+  (gear and other items, bronze/silver/gold), Skills (proficiency + a
+  hand-adjustable bonus per save/skill), and DM (host-only: token sound,
+  private notes, remove).
+- **Mob** — Battle, Loot (the Droppables list, below), Skills and DM for the
+  host; a player sees only its name, AC, HP, size and conditions.
+
+Every value a viewer may change is **click-to-edit**: a pencil appears on
+hover, a click turns it into a field, Enter or leaving it saves, Esc
+cancels. The DM edits the card; a hero's own player edits its Battle, Spells
+and Bag tabs; anyone else sees plain values with no pencil.
+
 - **Door** — name + linked layer.
 - **Chest** — name, Open/Close toggle (independent of the active tool), a
   **Give to a player** picker per item once opened (moves the item from
@@ -264,6 +271,29 @@ of the six default monsters seeds a flavor-appropriate starter loot table
 built from the PHB weapon/item prices already in the compendiums (the
 PHB itself doesn't publish monster loot tables — that's the DMG/Monster
 Manual's job — so these are hand-picked, not canonical).
+
+### Encounters (`EncounterHud.jsx`, `utils/encounter.js`)
+
+Roll for Initiative has a **Start encounter** box (ticked by default). Rolling
+with it ticked starts a fight: a turn-order ribbon with the round across the
+top of the map, the acting token pulsing, its reachable squares (speed from
+the sheet, measured from where the turn began) tinted on the map, and an
+**End turn / Roll d20 / Log** stack bottom-right. The encounter is one synced value (`tables.encounter`,
+49_encounter.sql): the DM ends any turn; a player ends their own hero's turn
+through the `end_encounter_turn` RPC (or an intent, on a guest table).
+
+During an encounter, selecting a creature other than the acting hero adds a
+preview of that hero's first attack against it under its inspector card
+(chance to hit, damage, HP left).
+
+### Game-feel moments (`lib/fx.js`, `FxLayer.jsx`)
+
+Floating hit / critical / heal / MISS numbers over tokens, a life bar whose
+lost chunk drains after a beat and glows below 25%, a turn banner, a big die
+for natural 20s and 1s, cardboard condition chits, and loot cards that flip
+face-up (mob droppables, or a chest being opened). HP changes and chests are
+read from synced state, so every player sees them; rolls and misses are local.
+The **Grimoire** palette restyles all of it as the DM's open book.
 
 ### DM notes
 

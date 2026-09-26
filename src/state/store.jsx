@@ -122,6 +122,8 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     // back ("Follow the clock" = null). Independent of the clock, so it works
     // with the cycle on, off, or no clock at all.
     dayNightOverride: null,
+    // The running fight (utils/encounter.js), or null outside of one.
+    encounter: null,
     entities: {},
     entityOrder: [],
     // DM-authored custom monsters/weapons/items (Toolbar.jsx's Asset Storage
@@ -365,6 +367,9 @@ function baseReducer(state, action) {
 
     case 'SET_DAY_NIGHT_OVERRIDE':
       return { ...state, dayNightOverride: action.phase ?? null };
+
+    case 'SET_ENCOUNTER':
+      return { ...state, encounter: action.encounter ?? null };
 
     case 'ADD_ENTITY': {
       const alreadyPresent = Boolean(state.entities[action.entity.id]);

@@ -63,6 +63,7 @@ The sixteen migrations, in order:
 19. `..._audio_cleanup.sql` — triggers that delete a track's row when its layer, island or token is deleted (the Storage file is removed by the client)
 20. `..._audio_quota.sql` — a database check rejecting more than 50 MB of audio per table
 21. `..._no_guest_uploads.sql` — guest (anonymous) sessions can't upload any file to Storage; only signed-in accounts can. Guest tables keep everything local, and their audio must be re-picked after a reload
+22. `..._encounter.sql` — the running encounter (turn order, round, whose turn, where their turn began) as `tables.encounter`, host-written, plus `end_encounter_turn` so a player can end their own hero's turn
 
 ## 3. Enable anonymous sign-in
 

@@ -3,8 +3,10 @@ import { pixelToCell, feetDistance, computeCanvasBounds } from '../utils/grid.js
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
+import { useFx } from '../lib/fx.js';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
+const FLOAT_MS = 1300; // how long a hit number drifts up over a token
 const ISLAND_SNAP_PX = 20; // un-zoomed pixels — how close an island's edge must get to another's to snap flush
 
 // Paint order among tokens, lowest first: traps underneath, doors on top,
@@ -38,6 +40,8 @@ export default function MapBoard({
   tool, // 'play' | 'edit' | 'pan' | 'ruler'
   zoom = 1,
   onRulerChange,
+  moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
+  actorId = null, // whose turn it is, during an encounter
 }) {
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
@@ -55,6 +59,17 @@ export default function MapBoard({
   const groupDragRef = useRef(null); // { groupId, downX, downY, dx, dy }
   const [groupDragPos, setGroupDragPos] = useState(null); // { groupId, dx, dy } — unzoomed delta, visual only
   const [ruler, setRuler] = useState(null); // { start: {islandId,col,row}, end: {islandId,col,row} }
+
+  // Hit numbers (lib/fx.js 'float' events): −7, a critical −18, +9, MISS —
+  // each drifts up from its token and fades.
+  const [floats, setFloats] = useState([]);
+  const floatSeq = useRef(0);
+  useFx((event) => {
+    if (event.type !== 'float') return;
+    const key = ++floatSeq.current;
+    setFloats((prev) => [...prev, { ...event, key }]);
+    setTimeout(() => setFloats((prev) => prev.filter((f) => f.key !== key)), FLOAT_MS);
+  });
 
   // Which group (if any) each island belongs to, for label-suppression and
   // for translating grouped islands together while their group's handle is
@@ -543,6 +558,14 @@ export default function MapBoard({
                 })}
               </div>
             )}
+            {moveRange?.islandId === id &&
+              moveRange.cells.map((c) => (
+                <div
+                  key={`${c.col}_${c.row}`}
+                  className="move-cell"
+                  style={{ left: c.col * cellPx, top: c.row * cellPx, width: cellPx, height: cellPx }}
+                />
+              ))}
             <svg className="grid-svg" width={w} height={h}>
               {Array.from({ length: island.cols + 1 }).map((_, v) => (
                 <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke="rgba(23,20,15,0.28)" strokeWidth={v % 5 === 0 ? 1.4 : 0.7} />
@@ -610,7 +633,7 @@ export default function MapBoard({
           return (
             <div
               key={id}
-              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}`}
+              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}`}
               style={{
                 width: size,
                 height: size,
@@ -630,11 +653,11 @@ export default function MapBoard({
                 </span>
               )}
               {entity.kind !== 'door' && entity.maxHp ? (
-                <span className="token-hpbar" aria-hidden="true">
-                  <span
-                    className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`}
-                    style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
-                  />
+                // The ghost underneath shows damage just taken, then drains
+                // down to the new value after a beat (a CSS transition delay).
+                <span className={`token-hpbar${entity.hp / entity.maxHp < 0.25 ? ' critical' : ''}`} aria-hidden="true">
+                  <span className="token-hpbar-ghost" style={{ width: `${hpPercent(entity)}%` }} />
+                  <span className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`} style={{ width: `${hpPercent(entity)}%` }} />
                 </span>
               ) : null}
               {entity.kind !== 'door' && entity.maxHp ? (
@@ -655,6 +678,21 @@ export default function MapBoard({
           );
         })}
 
+      {floats.map((f) => {
+        const entity = entities[f.entityId];
+        const r = entity && islandRects[entity.islandId];
+        if (!r) return null;
+        const size = entity.size || 1;
+        const x = (r.x - originX) * zoom + entity.col * r.cellSize + (r.cellSize * size) / 2;
+        const y = (r.y - originY) * zoom + entity.row * r.cellSize;
+        return (
+          <span key={f.key} className={`hit-float hit-${f.kind}`} style={{ left: x, top: y }} aria-hidden="true">
+            {f.kind === 'crit' && <small>Critical</small>}
+            {f.kind === 'miss' ? 'MISS' : f.kind === 'heal' ? `+${f.amount}` : `−${f.amount}`}
+          </span>
+        );
+      })}
+
       {rulerLine && (
         <svg className="grid-svg ruler-overlay" width={canvasWidth} height={canvasHeight}>
           <RulerOverlay p1={rulerLine.p1} p2={rulerLine.p2} feet={rulerLine.feet} />
@@ -662,6 +700,10 @@ export default function MapBoard({
       )}
     </div>
   );
+}
+
+function hpPercent(entity) {
+  return Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
 }
 
 function RulerOverlay({ p1, p2, feet }) {
