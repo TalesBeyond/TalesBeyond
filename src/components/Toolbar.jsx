@@ -186,6 +186,8 @@ export default function Toolbar({
   initiativeHeroes,
   initiativeMobs,
   onRollInitiative,
+  encounterActive,
+  onToggleEncounter,
   customAssets,
   onAddEntity,
   onAddCustomAsset,
@@ -675,6 +677,8 @@ export default function Toolbar({
           heroes={initiativeHeroes || []}
           mobs={initiativeMobs || []}
           onRoll={onRollInitiative}
+          encounterActive={encounterActive}
+          onToggleEncounter={onToggleEncounter}
           onClose={() => setShowInitiative(false)}
         />
       )}
@@ -1166,9 +1170,20 @@ function GroupRow({ group, onRename, onUngroup }) {
 // per-entity `initiativeRoll`/`initiativeTurn` stamping (rendered as the
 // boot badge on the token, see MapBoard.jsx) lives in GameView's
 // rollInitiative — this component is just the picker + results readout.
-function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
+function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncounter, onClose }) {
   const [participantIds, setParticipantIds] = useState([]);
   const [results, setResults] = useState(null);
+  // "Start encounter": ticked by default, so rolling starts the fight — the
+  // turn order, turn banner, movement range and End turn (EncounterHud.jsx).
+  // While one is running the box shows it; unticking ends it.
+  const [startEncounter, setStartEncounter] = useState(true);
+  const encounterChecked = encounterActive || (!results?.length && startEncounter);
+
+  function handleEncounterChange(checked) {
+    setStartEncounter(checked);
+    if (!checked && encounterActive) onToggleEncounter(false);
+    else if (checked && !encounterActive && results?.length) onToggleEncounter(true, results);
+  }
 
   const byId = {};
   for (const e of heroes) byId[e.id] = e;
@@ -1187,7 +1202,7 @@ function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
   }
 
   function handleRoll() {
-    const rolled = onRoll(participantIds) || [];
+    const rolled = onRoll(participantIds, { startEncounter }) || [];
     setResults(rolled.map((r) => ({ ...r, name: byId[r.id]?.name || 'Unknown' })));
   }
 
@@ -1264,6 +1279,14 @@ function InitiativeModal({ heroes, mobs, onRoll, onClose }) {
               Clear
             </button>
           </div>
+
+          <label className="encounter-check">
+            <input type="checkbox" checked={encounterChecked} onChange={(e) => handleEncounterChange(e.target.checked)} />
+            <span>
+              <strong>Start encounter</strong>
+              <small>{encounterActive ? 'Running — untick to end the fight' : 'Turns, movement range and End turn once rolled'}</small>
+            </span>
+          </label>
 
           {results && results.length > 0 && (
             <div className="dice-history">

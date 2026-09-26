@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { DICE_TYPES } from '../data/weapons.js';
 import { useCatalog } from '../lib/catalog.js';
 import { playDiceSound } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
 import { newDroppableItem, dropThreshold } from '../data/droppables.js';
 
 function formatCost(gp) {
@@ -95,6 +96,10 @@ export default function DroppablesEditor({ items, onAddItem, onRemoveItem, onUpd
       next[item.id] = { roll, dropped: roll <= dropThreshold(item.dropChance) };
     });
     setRollResults(next);
+    // Flip whatever dropped face-up as loot cards (FxLayer.jsx). Droppables
+    // are DM-only, so this reveal is too.
+    const dropped = items.filter((item) => next[item.id].dropped);
+    emitFx({ type: 'loot', title: dropped.length ? 'Loot dropped' : 'Nothing dropped', items: dropped });
   }
 
   return (

@@ -158,6 +158,9 @@ export async function fetchTableSnapshot(tableId) {
   // in its own query so a project that has 32 but not 33 still gets its clock.
   const overrideRes = await supabase.from('tables').select('day_night_override').eq('id', tableId).maybeSingle();
   const dayNightOverride = overrideRes.error ? null : overrideRes.data?.day_night_override ?? null;
+  // And the running encounter (49_encounter.sql), just as forgivingly.
+  const encounterRes = await supabase.from('tables').select('encounter').eq('id', tableId).maybeSingle();
+  const encounter = encounterRes.error ? null : encounterRes.data?.encounter ?? null;
 
   // Custom assets (36_custom_assets.sql) are a whole separate table rather
   // than a column, so a project that hasn't run that migration yet gets an
@@ -237,6 +240,7 @@ export async function fetchTableSnapshot(tableId) {
     layerOrder,
     clock,
     dayNightOverride,
+    encounter,
     entities,
     entityOrder,
     customAssets,
@@ -276,6 +280,19 @@ export async function updateTableClockRemote(tableId, clock) {
 
 export async function updateTableDayNightOverrideRemote(tableId, phase) {
   must(await supabase.from('tables').update({ day_night_override: phase }).eq('id', tableId), 'updateTableDayNightOverride');
+}
+
+// ---- Encounter (49_encounter.sql) ----
+
+// Host-only, like every other table-wide setting.
+export async function updateTableEncounterRemote(tableId, encounter) {
+  must(await supabase.from('tables').update({ encounter }).eq('id', tableId), 'updateTableEncounter');
+}
+
+// A player ending their own hero's turn: they can't write the tables row,
+// so the RPC checks it really is their turn before advancing it.
+export async function endEncounterTurnRemote(tableId, next) {
+  must(await supabase.rpc('end_encounter_turn', { p_table_id: tableId, p_next: next }), 'endEncounterTurn');
 }
 
 // ---- Layers ----
