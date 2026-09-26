@@ -4,6 +4,7 @@ import { ITEM_CATEGORIES } from '../data/items.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
+import { playSfx } from '../lib/sfx.js';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
 // table), so it is there next time the book opens on any table.
@@ -222,6 +223,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   function turn(dir) {
     if (flip.phase !== 'idle') return;
     if (dir === 'fwd' ? shownSpread >= spreads - 1 : shownSpread <= 0) return;
+    playSfx('page');
     setFlip({ phase: 'prep', dir });
     timers.current.push(setTimeout(() => setFlip({ phase: 'go', dir }), 40));
     timers.current.push(
@@ -369,10 +371,6 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   return (
     <div className="cbook-backdrop" onClick={onClose}>
       <div className="cbook-stage" role="dialog" aria-modal="true" aria-label={chapter} onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="cbook-close" aria-label="Close compendium" onClick={onClose}>
-          &times;
-        </button>
-
         <div className="cbook-cover">
           <div className="cbook-cover-line" />
           <div className="cbook-stack left" />
@@ -397,6 +395,9 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         </div>
 
         <div className="cbook-tray">
+          <button type="button" className="cbook-close" aria-label="Close compendium" onClick={onClose}>
+            &times;
+          </button>
           <div className="cbook-tray-controls">
             <input
               className="cbook-search"

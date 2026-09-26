@@ -16,6 +16,17 @@ function resizeImageFile(file, maxDim) {
   );
 }
 
+// Guest (anonymous) sessions never upload: everything they add stays on their
+// device. The server refuses too (20250101000048_no_guest_uploads.sql); this
+// is the friendly early stop.
+async function assertCanUpload() {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (!user || user.is_anonymous) {
+    throw new Error("Guests can't upload files — everything stays on this device.");
+  }
+}
+
 function randomFileName(ext) {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
 }
@@ -27,6 +38,7 @@ function randomFileName(ext) {
  * @param {number} maxDim - longest edge in pixels after resizing
  */
 export async function uploadImage(file, bucket, tableId, maxDim = 512) {
+  await assertCanUpload();
   const blob = await resizeImageFile(file, maxDim);
   const path = `${tableId}/${randomFileName('webp')}`;
   const { error } = await supabase.storage.from(bucket).upload(path, blob, {
@@ -77,6 +89,7 @@ export function localAudioFile(file) {
 export async function uploadAudio(file, tableId) {
   const error = validateAudioFile(file);
   if (error) throw new Error(error);
+  await assertCanUpload();
   const mime = audioMime(file);
   const path = `${tableId}/${randomFileName(AUDIO_TYPES[mime])}`;
   const { error: uploadError } = await supabase.storage.from(AUDIO_BUCKET).upload(path, file, { contentType: mime, upsert: false });

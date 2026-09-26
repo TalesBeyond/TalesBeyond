@@ -1,0 +1,14 @@
+#!/bin/sh
+# Blocks audio files over 2 MB: a committed file stays in git history forever,
+# so songs must be trimmed and compressed first (see src/assets/audio/music/README.md).
+# Bypass once, deliberately: git commit --no-verify
+limit=2097152
+status=0
+for f in $(git diff --cached --name-only --diff-filter=AM | grep -iE '\.(mp3|wav|ogg|m4a|flac|aac)$'); do
+  size=$(git cat-file -s ":$f")
+  if [ "$size" -gt "$limit" ]; then
+    echo "pre-commit: $f is $((size / 1024)) KB — audio over 2 MB is not allowed. Trim/compress it first." >&2
+    status=1
+  fi
+done
+exit $status

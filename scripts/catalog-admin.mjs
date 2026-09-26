@@ -3,7 +3,7 @@
 //   npm run catalog:seed -- [--assets <dir>] [--only weapons,items,...] [--dry-run]
 //
 // Reads the built-in catalogs from src/data, upserts them into Supabase by
-// slug, and uploads any picture / song / model found in the assets folder
+// slug, and uploads any picture / model found in the assets folder
 // (default ./catalog-assets, git-ignored) laid out as <kind>/<slug>.<ext>:
 //
 //   catalog-assets/weapons/longsword.webp      (also used by +1/+2 Longsword)
@@ -50,9 +50,6 @@ const supabase = createClient(url, key, { auth: { persistSession: false, autoRef
 
 const IMAGE_BUCKET = 'catalog-images';
 const IMAGE_MAX_BYTES = 1024 * 1024;
-const AUDIO_BUCKET = 'catalog-audio';
-const AUDIO_MAX_BYTES = 10 * 1024 * 1024;
-const AUDIO_TYPES = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
 const MODEL_BUCKET = 'catalog-models';
 const MODEL_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -75,7 +72,7 @@ async function localFiles(folder, extensions) {
 
 async function upload(bucket, objectPath, filePath, contentType) {
   const size = (await stat(filePath)).size;
-  const limit = { [IMAGE_BUCKET]: IMAGE_MAX_BYTES, [AUDIO_BUCKET]: AUDIO_MAX_BYTES, [MODEL_BUCKET]: MODEL_MAX_BYTES }[bucket] ?? Infinity;
+  const limit = { [IMAGE_BUCKET]: IMAGE_MAX_BYTES, [MODEL_BUCKET]: MODEL_MAX_BYTES }[bucket] ?? Infinity;
   if (size > limit) {
     console.warn(`  skip ${objectPath}: ${(size / 1048576).toFixed(1)} MB is over the ${limit / 1048576} MB limit for ${bucket}`);
     return false;
@@ -250,34 +247,13 @@ async function seedDiceSkins() {
 
 const titleCase = (slug) => slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-// Songs come from files alone: <assets>/audio/<slug>.mp3|wav. A new song's
-// name is its file name; an existing song keeps whatever name it has.
-async function seedAudio() {
-  const local = await localFiles('audio', Object.keys(AUDIO_TYPES));
-  const existing = await existingPaths('catalog_audio', 'audio_path');
-  let count = 0;
-  for (const [slug, name] of local) {
-    const ext = path.extname(name).toLowerCase();
-    const filePath = path.join(assetsDir, 'audio', name);
-    const objectPath = `audio/${slug}${ext}`;
-    if (!(await upload(AUDIO_BUCKET, objectPath, filePath, AUDIO_TYPES[ext]))) continue;
-    const fields = { audio_path: objectPath, mime: AUDIO_TYPES[ext], size_bytes: (await stat(filePath)).size };
-    if (!dryRun) {
-      const { error } = existing.has(slug)
-        ? await supabase.from('catalog_audio').update(fields).eq('slug', slug)
-        : await supabase.from('catalog_audio').insert({ slug, name: titleCase(slug), ...fields });
-      if (error) throw new Error(`write catalog_audio ${slug}: ${error.message}`);
-    }
-    count += 1;
-  }
-  return `${count} songs`;
-}
+// Songs are no longer seeded to Supabase: music ships with the app, in
+// src/assets/audio/music/ (see src/data/defaultAudio.js).
 
 const KINDS = {
   weapons: seedWeapons,
   items: seedItems,
   monsters: seedMonsters,
-  audio: seedAudio,
   dice: seedDiceImages,
   'dice-models': seedDiceModels,
   'dice-skins': seedDiceSkins,

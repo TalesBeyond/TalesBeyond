@@ -125,6 +125,26 @@ A full screen instead of a popover.
 - **Saved sets**: the existing named dice sets, each with **Roll**.
 - **Roll log**: the last few rolls under the result.
 
+### 2.5 Compendium (DM, `CompendiumBook.jsx`)
+
+Already built: at 900 px wide or less the book changes from its
+side-by-side desktop layout (book · tabs · info panel) to a stack. The
+whole compendium keeps a fixed size so it never goes past the screen:
+`height: min(720px, 100dvh − 64px)`, full width minus a 16 px gutter.
+
+- **Top row**: Weapons · Items · Monsters tabs share the width equally
+  (14 px text); the **✕** sits at the stage's top-right beside them, always
+  on screen.
+- **Book** in the middle takes the remaining height; it fits as many 86 px
+  rows per page as the height allows. The red ribbon is hidden.
+- **Info panel** below, up to 38 % of the height: search, filters, the
+  selected entry's full stat block / description / attack, and the Give /
+  Buy / Add to map buttons. Long entries scroll **inside the panel**, never
+  the page.
+- Between 900 and 1100 px the side panel narrows from 340 px to 280 px.
+- Known issue: at phone width the two book pages are cramped (names cut to
+  "Gi…", sub-lines wrap). A one-page-at-a-time book would read better.
+
 ---
 
 ## 3. Flow
@@ -167,8 +187,8 @@ setting; the map grid scales with map zoom instead.
 ## 5. Open questions
 
 1. **DM on a phone** — support it, or keep hosting desktop-only? If
-   supported, the token sidebar, compendium and island/layer editing need
-   their own screens.
+   supported, the token sidebar and island/layer editing need their own
+   screens (the compendium already has a phone layout, see 2.5).
 2. **⋯ Table menu** contents and order.
 3. **Breakpoint** — at what width does the app switch from the desktop
    layout to this one? Tablet (768+) likely stays desktop-like.
