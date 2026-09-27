@@ -81,6 +81,7 @@ import {
   PhoneLayersSheet,
   PhoneAtlas,
   PhonePaletteRow,
+  PhoneGuestHostNote,
 } from './PhoneChrome.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
@@ -2321,6 +2322,34 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     };
   }, [isPhone]);
 
+  // A guest table lives in the DM's browser: while one is hosted from a
+  // phone, keep the screen from sleeping. The browser drops the lock whenever
+  // the page is hidden, so it's asked for again each time the page returns.
+  useEffect(() => {
+    if (!isPhone || !isGuestHost || !navigator.wakeLock) return undefined;
+    let lock = null;
+    let cancelled = false;
+    async function request() {
+      if (cancelled || document.visibilityState !== 'visible') return;
+      try {
+        lock = await navigator.wakeLock.request('screen');
+        if (cancelled) lock.release().catch(() => {});
+      } catch {
+        // refused (battery saver, unsupported context) — the menu's note still applies
+      }
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'visible') request();
+    }
+    request();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      lock?.release().catch(() => {});
+    };
+  }, [isPhone, isGuestHost]);
+
   // Leaving the phone layout shouldn't leave a sheet open behind the desktop.
   useEffect(() => {
     if (!isPhone) setPhoneSheet(null);
@@ -2702,6 +2731,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
           {phoneSheet === 'menu' && (
             <PhoneSheet title="Table menu" onClose={() => setPhoneSheet(null)} className="phone-sheet-toolbar">
+              {isGuestHost && <PhoneGuestHostNote />}
               <PhonePaletteRow theme={theme} onChange={onThemeChange} />
               {toolbarEl}
             </PhoneSheet>

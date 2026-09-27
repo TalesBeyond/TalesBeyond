@@ -140,8 +140,8 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S012 | S | Wake lock while hosting | When `isPhone && isGuestHost`, request a screen wake lock; re-request on `visibilitychange` to visible; release on leave or when either condition ends; ignore unsupported browsers silently. | S001 | `src/components/GameView.jsx` |
-| | S013 | U | "Runs on your phone" note | Persistent note at the top of the DM's phone table menu for guest tables: keep Hearthbound open and the screen on, export before closing. | S012 | `src/components/PhoneChrome.jsx` |
+| ✅ | S012 | S | Wake lock while hosting | When `isPhone && isGuestHost`, request a screen wake lock; re-request on `visibilitychange` to visible; release on leave or when either condition ends; ignore unsupported browsers silently. | S001 | `src/components/GameView.jsx` |
+| ✅ | S013 | U | "Runs on your phone" note | Persistent note at the top of the DM's phone table menu for guest tables: keep Hearthbound open and the screen on, export before closing. | S012 | `src/components/PhoneChrome.jsx` |
 | | S014 | T | Slice 3 check | On a real Android phone: host a guest table, leave the screen idle past its sleep timeout, switch apps and back, confirm the lock returns. | S012, S013 | — |
 
 ### Slice 4 — Tap to move

@@ -490,3 +490,14 @@ export function PhonePaletteRow({ theme, onChange }) {
     </div>
   );
 }
+
+// ---------- a guest table hosted from this phone ----------
+
+export function PhoneGuestHostNote() {
+  return (
+    <p className="phone-note" role="note">
+      This guest table runs on this phone. Keep Hearthbound open and the screen on while you play, and export the table before you
+      close it.
+    </p>
+  );
+}
