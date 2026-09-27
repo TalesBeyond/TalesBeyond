@@ -80,6 +80,7 @@ import {
   PhoneSheet,
   PhoneLayersSheet,
   PhoneAtlas,
+  PhonePaletteRow,
 } from './PhoneChrome.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
@@ -344,7 +345,7 @@ function saveOrWarn(code, nextState) {
   return ok;
 }
 
-export default function GameView({ me, mode, onLeave, onCodeRotated }) {
+export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onThemeChange }) {
   const state = useGameState();
   const dispatch = useGameDispatch();
   const [tool, setTool] = useState('play');
@@ -2229,15 +2230,42 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       const r = stage.getBoundingClientRect();
       return { x: t.clientX - r.left, y: t.clientY - r.top };
     };
+    // While two fingers are down the canvas is only scaled with a CSS
+    // transform; the real zoom (which re-renders the whole map) is set once,
+    // when the pinch ends.
+    function endPinch() {
+      const p = g.pinch;
+      g.pinch = null;
+      if (!p) return;
+      p.canvas.style.transform = '';
+      p.canvas.style.transformOrigin = '';
+      p.canvas.style.willChange = '';
+      const next = Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, p.zoom * p.scale));
+      if (next === zoomRef.current) {
+        stage.scrollLeft = p.worldX * next + STAGE_PADDING - p.mid.x;
+        stage.scrollTop = p.worldY * next + STAGE_PADDING - p.mid.y;
+      } else {
+        pinchAnchorRef.current = { worldX: p.worldX, worldY: p.worldY, relX: p.mid.x, relY: p.mid.y };
+        setZoom(next);
+      }
+    }
     function onStart(e) {
-      if (e.touches.length === 2) {
+      const canvas = stage.querySelector('.island-canvas');
+      if (e.touches.length === 2 && canvas) {
         const a = rel(e.touches[0]);
         const b = rel(e.touches[1]);
         const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         const z = zoomRef.current;
+        canvas.style.transformOrigin = '0 0';
+        canvas.style.willChange = 'transform';
         g.pinch = {
+          canvas,
           dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
           zoom: z,
+          scale: 1,
+          mid,
+          left: stage.scrollLeft,
+          top: stage.scrollTop,
           worldX: (stage.scrollLeft + mid.x - STAGE_PADDING) / z,
           worldY: (stage.scrollTop + mid.y - STAGE_PADDING) / z,
         };
@@ -2255,17 +2283,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     function onMove(e) {
       if (g.pinch && e.touches.length === 2) {
         e.preventDefault();
+        const p = g.pinch;
         const a = rel(e.touches[0]);
         const b = rel(e.touches[1]);
         const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        const next = Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, (g.pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / g.pinch.dist));
-        if (next === zoomRef.current) {
-          stage.scrollLeft = g.pinch.worldX * next + STAGE_PADDING - mid.x;
-          stage.scrollTop = g.pinch.worldY * next + STAGE_PADDING - mid.y;
-        } else {
-          pinchAnchorRef.current = { worldX: g.pinch.worldX, worldY: g.pinch.worldY, relX: mid.x, relY: mid.y };
-          setZoom(next);
-        }
+        const next = Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, (p.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / p.dist));
+        const scale = next / p.zoom;
+        // Keep the world point that started under the fingers under their midpoint.
+        const tx = mid.x - STAGE_PADDING + p.left - p.worldX * p.zoom * scale;
+        const ty = mid.y - STAGE_PADDING + p.top - p.worldY * p.zoom * scale;
+        p.canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        p.scale = scale;
+        p.mid = mid;
       } else if (g.pan && e.touches.length === 1) {
         const dx = e.touches[0].clientX - g.pan.x;
         const dy = e.touches[0].clientY - g.pan.y;
@@ -2277,7 +2306,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       }
     }
     function onEnd(e) {
-      if (e.touches.length < 2) g.pinch = null;
+      if (e.touches.length < 2) endPinch();
       if (e.touches.length === 0) g.pan = null;
     }
     stage.addEventListener('touchstart', onStart, { passive: false });
@@ -2673,6 +2702,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           )}
           {phoneSheet === 'menu' && (
             <PhoneSheet title="Table menu" onClose={() => setPhoneSheet(null)} className="phone-sheet-toolbar">
+              <PhonePaletteRow theme={theme} onChange={onThemeChange} />
               {toolbarEl}
             </PhoneSheet>
           )}

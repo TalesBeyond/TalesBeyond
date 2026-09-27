@@ -4,7 +4,7 @@
 | ----- | ----- |
 | ID | REQ-011 |
 | Title | Phone Release |
-| Status | Todo |
+| Status | InProgress |
 | Phase | Mobile |
 | Tier | Core |
 | Area | Game view / UI (phone layout) |
@@ -127,10 +127,10 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S007 | F | Safe areas | Add `viewport-fit=cover`; pad the top bar, bottom bar, sheets and Atlas with `env(safe-area-inset-*)`. | S005 | `index.html`, `src/styles.css` |
-| | S008 | S | Light pinch path | While a pinch is in progress, scale the map canvas with a CSS transform and commit the zoom once when the fingers lift (and at a throttled rate), instead of re-rendering on every `touchmove`. | S004 | `src/components/GameView.jsx` |
-| | S009 | U | Join/Host at phone size | Check and fix `Landing.jsx` at 390 × 844 and 844 × 390: form first, hero art collapsed, 44 px targets, swatches in one row. | S001 | `src/components/Landing.jsx`, `src/styles.css` |
-| | S010 | S | Palette on phones | Pass `theme` / `setTheme` from `App.jsx` into `GameView` so the phone table menu can show the palette choice without a second `useTheme` instance. | S005 | `src/App.jsx`, `src/components/GameView.jsx` |
+| ✅ | S007 | F | Safe areas | Add `viewport-fit=cover`; pad the top bar, bottom bar, sheets and Atlas with `env(safe-area-inset-*)`. | S005 | `index.html`, `src/styles.css` |
+| ✅ | S008 | S | Light pinch path | While a pinch is in progress, scale the map canvas with a CSS transform and commit the zoom once when the fingers lift (and at a throttled rate), instead of re-rendering on every `touchmove`. | S004 | `src/components/GameView.jsx` |
+| ✅ | S009 | U | Join/Host at phone size | Check and fix `Landing.jsx` at 390 × 844 and 844 × 390: form first, hero art collapsed, 44 px targets, swatches in one row. | S001 | `src/components/Landing.jsx`, `src/styles.css` |
+| ✅ | S010 | S | Palette on phones | Pass `theme` / `setTheme` from `App.jsx` into `GameView` so the phone table menu can show the palette choice without a second `useTheme` instance. | S005 | `src/App.jsx`, `src/components/GameView.jsx` |
 | | S011 | T | Slice 2 check | Notch emulation, a 60 × 60 island pinch, Join/Host both orientations, palette switch persists after reload. | S007, S008, S009, S010 | — |
 
 ### Slice 3 — Phone DM keep-awake

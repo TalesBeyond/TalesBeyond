@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getIslandCondition } from '../data/islandConditions.js';
+import { PALETTES } from '../state/theme.js';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -466,6 +467,26 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
         </ul>
         <p className="phone-caption">Tokens walk straight across where two islands touch. Doors lead to other maps.</p>
       </div>
+    </div>
+  );
+}
+
+// ---------- palette choice (the desktop header's PalettesMenu, as a row) ----------
+
+export function PhonePaletteRow({ theme, onChange }) {
+  if (!onChange) return null;
+  return (
+    <div className="phone-palettes" role="radiogroup" aria-label="Palette">
+      {PALETTES.map((p) => (
+        <button key={p.id} type="button" role="radio" aria-checked={theme === p.id} className={theme === p.id ? 'active' : ''} onClick={() => onChange(p.id)}>
+          <span className="phone-palette-swatch" aria-hidden="true">
+            {p.swatch.map((c) => (
+              <span key={c} style={{ background: c }} />
+            ))}
+          </span>
+          {p.label}
+        </button>
+      ))}
     </div>
   );
 }
