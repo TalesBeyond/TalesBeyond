@@ -42,6 +42,7 @@ export default function MapBoard({
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
   actorId = null, // whose turn it is, during an encounter
+  gestureRef = null, // phone layout: { panned } — set when a touch just panned the map, so its closing click is ignored
 }) {
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
@@ -354,6 +355,10 @@ export default function MapBoard({
     setIslandDragPos(null);
     if (!current) return;
 
+    // A phone pan scrolls the map under a still finger, so the island would
+    // otherwise read it as a click and select itself.
+    if (gestureRef?.current?.panned) return;
+
     const p = getRelativePoint(e.clientX, e.clientY);
     const moved = Math.hypot(p.x - current.downX, p.y - current.downY);
     const isClick = moved < CLICK_MOVE_THRESHOLD_PX;
@@ -470,6 +475,7 @@ export default function MapBoard({
   }
 
   function handleStageClick() {
+    if (gestureRef?.current?.panned) return;
     if (tool === 'play') onSelectEntity(null);
   }
 
@@ -660,17 +666,33 @@ export default function MapBoard({
                   <span className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`} style={{ width: `${hpPercent(entity)}%` }} />
                 </span>
               ) : null}
+              {/* Temporary HP: a thin blue layer riding on top of the life bar. */}
+              {entity.kind !== 'door' && entity.maxHp && entity.tempHp > 0 ? (
+                <span className="token-tempbar" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, (entity.tempHp / entity.maxHp) * 100)}%` }} />
+                </span>
+              ) : null}
               {entity.kind !== 'door' && entity.maxHp ? (
                 <span className="token-hp">
                   {entity.hp}/{entity.maxHp}
+                  {entity.tempHp > 0 && <span className="token-hp-temp"> +{entity.tempHp}</span>}
                 </span>
               ) : null}
               {entity.kind !== 'door' && entity.conditions?.length > 0 && (
+                // Cardboard chits clipped to the token's edge; hovering the
+                // token fans out their names.
                 <span className="token-conditions">
                   {entity.conditions.map((key) => {
                     const c = CONDITIONS.find((cond) => cond.key === key);
                     if (!c) return null;
-                    return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                    return (
+                      <span key={key} className="token-chit" title={`${c.label} — ${c.description}`}>
+                        <img src={c.imageUrl} alt={c.label} />
+                        <span className="token-chit-label" aria-hidden="true">
+                          {c.label}
+                        </span>
+                      </span>
+                    );
                   })}
                 </span>
               )}

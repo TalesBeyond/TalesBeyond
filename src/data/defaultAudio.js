@@ -19,7 +19,9 @@ import diceRollUrl from '../assets/audio/dice-roll.mp3';
 import swordSliceUrl from '../assets/audio/sword-slice.mp3';
 import swooshMissUrl from '../assets/audio/swoosh-miss.mp3';
 import pageFlipUrl from '../assets/audio/page-flip.mp3';
+import turnStartUrl from '../assets/audio/turn-start.mp3';
 import villageConsortUrl from '../assets/audio/music/village-consort.mp3';
+import bossFightUrl from '../assets/audio/music/boss-fight.mp3';
 
 // Where the built-in sounds come from, shown next to each one in the Music
 // modal. Add `author` (the Pixabay uploader) and `url` (the sound's own
@@ -59,6 +61,17 @@ export const SOUND_EFFECTS = [
     source: { ...PIXABAY, author: 'freesound_community', url: 'https://pixabay.com/sound-effects/film-special-effects-small-page-103398/' },
     url: pageFlipUrl,
   },
+  {
+    id: 'turn',
+    name: 'Turn starts',
+    when: 'Plays when a new turn starts during an encounter',
+    description: 'A short, bright video-game success chime.',
+    source: { ...PIXABAY, url: 'https://pixabay.com/sound-effects/film-special-effects-next-level-114480/' },
+    url: turnStartUrl,
+    // Cut to its first 2 seconds, fading out over the last half second.
+    maxSeconds: 2,
+    fadeSeconds: 0.5,
+  },
 ];
 
 // { id, name, url, loop, description, source } — see the note above. `source`
@@ -72,6 +85,19 @@ export const DEMO_MUSIC = [
     loop: true,
   },
 ];
+
+// Plays for everyone at the table while an encounter is running, in place of
+// the table's music (which picks back up where it would be once the fight
+// ends — see audioEngine.js's `override`). Each player sets its volume in the
+// Music modal. Not offered as world music: it's the fight's own theme.
+export const ENCOUNTER_MUSIC = {
+  id: 'encounter-music',
+  name: 'Encounter music',
+  when: 'Loops while an encounter is running, in place of the table music',
+  description: 'A driving boss-fight loop.',
+  source: PIXABAY,
+  url: bossFightUrl,
+};
 
 const BUILTIN_PREFIX = 'builtin:';
 

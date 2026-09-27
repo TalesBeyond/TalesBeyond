@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { playDiceSound, playSfx } from '../lib/sfx.js';
+import { playDiceSound, playSfx, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
 import { emitFx, useFx, takeCrit } from '../lib/fx.js';
 import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
-import { DEMO_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
+import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
@@ -69,7 +69,20 @@ import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
 import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
-import { TurnOrderRibbon, EncounterActions } from './EncounterHud.jsx';
+import {
+  usePhoneLayout,
+  PhoneTopBar,
+  PhoneIslandStrip,
+  PhoneMiniMap,
+  PhoneIslandConditions,
+  PhoneTokenCard,
+  PhoneNav,
+  PhoneSheet,
+  PhoneLayersSheet,
+  PhoneAtlas,
+} from './PhoneChrome.jsx';
+import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
+import BookTabs from './BookTabs.jsx';
 import FxLayer from './FxLayer.jsx';
 import { useTableAudio, defaultLoopFor } from '../lib/audioEngine.js';
 import {
@@ -83,6 +96,7 @@ import {
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 0.1;
+const STAGE_PADDING = 28; // .stage's padding in styles.css — the map canvas starts this far in
 
 // REQ-001 Connection Recovery: a status flap shorter than this never
 // surfaces anything (AC1). Resync-failure backoff schedule (AC4) — index
@@ -106,8 +120,11 @@ const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
 // happens; saveNow there just relabels the toolbar), but harmless there too.
 const AUTOSAVE_INTERVAL_SECONDS = 15 * 60;
 
-function clampZoom(z) {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));
+// A phone can zoom further out, so a whole island fits its narrow screen.
+const PHONE_ZOOM_MIN = 0.2;
+
+function clampZoom(z, min = ZOOM_MIN) {
+  return Math.min(ZOOM_MAX, Math.max(min, Math.round(z * 10) / 10));
 }
 
 function findFreeCell(entities, islandId, cols, rows) {
@@ -476,6 +493,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   const audioEnabled = isRemote || isGuestHost;
   const audioScope = isRemote ? state.session.tableId : state.session.code;
   const [showMusicModal, setShowMusicModal] = useState(false);
+  // This browser's volume for the encounter theme (set in the Music modal).
+  const [encounterMusicVolume, setEncounterMusicVolume] = useState(() => getSfxVolume(ENCOUNTER_MUSIC.id));
   // Each player's own level per track — this browser only.
   const [localAudioVolumes, setLocalAudioVolumes] = useState(() => loadLocalAudioVolumes(audioScope));
   const { blocked: audioBlocked, unlock: unlockAudio, expired: expiredAudio } = useTableAudio({
@@ -486,6 +505,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     layers: state.layers,
     localVolumes: localAudioVolumes,
     checkFiles: isGuest,
+    // The encounter's own theme, for everyone at the table while a fight runs.
+    override: state.encounter ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
   });
 
   // Which island new tokens/doors get placed onto, and which island is
@@ -519,8 +540,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     const island = currentLayer.islands[islandId];
     if (!stage || !island) return;
     const { originX, originY } = computeCanvasBounds(currentLayer.islands);
-    const centerX = (island.x - originX + (island.cols * island.cellSize) / 2) * zoom;
-    const centerY = (island.y - originY + (island.rows * island.cellSize) / 2) * zoom;
+    // The canvas sits STAGE_PADDING in from the stage's scroll origin.
+    const centerX = (island.x - originX + (island.cols * island.cellSize) / 2) * zoom + STAGE_PADDING;
+    const centerY = (island.y - originY + (island.rows * island.cellSize) / 2) * zoom + STAGE_PADDING;
     stage.scrollLeft = centerX - stage.clientWidth / 2;
     stage.scrollTop = centerY - stage.clientHeight / 2;
   }
@@ -700,6 +722,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // change and turn change it sees (those come from synced state, so every
   // player's log agrees on them).
   const [combatLog, setCombatLog] = useState([]);
+  const [chronicleOpen, setChronicleOpen] = useState(false); // Grimoire's Chronicle tab (BookTabs.jsx)
   const logSeq = useRef(0);
   useFx((event) => {
     if (event.type !== 'log') return;
@@ -716,20 +739,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   useEffect(() => {
     const prev = seenEntitiesRef.current;
     const seen = {};
-    for (const e of Object.values(state.entities)) seen[e.id] = { hp: e.hp, opened: e.opened };
+    // Temporary HP counts: a blow they soak up still shows its damage number.
+    const life = (e) => (typeof e.hp === 'number' ? e.hp + (e.tempHp || 0) : e.hp);
+    for (const e of Object.values(state.entities)) seen[e.id] = { hp: life(e), opened: e.opened };
     seenEntitiesRef.current = seen;
     if (!prev) return;
     for (const e of Object.values(state.entities)) {
       const before = prev[e.id];
       if (!before) continue;
-      if (e.kind !== 'door' && e.maxHp && typeof before.hp === 'number' && typeof e.hp === 'number' && e.hp !== before.hp) {
+      if (e.kind !== 'door' && e.maxHp && typeof before.hp === 'number' && typeof e.hp === 'number' && life(e) !== before.hp) {
         const pending = pendingHpRef.current[e.id] || { baseHp: before.hp };
         clearTimeout(pending.timer);
         pending.timer = setTimeout(() => {
           delete pendingHpRef.current[e.id];
           const now = stateRef.current.entities[e.id];
           if (!now || typeof now.hp !== 'number') return;
-          const delta = now.hp - pending.baseHp;
+          const delta = life(now) - pending.baseHp;
           if (!delta) return;
           if (delta < 0) {
             emitFx({ type: 'float', entityId: e.id, kind: takeCrit(e.id) ? 'crit' : 'dmg', amount: -delta });
@@ -769,7 +794,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       tone: mine ? 'mine' : actor.kind === 'mob' ? 'enemy' : 'ally',
     });
     emitFx({ type: 'log', tone: 'turn', text: `Round ${encounter.round}: ${actor.name}'s turn` });
-    playSfx('page');
+    playSfx('turn');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turnKey]);
 
@@ -989,12 +1014,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     return newItems.every((it) => JSON.stringify(it) === JSON.stringify(oldItems.find((o) => o.id === it.id)));
   }
 
+  // A player's attack may lower a monster's HP and spend its temporary HP
+  // (which damage uses up first) — never raise either, never touch anything else.
   function canDamageMob(entity, patch) {
     const keys = Object.keys(patch);
-    if (keys.length !== 1 || keys[0] !== 'hp') return false;
-    const newHp = patch.hp;
-    const currentHp = entity.hp ?? entity.maxHp ?? 0;
-    return typeof newHp === 'number' && newHp >= 0 && newHp <= currentHp;
+    if (!keys.length || !keys.every((key) => key === 'hp' || key === 'tempHp')) return false;
+    if ('hp' in patch) {
+      const currentHp = entity.hp ?? entity.maxHp ?? 0;
+      if (typeof patch.hp !== 'number' || patch.hp < 0 || patch.hp > currentHp) return false;
+    }
+    if ('tempHp' in patch) {
+      if (typeof patch.tempHp !== 'number' || patch.tempHp < 0 || patch.tempHp > (entity.tempHp || 0)) return false;
+    }
+    return true;
   }
 
   // The non-host update rules, independent of whose browser is evaluating
@@ -2103,11 +2135,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // (MapBoard's onWheel, active in every tool) so both drive the same zoom.
   function zoomIn() {
     captureZoomAnchor();
-    setZoom((z) => clampZoom(z + ZOOM_STEP));
+    setZoom((z) => clampZoom(z + ZOOM_STEP, isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN));
   }
   function zoomOut() {
     captureZoomAnchor();
-    setZoom((z) => clampZoom(z - ZOOM_STEP));
+    setZoom((z) => clampZoom(z - ZOOM_STEP, isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN));
   }
   function zoomReset() {
     captureZoomAnchor();
@@ -2138,13 +2170,139 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     return () => stage.removeEventListener('wheel', onWheel);
   }, []);
 
+  // ---- Phone layout (MOBILE_DESIGN.md) ----
+  // Islands first: the top bar names the island you're on, the chips fly the
+  // camera from island to island (fitting each to the screen), and a pinch
+  // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
+  const isPhone = usePhoneLayout();
+  const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
+
+  // The zoom that fits a whole island inside the stage, less its padding.
+  function fitZoomFor(island) {
+    const stage = stageRef.current;
+    if (!stage || !island) return zoom;
+    const w = stage.clientWidth - STAGE_PADDING * 2 - 16;
+    const h = stage.clientHeight - STAGE_PADDING * 2 - 16;
+    const z = Math.min(w / (island.cols * island.cellSize), h / (island.rows * island.cellSize));
+    return Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, Math.round(z * 100) / 100));
+  }
+  function flyToIsland(islandId) {
+    const island = currentLayer.islands[islandId];
+    if (!island) return;
+    setActiveIslandId(islandId);
+    setZoom(fitZoomFor(island));
+    pendingRecenterIslandIdRef.current = islandId;
+  }
+
+  // Land on your own hero's island (or the base island) whenever the phone
+  // layout starts or the layer changes.
+  const myHeroOnLayer = heroes.find((h) => h.ownerId === me.id && h.layerId === currentLayerId);
+  useEffect(() => {
+    if (!isPhone) return;
+    flyToIsland(myHeroOnLayer?.islandId || currentLayer.islandOrder[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPhone, currentLayerId]);
+
+  // Touch gestures on the phone map: two fingers pinch-zoom around their
+  // midpoint (and pan as they move); one finger on empty map pans in the Play
+  // tool, so a token drag and a pan never fight. MapBoard reads
+  // `phoneGestureRef.current.panned` to skip the click that ends a pan.
+  const phoneGestureRef = useRef({ panned: false, pan: null, pinch: null });
+  const pinchAnchorRef = useRef(null); // { worldX, worldY, relX, relY }
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
+  useLayoutEffect(() => {
+    const anchor = pinchAnchorRef.current;
+    const stage = stageRef.current;
+    if (!anchor || !stage) return;
+    pinchAnchorRef.current = null;
+    stage.scrollLeft = anchor.worldX * zoom + STAGE_PADDING - anchor.relX;
+    stage.scrollTop = anchor.worldY * zoom + STAGE_PADDING - anchor.relY;
+  }, [zoom]);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!isPhone || !stage) return undefined;
+    const g = phoneGestureRef.current;
+    const rel = (t) => {
+      const r = stage.getBoundingClientRect();
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    function onStart(e) {
+      if (e.touches.length === 2) {
+        const a = rel(e.touches[0]);
+        const b = rel(e.touches[1]);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const z = zoomRef.current;
+        g.pinch = {
+          dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+          zoom: z,
+          worldX: (stage.scrollLeft + mid.x - STAGE_PADDING) / z,
+          worldY: (stage.scrollTop + mid.y - STAGE_PADDING) / z,
+        };
+        g.pan = null;
+        g.panned = true;
+        e.preventDefault();
+      } else if (e.touches.length === 1) {
+        g.panned = false;
+        g.pan =
+          toolRef.current === 'play' && !e.target.closest('.token')
+            ? { x: e.touches[0].clientX, y: e.touches[0].clientY, left: stage.scrollLeft, top: stage.scrollTop }
+            : null;
+      }
+    }
+    function onMove(e) {
+      if (g.pinch && e.touches.length === 2) {
+        e.preventDefault();
+        const a = rel(e.touches[0]);
+        const b = rel(e.touches[1]);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const next = Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, (g.pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / g.pinch.dist));
+        if (next === zoomRef.current) {
+          stage.scrollLeft = g.pinch.worldX * next + STAGE_PADDING - mid.x;
+          stage.scrollTop = g.pinch.worldY * next + STAGE_PADDING - mid.y;
+        } else {
+          pinchAnchorRef.current = { worldX: g.pinch.worldX, worldY: g.pinch.worldY, relX: mid.x, relY: mid.y };
+          setZoom(next);
+        }
+      } else if (g.pan && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - g.pan.x;
+        const dy = e.touches[0].clientY - g.pan.y;
+        if (!g.panned && Math.hypot(dx, dy) < 6) return;
+        g.panned = true;
+        e.preventDefault();
+        stage.scrollLeft = g.pan.left - dx;
+        stage.scrollTop = g.pan.top - dy;
+      }
+    }
+    function onEnd(e) {
+      if (e.touches.length < 2) g.pinch = null;
+      if (e.touches.length === 0) g.pan = null;
+    }
+    stage.addEventListener('touchstart', onStart, { passive: false });
+    stage.addEventListener('touchmove', onMove, { passive: false });
+    stage.addEventListener('touchend', onEnd);
+    stage.addEventListener('touchcancel', onEnd);
+    return () => {
+      stage.removeEventListener('touchstart', onStart);
+      stage.removeEventListener('touchmove', onMove);
+      stage.removeEventListener('touchend', onEnd);
+      stage.removeEventListener('touchcancel', onEnd);
+    };
+  }, [isPhone]);
+
+  // Leaving the phone layout shouldn't leave a sheet open behind the desktop.
+  useEffect(() => {
+    if (!isPhone) setPhoneSheet(null);
+  }, [isPhone]);
+
   const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
   // what lets it keep its labels on an ordinary laptop screen.
-  return (
-    <div className="game-screen">
+  const toolbarEl = (
       <Toolbar
         isHost={isHost}
         isGuestHost={isGuestHost}
@@ -2198,15 +2356,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         customAssets={state.customAssets}
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
-        collapsed={toolbarCollapsed}
-        onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
+        collapsed={isPhone ? false : toolbarCollapsed}
+        onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : setToolbarCollapsed((c) => !c))}
         zoom={zoom}
       />
+  );
 
-      <div
-        className={`game-layout${drawerLayout ? ' drawers' : ''}${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
-        style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
-      >
+  const tokenSidebarEl = (
         <TokenSidebar
           onAddEntity={addEntity}
           layers={state.layers}
@@ -2214,11 +2370,72 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           currentLayerId={currentLayerId}
           isHost={isHost}
           customAssets={state.customAssets}
-          collapsed={leftCollapsed}
-          onToggleCollapsed={() => togglePanel('left')}
+          collapsed={isPhone ? false : leftCollapsed}
+          onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('left'))}
         />
+  );
+
+  const rightPanelEl = (
+        <RightPanel
+          audio={audioApi}
+          players={state.players}
+          hostId={state.session.hostPlayerId}
+          layers={state.layers}
+          layerOrder={state.layerOrder}
+          entities={layerEntities}
+          selectedEntity={selectedEntity}
+          isHost={isHost}
+          meId={me.id}
+          onUpdateEntity={updateEntity}
+          onRemoveEntity={removeEntity}
+          tool={tool}
+          heroes={heroes}
+          onGiveChestItem={giveChestItemToHero}
+          onTakeChestItem={takeChestItem}
+          collapsed={isPhone ? false : rightCollapsed}
+          onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('right'))}
+          encounterActor={actor}
+        />
+  );
+
+  const activeIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+  const layerIndex = state.layerOrder.indexOf(currentLayerId);
+  const { originX: canvasOriginX, originY: canvasOriginY } = computeCanvasBounds(currentLayer.islands);
+
+  return (
+    <div className={`game-screen${isPhone ? ' phone' : ''}`}>
+      {isPhone ? (
+        <>
+          <PhoneTopBar
+            islandName={activeIsland?.name || currentLayer.name}
+            layerName={currentLayer.name}
+            layerIndex={layerIndex}
+            layerCount={state.layerOrder.length}
+            feetPerSquare={currentLayer.feetPerSquare}
+            onAtlas={() => setPhoneSheet('atlas')}
+            onLayers={() => setPhoneSheet('layers')}
+            onMenu={() => setPhoneSheet('menu')}
+          />
+          <PhoneIslandStrip
+            layer={currentLayer}
+            entities={layerEntities}
+            activeIslandId={activeIslandId}
+            onPick={flyToIsland}
+            onAddIsland={isHost ? () => setPhoneSheet('menu') : null}
+          />
+        </>
+      ) : (
+        toolbarEl
+      )}
+
+      <div
+        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
+        style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
+      >
+        {!isPhone && tokenSidebarEl}
 
         <div className="game-center">
+          {!isPhone && (
           <LayerStrip
             layers={state.layers}
             layerOrder={state.layerOrder}
@@ -2230,6 +2447,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             clock={state.clock}
             phaseOverride={state.dayNightOverride}
           />
+          )}
           <div className="stage-wrap">
           <div className="stage" ref={stageRef}>
             <MapBoard
@@ -2257,8 +2475,30 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
               onRulerChange={setRulerFeet}
               moveRange={moveRange}
               actorId={actorId}
+              gestureRef={isPhone ? phoneGestureRef : null}
             />
           </div>
+          {isPhone && (
+            <>
+              <PhoneMiniMap
+                layer={currentLayer}
+                zoom={zoom}
+                stageRef={stageRef}
+                originX={canvasOriginX}
+                originY={canvasOriginY}
+                stagePadding={STAGE_PADDING}
+                activeIslandId={activeIslandId}
+                onOpen={() => setPhoneSheet('atlas')}
+              />
+              <PhoneIslandConditions island={activeIsland} />
+              <PhoneTokenCard
+                entity={selectedEntity}
+                isHost={isHost}
+                onOpen={() => setPhoneSheet('panel')}
+                onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
+              />
+            </>
+          )}
           {encounter ? <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} /> : <InitiativeBar entities={layerEntities} />}
           {encounter && (
             <EncounterActions
@@ -2273,31 +2513,24 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             />
           )}
           <FxLayer />
+          {!isPhone && <BookTabs isHost={isHost} chronicleOpen={chronicleOpen} onToggleChronicle={() => setChronicleOpen((o) => !o)} />}
+          {chronicleOpen && (
+            <div className="book-chronicle">
+              <CombatLog log={combatLog} onClose={() => setChronicleOpen(false)} />
+            </div>
+          )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
+          <ZoomControl
+            zoom={zoom}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onZoomReset={zoomReset}
+            onRecenter={() => (isPhone ? flyToIsland(activeIslandId) : recenterOnIsland(activeIslandId))}
+          />
           </div>
         </div>
 
-        <RightPanel
-          audio={audioApi}
-          players={state.players}
-          hostId={state.session.hostPlayerId}
-          layers={state.layers}
-          layerOrder={state.layerOrder}
-          entities={layerEntities}
-          selectedEntity={selectedEntity}
-          isHost={isHost}
-          meId={me.id}
-          onUpdateEntity={updateEntity}
-          onRemoveEntity={removeEntity}
-          tool={tool}
-          heroes={heroes}
-          onGiveChestItem={giveChestItemToHero}
-          onTakeChestItem={takeChestItem}
-          collapsed={rightCollapsed}
-          onToggleCollapsed={() => togglePanel('right')}
-          encounterActor={actor}
-        />
+        {!isPhone && rightPanelEl}
 
         {showMusicModal && audioEnabled && (
           <MusicModal
@@ -2308,6 +2541,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             layerOrder={state.layerOrder}
             entities={state.entities}
             isGuest={isGuest}
+            encounterVolume={encounterMusicVolume}
+            onEncounterVolume={(v) => {
+              setEncounterMusicVolume(v);
+              setSfxVolume(ENCOUNTER_MUSIC.id, v);
+            }}
             onClose={() => setShowMusicModal(false)}
           />
         )}
@@ -2334,7 +2572,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!leftCollapsed && !drawerLayout && (
+        {!isPhone && !leftCollapsed && !drawerLayout && (
           <PanelResizer
             side="left"
             width={shownPanelWidths.left}
@@ -2343,7 +2581,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
           />
         )}
-        {!rightCollapsed && !drawerLayout && (
+        {!isPhone && !rightCollapsed && !drawerLayout && (
           <PanelResizer
             side="right"
             width={shownPanelWidths.right}
@@ -2419,6 +2657,56 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           </div>
         )}
       </div>
+
+      {isPhone && (
+        <>
+          <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
+          {phoneSheet === 'panel' && (
+            <PhoneSheet title={selectedEntity ? selectedEntity.name : 'Party'} onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
+              {rightPanelEl}
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'add' && isHost && (
+            <PhoneSheet title="Add to the map" onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
+              {tokenSidebarEl}
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'menu' && (
+            <PhoneSheet title="Table menu" onClose={() => setPhoneSheet(null)} className="phone-sheet-toolbar">
+              {toolbarEl}
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'layers' && (
+            <PhoneLayersSheet
+              layers={state.layers}
+              layerOrder={state.layerOrder}
+              currentLayerId={currentLayerId}
+              layerPlayerCounts={layerPlayerCounts}
+              isHost={isHost}
+              onSwitch={(id) => {
+                setHostViewLayerId(id);
+                setPhoneSheet(null);
+              }}
+              onManage={() => setPhoneSheet('menu')}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'atlas' && (
+            <PhoneAtlas
+              layer={currentLayer}
+              entities={layerEntities}
+              activeIslandId={activeIslandId}
+              myHeroId={myHeroOnLayer?.id}
+              layerLabel={`${state.layerOrder.length > 1 ? `Layer ${layerIndex + 1} of ${state.layerOrder.length} · ` : ''}${currentLayer.islandOrder.length} islands · ${currentLayer.feetPerSquare} ft squares`}
+              onPick={(id) => {
+                setPhoneSheet(null);
+                flyToIsland(id);
+              }}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }

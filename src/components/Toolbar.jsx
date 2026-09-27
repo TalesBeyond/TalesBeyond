@@ -13,6 +13,7 @@ import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
+import { useFx } from '../lib/fx.js';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
@@ -297,6 +298,23 @@ export default function Toolbar({
     setShowAssetStorage((s) => (name === 'assetStorage' ? !s : false));
     setShowDayNight((s) => (name === 'dayNight' ? !s : false));
   }
+
+  // The Grimoire palette's index tabs (BookTabs.jsx) open these same
+  // panels from the edge of the map page — they ask over lib/fx.js rather
+  // than reaching into this component's state.
+  useFx((event) => {
+    if (event.type !== 'open') return;
+    if (event.panel === 'dice') togglePopover('dice');
+    else if (event.panel === 'music') onOpenMusic?.();
+    else if (!isHost) return;
+    else if (event.panel === 'map') togglePopover('mapSettings');
+    else if (event.panel === 'armory') togglePopover('compendium');
+    else if (event.panel === 'bestiary') {
+      const open = showMonsterCompendium;
+      togglePopover(null);
+      setShowMonsterCompendium(!open);
+    }
+  });
 
   function copyCode() {
     navigator.clipboard?.writeText(session.code).then(() => {

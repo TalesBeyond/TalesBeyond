@@ -293,7 +293,11 @@ lost chunk drains after a beat and glows below 25%, a turn banner, a big die
 for natural 20s and 1s, cardboard condition chits, and loot cards that flip
 face-up (mob droppables, or a chest being opened). HP changes and chests are
 read from synced state, so every player sees them; rolls and misses are local.
-The **Grimoire** palette restyles all of it as the DM's open book.
+The **Grimoire** palette restyles all of it as the DM's open book: a
+leather cover with the map as the left page and the inspector as the right,
+cross-hatched ink walls around every island, inked tokens, and a thumb index
+down the map page's edge (`BookTabs.jsx`) — Map, Bestiary, Armory, Dice,
+Music, and the Chronicle (the combat log, open any time).
 
 ### DM notes
 

@@ -32,10 +32,17 @@ function describePool(pool, modifier) {
 // Rolls the pool. With advantage/disadvantage, every set of dice is thrown
 // twice and the set with the higher/lower total is kept (the first throw wins
 // a tie). Both throws are shown in the detail line.
+//
+// Also returns `moment`: what the big die over the table shows (FxLayer.jsx).
+// One kind of die rolled → that die's shape, showing its face (or the sum of
+// several). Mixed kinds → the d20: its face when exactly one d20 is in the
+// pool, otherwise the dice total. min/max are that value's possible range.
 function rollPool(pool, modifier, mode, name) {
   let total = modifier;
   const groups = [];
   let flag = null;
+  let d20 = null; // the kept face when the pool holds exactly one d20
+  const kept = {}; // sides -> sum of that kind's kept dice
   const sum = (arr) => arr.reduce((a, b) => a + b, 0);
   for (const sides of SIDES) {
     const count = pool[sides] || 0;
@@ -52,11 +59,30 @@ function rollPool(pool, modifier, mode, name) {
       text = `${count}d${sides} (${results.join(', ')})`;
     }
     if (sides === 20 && count === 1) {
+      d20 = results[0];
       if (results[0] === 20) flag = 'Natural 20';
       else if (results[0] === 1) flag = 'Natural 1';
     }
     total += sum(results);
+    kept[sides] = sum(results);
     groups.push(text);
+  }
+  const kinds = SIDES.filter((s) => pool[s] > 0);
+  let moment = null;
+  if (kinds.length === 1) {
+    const sides = kinds[0];
+    const count = pool[sides];
+    moment = { sides, value: kept[sides], min: count, max: count * sides };
+  } else if (kinds.length > 1) {
+    moment =
+      d20 != null
+        ? { sides: 20, value: d20, min: 1, max: 20 }
+        : {
+            sides: 20,
+            value: total - modifier,
+            min: kinds.reduce((n, s) => n + pool[s], 0),
+            max: kinds.reduce((n, s) => n + pool[s] * s, 0),
+          };
   }
   const detail = groups.join(' + ') + (modifier ? ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}` : '');
   return {
@@ -65,6 +91,7 @@ function rollPool(pool, modifier, mode, name) {
     detail,
     total,
     flag,
+    moment,
   };
 }
 
@@ -93,10 +120,11 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
   function roll() {
     if (!canRoll) return;
     playDiceSound();
-    const result = rollPool(pool, modifier, mode, name);
+    const { moment, ...result } = rollPool(pool, modifier, mode, name);
     onRoll(result);
     emitFx({ type: 'log', tone: 'roll', text: `You rolled ${result.title}: ${result.total}${result.flag ? ` (${result.flag})` : ''}` });
-    if (result.flag) emitFx({ type: 'nat', value: result.flag === 'Natural 20' ? 20 : 1 });
+    // The big die over the table (FxLayer.jsx) — see rollPool's `moment`.
+    if (moment) emitFx({ type: 'die', ...moment, detail: `${result.title} · total ${result.total}` });
   }
 
   function loadSaved(s) {

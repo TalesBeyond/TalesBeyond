@@ -52,7 +52,7 @@ export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHos
     const value = rollDie(20);
     setLastRoll({ value, key: Date.now() });
     emitFx({ type: 'log', tone: 'roll', text: `You rolled a d20: ${value}${value === 20 ? ' (natural 20)' : value === 1 ? ' (natural 1)' : ''}` });
-    if (value === 20 || value === 1) emitFx({ type: 'nat', value });
+    emitFx({ type: 'die', value });
   }
 
   const endLabel = canEndTurn ? 'End turn' : actor ? `${actor.name}'s turn` : 'Waiting';
@@ -110,7 +110,7 @@ export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHos
   );
 }
 
-function CombatLog({ log, onClose }) {
+export function CombatLog({ log, onClose }) {
   return (
     <div className="combat-log" role="log" aria-label="Combat log">
       <div className="combat-log-head">

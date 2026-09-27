@@ -55,7 +55,7 @@ export function audibleTrack(playback, tracks, { currentLayerId, layers, expired
  *   tables, whose files expire)
  * @returns {{ blocked: boolean, unlock: () => void, expired: Set<string> }}
  */
-export function useTableAudio({ enabled, playback, tracks, currentLayerId, layers, localVolumes, checkFiles }) {
+export function useTableAudio({ enabled, playback, tracks, currentLayerId, layers, localVolumes, checkFiles, override }) {
   const elRef = useRef(null);
   const [blocked, setBlocked] = useState(false);
   const [expired, setExpired] = useState(() => new Set());
@@ -67,7 +67,17 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
   const nowPlaying = track ? playback.nowPlaying : null;
   const url = track ? resolveTrackUrl(track.url) : null;
   const loop = track?.loop ?? true;
-  const volume = track ? clamp01(track.baseVolume ?? 1) * clamp01(localVolumes?.[track.id] ?? 1) : 0;
+  // `override` ({ url, volume }) takes the element over from the table's
+  // music while it's set — the encounter's theme (GameView.jsx). It works
+  // even where table music is off (local tables), and when it's cleared the
+  // table music re-seeks to wherever its synced position has reached.
+  const overrideUrl = override?.url || null;
+  const overrideStartedRef = useRef(false);
+  const volume = overrideUrl
+    ? clamp01(override.volume ?? 1)
+    : track
+      ? clamp01(track.baseVolume ?? 1) * clamp01(localVolumes?.[track.id] ?? 1)
+      : 0;
 
   const markExpired = useCallback((id) => {
     setExpired((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
@@ -119,6 +129,33 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
   }, [enabled]);
 
   useEffect(() => {
+    if (overrideUrl) {
+      if (!elRef.current) {
+        elRef.current = new Audio();
+        elRef.current.preload = 'auto';
+      }
+      const el = elRef.current;
+      el.loop = true;
+      if (el.getAttribute('data-src') !== overrideUrl) {
+        el.setAttribute('data-src', overrideUrl);
+        el.src = overrideUrl;
+      } else if (!overrideStartedRef.current) {
+        el.currentTime = 0; // a new fight starts its theme from the top
+      }
+      overrideStartedRef.current = true;
+      let cancelled = false;
+      el.play().then(
+        () => !cancelled && setBlocked(false),
+        (err) => {
+          if (!cancelled && err?.name === 'NotAllowedError') setBlocked(true);
+        }
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
+    overrideStartedRef.current = false;
+
     if (!nowPlaying || !url) {
       const idle = elRef.current;
       if (idle) idle.pause();
@@ -169,12 +206,12 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
     };
     // `playback` itself is a dependency so a resync (HYDRATE after a
     // reconnect) re-derives the position even when the values are unchanged.
-  }, [url, loop, playback, nowPlaying?.trackId, nowPlaying?.anchorMs, nowPlaying?.offsetMs, resyncTick, markExpired]);
+  }, [overrideUrl, url, loop, playback, nowPlaying?.trackId, nowPlaying?.anchorMs, nowPlaying?.offsetMs, resyncTick, markExpired]);
 
   // Volume changes apply live, without re-seeking. (iOS Safari ignores it.)
   useEffect(() => {
     if (elRef.current) elRef.current.volume = volume;
-  }, [volume, url]);
+  }, [volume, url, overrideUrl]);
 
   useEffect(
     () => () => {

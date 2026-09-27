@@ -890,10 +890,15 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
       else playSfx('miss');
     }
 
-    // The moments (lib/fx.js): the big die on a natural 20 or 1, a MISS
+    // The moments (lib/fx.js): the big d20 landing on this roll, a MISS
     // over the target, and a critical-styled number for a natural-20 hit
     // (the damage number itself comes from the HP change, on every client).
-    if (d20 === 20 || d20 === 1) emitFx({ type: 'nat', value: d20 });
+    emitFx({
+      type: 'die',
+      value: d20,
+      detail: `${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} = ${attackTotal} vs AC ${targetAC}`,
+      caption: hit ? 'Hit' : 'Miss',
+    });
     if (hit && d20 === 20) markCrit(target.id);
     if (!hit) emitFx({ type: 'float', entityId: target.id, kind: 'miss' });
     emitFx({
@@ -908,8 +913,11 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
       for (let n = 0; n < weapon.numberOfDice; n++) diceTotal += rollDie(sides);
       const flatDamage = (weapon.modifier || 0) + (it.additionalDamage || 0);
       const damageTotal = Math.max(0, diceTotal + flatDamage);
-      const newHp = Math.max(0, (target.hp ?? target.maxHp ?? 0) - damageTotal);
-      onAttackTarget(target.id, { hp: newHp });
+      // Temporary hit points soak damage first (51_temp_hp.sql).
+      const tempHp = target.tempHp || 0;
+      const soaked = Math.min(tempHp, damageTotal);
+      const newHp = Math.max(0, (target.hp ?? target.maxHp ?? 0) - (damageTotal - soaked));
+      onAttackTarget(target.id, soaked ? { hp: newHp, tempHp: tempHp - soaked } : { hp: newHp });
       result = { ...result, damageTotal, newHp, maxHp: target.maxHp };
     }
 
