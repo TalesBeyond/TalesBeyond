@@ -350,7 +350,7 @@ function chestCostLabel(gp) {
 // gear list, once the chest has been opened — mirrors the compendium
 // Give buttons (Toolbar.jsx's GiveButtons), just without a "Buy" side
 // since chest loot doesn't cost anything.
-function GiveChestItemButton({ item, heroes, onGive }) {
+export function GiveChestItemButton({ item, heroes, onGive }) {
   const [picking, setPicking] = useState(false);
   const [heroId, setHeroId] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -407,7 +407,7 @@ function GiveChestItemButton({ item, heroes, onGive }) {
 // GiveChestItemButton but has nowhere to pick a hero: it always loots into
 // whichever hero the DM has assigned this viewer (RightPanel's `meId`), so
 // it's just a button, disabled with an explanatory title until one exists.
-function TakeChestItemButton({ disabled, onTake }) {
+export function TakeChestItemButton({ disabled, onTake }) {
   const [feedback, setFeedback] = useState('');
 
   function handleClick() {

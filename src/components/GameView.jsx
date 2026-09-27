@@ -84,6 +84,8 @@ import {
   PhoneGuestHostNote,
   PhoneMoveCard,
   PhoneTargetSheet,
+  PhoneDoorSheet,
+  PhoneChestSheet,
 } from './PhoneChrome.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
@@ -2622,7 +2624,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 <PhoneTokenCard
                   entity={selectedEntity}
                   isHost={isHost}
-                  onOpen={() => setPhoneSheet('panel')}
+                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : 'panel')}
                   onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
                   onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
                 />
@@ -2721,7 +2723,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           />
         )}
 
-        {pendingDoor && (
+        {!isPhone && pendingDoor && (
           <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
             <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
               <h4><ModalIcon name="door" />Open the door?</h4>
@@ -2795,6 +2797,32 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             <PhoneSheet title={selectedEntity ? selectedEntity.name : 'Party'} onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
               {rightPanelEl}
             </PhoneSheet>
+          )}
+          {pendingDoor && (
+            <PhoneDoorSheet
+              door={pendingDoor.door}
+              doorIslandName={currentLayer.islands[pendingDoor.door.islandId]?.name}
+              destLayerName={state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}
+              destIslandName={state.layers[pendingDoor.destinationLayerId]?.islands?.[state.layers[pendingDoor.destinationLayerId]?.islandOrder?.[0]]?.name}
+              peopleThere={Object.values(state.players)
+                .filter((p) => p.id !== me.id && (p.currentLayerId || baseLayerId) === pendingDoor.destinationLayerId)
+                .map((p) => p.name)}
+              onWalk={confirmEnterDoor}
+              onCancel={cancelEnterDoor}
+            />
+          )}
+          {phoneSheet === 'chest' && selectedEntity?.kind === 'chest' && (
+            <PhoneChestSheet
+              entity={selectedEntity}
+              islandName={currentLayer.islands[selectedEntity.islandId]?.name}
+              isHost={isHost}
+              heroes={heroes}
+              meId={me.id}
+              onUpdate={updateEntity}
+              onGive={giveChestItemToHero}
+              onTake={takeChestItem}
+              onClose={() => setPhoneSheet(null)}
+            />
           )}
           {phoneSheet === 'target' && canTargetSelected && (
             <PhoneTargetSheet

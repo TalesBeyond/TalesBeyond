@@ -4470,3 +4470,12 @@ button.card-notes { border-style: solid; }
 .phone-target-result { min-height: 20px; margin: 0; font-family: var(--font-mono); font-size: 14px; color: var(--gold-hi); }
 .phone-btn-block-primary { width: 100%; min-height: 52px; }
 .phone-caption-flush { margin: 0; }
+
+/* Door and chest sheets (phone). */
+.phone-sheet-pad { display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 20px; }
+.phone-btn-full { width: 100%; min-height: 48px; }
+.phone-door-dest { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-door-dest b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.phone-chest-items { display: flex; flex-direction: column; gap: 6px; }
+.phone-chest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 0 6px 0 14px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); font-size: 15px; }
+.phone-chest-row .btn { min-height: 40px; }

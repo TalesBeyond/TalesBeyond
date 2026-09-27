@@ -4,6 +4,10 @@ import { PALETTES } from '../state/theme.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { attackPreview, resolveAttackRoll, weaponStatsFor, ATTACK_BEAT_MS } from '../utils/combat.js';
 import { playDiceSound } from '../lib/sfx.js';
+import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
+import { makeIconDataUrl } from '../data/defaultTokens.js';
+import ChestContentsEditor from './ChestContentsEditor.jsx';
+import { GiveChestItemButton, TakeChestItemButton } from './RightPanel.jsx';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -635,6 +639,110 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
         <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={attackNow} disabled={!attack || rolling}>
           {attack ? `Attack with ${weaponStatsFor(attack.weaponName).name}` : 'Attack'}
         </button>
+      </div>
+    </PhoneSheet>
+  );
+}
+
+// ---------- doors ----------
+
+export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIslandName, peopleThere, onWalk, onCancel }) {
+  return (
+    <PhoneSheet title={door.name || 'Door'} onClose={onCancel}>
+      <div className="phone-sheet-pad">
+        <p className="phone-caption phone-caption-flush">Door{doorIslandName ? ` · ${doorIslandName}` : ''}</p>
+        <div className="phone-door-dest">
+          <span className="phone-label">Leads to</span>
+          <b>
+            {destLayerName}
+            {destIslandName ? ` · ${destIslandName}` : ''}
+          </b>
+          <span className="phone-caption phone-caption-flush">
+            {peopleThere.length ? `${peopleThere.join(', ')} ${peopleThere.length === 1 ? 'is' : 'are'} there` : 'Nobody is there yet'}
+          </span>
+        </div>
+        <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={onWalk}>
+          Walk through
+        </button>
+        <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onCancel}>
+          Stay here
+        </button>
+        <p className="phone-caption phone-caption-flush">Your hero steps through to the other side. Everyone else stays here until they walk through too.</p>
+      </div>
+    </PhoneSheet>
+  );
+}
+
+// ---------- chests ----------
+
+export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUpdate, onGive, onTake, onClose }) {
+  const [editing, setEditing] = useState(false);
+  if (!entity) return null;
+  const items = entity.items || [];
+  const capacity = chestSlotCount(entity.chestSize);
+  const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
+  const myHero = (heroes || []).find((h) => h.ownerId === meId);
+  const showItems = isHost || entity.opened;
+
+  function toggleOpen() {
+    const opened = !entity.opened;
+    onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
+  }
+
+  return (
+    <PhoneSheet title={entity.name || 'Chest'} onClose={onClose}>
+      <div className="phone-sheet-pad">
+        <p className="phone-caption phone-caption-flush">
+          {sizeLabel} chest · {capacity} {capacity === 1 ? 'slot' : 'slots'}
+          {islandName ? ` · ${islandName}` : ''}
+        </p>
+        <button type="button" className={entity.opened ? 'phone-btn-ghost phone-btn-full' : 'phone-btn-primary phone-btn-block-primary'} onClick={toggleOpen}>
+          {entity.opened ? 'Close chest' : 'Open chest'}
+        </button>
+        {!showItems && <p className="phone-caption phone-caption-flush">Anyone at the table can open or close a chest. Open it to see what’s inside.</p>}
+        {showItems && (
+          <section className="phone-chest-items" aria-label="Inside">
+            <span className="phone-label">
+              Inside · {items.length} of {capacity}
+            </span>
+            {items.length === 0 ? (
+              <p className="phone-caption phone-caption-flush">Nothing inside.</p>
+            ) : (
+              items.map((item) => (
+                <div className="phone-chest-row" key={item.id}>
+                  <span>
+                    {item.name}
+                    {item.qty > 1 ? ` × ${item.qty}` : ''}
+                  </span>
+                  {isHost ? (
+                    entity.opened && <GiveChestItemButton item={item} heroes={heroes || []} onGive={(heroId) => onGive(entity, item, heroId)} />
+                  ) : (
+                    <TakeChestItemButton disabled={!myHero} onTake={() => onTake(entity, item)} />
+                  )}
+                </div>
+              ))
+            )}
+            {!isHost && !myHero && items.length > 0 && (
+              <p className="phone-caption phone-caption-flush">You need a hero to carry loot. Ask your DM to link one to you.</p>
+            )}
+          </section>
+        )}
+        {isHost && (
+          <>
+            <button type="button" className="phone-btn-ghost phone-btn-full" aria-expanded={editing} onClick={() => setEditing((e) => !e)}>
+              {editing ? 'Done editing contents' : 'Edit contents'}
+            </button>
+            {editing && (
+              <ChestContentsEditor
+                items={items}
+                capacity={capacity}
+                onAddItem={(item) => onUpdate(entity.id, { items: [...items, item] })}
+                onRemoveItem={(id) => onUpdate(entity.id, { items: items.filter((it) => it.id !== id) })}
+                onUpdateQty={(id, qty) => onUpdate(entity.id, { items: items.map((it) => (it.id === id ? { ...it, qty } : it)) })}
+              />
+            )}
+          </>
+        )}
       </div>
     </PhoneSheet>
   );

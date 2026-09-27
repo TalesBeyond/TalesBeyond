@@ -175,8 +175,8 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S023 | U | Door sheet | Replaces the `pendingDoor` modal on phones: door name, destination layer and island, who's there, "Walk through" → `confirmEnterDoor`, Cancel. | S005 | `src/components/PhoneChrome.jsx`, `src/components/GameView.jsx` |
-| | S024 | U | Chest sheet | Name, size, slots, island; Open/Close for everyone; items with Take (player, needs their hero) or Give to a hero (DM); the DM's contents editing via `ChestContentsEditor`. | S005 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
+| ✅ | S023 | U | Door sheet | Replaces the `pendingDoor` modal on phones: door name, destination layer and island, who's there, "Walk through" → `confirmEnterDoor`, Cancel. | S005 | `src/components/PhoneChrome.jsx`, `src/components/GameView.jsx` |
+| ✅ | S024 | U | Chest sheet | Name, size, slots, island; Open/Close for everyone; items with Take (player, needs their hero) or Give to a hero (DM); the DM's contents editing via `ChestContentsEditor`. | S005 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
 | | S025 | T | Slice 6 check | Player walks through a door and lands on the other layer; player opens a chest and takes an item; DM gives an item; DM edits chest contents. | S023, S024 | — |
 
 ### Slice 7 — Player character sheet
