@@ -4440,3 +4440,33 @@ button.card-notes { border-style: solid; }
 @media (max-height: 499px) and (orientation: landscape) {
   .phone-move-card { right: auto; width: min(340px, calc(50% - 18px)); }
 }
+
+/* Target and attack (phone). */
+.phone-token-target { flex-shrink: 0; min-height: 48px; }
+.phone-target { display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 20px; }
+.phone-target-summary { display: flex; align-items: center; gap: 12px; }
+.phone-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--parchment-300); }
+.phone-target-attack { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-segment { display: flex; flex-wrap: wrap; gap: 6px; }
+.phone-segment button {
+  flex: 1 1 0;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--parchment-200);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-segment button.active { border-color: var(--gold-hi); background: var(--gold-hi); color: var(--ink-950); }
+.phone-target-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; text-align: center; }
+.phone-target-stats div { display: flex; flex-direction: column; gap: 2px; }
+.phone-target-stats b { font-family: var(--font-mono); font-size: 20px; font-weight: 600; }
+.phone-target-stats span { font-size: 12px; color: var(--parchment-300); }
+.phone-target-result { min-height: 20px; margin: 0; font-family: var(--font-mono); font-size: 14px; color: var(--gold-hi); }
+.phone-btn-block-primary { width: 100%; min-height: 52px; }
+.phone-caption-flush { margin: 0; }

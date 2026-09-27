@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { PALETTES } from '../state/theme.js';
+import { CONDITIONS } from '../data/conditions.js';
+import { attackPreview, resolveAttackRoll, weaponStatsFor, ATTACK_BEAT_MS } from '../utils/combat.js';
+import { playDiceSound } from '../lib/sfx.js';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -201,7 +204,7 @@ export function PhoneIslandConditions({ island }) {
 
 // ---------- the selected token, one tap from its card ----------
 
-export function PhoneTokenCard({ entity, isHost, onOpen, onHp }) {
+export function PhoneTokenCard({ entity, isHost, onOpen, onHp, onTarget }) {
   if (!entity) return null;
   const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
   const pct = hasHp ? Math.max(0, Math.min(1, entity.hp / entity.maxHp)) : 0;
@@ -230,8 +233,13 @@ export function PhoneTokenCard({ entity, isHost, onOpen, onHp }) {
             <span className="phone-token-hint">Tap for details</span>
           )}
         </span>
-        {!(isHost && hasHp) && <PhoneIcon name="chev" size={18} strokeWidth={2.4} />}
+        {!(isHost && hasHp) && !onTarget && <PhoneIcon name="chev" size={18} strokeWidth={2.4} />}
       </button>
+      {onTarget && (
+        <button type="button" className="phone-btn-primary phone-token-target" onClick={onTarget}>
+          Target
+        </button>
+      )}
       {isHost && hasHp && (
         <div className="phone-token-steppers" role="group" aria-label={`${entity.name} hit points`}>
           <button type="button" aria-label={`${entity.name} gains 1 hit point`} onClick={() => onHp(Math.min(entity.maxHp, entity.hp + 1))}>
@@ -529,5 +537,105 @@ export function PhoneMoveCard({ info, onCancel, onConfirm }) {
         </button>
       </div>
     </section>
+  );
+}
+
+// ---------- target and attack (encounter, the actor's turn) ----------
+
+export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }) {
+  const attacks = (actor?.sheet?.attacks || []).filter((a) => a.weaponName);
+  const [index, setIndex] = useState(0);
+  const [rolling, setRolling] = useState(false);
+  const [result, setResult] = useState(null);
+  const timers = useRef([]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  if (!actor || !target) return null;
+
+  const attack = attacks[Math.min(index, attacks.length - 1)];
+  const preview = attack ? attackPreview(attack, target) : null;
+  const hp = Math.max(0, target.hp ?? target.maxHp ?? 0);
+  const pct = target.maxHp ? Math.max(0, Math.min(1, hp / target.maxHp)) : 0;
+  const hpLeft = preview ? Math.max(0, Math.round(hp - preview.averageDamage)) : null;
+  const conditions = (target.conditions || []).map((k) => CONDITIONS.find((c) => c.key === k)?.label).filter(Boolean);
+
+  function attackNow() {
+    if (!attack || rolling) return;
+    setRolling(true);
+    setResult(null);
+    timers.current = [
+      setTimeout(playDiceSound, ATTACK_BEAT_MS),
+      setTimeout(() => {
+        setRolling(false);
+        const latest = getTarget(target.id);
+        if (!latest) return;
+        setResult(resolveAttackRoll(attack, latest, { attackerName: actor.name, playSounds: true, applyDamage: onDamage }));
+      }, ATTACK_BEAT_MS * 2),
+    ];
+  }
+
+  return (
+    <PhoneSheet title={target.name} onClose={onClose} className="phone-sheet-target">
+      <div className="phone-target">
+        <div className="phone-target-summary">
+          <span className="phone-token-avatar" style={{ backgroundImage: target.imageUrl ? `url(${target.imageUrl})` : undefined, '--token-color': target.color || 'transparent' }} />
+          <div className="phone-token-text">
+            <span className="phone-token-stats">
+              <span className="phone-token-bar">
+                <span style={{ width: `${pct * 100}%`, background: pct > 0.5 ? 'var(--moss)' : pct > 0.25 ? 'var(--gold-hi)' : 'var(--danger)' }} />
+              </span>
+              <span className="phone-token-hp">
+                {hp}/{target.maxHp}
+              </span>
+              <span className="phone-token-ac">AC {target.kind === 'hero' ? target.sheet?.armorClass ?? 10 : target.armorClass ?? 10}</span>
+            </span>
+            <span className="phone-token-hint">{conditions.length ? conditions.join(' · ') : 'No conditions'}</span>
+          </div>
+        </div>
+
+        <section className="phone-target-attack" aria-label={`${actor.name} attacks`}>
+          <span className="phone-label">{actor.name} attacks</span>
+          {attacks.length === 0 ? (
+            <p className="phone-caption phone-caption-flush">Equip a weapon in {actor.name}’s Battle tab to attack from here.</p>
+          ) : (
+            <>
+              <div className="phone-segment" role="radiogroup" aria-label="Weapon">
+                {attacks.map((a, i) => (
+                  <button key={`${a.weaponName}-${i}`} type="button" role="radio" aria-checked={i === index} className={i === index ? 'active' : ''} onClick={() => setIndex(i)}>
+                    {weaponStatsFor(a.weaponName).name}
+                  </button>
+                ))}
+              </div>
+              {preview && (
+                <div className="phone-target-stats">
+                  <div>
+                    <b>{Math.round(preview.hitChance * 100)}%</b>
+                    <span>to hit</span>
+                  </div>
+                  <div>
+                    <b>{preview.damageLabel}</b>
+                    <span>damage</span>
+                  </div>
+                  <div>
+                    <b>≈{hpLeft}</b>
+                    <span>HP left on a hit</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <p className="phone-target-result" aria-live="polite">
+          {rolling
+            ? 'Rolling…'
+            : result
+              ? `${result.hit ? 'Hit' : 'Miss'} — ${result.attackTotal} vs AC ${result.targetAC}${result.hit ? ` · ${result.damageTotal} damage` : ''}`
+              : ''}
+        </p>
+        <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={attackNow} disabled={!attack || rolling}>
+          {attack ? `Attack with ${weaponStatsFor(attack.weaponName).name}` : 'Attack'}
+        </button>
+      </div>
+    </PhoneSheet>
   );
 }

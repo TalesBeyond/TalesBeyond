@@ -83,6 +83,7 @@ import {
   PhonePaletteRow,
   PhoneGuestHostNote,
   PhoneMoveCard,
+  PhoneTargetSheet,
 } from './PhoneChrome.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
@@ -2377,6 +2378,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       islandName: sameIsland ? null : island?.name || 'another island',
     };
   }
+  // On the acting hero's turn, a creature they could attack gets a Target button.
+  const canTargetSelected = Boolean(
+    encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && selectedEntity.kind === 'mob'
+  );
+
   const plannedMoveForMap = plannedMove
     ? { ...plannedMove, label: plannedMoveInfo?.feet != null ? `${plannedMoveInfo.feet} ft` : plannedMoveInfo?.islandName || '' }
     : null;
@@ -2618,6 +2624,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                   isHost={isHost}
                   onOpen={() => setPhoneSheet('panel')}
                   onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
+                  onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
                 />
               )}
             </>
@@ -2788,6 +2795,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             <PhoneSheet title={selectedEntity ? selectedEntity.name : 'Party'} onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
               {rightPanelEl}
             </PhoneSheet>
+          )}
+          {phoneSheet === 'target' && canTargetSelected && (
+            <PhoneTargetSheet
+              actor={actor}
+              target={selectedEntity}
+              getTarget={(id) => state.entities[id]}
+              onDamage={updateEntity}
+              onClose={() => setPhoneSheet(null)}
+            />
           )}
           {phoneSheet === 'add' && isHost && (
             <PhoneSheet title="Add to the map" onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">

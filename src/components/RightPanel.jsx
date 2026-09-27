@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { playDiceSound, playSfx } from '../lib/sfx.js';
+import { playDiceSound } from '../lib/sfx.js';
 import {
   ABILITIES,
   SKILLS,
@@ -25,8 +25,7 @@ import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import CreatureCard, { Editable } from './CreatureCard.jsx';
 import SoundField from './SoundField.jsx';
-import { totalToHit, totalDamageLabel, rollDie, acOf, weaponStatsFor } from '../utils/combat.js';
-import { emitFx, markCrit } from '../lib/fx.js';
+import { totalToHit, totalDamageLabel, acOf, weaponStatsFor, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 
 // Seats at a table: the DM plus up to nine players.
 const MAX_SEATS = 10;
@@ -813,7 +812,6 @@ function SavesSkillsTab({ sheet, updateSheet }) {
   );
 }
 
-const ATTACK_BEAT_MS = 700;
 
 function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
@@ -877,50 +875,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
     const target = targets.find((t) => t.id === targetId);
     const it = items[index];
     if (!target || !it) return;
-    const weapon = weaponStatsFor(it.weaponName);
-    const toHitMod = totalToHit(weapon, it.additionalModifier);
-    const d20 = rollDie(20);
-    const attackTotal = d20 + toHitMod;
-    const targetAC = acOf(target);
-    const hit = attackTotal >= targetAC;
-    let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
-
-    if (playSoundOnHit) {
-      if (hit) playSfx('hit');
-      else playSfx('miss');
-    }
-
-    // The moments (lib/fx.js): the big d20 landing on this roll, a MISS
-    // over the target, and a critical-styled number for a natural-20 hit
-    // (the damage number itself comes from the HP change, on every client).
-    emitFx({
-      type: 'die',
-      value: d20,
-      detail: `${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} = ${attackTotal} vs AC ${targetAC}`,
-      caption: hit ? 'Hit' : 'Miss',
-    });
-    if (hit && d20 === 20) markCrit(target.id);
-    if (!hit) emitFx({ type: 'float', entityId: target.id, kind: 'miss' });
-    emitFx({
-      type: 'log',
-      tone: hit ? 'hit' : 'miss',
-      text: `${attackerName || 'Attack'} → ${target.name}: ${attackTotal} vs AC ${targetAC}, ${hit ? 'hit' : 'miss'}${d20 === 20 ? ' (natural 20)' : d20 === 1 ? ' (natural 1)' : ''}`,
-    });
-
-    if (hit) {
-      const sides = parseInt(weapon.diceType.slice(1), 10);
-      let diceTotal = 0;
-      for (let n = 0; n < weapon.numberOfDice; n++) diceTotal += rollDie(sides);
-      const flatDamage = (weapon.modifier || 0) + (it.additionalDamage || 0);
-      const damageTotal = Math.max(0, diceTotal + flatDamage);
-      // Temporary hit points soak damage first (51_temp_hp.sql).
-      const tempHp = target.tempHp || 0;
-      const soaked = Math.min(tempHp, damageTotal);
-      const newHp = Math.max(0, (target.hp ?? target.maxHp ?? 0) - (damageTotal - soaked));
-      onAttackTarget(target.id, soaked ? { hp: newHp, tempHp: tempHp - soaked } : { hp: newHp });
-      result = { ...result, damageTotal, newHp, maxHp: target.maxHp };
-    }
-
+    const result = resolveAttackRoll(it, target, { attackerName, playSounds: playSoundOnHit, applyDamage: onAttackTarget });
     setResults((prev) => ({ ...prev, [index]: result }));
   }
 

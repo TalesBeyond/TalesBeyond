@@ -163,10 +163,10 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S019 | S | Preview for any equipped weapon | Generalise the existing first-attack preview so the phone target sheet can compute it for each of the actor's attacks. | S005 | `src/components/CreatureCard.jsx` |
-| | S020 | U | Target sheet | Monster summary (what a player may see: name, AC, HP, size, conditions), weapon choice, chance/damage/HP left, Attack button, result line with `aria-live`. | S019 | `src/components/PhoneChrome.jsx` |
-| | S021 | S | Attack through the existing roll | Attack uses the same roll-and-apply path as the Battle tab's Roll attack, so HP, hit floats and the combat log behave identically. | S020 | `src/components/RightPanel.jsx`, `src/components/GameView.jsx` |
-| | S022 | T | Slice 5 check | Hit, miss and critical against a monster; the DM sees the HP change; a non-actor sees no Attack button. | S021 | — |
+| ✅ | S019 | S | Preview for any equipped weapon | Generalise the existing first-attack preview so the phone target sheet can compute it for each of the actor's attacks. | S005 | `src/components/CreatureCard.jsx` |
+| ✅ | S020 | U | Target sheet | Monster summary (what a player may see: name, AC, HP, size, conditions), weapon choice, chance/damage/HP left, Attack button, result line with `aria-live`. | S019 | `src/components/PhoneChrome.jsx` |
+| ✅ | S021 | S | Attack through the existing roll | Attack uses the same roll-and-apply path as the Battle tab's Roll attack, so HP, hit floats and the combat log behave identically. | S020 | `src/components/RightPanel.jsx`, `src/components/GameView.jsx` |
+| ✅ | S022 | T | Slice 5 check | Hit, miss and critical against a monster; the DM sees the HP change; a non-actor sees no Attack button. | S021 | — |
 
 ### Slice 6 — Door and chest sheets
 
