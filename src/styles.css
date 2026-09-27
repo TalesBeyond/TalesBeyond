@@ -4395,3 +4395,48 @@ button.card-notes { border-style: solid; }
 }
 
 .phone-note { margin: 12px 16px 0; padding: 12px 14px; border: 1px solid var(--gold-line); border-radius: 14px; background: var(--ink-800); font-size: 14px; line-height: 1.45; color: var(--parchment-100); }
+
+/* Tap to move (phone). */
+.planned-move { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 40; overflow: visible; }
+.planned-move-path { stroke: var(--gold-hi); stroke-width: 3; stroke-dasharray: 7 6; stroke-linecap: round; }
+.planned-move-ghost { fill: color-mix(in srgb, var(--gold-hi) 18%, transparent); stroke: var(--gold-hi); stroke-width: 2; stroke-dasharray: 4 4; }
+.planned-move-label-bg { fill: var(--ink-950); stroke: var(--gold-hi); stroke-width: 1; }
+.planned-move-label { fill: var(--gold-hi); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.phone-move-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 16px;
+  background: var(--ink-900);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+}
+.phone-move-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.phone-move-head b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.phone-move-feet { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--gold-hi); }
+.phone-move-sub { margin: 0; font-size: 13px; color: var(--parchment-300); }
+.phone-move-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; }
+.phone-move-actions button { min-height: 48px; }
+.phone-btn-primary {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ember);
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.phone-btn-primary:disabled { opacity: 0.5; cursor: default; }
+.game-screen.phone .stage-wrap:has(.phone-move-card) .encounter-actions { bottom: 132px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .phone-move-card { right: auto; width: min(340px, calc(50% - 18px)); }
+}

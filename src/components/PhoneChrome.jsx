@@ -501,3 +501,33 @@ export function PhoneGuestHostNote() {
     </p>
   );
 }
+
+// ---------- a planned move, waiting for "Move here" ----------
+
+export function PhoneMoveCard({ info, onCancel, onConfirm }) {
+  if (!info) return null;
+  const crossing = info.islandName != null;
+  return (
+    <section className="phone-move-card" aria-label="Planned move" aria-live="polite">
+      <div className="phone-move-head">
+        <b>{crossing ? `Move into ${info.islandName}?` : `Move ${info.name} here?`}</b>
+        {info.feet != null && <span className="phone-move-feet">{info.feet} ft</span>}
+      </div>
+      <p className="phone-move-sub">
+        {crossing
+          ? 'Distance isn’t measured across islands.'
+          : info.leftAfter != null
+            ? `${info.leftAfter} of ${info.total} ft left after.`
+            : 'Tap another square to change it.'}
+      </p>
+      <div className="phone-move-actions">
+        <button type="button" className="phone-btn-ghost" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="phone-btn-primary" onClick={onConfirm}>
+          Move here
+        </button>
+      </div>
+    </section>
+  );
+}

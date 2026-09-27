@@ -43,7 +43,10 @@ export default function MapBoard({
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
   actorId = null, // whose turn it is, during an encounter
   gestureRef = null, // phone layout: { panned } — set when a touch just panned the map, so its closing click is ignored
+  onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
+  plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
 }) {
+  const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
   // Authoritative drag data lives in refs (not state) so the *Up handlers
@@ -371,6 +374,19 @@ export default function MapBoard({
       return;
     }
 
+    // A tap on a square with a movable token selected moves it (or plans the
+    // move, mid-encounter) instead of selecting the island.
+    if (isClick && tool === 'play' && onTapCell) {
+      const found = findIslandAt(p.x, p.y);
+      if (found) {
+        const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+        if (onTapCell(found.island.id, col, row)) {
+          tapConsumedRef.current = true;
+          return;
+        }
+      }
+    }
+
     // Selecting the "active" island (for placing new tokens) works in any
     // tool that reaches here — only the drag-to-reposition part below is
     // restricted to the Edit tool.
@@ -475,6 +491,10 @@ export default function MapBoard({
   }
 
   function handleStageClick() {
+    if (tapConsumedRef.current) {
+      tapConsumedRef.current = false;
+      return;
+    }
     if (gestureRef?.current?.panned) return;
     if (tool === 'play') onSelectEntity(null);
   }
@@ -715,6 +735,8 @@ export default function MapBoard({
         );
       })}
 
+      {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
+
       {rulerLine && (
         <svg className="grid-svg ruler-overlay" width={canvasWidth} height={canvasHeight}>
           <RulerOverlay p1={rulerLine.p1} p2={rulerLine.p2} feet={rulerLine.feet} />
@@ -726,6 +748,36 @@ export default function MapBoard({
 
 function hpPercent(entity) {
   return Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
+}
+
+// A move waiting for "Move here" (phone, mid-encounter): a dashed path from
+// the token to the chosen square, a ghost ring there, and its label.
+function PlannedMoveOverlay({ plan, entity, islandRects, originX, originY, zoom, width, height }) {
+  const from = entity && islandRects[entity.islandId];
+  const to = islandRects[plan.islandId];
+  if (!from || !to) return null;
+  const size = entity.size || 1;
+  const x1 = (from.x - originX) * zoom + entity.col * from.cellSize + (from.cellSize * size) / 2;
+  const y1 = (from.y - originY) * zoom + entity.row * from.cellSize + (from.cellSize * size) / 2;
+  const x2 = (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2;
+  const y2 = (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2;
+  const radius = (to.cellSize * size) / 2 - 2;
+  const label = plan.label || '';
+  const labelW = label.length * 7.2 + 14;
+  return (
+    <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
+      <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
+      <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
+      {label && (
+        <g>
+          <rect x={x2 - labelW / 2} y={y2 - radius - 26} width={labelW} height={20} rx={10} className="planned-move-label-bg" />
+          <text x={x2} y={y2 - radius - 12} textAnchor="middle" className="planned-move-label">
+            {label}
+          </text>
+        </g>
+      )}
+    </svg>
+  );
 }
 
 function RulerOverlay({ p1, p2, feet }) {

@@ -151,9 +151,9 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S015 | S | Tap-a-square path | In the Play tool on phones, a tap on a square while your own movable token is selected resolves the cell via `pixelToCell` and either moves it (no encounter) or produces a planned move (encounter). Island taps still select the island when nothing movable is selected. | S004 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
-| | S016 | U | Planned-move preview | Dashed path, ghost token at the destination, a feet label on the map, and a confirm card: feet, movement left after, Cancel / Move here. A cross-island plan shows the island it enters and that the distance isn't measured across islands. | S015 | `src/components/PhoneChrome.jsx`, `src/styles.css` |
-| | S017 | S | Confirm and commit | "Move here" calls `moveEntity`; the card then shows movement left and End turn (and Target). | S016 | `src/components/GameView.jsx` |
+| ✅ | S015 | S | Tap-a-square path | In the Play tool on phones, a tap on a square while your own movable token is selected resolves the cell via `pixelToCell` and either moves it (no encounter) or produces a planned move (encounter). Island taps still select the island when nothing movable is selected. | S004 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
+| ✅ | S016 | U | Planned-move preview | Dashed path, ghost token at the destination, a feet label on the map, and a confirm card: feet, movement left after, Cancel / Move here. A cross-island plan shows the island it enters and that the distance isn't measured across islands. | S015 | `src/components/PhoneChrome.jsx`, `src/styles.css` |
+| ✅ | S017 | S | Confirm and commit | "Move here" calls `moveEntity`; the card then shows movement left and End turn (and Target). | S016 | `src/components/GameView.jsx` |
 | | S018 | T | Slice 4 check | Exploration tap-move; encounter plan/cancel/confirm; cross-island move; a player can't plan a move for a token they can't move; drag still works. | S017 | — |
 
 ### Slice 5 — Target and attack

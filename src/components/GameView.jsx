@@ -7,7 +7,7 @@ import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from 
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { migrateLegacyState } from '../state/migrate.js';
-import { clampGridDims, computeCanvasBounds } from '../utils/grid.js';
+import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
@@ -82,6 +82,7 @@ import {
   PhoneAtlas,
   PhonePaletteRow,
   PhoneGuestHostNote,
+  PhoneMoveCard,
 } from './PhoneChrome.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
@@ -2322,6 +2323,64 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     };
   }, [isPhone]);
 
+  // ---- Tap to move (phone) ----
+  // With a token you may move selected, tapping a square moves it there; the
+  // acting token in an encounter only gets a planned move, which "Move here"
+  // commits (its movement is budgeted).
+  const [plannedMove, setPlannedMove] = useState(null); // { entityId, islandId, col, row }
+  useEffect(() => {
+    setPlannedMove(null);
+  }, [selectedId, actorId, currentLayerId, isPhone]);
+
+  function doorAt(islandId, col, row) {
+    return Object.values(layerEntities).find((e) => e.kind === 'door' && e.islandId === islandId && e.col === col && e.row === row) || null;
+  }
+  function commitMove(entity, islandId, col, row) {
+    moveEntity(entity.id, col, row, islandId);
+    // Landing a hero on a door's square offers to walk through it, as a drag does.
+    const door = entity.kind === 'hero' && !isHost ? doorAt(islandId, col, row) : null;
+    if (door) enterDoor(door);
+  }
+  function handleTapCell(islandId, col, row) {
+    const entity = selectedEntity;
+    if (!entity || (entity.kind !== 'hero' && entity.kind !== 'mob') || !canMoveEntity(entity)) return false;
+    if (entity.islandId === islandId && entity.col === col && entity.row === row) return false;
+    if (encounter && actor?.id === entity.id) {
+      setPlannedMove({ entityId: entity.id, islandId, col, row });
+      return true;
+    }
+    commitMove(entity, islandId, col, row);
+    return true;
+  }
+  function confirmPlannedMove() {
+    const entity = plannedMove && state.entities[plannedMove.entityId];
+    if (entity) commitMove(entity, plannedMove.islandId, plannedMove.col, plannedMove.row);
+    setPlannedMove(null);
+  }
+
+  // What the confirm card and the map label say about a planned move.
+  let plannedMoveInfo = null;
+  if (plannedMove && state.entities[plannedMove.entityId]) {
+    const entity = state.entities[plannedMove.entityId];
+    const fps = currentLayer.feetPerSquare;
+    const target = { col: plannedMove.col, row: plannedMove.row };
+    const sameIsland = entity.islandId === plannedMove.islandId;
+    const start = encounter?.turnStart?.id === entity.id ? encounter.turnStart : null;
+    const island = currentLayer.islands[plannedMove.islandId];
+    const leftAfter =
+      start && start.islandId === plannedMove.islandId ? Math.max(0, speedOf(entity) - feetDistance(start, target, fps)) : null;
+    plannedMoveInfo = {
+      name: entity.name,
+      feet: sameIsland ? feetDistance(entity, target, fps) : null,
+      leftAfter,
+      total: speedOf(entity),
+      islandName: sameIsland ? null : island?.name || 'another island',
+    };
+  }
+  const plannedMoveForMap = plannedMove
+    ? { ...plannedMove, label: plannedMoveInfo?.feet != null ? `${plannedMoveInfo.feet} ft` : plannedMoveInfo?.islandName || '' }
+    : null;
+
   // A guest table lives in the DM's browser: while one is hosted from a
   // phone, keep the screen from sleeping. The browser drops the lock whenever
   // the page is hidden, so it's asked for again each time the page returns.
@@ -2534,6 +2593,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               moveRange={moveRange}
               actorId={actorId}
               gestureRef={isPhone ? phoneGestureRef : null}
+              onTapCell={isPhone ? handleTapCell : null}
+              plannedMove={isPhone ? plannedMoveForMap : null}
             />
           </div>
           {isPhone && (
@@ -2549,12 +2610,16 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 onOpen={() => setPhoneSheet('atlas')}
               />
               <PhoneIslandConditions island={activeIsland} />
-              <PhoneTokenCard
-                entity={selectedEntity}
-                isHost={isHost}
-                onOpen={() => setPhoneSheet('panel')}
-                onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
-              />
+              {plannedMoveInfo ? (
+                <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
+              ) : (
+                <PhoneTokenCard
+                  entity={selectedEntity}
+                  isHost={isHost}
+                  onOpen={() => setPhoneSheet('panel')}
+                  onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
+                />
+              )}
             </>
           )}
           {encounter ? <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} /> : <InitiativeBar entities={layerEntities} />}
