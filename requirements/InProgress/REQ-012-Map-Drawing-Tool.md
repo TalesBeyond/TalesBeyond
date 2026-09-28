@@ -231,8 +231,8 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S023 | D | Docs | Describe the Draw tool and the `drawings` slice in `APP_OVERVIEW.md` and `SPEC.md` (client data shape, schema, realtime); add the phone entry to `MOBILE_DESIGN.md`; add the migration to `supabase/README.md`. | S022 | `APP_OVERVIEW.md`, `SPEC.md`, `MOBILE_DESIGN.md`, `supabase/README.md` |
-|  | S024 | X | Thesaurus | Add Draw tool, Drawing, Drawing bar, Snap to grid, Hide drawings and Clear drawings to `THESAURUS.md`. | S023 | `THESAURUS.md` |
+| ✅ | S023 | D | Docs | Describe the Draw tool and the `drawings` slice in `APP_OVERVIEW.md` and `SPEC.md` (client data shape, schema, realtime); add the phone entry to `MOBILE_DESIGN.md`; add the migration to `supabase/README.md`. | S022 | `APP_OVERVIEW.md`, `SPEC.md`, `MOBILE_DESIGN.md`, `supabase/README.md` |
+| ✅ | S024 | X | Thesaurus | Add Draw tool, Drawing, Drawing bar, Snap to grid, Hide drawings and Clear drawings to `THESAURUS.md`. | S023 | `THESAURUS.md` |
 
 ### Dependency graph
 
@@ -273,7 +273,7 @@ S018, S019 → S021 → S022 → S023 → S024
 
 ## Open Questions
 
-- [ ] **Q1 — Pencil precision and cap.** What simplification tolerance and point cap keep strokes smooth without bloating a local save? Deferred until S006 lands; measure a long stroke's saved size and pick values that keep it under about 4 KB.
+- [ ] **Q1 — Pencil precision and cap.** Built with a 0.04-square simplification tolerance, points rounded to 1/100 of a square, and a 400-point cap (the tolerance doubles until a stroke fits). A long stroke's saved size hasn't been measured against the 4 KB target yet; do that on the first real table.
 - [ ] **Q2 — Realtime DELETE filtering.** `drawings` deletes rely on the same `table_id` filter as `entities` deletes. Confirm at S003 that a player receives the DELETE for another player's table only; if deletes arrive unfiltered, ignore ids the client doesn't hold (the remove case already does).
 - [x] **Q3 — Who draws resolved.** The DM alone draws; every seated player sees; each viewer can hide drawings locally. *(Blaxine)*
 - [x] **Q4 — Anchor resolved.** A drawing belongs to the island it starts on, moves with it, is clipped at its edge and dies with it. *(Blaxine)*

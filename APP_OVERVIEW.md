@@ -308,6 +308,38 @@ that never appears in a player's own view of that token.
 
 ---
 
+### Drawings (`DrawingLayer.jsx`, `DrawingBar.jsx`, `DrawStyle.jsx`, `utils/drawing.js`)
+
+The DM's **Draw** tool (Tools menu; on a phone, Edit → Draw) marks up the
+map; every seated player sees the result, and only the DM can draw.
+
+- **Where drawings live**: each belongs to the island it was drawn on —
+  `{ id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect', geometry, style }`
+  in `state.drawings` / `state.drawingOrder` (creation order, newest on top),
+  geometry in grid squares from the island's top-left corner. They paint in
+  an SVG inside the island, over the map art, grid and day/night tint and
+  under every token, so anything past the island's edge is cut off. Dragging
+  the island moves them; deleting it (or its layer) deletes them.
+- **Tools**: Pencil, Line, Circle (grows from its centre), Rectangle,
+  Select (move any drawing within its island; handles resize lines, circles
+  and rectangles; pencil strokes move only) and Eraser (removes every
+  drawing it touches, whole). A press in Draw always draws, even on a token;
+  right-drag still pans.
+- **Style**: a colour wheel with brightness, 8 swatches and the last 5
+  colours used; 4 thicknesses; a see-through fill for circles and
+  rectangles. **Snap to grid** puts line ends and circle centres on grid
+  corners or square centres, radii on whole squares and rectangle corners on
+  grid corners. A feet label (the ruler's look) shows while drawing or
+  resizing.
+- **Undo/redo** (bar buttons, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y) covers
+  the DM's own draws, moves, resizes, restyles, erases and clears in this
+  browser session. **Clear this island** / **Clear this map** confirm with a
+  count. Anyone can **Hide drawings** in their own browser.
+- **Sync**: one write per finished action — the `drawings` table in cloud
+  mode, the guest broadcast in a guest table, the saved state locally. The
+  drawing preferences (tool, style, Snap, recent colours, Hide) are
+  `hearthbound:drawprefs` in this browser only.
+
 ### Phone layout (`PhoneChrome.jsx`, `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`)
 
 Below `(max-width: 767px), (max-height: 499px)` (`PHONE_QUERY`) `GameView`
@@ -376,6 +408,7 @@ policy and RPC below keys off that session's `auth.uid()`.
 | `13_mob_droppables.sql` | `entities.drop_items jsonb`, the Droppables loot list (superseded by migration 15) |
 | `14_entity_ordering_and_player_leave.sql` | `entities.created_at` (real, reliable stacking-order timestamp — the pre-existing `z_order` column was declared but never actually written by the client); a self-only DELETE policy on `players` so **Leave** actually frees a seat in cloud mode instead of only flipping `connected` |
 | `15_entity_dm_data_privacy.sql` | Moves `dm_notes`/`drop_items` off `entities` into a new `entity_dm_data` table with host-only SELECT/UPDATE/DELETE — a non-host's query (or Realtime subscription) now returns zero rows instead of the raw value, so this data is actually private, not just UI-hidden |
+| `52_drawings.sql` | The Draw tool: a `drawings` table (one row per shape, `island_id` cascading from `islands`), members read, host writes; added to the realtime publication |
 | `16_dm_only_edits.sql` | The DM is the only one who edits information — INSERT/DELETE on `entities` becomes host-only, and a BEFORE UPDATE trigger (`enforce_entity_write_permissions`) restricts a non-host's UPDATE to exactly two cases: moving their own hero (col/row/island_id), or opening/closing a chest (opened/image_url) |
 
 Every table trusts "any seated member of this table" for reads and (for
@@ -401,8 +434,8 @@ migration 14, deleted by its own owner (leaving).
 ### Realtime (`src/lib/realtime.js`)
 
 One Postgres-changes subscription per open table, listening on
-`entities`, `players`, `layers`, `islands`, `tables` (open/close), and
-`invite_codes` (rotation) — every event is translated into the exact same
+`entities`, `players`, `layers`, `islands`, `tables` (open/close),
+`drawings`, and `invite_codes` (rotation) — every event is translated into the exact same
 reducer action a local interaction would dispatch, so no component ever
 needs to know whether a change came from this browser or someone else's.
 Conflict handling is last-write-wins per row. This is already a working
