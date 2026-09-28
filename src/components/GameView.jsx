@@ -7,6 +7,7 @@ import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from 
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { DEFAULT_DRAW_STYLE } from '../utils/drawing.js';
+import DrawingBar from './DrawingBar.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -28,6 +29,8 @@ import {
   markGuestClean,
   loadLocalAudioVolumes,
   saveLocalAudioVolumes,
+  loadDrawPrefs,
+  saveDrawPrefs,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { subscribeToTable } from '../lib/realtime.js';
@@ -1346,7 +1349,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // ---- Drawings (the DM's Draw tool) ----
   // Settings for the next shape: which drawing tool, its style, and whether
   // shapes snap to the grid. Local to this browser.
-  const [drawSettings, setDrawSettings] = useState(() => ({ subTool: 'pencil', style: { ...DEFAULT_DRAW_STYLE }, snap: true }));
+  const [drawSettings, setDrawSettingsState] = useState(() => {
+    const prefs = loadDrawPrefs();
+    return {
+      subTool: prefs.subTool || 'pencil',
+      style: { ...DEFAULT_DRAW_STYLE, ...(prefs.style || {}) },
+      snap: prefs.snap ?? true,
+    };
+  });
+  function setDrawSettings(next) {
+    setDrawSettingsState(next);
+    saveDrawPrefs({ ...loadDrawPrefs(), subTool: next.subTool, style: next.style, snap: next.snap });
+  }
 
   // One write per finished action, like every other host edit: dispatch
   // here, then the cloud row or the guest broadcast. Local and guest tables
@@ -2756,6 +2770,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          {isHost && !isPhone && tool === 'draw' && <DrawingBar settings={drawSettings} onChange={setDrawSettings} />}
           <ZoomControl
             zoom={zoom}
             onZoomIn={zoomIn}

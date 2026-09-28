@@ -4,7 +4,7 @@ import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
 import { useFx } from '../lib/fx.js';
-import { finishPencilPoints } from '../utils/drawing.js';
+import { finishPencilPoints, shapeGeometry, shapeFeetLabel } from '../utils/drawing.js';
 import IslandDrawings from './DrawingLayer.jsx';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
@@ -528,8 +528,12 @@ export default function MapBoard({
     return [(p.x - left) / r.cellSize, (p.y - top) / r.cellSize];
   }
 
+  // What the unfinished shape looks like right now, or null when it has no
+  // size yet.
   function draftFrom(d) {
-    return { id: 'draft', islandId: d.islandId, kind: d.kind, geometry: { points: d.raw }, style: d.style };
+    if (d.kind === 'pencil') return { id: 'draft', islandId: d.islandId, kind: 'pencil', geometry: { points: d.raw }, style: d.style };
+    const geometry = shapeGeometry(d.kind, d.start, d.end, d.snap);
+    return geometry ? { id: 'draft', islandId: d.islandId, kind: d.kind, geometry, style: d.style } : null;
   }
 
   function startDrawing(e) {
@@ -539,10 +543,14 @@ export default function MapBoard({
     const found = findIslandAt(p.x, p.y);
     if (!found) return;
     e.preventDefault();
+    const start = toIslandSquares(e, found.island.id);
     drawRef.current = {
       islandId: found.island.id,
-      kind: 'pencil',
-      raw: [toIslandSquares(e, found.island.id)],
+      kind: drawSettings.subTool,
+      raw: [start],
+      start,
+      end: start,
+      snap: drawSettings.snap,
       style: { ...drawSettings.style },
     };
     setDraft(draftFrom(drawRef.current));
@@ -556,7 +564,8 @@ export default function MapBoard({
     if (!d) return;
     const point = toIslandSquares(e, d.islandId);
     if (!point) return;
-    d.raw = [...d.raw, point];
+    if (d.kind === 'pencil') d.raw = [...d.raw, point];
+    else d.end = point;
     setDraft(draftFrom(d));
   }
 
@@ -572,8 +581,13 @@ export default function MapBoard({
     drawRef.current = null;
     setDraft(null);
     if (!d) return;
-    const points = finishPencilPoints(d.raw);
-    if (points) onAddDrawing({ islandId: d.islandId, kind: 'pencil', geometry: { points }, style: d.style });
+    if (d.kind === 'pencil') {
+      const points = finishPencilPoints(d.raw);
+      if (points) onAddDrawing({ islandId: d.islandId, kind: 'pencil', geometry: { points }, style: d.style });
+      return;
+    }
+    const geometry = shapeGeometry(d.kind, d.start, d.end, d.snap);
+    if (geometry) onAddDrawing({ islandId: d.islandId, kind: d.kind, geometry, style: d.style });
   }
 
   function cancelDrawing() {
@@ -874,12 +888,31 @@ export default function MapBoard({
 
       {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
 
+      {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
+        <DrawFeetLabel
+          label={shapeFeetLabel(draft.kind, draft.geometry, feetPerSquare, drawRef.current?.snap)}
+          rect={islandRects[draft.islandId]}
+          left={(islandRects[draft.islandId].x - originX) * zoom}
+          top={(islandRects[draft.islandId].y - originY) * zoom}
+        />
+      )}
+
       {rulerLine && (
         <svg className="grid-svg ruler-overlay" width={canvasWidth} height={canvasHeight}>
           <RulerOverlay p1={rulerLine.p1} p2={rulerLine.p2} feet={rulerLine.feet} />
         </svg>
       )}
     </div>
+  );
+}
+
+// A shape's size in feet while it's being drawn, like the ruler's label.
+function DrawFeetLabel({ label, rect, left, top }) {
+  if (!label) return null;
+  return (
+    <span className="draw-feet" style={{ left: left + label.at[0] * rect.cellSize, top: top + label.at[1] * rect.cellSize }}>
+      {label.text}
+    </span>
   );
 }
 

@@ -179,9 +179,9 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S009 | U | Drawing bar (desktop) | Floating bar while Draw is active: Pencil, Line, Circle, Rectangle and a Snap to grid toggle; the sub-tool and Snap are kept as per-browser preferences. | S006 | `src/components/GameView.jsx`, `src/state/persistence.js`, `src/styles.css`, new component |
-|  | S010 | S | Line, circle, rectangle | Drag to draw with a live preview in the overlay; circle from its centre, line and rectangle corner to corner; snapping per the geometry rules when Snap is on; rectangles normalized; zero-size shapes discarded; commit on release. | S009 | `src/components/MapBoard.jsx`, new module under `src/utils/` |
-|  | S011 | U | Feet read-out | Ruler-style label during a line, circle or rectangle drag, using the layer's feet per square and `feetDistance` for snapped lines; hidden on release. | S010 | `src/components/MapBoard.jsx`, `src/styles.css` |
+| ✅ | S009 | U | Drawing bar (desktop) | Floating bar while Draw is active: Pencil, Line, Circle, Rectangle and a Snap to grid toggle; the sub-tool and Snap are kept as per-browser preferences. | S006 | `src/components/GameView.jsx`, `src/state/persistence.js`, `src/styles.css`, new component |
+| ✅ | S010 | S | Line, circle, rectangle | Drag to draw with a live preview in the overlay; circle from its centre, line and rectangle corner to corner; snapping per the geometry rules when Snap is on; rectangles normalized; zero-size shapes discarded; commit on release. | S009 | `src/components/MapBoard.jsx`, new module under `src/utils/` |
+| ✅ | S011 | U | Feet read-out | Ruler-style label during a line, circle or rectangle drag, using the layer's feet per square and `feetDistance` for snapped lines; hidden on release. | S010 | `src/components/MapBoard.jsx`, `src/styles.css` |
 
 ### Slice 4 — Style
 

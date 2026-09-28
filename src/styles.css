@@ -832,6 +832,55 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .hud-zoom button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: -2px; }
 .hud-zoom .hud-zoom-value { min-width: 60px; font-family: var(--font-mono); font-size: 13px; color: var(--parchment-200); }
 
+/* The DM's drawing bar: a column at the map's left edge while Draw is on. */
+.draw-bar {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--ink-950);
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+.draw-bar-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--parchment-200);
+  cursor: pointer;
+}
+.draw-bar-btn:hover { background: var(--ink-800); color: var(--parchment-100); }
+.draw-bar-btn.active { background: var(--ink-700); border-color: var(--gold-line); color: var(--gold-hi); }
+.draw-bar-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
+.draw-bar-sep { width: 24px; height: 1px; margin: 4px 0; background: var(--ink-700); }
+
+/* A shape's size while it's being drawn — sits above the shape. */
+.draw-feet {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, calc(-100% - 6px));
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(23, 20, 15, 0.82);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .stage {
   position: relative;
   flex: 1;

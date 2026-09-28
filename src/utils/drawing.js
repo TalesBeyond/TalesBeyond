@@ -72,3 +72,65 @@ export function finishPencilPoints(raw) {
 export function pencilPath(points, cellPx) {
   return points.map(([x, y], i) => `${i ? 'L' : 'M'}${(x * cellPx).toFixed(1)} ${(y * cellPx).toFixed(1)}`).join('');
 }
+
+// ---- Lines, circles and rectangles ----
+
+const snapHalf = (v) => Math.round(v * 2) / 2; // a grid corner or a square's centre
+const snapPoint = ([x, y]) => [snapHalf(x), snapHalf(y)];
+const MIN_SIZE = 0.1; // squares — anything smaller is a click, not a shape
+
+// The geometry of a line, circle or rectangle dragged from `start` to `end`
+// (island squares), or null when it has no size. With `snap`, line ends and
+// circle centres land on grid corners or square centres, a circle's radius
+// is whole squares, and rectangle corners land on grid corners.
+export function shapeGeometry(kind, start, end, snap) {
+  if (kind === 'line') {
+    const from = snap ? snapPoint(start) : start.map(round2);
+    const to = snap ? snapPoint(end) : end.map(round2);
+    return Math.hypot(to[0] - from[0], to[1] - from[1]) < MIN_SIZE ? null : { from, to };
+  }
+  if (kind === 'circle') {
+    const center = snap ? snapPoint(start) : start.map(round2);
+    const reach = Math.hypot(end[0] - center[0], end[1] - center[1]);
+    if (reach < MIN_SIZE) return null;
+    return { center, radius: snap ? Math.max(1, Math.round(reach)) : round2(reach) };
+  }
+  if (kind === 'rect') {
+    const [ax, ay] = snap ? start.map(Math.round) : start;
+    const [bx, by] = snap ? end.map(Math.round) : end;
+    const w = Math.abs(bx - ax);
+    const h = Math.abs(by - ay);
+    if (w < MIN_SIZE || h < MIN_SIZE) return null;
+    return { x: round2(Math.min(ax, bx)), y: round2(Math.min(ay, by)), w: round2(w), h: round2(h) };
+  }
+  return null;
+}
+
+// The size read-out shown while a shape is drawn or resized, and where it
+// sits (island squares): above a circle, above a rectangle, at a line's
+// middle. A snapped line uses the ruler's 5-10-5 diagonal rule.
+export function shapeFeetLabel(kind, geometry, feetPerSquare, snap) {
+  const ft = (squares) => Math.round(squares * feetPerSquare);
+  if (kind === 'line') {
+    const dx = Math.abs(geometry.to[0] - geometry.from[0]);
+    const dy = Math.abs(geometry.to[1] - geometry.from[1]);
+    let feet;
+    if (snap) {
+      const a = Math.round(dx);
+      const b = Math.round(dy);
+      const diagonal = Math.min(a, b);
+      feet = (Math.max(a, b) + Math.floor(diagonal / 2)) * feetPerSquare;
+    } else {
+      feet = ft(Math.hypot(dx, dy));
+    }
+    const at = [(geometry.from[0] + geometry.to[0]) / 2, (geometry.from[1] + geometry.to[1]) / 2];
+    return { text: `${feet} ft`, at };
+  }
+  if (kind === 'circle') {
+    return { text: `${ft(geometry.radius)} ft radius`, at: [geometry.center[0], geometry.center[1] - geometry.radius] };
+  }
+  if (kind === 'rect') {
+    return { text: `${ft(geometry.w)} × ${ft(geometry.h)} ft`, at: [geometry.x + geometry.w / 2, geometry.y] };
+  }
+  return null;
+}
