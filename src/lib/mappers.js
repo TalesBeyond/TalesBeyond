@@ -70,6 +70,7 @@ export function mapDbEntity(row) {
     size: row.size,
     hp: row.hp,
     maxHp: row.max_hp,
+    tempHp: row.temp_hp ?? 0,
     armorClass: row.armor_class ?? undefined,
     ownerId: row.owner_id,
     layerId: row.layer_id,
@@ -109,6 +110,9 @@ export function mapClientEntityToDb(entity, tableId) {
     size: entity.size,
     hp: entity.hp,
     max_hp: entity.maxHp,
+    // Only when set, so placing tokens keeps working on a project that
+    // hasn't run 51_temp_hp.sql yet.
+    ...(entity.tempHp ? { temp_hp: entity.tempHp } : {}),
     armor_class: entity.armorClass ?? null,
     owner_id: entity.ownerId,
     layer_id: entity.layerId,
@@ -145,6 +149,7 @@ export function mapClientEntityPatchToDb(patch) {
   if ('size' in patch) db.size = patch.size;
   if ('hp' in patch) db.hp = patch.hp;
   if ('maxHp' in patch) db.max_hp = patch.maxHp;
+  if ('tempHp' in patch) db.temp_hp = patch.tempHp;
   if ('armorClass' in patch) db.armor_class = patch.armorClass;
   if ('ownerId' in patch) db.owner_id = patch.ownerId;
   if ('layerId' in patch) db.layer_id = patch.layerId;

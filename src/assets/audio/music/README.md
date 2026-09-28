@@ -53,6 +53,14 @@ The Music modal shows the `description` and `source` credit when the song's row
 is opened. Check the song's license before adding it: some "no copyright"
 channels ask for credit in exchange for free use.
 
+## Encounter music
+
+`boss-fight.mp3` isn't a `DEMO_MUSIC` pick: it's `ENCOUNTER_MUSIC` in
+`src/data/defaultAudio.js`, the theme that loops for everyone while an
+encounter is running (GameView passes it to `useTableAudio` as `override`).
+It's a 28-second loop added as downloaded (256 kbps stereo, 897 KB) — not yet
+through the recipe above, so it has no baked fades.
+
 ## Why the limits
 
 Every committed file stays in git history forever, even after it is deleted.

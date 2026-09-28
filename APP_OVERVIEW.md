@@ -293,7 +293,11 @@ lost chunk drains after a beat and glows below 25%, a turn banner, a big die
 for natural 20s and 1s, cardboard condition chits, and loot cards that flip
 face-up (mob droppables, or a chest being opened). HP changes and chests are
 read from synced state, so every player sees them; rolls and misses are local.
-The **Grimoire** palette restyles all of it as the DM's open book.
+The **Grimoire** palette restyles all of it as the DM's open book: a
+leather cover with the map as the left page and the inspector as the right,
+cross-hatched ink walls around every island, inked tokens, and a thumb index
+down the map page's edge (`BookTabs.jsx`) — Map, Bestiary, Armory, Dice,
+Music, and the Chronicle (the combat log, open any time).
 
 ### DM notes
 
@@ -303,6 +307,34 @@ to jot secrets (a hero's hidden backstory hook, a monster's true nature)
 that never appears in a player's own view of that token.
 
 ---
+
+### Phone layout (`PhoneChrome.jsx`, `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`)
+
+Below `(max-width: 767px), (max-height: 499px)` (`PHONE_QUERY`) `GameView`
+renders an islands-first phone layout around the same `MapBoard`, store,
+handlers and permissions — no separate route, reducer actions or sync.
+MOBILE_DESIGN.md is the design; REQ-011 the plan.
+
+- **Island view**: the top bar names the active island over its layer; island
+  chips *fly to* an island (active island + the zoom that fits it + centre);
+  a mini-map and the **Atlas** show the whole layer. Pinch zooms (a CSS
+  transform while the fingers move, one real zoom when they lift), one finger
+  pans empty map in Play.
+- **Interaction**: tap a square to move your token (in an encounter the
+  acting token gets a *planned move* — path, feet, "Move here"); a **Target**
+  sheet previews and rolls an attack (`resolveAttackRoll` in
+  `utils/combat.js`, shared with the Battle tab); door and chest sheets.
+- **Sheets**: the phone creature sheet (Fight · Magic · Bag · Stats · DM for
+  heroes, Fight · Loot · Stats · DM for monsters, reusing the desktop tab
+  bodies on a paper page); dice (the same `DiceModal`, its roll log now kept
+  in `GameView`); the player table menu with **Mute on this device**
+  (`tb.muteDevice`, `lib/sfx.js`); Party; the DM's Add sheet
+  (`TokenSidebar` `layout="phone"`), Run the table and table menu.
+- The DM's `Toolbar` stays mounted out of sight on a phone; its panels
+  (bestiary, layers, islands, initiative, asset storage, clock, map settings)
+  open over `lib/fx.js` `{ type: 'open', panel }` events. Every modal rises
+  as a bottom sheet.
+- A guest table hosted from a phone holds a Screen Wake Lock while visible.
 
 ## 5. Persistence — local mode
 

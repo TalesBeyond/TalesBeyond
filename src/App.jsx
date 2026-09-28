@@ -120,6 +120,8 @@ export default function App() {
             mode={entry.mode}
             onLeave={handleLeave}
             onCodeRotated={handleCodeRotated}
+            theme={theme}
+            onThemeChange={setTheme}
           />
         </GameProvider>
       )}

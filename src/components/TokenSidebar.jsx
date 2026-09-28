@@ -7,6 +7,7 @@ import ChestContentsEditor from './ChestContentsEditor.jsx';
 import { emptyTrapDraft, parseTrapNumber, normalizeDice, clampTrapSize, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import DiceInput from './DiceInput.jsx';
+import { emitFx } from '../lib/fx.js';
 
 const TOKEN_IMAGE_MAX_DIM = 256; // tokens render small; no need to keep a multi-megapixel upload
 
@@ -32,7 +33,7 @@ function TokenCard({ name, imageUrl, shape, onPlace }) {
   );
 }
 
-export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed }) {
+export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
   const fileInputRef = useRef(null);
   const [pendingKind, setPendingKind] = useState('hero');
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
@@ -45,6 +46,7 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
   const [pendingChestItems, setPendingChestItems] = useState([]);
   const [showTrapModal, setShowTrapModal] = useState(false);
   const [trapDraft, setTrapDraft] = useState(emptyTrapDraft);
+  const [phoneTab, setPhoneTab] = useState('heroes');
 
   if (collapsed) {
     return (
@@ -148,17 +150,7 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
     }
   }
 
-  return (
-    <div className="panel">
-      <div className="panel-header">
-        <span>Tokens</span>
-        <span className="panel-header-note">DM only</span>
-        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse tokens panel">
-          «
-        </button>
-      </div>
-      <div className="panel-scroll sidebar-blocks">
-        <SidebarSection title="Default heroes">
+  const heroesBody = (
           <div className="token-grid">
             {DEFAULT_HEROES.map((h) => (
               <TokenCard
@@ -170,20 +162,9 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
               />
             ))}
           </div>
-        </SidebarSection>
-
-        <SidebarSection title="Placeable">
-          <div className="side-btn-row">
-            <button className={`side-btn${placeableKind === 'door' ? ' active' : ''}`} aria-pressed={placeableKind === 'door'} onClick={() => setPlaceableKind('door')}>
-              Door
-            </button>
-            <button className={`side-btn${placeableKind === 'chest' ? ' active' : ''}`} aria-pressed={placeableKind === 'chest'} onClick={() => setPlaceableKind('chest')}>
-              Chest
-            </button>
-            <button className={`side-btn${placeableKind === 'trap' ? ' active' : ''}`} aria-pressed={placeableKind === 'trap'} onClick={() => setPlaceableKind('trap')}>
-              Trap
-            </button>
-          </div>
+  );
+  const placeableBody = (
+    <>
 
           {placeableKind === 'door' &&
             (otherLayerIds.length === 0 ? (
@@ -241,9 +222,10 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
               </button>
             </>
           )}
-        </SidebarSection>
-
-        <SidebarSection title="Add your own image">
+    </>
+  );
+  const ownImageBody = (
+    <>
           <div className="side-btn-row two">
             <button type="button" className={`side-btn${pendingKind === 'hero' ? ' active' : ''}`} aria-pressed={pendingKind === 'hero'} onClick={() => setPendingKind('hero')}>
               Hero
@@ -257,8 +239,10 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
             <span>PNG or JPG, placed on the map</span>
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChosen} />
-        </SidebarSection>
-      </div>
+    </>
+  );
+  const modalsEl = (
+    <>
 
       {showTrapModal && (
         <div className="book-backdrop" onClick={() => setShowTrapModal(false)}>
@@ -382,6 +366,103 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
           </div>
         </div>
       )}
+    </>
+  );
+
+  // On a phone the same sections sit behind tabs in the Add sheet; monsters
+  // come from the compendium's bestiary and asset storage, opened over lib/fx.js.
+  if (layout === 'phone') {
+    const tabs = [
+      ['heroes', 'Heroes'],
+      ['monsters', 'Monsters'],
+      ['door', 'Doors'],
+      ['chest', 'Chests'],
+      ['trap', 'Traps'],
+      ['own', 'Your own'],
+    ];
+    const isPlaceable = (key) => key === 'door' || key === 'chest' || key === 'trap';
+    const tabIsOn = (key) => (isPlaceable(key) ? phoneTab === 'place' && placeableKind === key : phoneTab === key);
+    return (
+      <div className="phone-add">
+        <div className="phone-segment phone-add-tabs" role="tablist" aria-label="What to add">
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tabIsOn(key)}
+              className={tabIsOn(key) ? 'active' : ''}
+              onClick={() => {
+                if (isPlaceable(key)) {
+                  setPlaceableKind(key);
+                  setPhoneTab('place');
+                } else setPhoneTab(key);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="phone-add-body sidebar-blocks">
+          {phoneTab === 'heroes' && (
+            <>
+              <p className="phone-caption phone-caption-flush">Tap a hero to place it on the island you’re viewing.</p>
+              {heroesBody}
+            </>
+          )}
+          {phoneTab === 'monsters' && (
+            <>
+              <p className="phone-caption phone-caption-flush">Monsters come from the compendium’s bestiary, or from the ones you saved in asset storage.</p>
+              <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={() => emitFx({ type: 'open', panel: 'bestiary' })}>
+                Open the bestiary
+              </button>
+              <button type="button" className="phone-btn-ghost phone-btn-full" onClick={() => emitFx({ type: 'open', panel: 'assetStorage' })}>
+                Asset storage
+              </button>
+            </>
+          )}
+          {phoneTab === 'place' && placeableBody}
+          {phoneTab === 'own' && ownImageBody}
+        </div>
+        {modalsEl}
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <span>Tokens</span>
+        <span className="panel-header-note">DM only</span>
+        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse tokens panel">
+          «
+        </button>
+      </div>
+      <div className="panel-scroll sidebar-blocks">
+        <SidebarSection title="Default heroes">
+          {heroesBody}
+        </SidebarSection>
+
+        <SidebarSection title="Placeable">
+          <div className="side-btn-row">
+            <button className={`side-btn${placeableKind === 'door' ? ' active' : ''}`} aria-pressed={placeableKind === 'door'} onClick={() => setPlaceableKind('door')}>
+              Door
+            </button>
+            <button className={`side-btn${placeableKind === 'chest' ? ' active' : ''}`} aria-pressed={placeableKind === 'chest'} onClick={() => setPlaceableKind('chest')}>
+              Chest
+            </button>
+            <button className={`side-btn${placeableKind === 'trap' ? ' active' : ''}`} aria-pressed={placeableKind === 'trap'} onClick={() => setPlaceableKind('trap')}>
+              Trap
+            </button>
+          </div>
+          {placeableBody}
+        </SidebarSection>
+
+        <SidebarSection title="Add your own image">
+          {ownImageBody}
+        </SidebarSection>
+      </div>
+      {modalsEl}
     </div>
   );
 }

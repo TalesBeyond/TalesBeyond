@@ -1090,22 +1090,29 @@ function tryReuseIdentity(code, existingState) {
 
 function ColorPicker({ value, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+    <div className="color-picker" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
       {PLAYER_COLORS.map((c) => (
         <button
           key={c}
           type="button"
+          className="color-picker-swatch"
           onClick={() => onChange(c)}
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: '50%',
-            background: c,
-            border: value === c ? '2px solid #f2e9d4' : '2px solid transparent',
-            boxShadow: value === c ? '0 0 0 2px ' + c : 'none',
-          }}
+          aria-pressed={value === c}
           aria-label={`Choose color ${c}`}
-        />
+        >
+          <span
+            style={{
+              display: 'block',
+              width: 26,
+              height: 26,
+              boxSizing: 'border-box',
+              borderRadius: '50%',
+              background: c,
+              border: value === c ? '2px solid #f2e9d4' : '2px solid transparent',
+              boxShadow: value === c ? '0 0 0 2px ' + c : 'none',
+            }}
+          />
+        </button>
       ))}
     </div>
   );

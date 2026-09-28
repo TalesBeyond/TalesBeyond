@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { playDiceSound, playSfx } from '../lib/sfx.js';
+import { playDiceSound } from '../lib/sfx.js';
 import {
   ABILITIES,
   SKILLS,
@@ -25,8 +25,7 @@ import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import CreatureCard, { Editable } from './CreatureCard.jsx';
 import SoundField from './SoundField.jsx';
-import { totalToHit, totalDamageLabel, rollDie, acOf, weaponStatsFor } from '../utils/combat.js';
-import { emitFx, markCrit } from '../lib/fx.js';
+import { totalToHit, totalDamageLabel, acOf, weaponStatsFor, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 
 // Seats at a table: the DM plus up to nine players.
 const MAX_SEATS = 10;
@@ -204,7 +203,7 @@ function SizeField({ entity, onUpdate, disabled, maxSize }) {
 
 // ---------- door ----------
 
-function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
+export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
   return (
     <div className="inspector-card">
       <h4>{entity.name}</h4>
@@ -240,7 +239,7 @@ function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove 
 // A player only ever gets here once the DM has revealed the trap (an
 // unrevealed one never reaches their client - see GameView's
 // entitiesVisibleOnLayer), and sees the same fields read-only.
-function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
+export function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
   const revealed = Boolean(entity.trapRevealed);
 
   return (
@@ -351,7 +350,7 @@ function chestCostLabel(gp) {
 // gear list, once the chest has been opened — mirrors the compendium
 // Give buttons (Toolbar.jsx's GiveButtons), just without a "Buy" side
 // since chest loot doesn't cost anything.
-function GiveChestItemButton({ item, heroes, onGive }) {
+export function GiveChestItemButton({ item, heroes, onGive }) {
   const [picking, setPicking] = useState(false);
   const [heroId, setHeroId] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -408,7 +407,7 @@ function GiveChestItemButton({ item, heroes, onGive }) {
 // GiveChestItemButton but has nowhere to pick a hero: it always loots into
 // whichever hero the DM has assigned this viewer (RightPanel's `meId`), so
 // it's just a button, disabled with an explanatory title until one exists.
-function TakeChestItemButton({ disabled, onTake }) {
+export function TakeChestItemButton({ disabled, onTake }) {
   const [feedback, setFeedback] = useState('');
 
   function handleClick() {
@@ -697,7 +696,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
 
 // The DM-only tab on a hero's or monster's card: its sound, private notes
 // (click-to-edit, like the rest of the card) and removing the token.
-function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
+export function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
   return (
     <div className="card-dm">
       <span className="card-dm-badge">Only you see this</span>
@@ -722,7 +721,7 @@ function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
   );
 }
 
-function SavesSkillsTab({ sheet, updateSheet }) {
+export function SavesSkillsTab({ sheet, updateSheet }) {
   const profBonus = sheet.proficiencyBonus ?? 2;
 
   function computedBonus(abilityKey, proficient) {
@@ -813,9 +812,8 @@ function SavesSkillsTab({ sheet, updateSheet }) {
   );
 }
 
-const ATTACK_BEAT_MS = 700;
 
-function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
+export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
@@ -877,42 +875,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
     const target = targets.find((t) => t.id === targetId);
     const it = items[index];
     if (!target || !it) return;
-    const weapon = weaponStatsFor(it.weaponName);
-    const toHitMod = totalToHit(weapon, it.additionalModifier);
-    const d20 = rollDie(20);
-    const attackTotal = d20 + toHitMod;
-    const targetAC = acOf(target);
-    const hit = attackTotal >= targetAC;
-    let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
-
-    if (playSoundOnHit) {
-      if (hit) playSfx('hit');
-      else playSfx('miss');
-    }
-
-    // The moments (lib/fx.js): the big die on a natural 20 or 1, a MISS
-    // over the target, and a critical-styled number for a natural-20 hit
-    // (the damage number itself comes from the HP change, on every client).
-    if (d20 === 20 || d20 === 1) emitFx({ type: 'nat', value: d20 });
-    if (hit && d20 === 20) markCrit(target.id);
-    if (!hit) emitFx({ type: 'float', entityId: target.id, kind: 'miss' });
-    emitFx({
-      type: 'log',
-      tone: hit ? 'hit' : 'miss',
-      text: `${attackerName || 'Attack'} → ${target.name}: ${attackTotal} vs AC ${targetAC}, ${hit ? 'hit' : 'miss'}${d20 === 20 ? ' (natural 20)' : d20 === 1 ? ' (natural 1)' : ''}`,
-    });
-
-    if (hit) {
-      const sides = parseInt(weapon.diceType.slice(1), 10);
-      let diceTotal = 0;
-      for (let n = 0; n < weapon.numberOfDice; n++) diceTotal += rollDie(sides);
-      const flatDamage = (weapon.modifier || 0) + (it.additionalDamage || 0);
-      const damageTotal = Math.max(0, diceTotal + flatDamage);
-      const newHp = Math.max(0, (target.hp ?? target.maxHp ?? 0) - damageTotal);
-      onAttackTarget(target.id, { hp: newHp });
-      result = { ...result, damageTotal, newHp, maxHp: target.maxHp };
-    }
-
+    const result = resolveAttackRoll(it, target, { attackerName, playSounds: playSoundOnHit, applyDamage: onAttackTarget });
     setResults((prev) => ({ ...prev, [index]: result }));
   }
 
@@ -1033,7 +996,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
   );
 }
 
-function SpellsTab({ sheet, updateSheet }) {
+export function SpellsTab({ sheet, updateSheet }) {
   const spellcasting = normalizeSpellcasting(sheet.spellcasting);
   const [activeLevel, setActiveLevel] = useState(0);
   const level = spellcasting.levels[activeLevel];
@@ -1190,7 +1153,7 @@ const EQUIPMENT_CATEGORIES = [
   { key: 'other', label: 'Other items', hint: 'Rations, rope, potions, trinkets…' },
 ];
 
-function BagTab({ sheet, updateSheet }) {
+export function BagTab({ sheet, updateSheet }) {
   const equipment = normalizeEquipment(sheet.equipment);
   const currency = normalizeCurrency(sheet);
   const [activeCategory, setActiveCategory] = useState('gear');

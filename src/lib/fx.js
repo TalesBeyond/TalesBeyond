@@ -12,7 +12,7 @@ import { useEffect, useRef } from 'react';
 //
 // Event shapes:
 //   { type: 'float', entityId, kind: 'miss' }             — a MISS over a token
-//   { type: 'nat', value: 20 | 1 }                          — the big die
+//   { type: 'die', value, sides?, min?, max?, detail?, caption? } — the big die (a d20 by default)
 //   { type: 'banner', title, sub, tone: 'ally'|'enemy'|'mine' }
 //   { type: 'loot', title, items: [{ name, qty }] }
 //   { type: 'log', text, tone?: 'hit'|'miss'|'heal'|'turn'|'roll' }

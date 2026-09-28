@@ -842,6 +842,8 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
      to move it (scrollbar drag, trackpad/keyboard scroll) so they can't
      fight with the scroll wheel, which is zoom-only here. */
   overflow: hidden;
+  /* Touch pans and pinches are GameView's own gestures, in every layout. */
+  touch-action: none;
   background-color: var(--ink-900);
   background-image:
     linear-gradient(var(--ink-700) 1px, transparent 1px),
@@ -1316,15 +1318,36 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   flex-direction: column;
   gap: 3px;
 }
-/* Condition chits: cardboard punch-outs clipped to the token's base. */
+/* Condition chits: cardboard punch-outs clipped to the token's base —
+   a cardboard rim with a pressed edge around the condition's own disc.
+   Hovering the token fans their names out beside them. */
+.token-chit { position: relative; display: flex; align-items: center; }
 .token-conditions img {
-  width: 17px;
-  height: 17px;
+  width: 19px;
+  height: 19px;
+  box-sizing: border-box;
   border-radius: 50%;
   border: 2px solid #c9a574;
-  box-shadow: 0 2px 0 #5e4527, 0 3px 4px rgba(0,0,0,0.55);
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.3), 0 2px 0 #5e4527, 0 3px 4px rgba(0,0,0,0.55);
   display: block;
 }
+.token-chit-label {
+  position: absolute;
+  left: calc(100% + 4px);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #c9a574;
+  color: #2b1a0e;
+  box-shadow: 0 2px 0 #5e4527;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+}
+.token:hover .token-chit-label { opacity: 1; transform: none; }
 
 /* The toolbar's "Ingame time" readout: icon, then caption / time / day+phase. */
 .clock-readout {
@@ -1749,6 +1772,9 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 }
 .island-canvas.tool-pan { cursor: grab; user-select: none; touch-action: none; }
 .island-canvas.tool-pan:active { cursor: grabbing; }
+/* Right-button drag pans the map on desktop (MapBoard.jsx). */
+.stage.right-panning,
+.stage.right-panning * { cursor: grabbing !important; user-select: none; }
 .island-canvas.tool-ruler { cursor: crosshair; }
 .island-canvas.tool-edit .grid-wrap { cursor: move; }
 .island-canvas.tool-group .grid-wrap { cursor: pointer; }
@@ -1896,6 +1922,11 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .token .token-hpbar-fill.low { background: #d9534f; }
 /* Damage just taken: the ghost keeps the old width for a beat, then drains
    down to the new one (a heal just grows underneath the fill, unseen). */
+/* Temporary HP rides just above the life bar as a thin blue strip, and as
+   "+5" after the HP numbers. */
+.token .token-tempbar { position: absolute; left: 6px; right: 6px; bottom: 7px; height: 3px; border-radius: 2px; overflow: hidden; pointer-events: none; }
+.token .token-tempbar span { display: block; height: 100%; border-radius: 2px; background: #6fa8dc; box-shadow: 0 0 4px rgba(111, 168, 220, 0.8); }
+.token .token-hp-temp { color: #8fc1ec; }
 .token .token-hpbar-ghost { position: absolute; left: 0; top: 0; bottom: 0; background: #f2e9d4; opacity: 0.85; transition: width 0.5s ease 0.6s; }
 /* Below a quarter: an edge glow and a heartbeat. */
 .token .token-hpbar.critical { box-shadow: 0 0 0 1px #d9534f, 0 0 8px #d9534f; animation: hp-heartbeat 1.1s ease-in-out infinite; }
@@ -3365,6 +3396,7 @@ button.card-level.on-dark:hover, button.card-level.on-dark:focus-visible { borde
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
 }
 .card-hp-editor .card-ed-input { width: 54px; height: 36px; text-align: center; font-family: var(--font-hud); font-weight: 700; }
+.card-hp-editor .card-hp-temp-input { border-color: #6fa8dc; color: #2d5f8f; }
 .card-hp-done { width: 34px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: #c9a24a; color: #2a2016; cursor: pointer; }
 
 /* Type line (with the owner picker) and life bar */
@@ -3383,6 +3415,11 @@ button.card-level.on-dark:hover, button.card-level.on-dark:focus-visible { borde
   cursor: pointer;
 }
 .card-life { display: flex; align-items: center; gap: 8px; padding: 6px 12px 10px; }
+.card-life-bar { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.card-life-bar .target-card-hp { flex: none; }
+.card-tempbar { height: 5px; border-radius: 3px; background: rgba(111, 168, 220, 0.25); overflow: hidden; }
+.card-tempbar span { display: block; height: 100%; border-radius: 3px; background: #6fa8dc; transition: width 0.2s ease; }
+.card-temp-chip { flex-shrink: 0; padding: 1px 7px; border-radius: 999px; background: #2d5f8f; color: #eaf3fb; font-family: var(--font-hud); font-size: 12px; font-weight: 700; }
 .card-step {
   width: 32px;
   height: 32px;
@@ -3397,8 +3434,11 @@ button.card-level.on-dark:hover, button.card-level.on-dark:focus-visible { borde
 }
 .card-step:hover { background: #dccfae; }
 .card-step:focus-visible { outline: 2px solid #8a5f1a; outline-offset: 2px; }
-.target-card-hp { flex: 1; display: flex; height: 10px; border-radius: 5px; background: var(--card-rule); overflow: hidden; }
-.target-hp-fill { height: 100%; background: #b8322a; transition: width 0.2s ease; }
+.target-card-hp { position: relative; flex: 1; display: flex; height: 10px; border-radius: 5px; background: var(--card-rule); overflow: hidden; }
+.target-card-hp.critical { overflow: visible; box-shadow: 0 0 0 1px #b8322a, 0 0 10px rgba(184, 50, 42, 0.7); animation: hp-heartbeat 1.1s ease-in-out infinite; }
+.target-hp-ghost { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: #fffaf0; transition: width 0.5s ease 0.6s; }
+.target-hp-fill { position: relative; height: 100%; border-radius: 5px 0 0 5px; background: #b8322a; transition: width 0.15s ease; }
+.target-hp-preview { position: relative; }
 .target-hp-preview { height: 100%; background-image: repeating-linear-gradient(45deg, #b8322a 0 3px, #f2b8b0 3px 6px); animation: preview-blink 0.9s ease-in-out infinite alternate; }
 @keyframes preview-blink { from { opacity: 1; } to { opacity: 0.45; } }
 
@@ -3575,37 +3615,60 @@ button.card-notes { border-style: solid; }
   100% { opacity: 0; transform: translateX(55vw) skewX(-10deg); }
 }
 
-/* ---- Natural 20 / natural 1 ---- */
+/* ---- The d20 moment (FxLayer.jsx RollDie): every d20 roll tumbles in,
+   flickers through faces, and lands coloured by result — 2–10 slate,
+   11–19 jade, a natural 20 gold, a natural 1 cracked red. Fixed to the
+   viewport, above the dice roller's own window. ---- */
 .nat-moment {
-  position: absolute;
+  position: fixed;
   left: 50%;
   top: 45%;
-  z-index: 41;
+  z-index: 3000;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   pointer-events: none;
   transform: translate(-50%, -50%);
-  animation: nat-pop 1.6s ease forwards;
+  animation: nat-pop 2s ease forwards;
 }
-.nat-moment polygon { stroke-width: 2; stroke-linejoin: round; }
+.nat-moment.nat-20, .nat-moment.nat-1 { animation-duration: 2.5s; }
+.nat-moment polygon { stroke-width: 2; stroke-linejoin: round; transition: fill 0.15s ease, stroke 0.15s ease; }
 .nat-moment .nat-edges { fill: none; stroke-width: 1.5; }
 .nat-moment text { font-family: var(--font-hud); font-weight: 700; font-size: 20px; }
+.nat-moment.landed svg { animation: die-land 0.28s ease-out; }
+.die-rolling .nat-face { fill: #3a3226; stroke: #a9853f; }
+.die-rolling .nat-inner { fill: #4a4032; stroke: #a9853f; }
+.die-rolling .nat-edges { stroke: #a9853f; }
+.die-rolling text { fill: #f2e9d4; }
+.die-low .nat-face { fill: #2f3b4c; stroke: #8fa3bd; }
+.die-low .nat-inner { fill: #3a4a5e; stroke: #8fa3bd; }
+.die-low .nat-edges { stroke: #8fa3bd; }
+.die-low text { fill: #e6edf6; }
+.die-high svg { filter: drop-shadow(0 0 14px rgba(94, 214, 176, 0.45)); }
+.die-high .nat-face { fill: #1f5a4f; stroke: #7fe0c4; }
+.die-high .nat-inner { fill: #267061; stroke: #7fe0c4; }
+.die-high .nat-edges { stroke: #7fe0c4; }
+.die-high text { fill: #effff9; }
 .nat-20 svg { filter: drop-shadow(0 0 22px rgba(224, 178, 90, 0.85)); }
 .nat-20 .nat-face { fill: #e0b25a; stroke: #7a5a1c; }
 .nat-20 .nat-inner { fill: #f0cd7e; stroke: #7a5a1c; }
 .nat-20 .nat-edges { stroke: #7a5a1c; }
 .nat-20 text { fill: #2b1a0e; }
-.nat-1 svg { animation: nat-shake 0.4s ease 0.45s 2; }
+.nat-moment.nat-1.landed svg { animation: die-land 0.28s ease-out, nat-shake 0.4s ease 0.3s 2; }
 .nat-1 .nat-face { fill: #3a1614; stroke: #b23a3a; }
 .nat-1 .nat-inner { fill: #4a1c19; stroke: #b23a3a; }
 .nat-1 .nat-edges { stroke: #b23a3a; }
 .nat-1 .nat-crack { fill: none; stroke: #0d0b08; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .nat-1 text { fill: #f2b8b0; }
-.nat-label { font-family: var(--font-display-caps); font-size: 22px; font-weight: 700; text-shadow: 0 2px 0 #000, 0 0 4px #000; }
-.nat-20 .nat-label { color: #e0b25a; }
-.nat-1 .nat-label { color: #f2b8b0; }
+.nat-label { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; text-shadow: 0 2px 0 #000, 0 0 4px #000; }
+.nat-label strong { font-family: var(--font-display-caps); font-size: 22px; font-weight: 700; }
+.nat-detail { font-family: var(--font-hud); font-size: 15px; font-weight: 700; color: #f2e9d4; }
+.nat-caption { font-family: var(--font-hud); font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #d9c89e; }
+.die-low .nat-caption { color: #c7d3e3; }
+.die-high .nat-caption { color: #9fe8d2; }
+.nat-20 .nat-label strong { color: #e0b25a; }
+.nat-1 .nat-label strong { color: #f2b8b0; }
 @keyframes nat-pop {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-160deg); }
   25% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(8deg); }
@@ -3613,6 +3676,7 @@ button.card-notes { border-style: solid; }
   80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); }
 }
+@keyframes die-land { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
 @keyframes nat-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 
 /* ---- Loot reveal ---- */
@@ -3675,8 +3739,9 @@ button.card-notes { border-style: solid; }
 .inspector-dropcap { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .token.acting::after, .token .token-hpbar.critical, .encounter-end.mine, .target-hp-preview, .nat-1 svg { animation: none; }
-  .token .token-hpbar-ghost { transition: none; }
+  .token.acting::after, .token .token-hpbar.critical, .encounter-end.mine, .target-hp-preview, .nat-moment.landed svg { animation: none; }
+  .token .token-hpbar-ghost, .target-hp-ghost { transition: none; }
+  .target-card-hp.critical { animation: none; }
   .hit-float, .turn-banner-ribbon, .nat-moment { animation-name: hit-fade; }
   .loot-card { animation-duration: 0.01s; }
 }
@@ -3767,3 +3832,829 @@ button.card-notes { border-style: solid; }
 :root[data-theme='grimoire'] .hit-crit { color: #7a4d0e; }
 :root[data-theme='grimoire'] .hit-heal { color: #2e4529; }
 :root[data-theme='grimoire'] .hit-miss { color: #5a4a38; }
+
+/* ---- Grimoire: the book itself ----
+   Every other palette hides the index tabs and the standalone Chronicle. */
+.book-tabs, .book-chronicle { display: none; }
+:root[data-theme='grimoire'] .book-chronicle { display: block; }
+.book-chronicle {
+  position: absolute;
+  top: 16px;
+  left: 60px;
+  z-index: 24;
+  width: 320px;
+}
+.book-chronicle .combat-log { position: static; width: 100%; }
+
+/* A leather cover around the spread: the map is the left page, the
+   inspector the right, with a shaded spine where they meet. The token
+   drawer on the far left is the flyleaf. (Wide layouts only — in the
+   narrow drawer layout the panels slide over the map instead.) */
+:root[data-theme='grimoire'] .game-layout:not(.drawers) {
+  padding: 10px 14px 14px;
+  background-color: #4a2a1b;
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(255, 220, 170, 0.08), transparent 60%);
+  box-shadow: inset 0 0 0 3px #6b3f28;
+}
+:root[data-theme='grimoire'] .game-layout:not(.drawers) > .panel:not(.right):not(.collapsed) {
+  margin-right: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #e2d3ae;
+  box-shadow: inset -10px 0 18px -12px rgba(70, 45, 20, 0.5), 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme='grimoire'] .game-layout:not(.drawers) .game-center {
+  border-radius: 6px 0 0 6px;
+  background: #efe3c6;
+  box-shadow: inset -34px 0 40px -24px rgba(70, 45, 20, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+:root[data-theme='grimoire'] .game-layout:not(.drawers) > .panel.right:not(.collapsed) {
+  border: 0;
+  border-radius: 0 6px 6px 0;
+  background: #efe3c6;
+  box-shadow: inset 34px 0 40px -24px rgba(70, 45, 20, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme='grimoire'] .game-layout:not(.drawers) > .panel.right:not(.collapsed) .panel-scroll { padding-left: 28px; }
+:root[data-theme='grimoire'] .game-layout:not(.drawers) > .panel.right:not(.collapsed) .panel-header { padding-left: 32px; }
+
+/* The page's heading: the layer tabs as a rubricated running head over a
+   ruled line, and the map framed in a double ink rule inside the margins. */
+:root[data-theme='grimoire'] .layer-strip { background: transparent; border-bottom: 1px solid #8a6c45; margin: 0 24px 0 44px; padding: 0; }
+:root[data-theme='grimoire'] .layer-strip-caption { font-family: var(--font-display-caps); font-size: 15px; letter-spacing: 0.04em; text-transform: none; color: var(--ember); }
+:root[data-theme='grimoire'] .layer-tab { font-family: var(--font-display); font-size: 16px; font-weight: 400; }
+:root[data-theme='grimoire'] .layer-tab.active { background: transparent; border-color: transparent; border-bottom: 2px solid var(--ember); border-radius: 0; color: var(--parchment-100); }
+:root[data-theme='grimoire'] .game-layout:not(.drawers) .stage-wrap { margin: 12px 24px 18px 44px; }
+:root[data-theme='grimoire'] .game-layout:not(.drawers) .stage { border: 4px double #2a2018; }
+
+/* Cross-hatched ink walls around every island, and the grid as dotted ink. */
+:root[data-theme='grimoire'] .island-canvas { isolation: isolate; }
+:root[data-theme='grimoire'] .grid-wrap { box-shadow: 0 0 0 2.5px #2a2018; }
+:root[data-theme='grimoire'] .grid-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -14px;
+  z-index: -1;
+  background-image: repeating-linear-gradient(45deg, #2a2018 0 1px, transparent 1px 6px);
+  pointer-events: none;
+}
+:root[data-theme='grimoire'] .island-canvas:not(.tool-play) .grid-wrap.active { box-shadow: 0 0 0 2.5px var(--ember); }
+:root[data-theme='grimoire'] .grid-wrap .grid-svg line { stroke: rgba(42, 32, 24, 0.4); stroke-width: 1; stroke-dasharray: 1 5; }
+
+/* Tokens as ink roundels: a double ring drawn around the art. */
+:root[data-theme='grimoire'] .token { border: 2px solid #2a2018; box-shadow: 0 0 0 2px #f3e9d0, 0 0 0 3.5px #2a2018, 0 3px 6px rgba(40, 25, 10, 0.35); }
+:root[data-theme='grimoire'] .token.door { border-style: dashed; }
+:root[data-theme='grimoire'] .token.selected { box-shadow: 0 0 0 2px #f3e9d0, 0 0 0 3.5px #2a2018, 0 0 0 7px transparent, 0 0 0 8.5px #9b2d20; }
+
+/* The thumb index, sticking out of the map page's outer edge. */
+:root[data-theme='grimoire'] .game-layout:not(.drawers) .book-tabs {
+  position: absolute;
+  top: 70px;
+  left: -44px;
+  z-index: 23;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:root[data-theme='grimoire'] .book-tab {
+  width: 36px;
+  min-height: 88px;
+  padding: 10px 0;
+  border: 1px solid #8a6c45;
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: #d9c69d;
+  color: #2a2018;
+  box-shadow: 2px 2px 4px rgba(40, 25, 10, 0.3);
+  font-family: var(--font-display-caps);
+  font-size: 15px;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+:root[data-theme='grimoire'] .book-tab:nth-child(even) { background: #cdb88c; }
+:root[data-theme='grimoire'] .book-tab:hover { background: #efe3c6; transform: translateX(3px); }
+:root[data-theme='grimoire'] .book-tab.active { background: #efe3c6; color: var(--ember); transform: translateX(4px); }
+:root[data-theme='grimoire'] .book-tab:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+/* ---------- Phone layout (MOBILE_DESIGN.md) ----------
+   GameView renders PhoneChrome.jsx in place of the toolbar and side panels
+   when (max-width: 767px), (max-height: 499px) matches. Islands first: the
+   top bar names the island, chips fly between islands, a mini-map shows the
+   whole layer. Built on the palette variables so every palette still works. */
+.app-shell:has(.game-screen.phone) > .top-bar { display: none; }
+.game-layout.phone-layout { grid-template-columns: minmax(0, 1fr); }
+.game-layout.phone-layout > .game-center { grid-column: 1; }
+.game-screen.phone .stage { touch-action: none; }
+
+.phone-topbar {
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 6px;
+  background: var(--ink-900);
+  border-bottom: 1px solid var(--ink-700);
+}
+.phone-topbar-title {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--parchment-100);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-topbar-island {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font-family: var(--font-display-caps);
+  font-size: 19px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phone-topbar-island svg { flex-shrink: 0; color: var(--gold-hi); }
+.phone-topbar-sub { max-width: 100%; font-size: 12px; color: var(--parchment-300); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone-icon-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--parchment-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.phone-icon-btn:hover { background: var(--ink-800); }
+.phone-topbar-title:focus-visible,
+.phone-icon-btn:focus-visible,
+.phone-chip:focus-visible,
+.phone-nav button:focus-visible,
+.phone-minimap:focus-visible,
+.phone-token-main:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+
+.phone-strip {
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--ink-950);
+  border-bottom: 1px solid var(--ink-700);
+}
+.phone-chip {
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: var(--ink-900);
+  color: var(--parchment-100);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  cursor: pointer;
+}
+.phone-chip-name { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.phone-chip-sub { font-size: 11px; color: var(--parchment-300); white-space: nowrap; }
+.phone-chip.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-900)); }
+.phone-chip.active .phone-chip-name { color: var(--gold-hi); }
+.phone-chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--parchment-300); font-size: 14px; font-weight: 600; }
+
+.phone-minimap {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 23;
+  width: 92px;
+  height: 92px;
+  padding: 6px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink-950) 92%, transparent);
+  cursor: pointer;
+}
+.phone-minimap svg { display: block; width: 100%; height: 100%; }
+.phone-minimap-island { fill: var(--ink-700); }
+.phone-minimap-island.active { fill: var(--gold-line); }
+.phone-minimap-view { fill: none; stroke: var(--parchment-100); stroke-width: 2; }
+
+.phone-conditions {
+  position: absolute;
+  left: 12px;
+  top: 112px;
+  z-index: 23;
+  max-width: calc(100% - 88px);
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #2f5b88;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.phone-token-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--gold-line);
+  border-radius: 16px;
+  background: var(--ink-900);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+}
+.phone-token-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.phone-token-main > svg { flex-shrink: 0; color: var(--gold-hi); }
+.phone-token-avatar {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 3px solid var(--parchment-100);
+  background-color: var(--ink-800);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 0 2px var(--token-color, transparent);
+}
+.phone-token-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.phone-token-name { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
+.phone-token-name b { overflow: hidden; text-overflow: ellipsis; font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.phone-token-name span { font-size: 12px; color: var(--parchment-300); }
+.phone-token-stats { display: flex; align-items: center; gap: 8px; }
+.phone-token-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--ink-700); overflow: hidden; }
+.phone-token-bar span { display: block; height: 100%; transition: width 0.2s ease; }
+.phone-token-hp { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+.phone-token-ac { padding: 1px 6px; border: 1px solid var(--ink-700); border-radius: 6px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--parchment-200); }
+.phone-token-hint { font-size: 13px; color: var(--parchment-300); }
+.phone-token-steppers { display: flex; flex-direction: column; gap: 2px; }
+.phone-token-steppers button {
+  width: 44px;
+  height: 30px;
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Existing map HUD, re-seated around the phone chrome. */
+.game-screen.phone .hud-zoom { top: 12px; right: 12px; bottom: auto; flex-direction: column; }
+.game-screen.phone .hud-zoom .hud-zoom-value { min-width: 44px; font-size: 11px; }
+.game-screen.phone .hud-zoom .hud-zoom-recenter { border-left: 0; border-top: 1px solid var(--ink-700); }
+.game-screen.phone .hud-initiative,
+.game-screen.phone .turn-ribbon { top: 12px; left: 116px; right: 68px; transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
+.game-screen.phone .hud-initiative { width: max-content; max-width: calc(100% - 184px); scrollbar-width: none; }
+.game-screen.phone .hud-initiative-chip,
+.game-screen.phone .hud-initiative .hud-caption { flex-shrink: 0; white-space: nowrap; }
+.game-screen.phone .encounter-actions { left: 12px; right: 12px; width: auto; bottom: 108px; }
+.game-screen.phone .hud-ruler { left: 12px; bottom: 108px; }
+
+.phone-nav {
+  flex-shrink: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 4px 6px calc(8px + env(safe-area-inset-bottom));
+  background: var(--ink-900);
+  border-top: 1px solid var(--ink-700);
+}
+.phone-nav button {
+  height: 60px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--parchment-300);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.phone-nav button.active { color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, transparent); }
+
+.phone-sheet-backdrop { position: fixed; inset: 0; z-index: 150; background: rgba(10, 8, 6, 0.62); display: flex; align-items: flex-end; }
+.phone-sheet {
+  width: 100%;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-900);
+  border-top: 1px solid var(--gold-line);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.5);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: phone-sheet-in 0.18s ease-out;
+}
+@keyframes phone-sheet-in { from { transform: translateY(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .phone-sheet { animation: none; } }
+.phone-sheet-grabber { align-self: center; width: 40px; height: 4px; margin-top: 8px; border-radius: 2px; background: var(--ink-700); }
+.phone-sheet-header { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px 16px; border-bottom: 1px solid var(--ink-700); }
+.phone-sheet-header h2 { flex: 1; min-width: 0; margin: 0; font-family: var(--font-display-caps); font-size: 21px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone-sheet-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+.phone-layer-list { list-style: none; margin: 0; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.phone-layer-list li { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--ink-700); border-radius: 16px; background: var(--ink-800); }
+.phone-layer-list li.here { border-color: var(--gold-hi); }
+.phone-layer-thumb { width: 72px; height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 6px; border-radius: 8px; background: var(--ink-950); }
+.phone-layer-thumb rect { fill: var(--ink-700); stroke: var(--ink-950); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.phone-layer-list li.here .phone-layer-thumb rect { fill: var(--gold-line); }
+.phone-layer-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.phone-layer-text b { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.phone-layer-text span { font-size: 13px; color: var(--parchment-300); }
+.phone-layer-here { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold-hi); }
+.phone-btn-ghost {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--gold-hi);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-btn-block { display: block; width: calc(100% - 32px); margin: 0 16px 16px; }
+.phone-caption { margin: 0 16px 16px; font-size: 13px; line-height: 1.45; color: var(--parchment-300); }
+
+.phone-atlas { position: fixed; inset: 0; z-index: 150; display: flex; flex-direction: column; background: var(--ink-950); }
+.phone-atlas-header { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px; background: var(--ink-900); border-bottom: 1px solid var(--ink-700); }
+.phone-atlas-header div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.phone-atlas-header h2 { margin: 0; font-family: var(--font-display-caps); font-size: 19px; font-weight: 600; }
+.phone-atlas-header span { font-size: 12px; color: var(--parchment-300); }
+.phone-atlas-map { position: relative; flex: 0 0 45%; overflow: hidden; background: var(--ink-950); border-bottom: 1px solid var(--ink-700); }
+.phone-atlas-island {
+  position: absolute;
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--ink-950);
+  border-radius: 3px;
+  background-color: var(--parchment-100); /* same as .grid-wrap when no map art */
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.phone-atlas-island.active { border-color: var(--gold-hi); }
+.phone-atlas-tag {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  max-width: calc(100% - 8px);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(15, 13, 10, 0.88);
+  color: #f2e9d4;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phone-atlas-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; box-sizing: border-box; border-radius: 50%; border: 2px solid #f2e9d4; pointer-events: none; }
+.phone-atlas-dot.mob { background: #2a1d1d; border-color: var(--danger); }
+.phone-atlas-dot.me { box-shadow: 0 0 0 3px var(--gold-hi); }
+.phone-atlas-list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; }
+.phone-atlas-list h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--parchment-300); }
+.phone-atlas-list ul { list-style: none; margin: 0; padding: 0; }
+.phone-atlas-list li button {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--ink-800);
+  background: transparent;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-atlas-list li button > svg { flex-shrink: 0; color: var(--gold-hi); }
+.phone-atlas-swatch { width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border: 2px solid var(--ink-950); border-radius: 4px; background-color: var(--parchment-100); background-size: cover; background-position: center; }
+.phone-atlas-swatch.active { border-color: var(--gold-hi); }
+.phone-atlas-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.phone-atlas-row-text b { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.phone-atlas-row-text span { font-size: 13px; color: var(--parchment-300); }
+.phone-atlas-row-text .phone-atlas-conds { color: #9ec3ea; }
+.phone-atlas-list .phone-caption { margin: 12px 0 0; }
+
+/* A phone held sideways: map on the left, islands and tools in a rail. */
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone { display: grid; grid-template-columns: minmax(0, 1fr) 220px; grid-template-rows: 48px minmax(0, 1fr) auto; }
+  .game-screen.phone > .phone-topbar { grid-column: 1; grid-row: 1; height: 48px; }
+  .game-screen.phone > .game-layout { grid-column: 1; grid-row: 2 / 4; }
+  .game-screen.phone > .phone-strip {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-bottom: 0;
+    border-left: 1px solid var(--ink-700);
+  }
+  .game-screen.phone > .phone-nav { grid-column: 2; grid-row: 3; padding: 4px; border-left: 1px solid var(--ink-700); }
+  .game-screen.phone > .phone-nav button { height: 48px; font-size: 0; gap: 0; }
+  .phone-atlas-map { flex-basis: 55%; }
+}
+
+/* The encounter controls as one compact bar on a phone: movement and End
+   turn side by side, the d20, log and stop buttons under them. */
+.game-screen.phone .encounter-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: 'move end' 'row stop';
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--ink-700);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink-950) 94%, transparent);
+}
+.game-screen.phone .stage-wrap:not(:has(.phone-token-card)) .encounter-actions { bottom: 12px; }
+.game-screen.phone .encounter-move { grid-area: move; padding: 6px 10px; }
+.game-screen.phone .encounter-end { grid-area: end; min-height: 44px; font-size: 14px; letter-spacing: 0.08em; }
+.game-screen.phone .encounter-row { grid-area: row; gap: 6px; }
+.game-screen.phone .encounter-small { font-size: 12px; }
+.game-screen.phone .encounter-stop { grid-area: stop; align-self: center; justify-self: end; min-height: 44px; }
+.game-screen.phone .combat-log { left: 0; right: 0; width: auto; }
+
+/* Sideways phone: the token card and the encounter bar share the bottom edge
+   instead of stacking over the short map. */
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .phone-token-card { right: auto; width: min(340px, calc(50% - 18px)); }
+  .game-screen.phone .stage-wrap .encounter-actions { left: auto; width: min(340px, calc(50% - 18px)); bottom: 12px; }
+  .game-screen.phone .phone-conditions { top: 12px; left: 116px; }
+}
+
+/* Notches, rounded corners and the home indicator (viewport-fit=cover in
+   index.html makes the env() insets real). */
+.game-screen.phone { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.game-screen.phone > .phone-topbar { box-sizing: border-box; height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
+.phone-atlas { padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.phone-atlas-header { box-sizing: border-box; height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
+.phone-sheet { max-height: calc(88dvh - env(safe-area-inset-top)); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone { grid-template-rows: calc(48px + env(safe-area-inset-top)) minmax(0, 1fr) auto; }
+  .game-screen.phone > .phone-topbar { height: calc(48px + env(safe-area-inset-top)); }
+}
+
+.phone-palettes { display: flex; gap: 8px; padding: 12px 16px 4px; overflow-x: auto; scrollbar-width: none; }
+.phone-palettes button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px 0 8px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.phone-palettes button.active { border-color: var(--gold-hi); background: var(--ink-800); }
+.phone-palette-swatch { display: flex; border-radius: 4px; overflow: hidden; border: 1px solid var(--ink-700); }
+.phone-palette-swatch span { width: 8px; height: 22px; }
+
+/* Join/Host on a phone: the form comes right after the headline; the longer
+   pitch text moves below it. */
+@media (max-width: 767px), (max-height: 499px) {
+  .landing-hero h1 { font-size: 30px; line-height: 1.15; margin-bottom: 0; }
+  .landing-hero p.landing-lede { order: 2; font-size: 15px; }
+  .landing-hero .landing-eyebrow { font-size: 11px; }
+}
+
+/* Landing colour swatches: the small circle stays, the button around it is
+   the touch target. */
+.color-picker-swatch { padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+@media (max-width: 767px), (max-height: 499px) {
+  .color-picker { gap: 0 !important; }
+  .color-picker-swatch { width: 44px; height: 44px; }
+}
+
+.phone-note { margin: 12px 16px 0; padding: 12px 14px; border: 1px solid var(--gold-line); border-radius: 14px; background: var(--ink-800); font-size: 14px; line-height: 1.45; color: var(--parchment-100); }
+
+/* Tap to move (phone). */
+.planned-move { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 40; overflow: visible; }
+.planned-move-path { stroke: var(--gold-hi); stroke-width: 3; stroke-dasharray: 7 6; stroke-linecap: round; }
+.planned-move-ghost { fill: color-mix(in srgb, var(--gold-hi) 18%, transparent); stroke: var(--gold-hi); stroke-width: 2; stroke-dasharray: 4 4; }
+.planned-move-label-bg { fill: var(--ink-950); stroke: var(--gold-hi); stroke-width: 1; }
+.planned-move-label { fill: var(--gold-hi); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.phone-move-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 16px;
+  background: var(--ink-900);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+}
+.phone-move-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.phone-move-head b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.phone-move-feet { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--gold-hi); }
+.phone-move-sub { margin: 0; font-size: 13px; color: var(--parchment-300); }
+.phone-move-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; }
+.phone-move-actions button { min-height: 48px; }
+.phone-btn-primary {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ember);
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.phone-btn-primary:disabled { opacity: 0.5; cursor: default; }
+.game-screen.phone .stage-wrap:has(.phone-move-card) .encounter-actions { bottom: 132px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .phone-move-card { right: auto; width: min(340px, calc(50% - 18px)); }
+}
+
+/* Target and attack (phone). */
+.phone-token-target { flex-shrink: 0; min-height: 48px; }
+.phone-target { display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 20px; }
+.phone-target-summary { display: flex; align-items: center; gap: 12px; }
+.phone-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--parchment-300); }
+.phone-target-attack { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-segment { display: flex; flex-wrap: wrap; gap: 6px; }
+.phone-segment button {
+  flex: 1 1 0;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--parchment-200);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-segment button.active { border-color: var(--gold-hi); background: var(--gold-hi); color: var(--ink-950); }
+.phone-target-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; text-align: center; }
+.phone-target-stats div { display: flex; flex-direction: column; gap: 2px; }
+.phone-target-stats b { font-family: var(--font-mono); font-size: 20px; font-weight: 600; }
+.phone-target-stats span { font-size: 12px; color: var(--parchment-300); }
+.phone-target-result { min-height: 20px; margin: 0; font-family: var(--font-mono); font-size: 14px; color: var(--gold-hi); }
+.phone-btn-block-primary { width: 100%; min-height: 52px; }
+.phone-caption-flush { margin: 0; }
+
+/* Door and chest sheets (phone). */
+.phone-sheet-pad { display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 20px; }
+.phone-btn-full { width: 100%; min-height: 48px; }
+.phone-door-dest { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-door-dest b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.phone-chest-items { display: flex; flex-direction: column; gap: 6px; }
+.phone-chest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 0 6px 0 14px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); font-size: 15px; }
+.phone-chest-row .btn { min-height: 40px; }
+
+/* The creature sheet (phone): numbers up top on the dark sheet, the sheet's
+   own tabs on a paper page like the desktop card's. */
+.phone-creature { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 24px; }
+.phone-creature-head { display: flex; align-items: center; gap: 12px; }
+.phone-creature-avatar { width: 56px; height: 56px; }
+.phone-creature-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.phone-creature-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--parchment-100); }
+.phone-creature .card-ed { color: inherit; }
+.phone-owner { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--parchment-300); }
+.phone-owner select { min-height: 40px; padding: 0 10px; border: 1px dashed var(--gold-line); border-radius: 8px; background: var(--ink-800); color: var(--parchment-100); font: inherit; font-size: 14px; }
+.phone-creature-tabs button { min-width: 0; flex: 1 1 0; }
+.phone-creature-body { display: flex; flex-direction: column; gap: 14px; }
+.phone-hp { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--ink-700); border-radius: 16px; background: var(--ink-800); }
+.phone-hp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.phone-hp-step { width: 56px; height: 56px; flex-shrink: 0; border: 1px solid var(--ink-700); border-radius: 50%; background: var(--ink-900); color: var(--parchment-100); font-size: 26px; line-height: 1; cursor: pointer; }
+.phone-hp-value { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px; font-family: var(--font-mono); }
+.phone-hp-now { font-size: 40px; font-weight: 600; line-height: 1; color: var(--parchment-100); }
+.phone-hp-max { font-size: 18px; color: var(--parchment-300); }
+.phone-hp-temp { font-size: 13px; color: #9ec3ea; }
+.phone-hp-bar { height: 10px; border-radius: 5px; }
+.phone-plaques { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.phone-plaques > div { min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); text-align: center; }
+.phone-plaques b, .phone-plaques .card-ed { font-family: var(--font-mono); font-size: 18px; font-weight: 600; color: var(--parchment-100); }
+.phone-plaques span { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-300); }
+.phone-conditions-list, .phone-death { display: flex; flex-direction: column; gap: 8px; }
+.phone-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.phone-cond {
+  min-height: 40px;
+  padding: 0 12px 0 6px;
+  border: 1px dashed var(--ink-700);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--parchment-300);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.phone-cond:disabled { cursor: default; }
+.phone-cond.on { border-style: solid; border-color: var(--gold-line); background: var(--ink-800); color: var(--parchment-100); }
+.phone-cond-chit { width: 26px; height: 26px; border-radius: 50%; background-size: cover; background-position: center; }
+.phone-death-row { display: flex; align-items: center; gap: 8px; }
+.phone-death-row .phone-caption { width: 84px; }
+.phone-death-pip { width: 32px; height: 32px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--moss); background: transparent; cursor: pointer; }
+.phone-death-row.failures .phone-death-pip { border-color: var(--danger); }
+.phone-death-pip.filled { background: var(--moss); }
+.phone-death-row.failures .phone-death-pip.filled { background: var(--danger); }
+.phone-death-pip:disabled { cursor: default; }
+.phone-card-page { border-width: 3px; }
+.phone-card-page .card-tab-body { padding: 12px; }
+.phone-abilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.phone-abilities > div { min-height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); }
+.phone-abilities b { font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
+.phone-ability-score { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
+.phone-creature-id .card-ed { justify-content: flex-start; text-align: left; }
+.phone-creature-id .phone-creature-name { align-self: flex-start; }
+.phone-plaques > div:last-child b, .phone-plaques > div:last-child .card-ed { font-family: var(--font-ui); font-size: 13px; }
+.phone-abilities .card-ed { min-height: 28px; min-width: 44px; }
+
+/* Player table menu, look & sound, party (phone). */
+.phone-menu-section { display: flex; flex-direction: column; gap: 8px; }
+.phone-menu-section .phone-palettes { padding: 0; }
+.phone-clock { padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-switch-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 6px 6px 14px; border: 1px solid var(--ink-700); border-radius: 14px; }
+.phone-switch-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.phone-switch-label { font-size: 15px; font-weight: 600; }
+.phone-switch { position: relative; width: 56px; height: 44px; flex-shrink: 0; border: 0; background: transparent; cursor: pointer; }
+.phone-switch span { position: absolute; left: 4px; top: 8px; width: 48px; height: 28px; border-radius: 14px; background: var(--ink-700); transition: background 0.15s; }
+.phone-switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--parchment-100); transition: left 0.15s; }
+.phone-switch.on span { background: var(--gold-hi); }
+.phone-switch.on span::after { left: 23px; }
+.phone-switch:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; border-radius: 10px; }
+.phone-volumes { display: flex; flex-direction: column; gap: 2px; }
+.phone-volumes.muted { opacity: 0.45; }
+.phone-volume { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 44px; font-size: 14px; }
+.phone-volume input { width: 100%; accent-color: var(--gold-hi); }
+.phone-facts { margin: 0; display: grid; grid-template-columns: 128px minmax(0, 1fr); row-gap: 8px; column-gap: 12px; font-size: 15px; }
+.phone-facts dt { color: var(--parchment-300); }
+.phone-facts dd { margin: 0; }
+.phone-confirm { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--danger); border-radius: 14px; background: var(--ink-800); }
+.phone-confirm p { margin: 0; font-size: 15px; line-height: 1.45; }
+.phone-btn-danger { min-height: 48px; border: 0; border-radius: 12px; background: var(--danger); color: #ffffff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.phone-btn-danger-ghost { min-height: 52px; border: 1px solid var(--danger); border-radius: 14px; background: transparent; color: var(--parchment-100); font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; }
+.phone-party { list-style: none; margin: 0; padding: 8px 16px; display: flex; flex-direction: column; }
+.phone-party li { display: flex; align-items: center; gap: 12px; min-height: 68px; border-bottom: 1px solid var(--ink-800); }
+.phone-party-avatar { position: relative; width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--parchment-100); }
+.phone-party-dot { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--ink-900); background: var(--ink-700); }
+.phone-party-dot.online { background: var(--moss); }
+.phone-party-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.phone-party-text b { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.phone-party-text span { font-size: 13px; color: var(--parchment-300); }
+.phone-party-where { max-width: 120px; text-align: right; font-size: 13px; line-height: 1.35; color: var(--parchment-200); }
+
+/* Every modal on a phone (dice, compendium, map settings, layers...) rises
+   as a bottom sheet instead of floating mid-screen. */
+body:has(.game-screen.phone) .book-backdrop { padding: 0; align-items: flex-end; }
+body:has(.game-screen.phone) .book-card {
+  max-width: none;
+  max-height: calc(92dvh - env(safe-area-inset-top));
+  border-radius: 22px 22px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* The host's toolbar, mounted but out of sight on a phone: only the panels
+   it opens (bestiary, initiative, layers, islands, asset storage) show. */
+.phone-toolbar-host { position: fixed; left: 0; top: 0; width: 100%; height: 0; overflow: visible; z-index: 170; }
+.phone-toolbar-host > .toolbar { position: absolute; left: 0; top: 0; width: 100%; height: 0; padding: 0; border: 0; overflow: visible; visibility: hidden; }
+.phone-toolbar-host .book-backdrop,
+.phone-toolbar-host .cbook-backdrop { visibility: visible; }
+
+/* The Add sheet (phone): the tokens panel's sections behind tabs. */
+.phone-add { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 20px; }
+.phone-add-tabs button { min-width: 96px; }
+.phone-add-body { display: flex; flex-direction: column; gap: 12px; }
+.phone-add-body .token-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.phone-add-body .field, .phone-add-body .btn { min-height: 44px; }
+.phone-add-body .side-btn { min-height: 44px; }
+
+/* Edit and Group modes on a phone. */
+.phone-edit-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 116px;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink-950) 94%, transparent);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.phone-edit-text { font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
+.phone-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.phone-edit-actions button { flex: 1 1 auto; min-height: 44px; }
+.game-screen.phone .group-confirm-panel { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; width: auto; max-width: none; border-radius: 16px; }
+.game-screen.phone .group-confirm-panel .btn { min-height: 44px; }
+.phone-atlas-manage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
+}
+.game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
+
+/* Condition badges in phone sheets get full-size touch targets. */
+body:has(.game-screen.phone) .condition-row { gap: 6px; }
+body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
+
+/* The DM's Run the table and table menu (phone). */
+.phone-run-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--gold-line); border-radius: 14px; background: var(--ink-800); }
+.phone-run-head { display: flex; align-items: baseline; gap: 10px; }
+.phone-run-head b { font-family: var(--font-mono); font-size: 20px; font-weight: 600; }
+.phone-run-head span { font-size: 15px; color: var(--parchment-200); }
+.phone-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.phone-run-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.phone-tile {
+  min-height: 64px;
+  border: 1px solid var(--ink-700);
+  border-radius: 14px;
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-tile:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.phone-code-row { display: flex; align-items: center; gap: 6px; min-height: 60px; padding: 0 6px 0 14px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-code { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.phone-code span { font-size: 12px; color: var(--parchment-300); }
+.phone-code b { font-family: var(--font-mono); font-size: 17px; font-weight: 600; letter-spacing: 0.12em; }
+.phone-sheet-log .combat-log { position: static; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; }

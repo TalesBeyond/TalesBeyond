@@ -42,7 +42,11 @@ export default function MapBoard({
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
   actorId = null, // whose turn it is, during an encounter
+  gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
+  onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
+  plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
 }) {
+  const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
   // Authoritative drag data lives in refs (not state) so the *Up handlers
@@ -354,6 +358,10 @@ export default function MapBoard({
     setIslandDragPos(null);
     if (!current) return;
 
+    // A phone pan scrolls the map under a still finger, so the island would
+    // otherwise read it as a click and select itself.
+    if (gestureRef?.current?.panned) return;
+
     const p = getRelativePoint(e.clientX, e.clientY);
     const moved = Math.hypot(p.x - current.downX, p.y - current.downY);
     const isClick = moved < CLICK_MOVE_THRESHOLD_PX;
@@ -364,6 +372,19 @@ export default function MapBoard({
     if (tool === 'group') {
       if (isClick) onToggleGroupCandidate?.(current.id);
       return;
+    }
+
+    // A tap on a square with a movable token selected moves it (or plans the
+    // move, mid-encounter) instead of selecting the island.
+    if (isClick && tool === 'play' && onTapCell) {
+      const found = findIslandAt(p.x, p.y);
+      if (found) {
+        const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+        if (onTapCell(found.island.id, col, row)) {
+          tapConsumedRef.current = true;
+          return;
+        }
+      }
     }
 
     // Selecting the "active" island (for placing new tokens) works in any
@@ -438,6 +459,38 @@ export default function MapBoard({
     panRef.current = null;
   }
 
+  // Desktop: holding the right mouse button anywhere over the map view pans
+  // it, in every tool and over tokens and islands alike. Caught on the way
+  // down (capture) so nothing underneath selects or drags; the browser's
+  // context menu is suppressed over the map.
+  useEffect(() => {
+    const stage = wrapRef.current?.parentElement;
+    if (!stage) return undefined;
+    function onRightDown(e) {
+      if (e.pointerType !== 'mouse' || e.button !== 2) return;
+      e.stopPropagation();
+      stage.classList.add('right-panning');
+      startPan(e);
+      const done = () => {
+        stage.classList.remove('right-panning');
+        window.removeEventListener('pointerup', done);
+      };
+      window.addEventListener('pointerup', done);
+    }
+    function onContextMenu(e) {
+      e.preventDefault();
+    }
+    stage.addEventListener('pointerdown', onRightDown, true);
+    stage.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      stage.removeEventListener('pointerdown', onRightDown, true);
+      stage.removeEventListener('contextmenu', onContextMenu);
+    };
+    // startPan and its move/up handlers only touch refs, so the first
+    // render's copies stay correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- Ruler ----
 
   function handleStagePointerDown(e) {
@@ -470,6 +523,11 @@ export default function MapBoard({
   }
 
   function handleStageClick() {
+    if (tapConsumedRef.current) {
+      tapConsumedRef.current = false;
+      return;
+    }
+    if (gestureRef?.current?.panned) return;
     if (tool === 'play') onSelectEntity(null);
   }
 
@@ -502,6 +560,11 @@ export default function MapBoard({
       rulerLine = { p1, p2, feet };
     }
   }
+
+  // Leaving the Ruler tool wipes the measurement off the map.
+  useEffect(() => {
+    if (tool !== 'ruler') setRuler(null);
+  }, [tool]);
 
   // Report the live measurement upward so the HUD can show it.
   const rulerFeet = rulerLine ? rulerLine.feet : null;
@@ -660,17 +723,33 @@ export default function MapBoard({
                   <span className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`} style={{ width: `${hpPercent(entity)}%` }} />
                 </span>
               ) : null}
+              {/* Temporary HP: a thin blue layer riding on top of the life bar. */}
+              {entity.kind !== 'door' && entity.maxHp && entity.tempHp > 0 ? (
+                <span className="token-tempbar" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, (entity.tempHp / entity.maxHp) * 100)}%` }} />
+                </span>
+              ) : null}
               {entity.kind !== 'door' && entity.maxHp ? (
                 <span className="token-hp">
                   {entity.hp}/{entity.maxHp}
+                  {entity.tempHp > 0 && <span className="token-hp-temp"> +{entity.tempHp}</span>}
                 </span>
               ) : null}
               {entity.kind !== 'door' && entity.conditions?.length > 0 && (
+                // Cardboard chits clipped to the token's edge; hovering the
+                // token fans out their names.
                 <span className="token-conditions">
                   {entity.conditions.map((key) => {
                     const c = CONDITIONS.find((cond) => cond.key === key);
                     if (!c) return null;
-                    return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                    return (
+                      <span key={key} className="token-chit" title={`${c.label} — ${c.description}`}>
+                        <img src={c.imageUrl} alt={c.label} />
+                        <span className="token-chit-label" aria-hidden="true">
+                          {c.label}
+                        </span>
+                      </span>
+                    );
                   })}
                 </span>
               )}
@@ -693,6 +772,8 @@ export default function MapBoard({
         );
       })}
 
+      {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
+
       {rulerLine && (
         <svg className="grid-svg ruler-overlay" width={canvasWidth} height={canvasHeight}>
           <RulerOverlay p1={rulerLine.p1} p2={rulerLine.p2} feet={rulerLine.feet} />
@@ -704,6 +785,36 @@ export default function MapBoard({
 
 function hpPercent(entity) {
   return Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
+}
+
+// A move waiting for "Move here" (phone, mid-encounter): a dashed path from
+// the token to the chosen square, a ghost ring there, and its label.
+function PlannedMoveOverlay({ plan, entity, islandRects, originX, originY, zoom, width, height }) {
+  const from = entity && islandRects[entity.islandId];
+  const to = islandRects[plan.islandId];
+  if (!from || !to) return null;
+  const size = entity.size || 1;
+  const x1 = (from.x - originX) * zoom + entity.col * from.cellSize + (from.cellSize * size) / 2;
+  const y1 = (from.y - originY) * zoom + entity.row * from.cellSize + (from.cellSize * size) / 2;
+  const x2 = (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2;
+  const y2 = (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2;
+  const radius = (to.cellSize * size) / 2 - 2;
+  const label = plan.label || '';
+  const labelW = label.length * 7.2 + 14;
+  return (
+    <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
+      <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
+      <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
+      {label && (
+        <g>
+          <rect x={x2 - labelW / 2} y={y2 - radius - 26} width={labelW} height={20} rx={10} className="planned-move-label-bg" />
+          <text x={x2} y={y2 - radius - 12} textAnchor="middle" className="planned-move-label">
+            {label}
+          </text>
+        </g>
+      )}
+    </svg>
+  );
 }
 
 function RulerOverlay({ p1, p2, feet }) {

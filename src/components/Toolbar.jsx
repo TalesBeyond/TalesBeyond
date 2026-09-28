@@ -13,6 +13,7 @@ import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
+import { useFx } from '../lib/fx.js';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
@@ -140,6 +141,9 @@ const TOOL_ICONS = {
 const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands' };
 
 export default function Toolbar({
+  // The roll log and saved dice sets, kept in GameView so they survive
+  // closing the popover and the phone dice screen shares them.
+  dice,
   isHost,
   isGuestHost,
   layer,
@@ -212,12 +216,6 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
-  // Lifted out of DiceModal so the roll log and saved dice sets
-  // survive closing and reopening the popover, instead of resetting every
-  // time it unmounts.
-  const [diceRolls, setDiceRolls] = useState([]);
-  const [diceSaved, setDiceSaved] = useState([]);
-
   // Keep the bar on a single row: try each density from roomiest to
   // tightest and settle on the first where Leave (always the last item) ends
   // inside the bar. Only if even the tightest overflows is it allowed to wrap.
@@ -298,6 +296,27 @@ export default function Toolbar({
     setShowDayNight((s) => (name === 'dayNight' ? !s : false));
   }
 
+  // The Grimoire palette's index tabs (BookTabs.jsx) open these same
+  // panels from the edge of the map page — they ask over lib/fx.js rather
+  // than reaching into this component's state.
+  useFx((event) => {
+    if (event.type !== 'open') return;
+    if (event.panel === 'dice') togglePopover('dice');
+    else if (event.panel === 'music') onOpenMusic?.();
+    else if (!isHost) return;
+    else if (event.panel === 'map') togglePopover('mapSettings');
+    else if (event.panel === 'armory') togglePopover('compendium');
+    // The phone layout opens the rest of the host's panels the same way.
+    else if (event.panel === 'items') togglePopover('itemCompendium');
+    else if (['layers', 'islands', 'initiative', 'assetStorage'].includes(event.panel)) togglePopover(event.panel);
+    else if (event.panel === 'clock') onOpenClock?.();
+    else if (event.panel === 'bestiary') {
+      const open = showMonsterCompendium;
+      togglePopover(null);
+      setShowMonsterCompendium(!open);
+    }
+  });
+
   function copyCode() {
     navigator.clipboard?.writeText(session.code).then(() => {
       setCopied(true);
@@ -368,17 +387,22 @@ export default function Toolbar({
         onCopy={copyCode}
         title="Click to copy the invite code players join with"
       />
-      <CodeChip
-        caption={isGuestHost ? 'DM code' : 'Host key'}
-        value={session.hostKey}
-        copied={copiedHostKey}
-        onCopy={copyHostKey}
-        title={
-          isGuestHost
-            ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
-            : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
-        }
-      />
+      {/* Local and guest tables only: a signed-in cloud table has no host
+          key (fetchTableSnapshot never returns one — the DM's own account
+          re-seats them), so the chip would just copy "undefined". */}
+      {session.hostKey && (
+        <CodeChip
+          caption={isGuestHost ? 'DM code' : 'Host key'}
+          value={session.hostKey}
+          copied={copiedHostKey}
+          onCopy={copyHostKey}
+          title={
+            isGuestHost
+              ? 'Click to copy your private DM code — save it, along with an exported .bmp, to resume this table later via "Resume guest session" on the Landing screen'
+              : 'Click to copy. Testing only: save this so you can rejoin as host from the landing screen if you ever get removed as host'
+          }
+        />
+      )}
       {/* Regenerating isn't supported for a guest table (GameView.jsx's
           regenerateCode just alerts and bails — the invite code doubles
           as the peer broadcast channel's name, so rotating it would
@@ -614,12 +638,7 @@ export default function Toolbar({
         <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceModal
-            saved={diceSaved}
-            rolls={diceRolls}
-            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev].slice(0, 50))}
-            onClearRolls={() => setDiceRolls([])}
-            onSave={(entry) => setDiceSaved((prev) => [...prev, entry])}
-            onRemoveSaved={(id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id))}
+            {...dice}
             onClose={() => setShowDice(false)}
           />
         )}

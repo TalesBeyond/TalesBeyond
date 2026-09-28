@@ -97,10 +97,11 @@ export function Editable({ value, display, onCommit, type = 'number', label, dis
   );
 }
 
-// The heart gem: click to edit current and maximum hit points together.
-function HpGem({ hp, max, disabled, onCommit }) {
+// The heart gem: click to edit current, maximum and temporary hit points
+// together.
+function HpGem({ hp, max, temp, disabled, onCommit }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ hp: '', max: '' });
+  const [draft, setDraft] = useState({ hp: '', max: '', temp: '' });
   const boxRef = useRef(null);
 
   const gem = (
@@ -116,9 +117,11 @@ function HpGem({ hp, max, disabled, onCommit }) {
     setEditing(false);
     const nextMax = parseInt(draft.max, 10);
     const nextHp = parseInt(draft.hp, 10);
+    const nextTemp = draft.temp.trim() === '' ? 0 : parseInt(draft.temp, 10);
     const patch = {};
     if (!Number.isNaN(nextMax) && nextMax !== max) patch.maxHp = Math.max(0, nextMax);
     if (!Number.isNaN(nextHp) && nextHp !== hp) patch.hp = Math.max(0, nextHp);
+    if (!Number.isNaN(nextTemp) && nextTemp !== temp) patch.tempHp = Math.max(0, nextTemp);
     if (Object.keys(patch).length) onCommit(patch);
   }
   function onKeyDown(e) {
@@ -144,7 +147,7 @@ function HpGem({ hp, max, disabled, onCommit }) {
         className="card-ed card-gem gem-hp"
         aria-label={`Hit points ${hp} of ${max} — edit`}
         onClick={() => {
-          setDraft({ hp: String(hp), max: String(max) });
+          setDraft({ hp: String(hp), max: String(max), temp: temp ? String(temp) : '' });
           setEditing(true);
         }}
       >
@@ -171,6 +174,18 @@ function HpGem({ hp, max, disabled, onCommit }) {
             value={draft.max}
             onFocus={(e) => e.target.select()}
             onChange={(e) => setDraft((d) => ({ ...d, max: e.target.value }))}
+            onKeyDown={onKeyDown}
+          />
+          <span aria-hidden="true">+</span>
+          <input
+            className="card-ed-input card-hp-temp-input"
+            type="number"
+            aria-label="Temporary hit points"
+            placeholder="temp"
+            min={0}
+            value={draft.temp}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => setDraft((d) => ({ ...d, temp: e.target.value }))}
             onKeyDown={onKeyDown}
           />
           <button type="button" className="card-hp-done" aria-label="Save hit points" onClick={save}>
@@ -217,6 +232,7 @@ export default function CreatureCard({
 
   const max = entity.maxHp || 0;
   const hp = entity.hp ?? max;
+  const temp = entity.tempHp || 0;
   const hpPct = max ? Math.max(0, Math.min(100, (hp / max) * 100)) : 0;
   const ac = acOf(entity);
   const abilities = sheet?.abilities || {};
@@ -224,7 +240,8 @@ export default function CreatureCard({
 
   const attack = actor && actor.kind === 'hero' && actor.id !== entity.id ? (actor.sheet?.attacks || [])[0] : null;
   const preview = attack && max ? attackPreview(attack, entity) : null;
-  const leaves = preview ? Math.max(0, Math.round(Math.max(0, hp) - preview.averageDamage)) : null;
+  // Temporary HP soaks the blow first, so it only reaches real HP past that.
+  const leaves = preview ? Math.max(0, Math.round(Math.max(0, hp) - Math.max(0, preview.averageDamage - temp))) : null;
   const pct = (n) => `${max ? Math.max(0, Math.min(100, (n / max) * 100)) : 0}%`;
 
   function setAc(n) {
@@ -352,7 +369,7 @@ export default function CreatureCard({
             )}
           </span>
           <span className="card-gem-slot right">
-            <HpGem hp={hp} max={max} disabled={!canEdit} onCommit={(patch) => onUpdate(entity.id, patch)} />
+            <HpGem hp={hp} max={max} temp={temp} disabled={!canEdit} onCommit={(patch) => onUpdate(entity.id, patch)} />
           </span>
         </div>
 
@@ -367,16 +384,28 @@ export default function CreatureCard({
               −
             </button>
           )}
-          <div className="target-card-hp" aria-hidden="true">
-            {preview ? (
-              <>
-                <span className="target-hp-fill" style={{ width: pct(leaves) }} />
-                <span className="target-hp-preview" style={{ width: pct(Math.max(0, hp) - leaves) }} />
-              </>
-            ) : (
-              <span className="target-hp-fill" style={{ width: `${hpPct}%` }} />
+          {/* The life bar anatomy: current HP, the chunk just lost draining
+              after a beat (the ghost), temporary HP as a blue layer on top,
+              and a glow + heartbeat below a quarter. */}
+          <div className="card-life-bar" aria-hidden="true">
+            {temp > 0 && (
+              <div className="card-tempbar">
+                <span style={{ width: pct(temp) }} />
+              </div>
             )}
+            <div className={`target-card-hp${hpPct < 25 ? ' critical' : ''}`}>
+              <span className="target-hp-ghost" style={{ width: `${hpPct}%` }} />
+              {preview ? (
+                <>
+                  <span className="target-hp-fill" style={{ width: pct(leaves) }} />
+                  <span className="target-hp-preview" style={{ width: pct(Math.max(0, hp) - leaves) }} />
+                </>
+              ) : (
+                <span className="target-hp-fill" style={{ width: `${hpPct}%` }} />
+              )}
+            </div>
           </div>
+          {temp > 0 && <span className="card-temp-chip" title="Temporary hit points — spent before real ones">+{temp}</span>}
           {canEdit && (
             <button type="button" className="card-step" aria-label="Gain 1 hit point" onClick={() => stepHp(1)}>
               +

@@ -65,6 +65,7 @@ The sixteen migrations, in order:
 21. `..._no_guest_uploads.sql` — guest (anonymous) sessions can't upload any file to Storage; only signed-in accounts can. Guest tables keep everything local, and their audio must be re-picked after a reload
 22. `..._encounter.sql` — the running encounter (turn order, round, whose turn, where their turn began) as `tables.encounter`, host-written, plus `end_encounter_turn` so a player can end their own hero's turn
 23. `..._realtime_publication.sql` — adds every table the app listens to (`entities`, `entity_dm_data`, `players`, `layers`, `islands`, `tables`, `custom_assets`, `audio_tracks`, `invite_codes`) to the `supabase_realtime` publication. Without it players' browsers get no live updates at all — see the file for why one missing table breaks everything
+24. `..._temp_hp.sql` — temporary hit points on hero and mob tokens (`entities.temp_hp`), the blue layer on the life bar; damage spends them first
 
 ## 3. Enable anonymous sign-in
 
