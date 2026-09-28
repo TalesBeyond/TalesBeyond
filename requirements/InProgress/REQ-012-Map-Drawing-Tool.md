@@ -169,8 +169,8 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S007 | S | Guest sync | Confirm drawing actions pass `toGuestBroadcastAction` and the slice rides `toGuestSnapshot`. Make sure a player's client never sends drawing actions, and the DM's intent handler ignores any it receives. Check guest autosave and file resume keep the slice. | S006 | `src/components/GameView.jsx`, `src/lib/guestRealtime.js` |
-|  | S008 | S | Local save and export | Local-mode writes save through `saveOrWarn`; the Export .bmp and Import round-trip carries the slice; `migrateLegacyState` backfills files that lack it. | S006 | `src/components/GameView.jsx`, `src/state/persistence.js`, `src/state/migrate.js` |
+| ✅ | S007 | S | Guest sync | Confirm drawing actions pass `toGuestBroadcastAction` and the slice rides `toGuestSnapshot`. Make sure a player's client never sends drawing actions, and the DM's intent handler ignores any it receives. Check guest autosave and file resume keep the slice. | S006 | `src/components/GameView.jsx`, `src/lib/guestRealtime.js` |
+| ✅ | S008 | S | Local save and export | Local-mode writes save through `saveOrWarn`; the Export .bmp and Import round-trip carries the slice; `migrateLegacyState` backfills files that lack it. | S006 | `src/components/GameView.jsx`, `src/state/persistence.js`, `src/state/migrate.js` |
 
 ### Slice 3 — Shapes, Snap to grid and feet
 
