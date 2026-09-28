@@ -10,7 +10,7 @@
 | Area | Game view / UI (phone layout) |
 | Author | Blaxine |
 | Created | 2026-09-27 |
-| Last Updated | 2026-09-27 |
+| Last Updated | 2026-09-28 |
 
 > Design: `MOBILE_DESIGN.md` and the design canvas (Phone page, 25 screens) —
 > https://claude.ai/artifact/7FphnpyRQe7hpyAp4nPLJq. Hints are a separate plan.
@@ -250,10 +250,10 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S050 | X | No desktop leftovers | Confirm no phone path renders `Toolbar`, `TokenSidebar`, `RightPanel` or a desktop popover; delete the interim sheet wiring and any phone CSS it needed. | S028, S038, S048 | `src/components/GameView.jsx`, `src/styles.css` |
+| ✅ | S050 | X | No desktop leftovers | Confirm no phone path renders `Toolbar`, `TokenSidebar`, `RightPanel` or a desktop popover; delete the interim sheet wiring and any phone CSS it needed. | S028, S038, S048 | `src/components/GameView.jsx`, `src/styles.css` |
 | | S051 | T | Device checklist | Written checklist covering every AC, run on iOS Safari 17+ and Android Chrome, portrait and sideways, once as player and once as DM (guest table), on a cloud table and a guest table. | S050 | `requirements/Todo/REQ-011-Phone-Release.md` (Smoke Test) |
-| | S052 | D | Docs | Rewrite `MOBILE_DESIGN.md` to the shipped design (DM on phones, full parity); add a Phone layout section to `APP_OVERVIEW.md`; note the phone breakpoint in `README.md`. | S051 | `MOBILE_DESIGN.md`, `APP_OVERVIEW.md`, `README.md` |
-| | S053 | D | Thesaurus terms | Add Phone layout, Island view, Atlas, Island chip, Fly to island, Phone sheet, Planned move, Keep-awake to `THESAURUS.md`. | S051 | `THESAURUS.md` |
+| ✅ | S052 | D | Docs | Rewrite `MOBILE_DESIGN.md` to the shipped design (DM on phones, full parity); add a Phone layout section to `APP_OVERVIEW.md`; note the phone breakpoint in `README.md`. | S051 | `MOBILE_DESIGN.md`, `APP_OVERVIEW.md`, `README.md` |
+| ✅ | S053 | D | Thesaurus terms | Add Phone layout, Island view, Atlas, Island chip, Fly to island, Phone sheet, Planned move, Keep-awake to `THESAURUS.md`. | S051 | `THESAURUS.md` |
 | | S054 | X | Release check | REQ-008 is Done; the device checklist is signed off; move this plan to `Done/`. | S051, S052, S053 | `requirements/` |
 
 ### Dependency graph
@@ -359,3 +359,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-09-27 | Blaxine | Initial plan. Slice 1 (island view) already in the working tree. |
+| 2026-09-28 | Blaxine | Slices 2–12 implemented (commits ecbc931 … slice 12). Open: the real-device checklist (S051), per-slice checks that need a player session or a phone (S011, S014, S018, S025, S029, S035, S039, S043, S049), and release sign-off (S054, waits on REQ-008). Door and trap cards open their inspector in a phone sheet; the toolbar stays mounted out of sight for its panels. |

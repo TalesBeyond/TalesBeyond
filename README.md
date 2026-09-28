@@ -26,6 +26,14 @@ npm run dev
 Then open the printed local URL (usually `http://localhost:5173`). The top
 bar shows which mode you're in ("local demo mode" or "cloud mode").
 
+## On a phone
+
+The same site works in a phone's browser: below 768 px wide (or 500 px tall,
+a phone held sideways) the game switches to the islands-first phone layout
+described in `MOBILE_DESIGN.md`. Players and the DM have every desktop
+feature; to try it locally, open the dev server on your phone over the same
+network, or use your browser's device emulation.
+
 ## Try the local-mode flow
 
 1. Open the app, choose **Host a table**, fill in your name and a map size,

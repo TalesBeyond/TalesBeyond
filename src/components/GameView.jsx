@@ -89,6 +89,7 @@ import {
   PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
+import { DoorInspector, TrapInspector } from './RightPanel.jsx';
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
@@ -2505,7 +2506,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
         collapsed={isPhone ? false : toolbarCollapsed}
-        onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : setToolbarCollapsed((c) => !c))}
+        onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
         zoom={zoom}
       />
   );
@@ -2541,8 +2542,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           heroes={heroes}
           onGiveChestItem={giveChestItemToHero}
           onTakeChestItem={takeChestItem}
-          collapsed={isPhone ? false : rightCollapsed}
-          onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('right'))}
+          collapsed={rightCollapsed}
+          onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
         />
   );
@@ -2657,7 +2658,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 <PhoneTokenCard
                   entity={selectedEntity}
                   isHost={isHost}
-                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'panel')}
+                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'inspect')}
                   onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
                   onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
                 />
@@ -2830,9 +2831,33 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               lib/fx.js from the phone screens. */}
           {isHost && <div className="phone-toolbar-host">{toolbarEl}</div>}
           <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
-          {phoneSheet === 'panel' && (
-            <PhoneSheet title={selectedEntity ? selectedEntity.name : 'Party'} onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
-              {rightPanelEl}
+          {phoneSheet === 'inspect' && (selectedEntity?.kind === 'door' || selectedEntity?.kind === 'trap') && (
+            <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
+              <div className="phone-sheet-pad">
+                {selectedEntity.kind === 'door' ? (
+                  <DoorInspector
+                    entity={selectedEntity}
+                    layers={state.layers}
+                    layerOrder={state.layerOrder}
+                    isHost={isHost}
+                    onUpdate={updateEntity}
+                    onRemove={(id) => {
+                      removeEntity(id);
+                      setPhoneSheet(null);
+                    }}
+                  />
+                ) : (
+                  <TrapInspector
+                    entity={selectedEntity}
+                    isHost={isHost}
+                    onUpdate={updateEntity}
+                    onRemove={(id) => {
+                      removeEntity(id);
+                      setPhoneSheet(null);
+                    }}
+                  />
+                )}
+              </div>
             </PhoneSheet>
           )}
           {pendingDoor && (
@@ -2884,7 +2909,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             />
           )}
           {phoneSheet === 'add' && isHost && (
-            <PhoneSheet title="Add to the map" onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
+            <PhoneSheet title="Add to the map" onClose={() => setPhoneSheet(null)}>
               {tokenSidebarEl}
             </PhoneSheet>
           )}

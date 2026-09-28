@@ -203,7 +203,7 @@ function SizeField({ entity, onUpdate, disabled, maxSize }) {
 
 // ---------- door ----------
 
-function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
+export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
   return (
     <div className="inspector-card">
       <h4>{entity.name}</h4>
@@ -239,7 +239,7 @@ function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove 
 // A player only ever gets here once the DM has revealed the trap (an
 // unrevealed one never reaches their client - see GameView's
 // entitiesVisibleOnLayer), and sees the same fields read-only.
-function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
+export function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
   const revealed = Boolean(entity.trapRevealed);
 
   return (

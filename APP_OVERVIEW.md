@@ -308,6 +308,34 @@ that never appears in a player's own view of that token.
 
 ---
 
+### Phone layout (`PhoneChrome.jsx`, `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`)
+
+Below `(max-width: 767px), (max-height: 499px)` (`PHONE_QUERY`) `GameView`
+renders an islands-first phone layout around the same `MapBoard`, store,
+handlers and permissions — no separate route, reducer actions or sync.
+MOBILE_DESIGN.md is the design; REQ-011 the plan.
+
+- **Island view**: the top bar names the active island over its layer; island
+  chips *fly to* an island (active island + the zoom that fits it + centre);
+  a mini-map and the **Atlas** show the whole layer. Pinch zooms (a CSS
+  transform while the fingers move, one real zoom when they lift), one finger
+  pans empty map in Play.
+- **Interaction**: tap a square to move your token (in an encounter the
+  acting token gets a *planned move* — path, feet, "Move here"); a **Target**
+  sheet previews and rolls an attack (`resolveAttackRoll` in
+  `utils/combat.js`, shared with the Battle tab); door and chest sheets.
+- **Sheets**: the phone creature sheet (Fight · Magic · Bag · Stats · DM for
+  heroes, Fight · Loot · Stats · DM for monsters, reusing the desktop tab
+  bodies on a paper page); dice (the same `DiceModal`, its roll log now kept
+  in `GameView`); the player table menu with **Mute on this device**
+  (`tb.muteDevice`, `lib/sfx.js`); Party; the DM's Add sheet
+  (`TokenSidebar` `layout="phone"`), Run the table and table menu.
+- The DM's `Toolbar` stays mounted out of sight on a phone; its panels
+  (bestiary, layers, islands, initiative, asset storage, clock, map settings)
+  open over `lib/fx.js` `{ type: 'open', panel }` events. Every modal rises
+  as a bottom sheet.
+- A guest table hosted from a phone holds a Screen Wake Lock while visible.
+
 ## 5. Persistence — local mode
 
 `src/state/persistence.js` wraps `localStorage` behind a small interface
