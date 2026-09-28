@@ -133,6 +133,8 @@ const AUTOSAVE_INTERVAL_SECONDS = 15 * 60;
 
 // A phone can zoom further out, so a whole island fits its narrow screen.
 const PHONE_ZOOM_MIN = 0.2;
+// Entering an encounter: the dice sound, then this long before the encounter music.
+const ENCOUNTER_MUSIC_DELAY_MS = 2000;
 
 function clampZoom(z, min = ZOOM_MIN) {
   return Math.min(ZOOM_MAX, Math.max(min, Math.round(z * 10) / 10));
@@ -506,6 +508,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [showMusicModal, setShowMusicModal] = useState(false);
   // This browser's volume for the encounter theme (set in the Music modal).
   const [encounterMusicVolume, setEncounterMusicVolume] = useState(() => getSfxVolume(ENCOUNTER_MUSIC.id));
+  // Entering an encounter: the dice rattle for everyone at the table, then
+  // the encounter theme 2 s later. Ending it stops the theme at once.
+  const encounterActive = Boolean(state.encounter);
+  const [encounterMusicOn, setEncounterMusicOn] = useState(encounterActive);
+  const encounterActiveRef = useRef(encounterActive);
+  useEffect(() => {
+    const was = encounterActiveRef.current;
+    encounterActiveRef.current = encounterActive;
+    if (encounterActive && !was) playDiceSound();
+  }, [encounterActive]);
+  useEffect(() => {
+    if (!encounterActive) {
+      setEncounterMusicOn(false);
+      return undefined;
+    }
+    if (encounterMusicOn) return undefined;
+    const timer = setTimeout(() => setEncounterMusicOn(true), ENCOUNTER_MUSIC_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [encounterActive, encounterMusicOn]);
   // Each player's own level per track — this browser only.
   const [localAudioVolumes, setLocalAudioVolumes] = useState(() => loadLocalAudioVolumes(audioScope));
   // "Mute on this device" (phone table menu): silences table music and effects here only.
@@ -534,7 +555,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     localVolumes: localAudioVolumes,
     checkFiles: isGuest,
     // The encounter's own theme, for everyone at the table while a fight runs.
-    override: state.encounter ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
+    override: state.encounter && encounterMusicOn ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
     muted: deviceMuted,
   });
 
@@ -1252,7 +1273,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         updateEntity(entity.id, { initiativeRoll: null, initiativeTurn: null });
       }
     }
-    if (selectedIds.length) playDiceSound();
+    // Starting an encounter rattles the dice itself (the encounter effect).
+    if (selectedIds.length && !startEncounter) playDiceSound();
     const rolled = selectedIds.map((id) => ({ id, roll: 1 + Math.floor(Math.random() * 20) }));
     rolled.sort((a, b) => b.roll - a.roll);
     rolled.forEach(({ id, roll }, index) => updateEntity(id, { initiativeRoll: roll, initiativeTurn: index + 1 }));
@@ -2232,11 +2254,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPhone, currentLayerId]);
 
-  // Touch gestures on the phone map: two fingers pinch-zoom around their
+  // Touch gestures on the map, in every layout (phones, tablets, touch
+  // laptops, a desktop browser's device emulation): two fingers pinch-zoom around their
   // midpoint (and pan as they move); one finger on empty map pans in the Play
   // tool, so a token drag and a pan never fight. MapBoard reads
-  // `phoneGestureRef.current.panned` to skip the click that ends a pan.
-  const phoneGestureRef = useRef({ panned: false, pan: null, pinch: null });
+  // `touchGestureRef.current.panned` to skip the click that ends a pan.
+  const touchGestureRef = useRef({ panned: false, pan: null, pinch: null });
   const pinchAnchorRef = useRef(null); // { worldX, worldY, relX, relY }
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -2252,8 +2275,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }, [zoom]);
   useEffect(() => {
     const stage = stageRef.current;
-    if (!isPhone || !stage) return undefined;
-    const g = phoneGestureRef.current;
+    if (!stage) return undefined;
+    const g = touchGestureRef.current;
+    const zoomMin = isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN;
     const rel = (t) => {
       const r = stage.getBoundingClientRect();
       return { x: t.clientX - r.left, y: t.clientY - r.top };
@@ -2268,7 +2292,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       p.canvas.style.transform = '';
       p.canvas.style.transformOrigin = '';
       p.canvas.style.willChange = '';
-      const next = Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, p.zoom * p.scale));
+      const next = Math.min(ZOOM_MAX, Math.max(zoomMin, p.zoom * p.scale));
       if (next === zoomRef.current) {
         stage.scrollLeft = p.worldX * next + STAGE_PADDING - p.mid.x;
         stage.scrollTop = p.worldY * next + STAGE_PADDING - p.mid.y;
@@ -2315,7 +2339,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         const a = rel(e.touches[0]);
         const b = rel(e.touches[1]);
         const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        const next = Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, (p.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / p.dist));
+        const next = Math.min(ZOOM_MAX, Math.max(zoomMin, (p.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / p.dist));
         const scale = next / p.zoom;
         // Keep the world point that started under the fingers under their midpoint.
         const tx = mid.x - STAGE_PADDING + p.left - p.worldX * p.zoom * scale;
@@ -2335,7 +2359,16 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
     function onEnd(e) {
       if (e.touches.length < 2) endPinch();
-      if (e.touches.length === 0) g.pan = null;
+      if (e.touches.length === 0) {
+        g.pan = null;
+        // Long enough for the click that ends this touch to see it; then a
+        // later mouse click (a touch laptop) isn't mistaken for a pan's end.
+        if (g.panned) {
+          setTimeout(() => {
+            if (!g.pan && !g.pinch) g.panned = false;
+          }, 400);
+        }
+      }
     }
     stage.addEventListener('touchstart', onStart, { passive: false });
     stage.addEventListener('touchmove', onMove, { passive: false });
@@ -2625,7 +2658,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onRulerChange={setRulerFeet}
               moveRange={moveRange}
               actorId={actorId}
-              gestureRef={isPhone ? phoneGestureRef : null}
+              gestureRef={touchGestureRef}
               onTapCell={isPhone ? handleTapCell : null}
               plannedMove={isPhone ? plannedMoveForMap : null}
             />
@@ -2665,7 +2698,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               )}
             </>
           )}
-          {encounter ? <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} /> : <InitiativeBar entities={layerEntities} />}
+          {encounter && !isPhone ? (
+            <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} />
+          ) : (
+            <InitiativeBar entities={encounter ? state.entities : layerEntities} encounter={encounter} />
+          )}
           {encounter && (
             <EncounterActions
               actor={actor}

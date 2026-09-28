@@ -42,7 +42,7 @@ export default function MapBoard({
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
   actorId = null, // whose turn it is, during an encounter
-  gestureRef = null, // phone layout: { panned } — set when a touch just panned the map, so its closing click is ignored
+  gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
   plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
 }) {
@@ -459,6 +459,38 @@ export default function MapBoard({
     panRef.current = null;
   }
 
+  // Desktop: holding the right mouse button anywhere over the map view pans
+  // it, in every tool and over tokens and islands alike. Caught on the way
+  // down (capture) so nothing underneath selects or drags; the browser's
+  // context menu is suppressed over the map.
+  useEffect(() => {
+    const stage = wrapRef.current?.parentElement;
+    if (!stage) return undefined;
+    function onRightDown(e) {
+      if (e.pointerType !== 'mouse' || e.button !== 2) return;
+      e.stopPropagation();
+      stage.classList.add('right-panning');
+      startPan(e);
+      const done = () => {
+        stage.classList.remove('right-panning');
+        window.removeEventListener('pointerup', done);
+      };
+      window.addEventListener('pointerup', done);
+    }
+    function onContextMenu(e) {
+      e.preventDefault();
+    }
+    stage.addEventListener('pointerdown', onRightDown, true);
+    stage.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      stage.removeEventListener('pointerdown', onRightDown, true);
+      stage.removeEventListener('contextmenu', onContextMenu);
+    };
+    // startPan and its move/up handlers only touch refs, so the first
+    // render's copies stay correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- Ruler ----
 
   function handleStagePointerDown(e) {
@@ -528,6 +560,11 @@ export default function MapBoard({
       rulerLine = { p1, p2, feet };
     }
   }
+
+  // Leaving the Ruler tool wipes the measurement off the map.
+  useEffect(() => {
+    if (tool !== 'ruler') setRuler(null);
+  }, [tool]);
 
   // Report the live measurement upward so the HUD can show it.
   const rulerFeet = rulerLine ? rulerLine.feet : null;

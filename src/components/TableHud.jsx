@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNow } from '../state/useGameClock.js';
 import { DAY_PHASES } from '../data/dayPhases.js';
 import { clockTotalMinutes, splitTotalMinutes, formatClockTime, dayPhase } from '../utils/gameClock.js';
@@ -58,21 +58,54 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
 }
 
 // Floating turn order, built from whatever Roll for Initiative stamped on the
-// entities. Hidden until someone has rolled.
-export function InitiativeBar({ entities }) {
-  const order = Object.values(entities || {})
-    .filter((e) => e.initiativeTurn != null)
-    .sort((a, b) => a.initiativeTurn - b.initiativeTurn);
+// entities. Hidden until someone has rolled. On a phone it is also the
+// encounter's turn order: the acting creature's chip is raised and kept in
+// view as the turns go round.
+export function InitiativeBar({ entities, encounter = null }) {
+  const barRef = useRef(null);
+  const order = encounter
+    ? encounter.order
+        .map((entry) => (entities?.[entry.id] ? { ...entities[entry.id], initiativeRoll: entry.roll } : null))
+        .filter(Boolean)
+    : Object.values(entities || {})
+        .filter((e) => e.initiativeTurn != null)
+        .sort((a, b) => a.initiativeTurn - b.initiativeTurn);
+  const activeId = encounter ? encounter.order[encounter.turn]?.id : order[0]?.id;
+
+  useEffect(() => {
+    // Scroll the bar itself only, never the map behind it.
+    const bar = barRef.current;
+    const chip = bar?.querySelector('[aria-current="true"]');
+    if (!chip) return;
+    // The first chip keeps the bar at its start (caption showing); later ones
+    // scroll just far enough to be fully in view.
+    const first = chip === bar.querySelector('.hud-initiative-chip');
+    const right = chip.offsetLeft + chip.offsetWidth + 6;
+    let left = bar.scrollLeft;
+    if (first) left = 0;
+    else if (right > left + bar.clientWidth) left = right - bar.clientWidth;
+    else if (chip.offsetLeft - 6 < left) left = chip.offsetLeft - 6;
+    bar.scrollLeft = Math.max(0, left);
+  }, [activeId]);
+
   if (order.length === 0) return null;
   return (
-    <div className="hud-initiative" role="list" aria-label="Initiative order">
+    <div ref={barRef} className="hud-initiative" role="list" aria-label="Initiative order">
       <span className="hud-caption">Initiative</span>
-      {order.map((e, i) => (
-        <span key={e.id} role="listitem" className={`hud-initiative-chip${i === 0 ? ' first' : ''}`}>
-          {e.name}
-          <span className="hud-initiative-roll">{e.initiativeRoll}</span>
-        </span>
-      ))}
+      {order.map((e) => {
+        const active = e.id === activeId;
+        return (
+          <span
+            key={e.id}
+            role="listitem"
+            aria-current={encounter && active ? 'true' : undefined}
+            className={`hud-initiative-chip${active ? ' first' : ''}`}
+          >
+            {e.name}
+            <span className="hud-initiative-roll">{e.initiativeRoll}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }

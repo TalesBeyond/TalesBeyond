@@ -842,6 +842,8 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
      to move it (scrollbar drag, trackpad/keyboard scroll) so they can't
      fight with the scroll wheel, which is zoom-only here. */
   overflow: hidden;
+  /* Touch pans and pinches are GameView's own gestures, in every layout. */
+  touch-action: none;
   background-color: var(--ink-900);
   background-image:
     linear-gradient(var(--ink-700) 1px, transparent 1px),
@@ -1770,6 +1772,9 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 }
 .island-canvas.tool-pan { cursor: grab; user-select: none; touch-action: none; }
 .island-canvas.tool-pan:active { cursor: grabbing; }
+/* Right-button drag pans the map on desktop (MapBoard.jsx). */
+.stage.right-panning,
+.stage.right-panning * { cursor: grabbing !important; user-select: none; }
 .island-canvas.tool-ruler { cursor: crosshair; }
 .island-canvas.tool-edit .grid-wrap { cursor: move; }
 .island-canvas.tool-group .grid-wrap { cursor: pointer; }
@@ -4149,6 +4154,9 @@ button.card-notes { border-style: solid; }
 .game-screen.phone .hud-zoom .hud-zoom-recenter { border-left: 0; border-top: 1px solid var(--ink-700); }
 .game-screen.phone .hud-initiative,
 .game-screen.phone .turn-ribbon { top: 12px; left: 116px; right: 68px; transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
+.game-screen.phone .hud-initiative { width: max-content; max-width: calc(100% - 184px); scrollbar-width: none; }
+.game-screen.phone .hud-initiative-chip,
+.game-screen.phone .hud-initiative .hud-caption { flex-shrink: 0; white-space: nowrap; }
 .game-screen.phone .encounter-actions { left: 12px; right: 12px; width: auto; bottom: 108px; }
 .game-screen.phone .hud-ruler { left: 12px; bottom: 108px; }
 
