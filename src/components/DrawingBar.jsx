@@ -73,6 +73,49 @@ export function DrawIcon({ path }) {
   );
 }
 
+// The phone's drawing bar, above the bottom nav while Draw is on: the six
+// tools, then style (opens the "Drawing style" sheet), Undo, Redo and Done.
+export function PhoneDrawBar({ settings, onChange, canUndo, canRedo, onUndo, onRedo, onStyle, onDone }) {
+  const set = (patch) => onChange({ ...settings, ...patch });
+  return (
+    <div className="phone-draw-bar" role="toolbar" aria-label="Drawing tools">
+      <div className="phone-draw-row">
+        {DRAW_SUB_TOOLS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`draw-bar-btn${settings.subTool === t.id ? ' active' : ''}`}
+            aria-pressed={settings.subTool === t.id}
+            aria-label={t.label}
+            onClick={() => set({ subTool: t.id })}
+          >
+            <DrawIcon path={t.path} />
+          </button>
+        ))}
+      </div>
+      <div className="phone-draw-row">
+        <button type="button" className="phone-draw-style" onClick={onStyle}>
+          <span
+            className={`draw-colour-dot${settings.style.fill ? ' filled' : ''}`}
+            style={{ width: 18, height: 18, borderColor: settings.style.color, '--dot-colour': settings.style.color }}
+            aria-hidden="true"
+          />
+          Style
+        </button>
+        <button type="button" className="draw-bar-btn" disabled={!canUndo} aria-label="Undo" onClick={onUndo}>
+          <DrawIcon path={UNDO_PATH} />
+        </button>
+        <button type="button" className="draw-bar-btn" disabled={!canRedo} aria-label="Redo" onClick={onRedo}>
+          <DrawIcon path={REDO_PATH} />
+        </button>
+        <button type="button" className="phone-btn-primary phone-draw-done" onClick={onDone}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DrawingBar({ settings, onChange, recentColours, canUndo, canRedo, onUndo, onRedo, ...clear }) {
   const set = (patch) => onChange({ ...settings, ...patch });
   const [open, setOpen] = useState(null); // 'style' | 'clear' | null

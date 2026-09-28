@@ -568,6 +568,10 @@ export default function MapBoard({
 
   function startDrawing(e) {
     if (!isHost || !drawSettings || !onAddDrawing) return;
+    if (drawRef.current) {
+      cancelDrawing();
+      return;
+    }
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const p = getRelativePoint(e.clientX, e.clientY);
     const found = findIslandAt(p.x, p.y);
@@ -680,6 +684,10 @@ export default function MapBoard({
   function onDrawMove(e) {
     const d = drawRef.current;
     if (!d) return;
+    if (gestureRef?.current?.pinch) {
+      cancelDrawing();
+      return;
+    }
     if (d.mode === 'erase') {
       eraseAt(e);
       return;

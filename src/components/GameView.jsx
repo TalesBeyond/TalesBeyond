@@ -7,7 +7,8 @@ import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from 
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
-import DrawingBar from './DrawingBar.jsx';
+import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
+import DrawStylePanel from './DrawStyle.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -84,6 +85,7 @@ import {
   PhoneTokenCard,
   PhoneNav,
   PhoneSheet,
+  PhoneSwitch,
   PhoneLayersSheet,
   PhoneAtlas,
   PhoneMoveCard,
@@ -2872,10 +2874,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                   islandName={activeIsland?.name}
                   onSettings={() => emitFx({ type: 'open', panel: 'map' })}
                   onGroup={() => setTool('group')}
+                  onDraw={() => setTool('draw')}
                   onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
                 />
               )}
-              {plannedMoveInfo ? (
+              {isHost && tool === 'draw' && (
+                <PhoneDrawBar
+                  settings={drawSettings}
+                  onChange={setDrawSettings}
+                  canUndo={canUndoDrawing}
+                  canRedo={canRedoDrawing}
+                  onUndo={undoDrawing}
+                  onRedo={redoDrawing}
+                  onStyle={() => setPhoneSheet('drawstyle')}
+                  onDone={() => setTool('edit')}
+                />
+              )}
+              {tool === 'draw' ? null : plannedMoveInfo ? (
                 <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
               ) : (
                 <PhoneTokenCard
@@ -3172,9 +3187,30 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onThemeChange={onThemeChange}
               muted={deviceMuted}
               onMutedChange={toggleDeviceMuted}
+              hideDrawings={hideDrawings}
+              onHideDrawingsChange={setHideDrawings}
               onLeave={leaveTable}
               onClose={() => setPhoneSheet(null)}
             />
+          )}
+          {phoneSheet === 'drawstyle' && isHost && (
+            <PhoneSheet title="Drawing style" onClose={() => setPhoneSheet(null)} className="phone-sheet-drawstyle">
+              <DrawStylePanel style={drawSettings.style} recent={recentColours} onChange={(style) => setDrawSettings({ ...drawSettings, style })} />
+              <PhoneSwitch
+                label="Snap to grid"
+                caption="Lines, circles and rectangles land on the grid."
+                checked={drawSettings.snap}
+                onChange={(snap) => setDrawSettings({ ...drawSettings, snap })}
+              />
+              <DrawClearMenu
+                islandName={currentLayer.islands[activeIslandId]?.name || 'this island'}
+                mapName={currentLayer.name}
+                islandCount={drawingIdsOnIsland(activeIslandId).length}
+                mapCount={drawingIdsOnMap().length}
+                onClearIsland={() => removeDrawings(drawingIdsOnIsland(activeIslandId))}
+                onClearMap={() => removeDrawings(drawingIdsOnMap())}
+              />
+            </PhoneSheet>
           )}
           {phoneSheet === 'party' && (
             <PhonePartySheet
@@ -3216,6 +3252,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onThemeChange={onThemeChange}
               muted={deviceMuted}
               onMutedChange={toggleDeviceMuted}
+              hideDrawings={hideDrawings}
+              onHideDrawingsChange={setHideDrawings}
               onLeave={leaveTable}
               onClose={() => setPhoneSheet(null)}
             />

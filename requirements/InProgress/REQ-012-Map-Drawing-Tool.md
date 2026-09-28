@@ -221,8 +221,8 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S021 | U | Phone Draw entry, bar and style sheet | Draw button in `PhoneEditBar`; a compact drawing bar above the bottom nav (sub-tools, colour dot, Undo, Redo, Done); a "Drawing style" Phone sheet with the colour picker, thickness, Fill, Snap to grid and both clears; Hide drawings in `PhonePlayerMenu` and `PhoneHostMenu`. | S018, S019 | `src/components/PhoneChrome.jsx`, `src/components/PhoneHostScreens.jsx`, `src/components/GameView.jsx`, `src/styles.css` |
-|  | S022 | S | Touch drawing | One-finger pointer input draws in Draw; a second pointer or a pinch cancels the unfinished stroke or drag without a write; two-finger pan and pinch unchanged; handles and hit radius sized for touch. | S021 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
+| ✅ | S021 | U | Phone Draw entry, bar and style sheet | Draw button in `PhoneEditBar`; a compact drawing bar above the bottom nav (sub-tools, colour dot, Undo, Redo, Done); a "Drawing style" Phone sheet with the colour picker, thickness, Fill, Snap to grid and both clears; Hide drawings in `PhonePlayerMenu` and `PhoneHostMenu`. | S018, S019 | `src/components/PhoneChrome.jsx`, `src/components/PhoneHostScreens.jsx`, `src/components/GameView.jsx`, `src/styles.css` |
+| ✅ | S022 | S | Touch drawing | One-finger pointer input draws in Draw; a second pointer or a pinch cancels the unfinished stroke or drag without a write; two-finger pan and pinch unchanged; handles and hit radius sized for touch. | S021 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
 
 ### Slice 8 — Docs and thesaurus
 

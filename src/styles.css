@@ -4811,6 +4811,53 @@ body:has(.game-screen.phone) .book-card {
 }
 .game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
 
+/* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), where the token
+   card sits otherwise. */
+.phone-draw-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 27;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--ink-950);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+/* While the DM draws, the drawing bar takes the encounter panel's place. */
+.game-screen.phone .stage-wrap:has(.phone-draw-bar) .encounter-actions { display: none; }
+.phone-draw-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.phone-draw-bar .draw-bar-btn { width: 44px; height: 44px; flex: 0 0 44px; }
+.phone-draw-style {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--ink-800);
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.phone-draw-done { min-height: 44px; padding: 0 18px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .phone-draw-bar { right: auto; width: min(340px, calc(50% - 18px)); }
+}
+.phone-sheet-drawstyle .draw-style { gap: 14px; }
+.phone-sheet-drawstyle .draw-wheel { width: 200px; height: 200px; }
+.phone-sheet-drawstyle .draw-swatch { width: 36px; height: 36px; }
+.phone-sheet-drawstyle .draw-width { height: 44px; }
+.phone-sheet-drawstyle .draw-clear { margin-top: 8px; }
+.phone-sheet-drawstyle .draw-clear-option { min-height: 52px; }
+.phone-sheet-drawstyle .draw-clear-actions .btn { min-height: 44px; }
+
 /* Condition badges in phone sheets get full-size touch targets. */
 body:has(.game-screen.phone) .condition-row { gap: 6px; }
 body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
