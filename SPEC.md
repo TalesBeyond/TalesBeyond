@@ -168,6 +168,18 @@ interface TableState {
   entities: Record<string, Entity>;
   entityOrder: string[];         // render/z-order
   players: Record<string, Player>;
+  // The DM's Draw tool (52_drawings.sql): one entry per shape, tied to an
+  // island; geometry in grid squares from the island's top-left corner.
+  drawings: Record<string, Drawing>;
+  drawingOrder: string[];        // creation order, later on top
+}
+
+interface Drawing {
+  id: string;
+  islandId: string;
+  kind: 'pencil' | 'line' | 'circle' | 'rect';
+  geometry: object;              // pencil {points}, line {from,to}, circle {center,radius}, rect {x,y,w,h}
+  style: { color: string; width: 'fine' | 'medium' | 'bold' | 'heavy'; fill: boolean };
 }
 
 interface Entity {

@@ -832,6 +832,164 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .hud-zoom button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: -2px; }
 .hud-zoom .hud-zoom-value { min-width: 60px; font-family: var(--font-mono); font-size: 13px; color: var(--parchment-200); }
 
+/* The DM's drawing bar: a column at the map's left edge while Draw is on. */
+.draw-bar {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--ink-950);
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+.draw-bar-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--parchment-200);
+  cursor: pointer;
+}
+.draw-bar-btn:hover { background: var(--ink-800); color: var(--parchment-100); }
+.draw-bar-btn.active { background: var(--ink-700); border-color: var(--gold-line); color: var(--gold-hi); }
+.draw-bar-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
+.draw-bar-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
+.draw-clear-popover { width: 240px; padding: 8px; }
+.draw-clear { display: flex; flex-direction: column; gap: 6px; }
+.draw-clear p { margin: 4px 4px 6px; font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
+.draw-clear-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.draw-clear-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.draw-clear-option small { font-size: 12px; color: var(--parchment-300); }
+.draw-clear-option:hover:not(:disabled) { background: var(--ink-800); }
+.draw-clear-option:disabled { opacity: 0.45; cursor: default; }
+.draw-bar-sep { width: 24px; height: 1px; margin: 4px 0; background: var(--ink-700); }
+.draw-colour-dot {
+  display: block;
+  border: 3px solid;
+  border-radius: 50%;
+  box-sizing: border-box;
+  max-width: 28px;
+  max-height: 28px;
+}
+.draw-colour-dot.filled { background: color-mix(in srgb, var(--dot-colour) 35%, transparent); }
+.draw-style-popover {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 260px;
+  padding: 14px;
+  background: var(--ink-950);
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Colour, thickness and fill (DrawStyle.jsx) — popover and phone sheet. */
+.draw-style { display: flex; flex-direction: column; gap: 12px; color: var(--parchment-100); }
+.draw-wheel-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.draw-wheel {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle closest-side, #fff, rgba(255, 255, 255, 0)),
+    conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  cursor: crosshair;
+  touch-action: none;
+}
+.draw-wheel:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 3px; }
+.draw-wheel-shade { position: absolute; inset: 0; border-radius: 50%; background: #000; pointer-events: none; }
+.draw-wheel-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.draw-brightness { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; color: var(--parchment-300); }
+.draw-brightness input {
+  width: 100%;
+  accent-color: var(--draw-hue);
+  background: linear-gradient(to right, #000, var(--draw-hue));
+  border-radius: 999px;
+  height: 8px;
+  appearance: none;
+}
+.draw-brightness input::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--ink-950); }
+.draw-brightness input::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--ink-950); }
+.draw-swatch-row { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--parchment-300); }
+.draw-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.draw-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-700);
+  cursor: pointer;
+}
+.draw-swatch.active { border-color: var(--parchment-100); box-shadow: 0 0 0 2px var(--gold-line); }
+.draw-widths { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.draw-width {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: var(--ink-800);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.draw-width > span:first-child { display: block; width: 100%; border-radius: 999px; }
+.draw-width.active { border-color: var(--gold-line); background: var(--ink-700); }
+.draw-fill { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.draw-fill input { margin-top: 2px; accent-color: var(--gold-hi); }
+.draw-fill small { display: block; font-size: 11px; color: var(--parchment-300); }
+
+/* A shape's size while it's being drawn — sits above the shape. */
+.draw-feet {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, calc(-100% - 6px));
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(23, 20, 15, 0.82);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .stage {
   position: relative;
   flex: 1;
@@ -1776,6 +1934,18 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .stage.right-panning,
 .stage.right-panning * { cursor: grabbing !important; user-select: none; }
 .island-canvas.tool-ruler { cursor: crosshair; }
+.island-canvas.tool-draw { cursor: crosshair; user-select: none; }
+.island-canvas.tool-draw .grid-wrap { cursor: crosshair; }
+.island-canvas.draw-select,
+.island-canvas.draw-select .grid-wrap { cursor: default; }
+.island-canvas.draw-eraser,
+.island-canvas.draw-eraser .grid-wrap {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='rgba(255,255,255,0.35)' stroke='%2317140f' stroke-width='2'/%3E%3C/svg%3E") 12 12, cell;
+}
+/* Select's chrome around the chosen drawing. */
+.draw-selection { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; overflow: visible; }
+.draw-selection-box { fill: none; stroke: var(--ember, #d9822b); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.draw-handle { fill: #fff; stroke: #17140f; stroke-width: 1.5; }
 .island-canvas.tool-edit .grid-wrap { cursor: move; }
 .island-canvas.tool-group .grid-wrap { cursor: pointer; }
 .island-canvas:not(.tool-play) .token { cursor: inherit; }
@@ -1808,6 +1978,17 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   border: 2px solid rgba(23, 20, 15, 0.9);
   box-shadow: 0 1px 4px rgba(0,0,0,0.6);
   display: block;
+}
+
+/* The DM's drawings: over the map art, grid and tint, under the tokens
+   (which are siblings of the islands, rendered after them). Island-sized,
+   so anything drawn past the edge is cut off. */
+.drawing-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .island-daynight {
@@ -4629,6 +4810,53 @@ body:has(.game-screen.phone) .book-card {
   .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
 }
 .game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
+
+/* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), where the token
+   card sits otherwise. */
+.phone-draw-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 27;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--ink-950);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+/* While the DM draws, the drawing bar takes the encounter panel's place. */
+.game-screen.phone .stage-wrap:has(.phone-draw-bar) .encounter-actions { display: none; }
+.phone-draw-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.phone-draw-bar .draw-bar-btn { width: 44px; height: 44px; flex: 0 0 44px; }
+.phone-draw-style {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--ink-800);
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.phone-draw-done { min-height: 44px; padding: 0 18px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .phone-draw-bar { right: auto; width: min(340px, calc(50% - 18px)); }
+}
+.phone-sheet-drawstyle .draw-style { gap: 14px; }
+.phone-sheet-drawstyle .draw-wheel { width: 200px; height: 200px; }
+.phone-sheet-drawstyle .draw-swatch { width: 36px; height: 36px; }
+.phone-sheet-drawstyle .draw-width { height: 44px; }
+.phone-sheet-drawstyle .draw-clear { margin-top: 8px; }
+.phone-sheet-drawstyle .draw-clear-option { min-height: 52px; }
+.phone-sheet-drawstyle .draw-clear-actions .btn { min-height: 44px; }
 
 /* Condition badges in phone sheets get full-size touch targets. */
 body:has(.game-screen.phone) .condition-row { gap: 6px; }

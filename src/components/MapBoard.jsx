@@ -4,6 +4,17 @@ import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
 import { useFx } from '../lib/fx.js';
+import {
+  finishPencilPoints,
+  shapeGeometry,
+  shapeFeetLabel,
+  hitsDrawing,
+  drawingBounds,
+  drawingHandles,
+  movedGeometry,
+  resizedGeometry,
+} from '../utils/drawing.js';
+import IslandDrawings from './DrawingLayer.jsx';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
 const FLOAT_MS = 1300; // how long a hit number drifts up over a token
@@ -37,7 +48,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'group' | 'draw'
   zoom = 1,
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
@@ -45,6 +56,15 @@ export default function MapBoard({
   gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
   plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
+  drawings = {}, // the DM's drawings (utils/drawing.js), keyed by id
+  drawingOrder = [], // creation order — later drawings paint on top
+  hideDrawings = false, // this viewer's "Hide drawings"
+  drawSettings = null, // Draw tool: { subTool, style, snap }
+  onAddDrawing = null, // (drawing without an id) => void — the DM only
+  onUpdateDrawing = null, // (drawing) => void — a move or resize, the DM only
+  onRemoveDrawings = null, // (ids, sweepKey) => void — the eraser, the DM only
+  selectedDrawingId = null, // the drawing Select has picked
+  onSelectDrawing = null, // (id | null) => void
 }) {
   const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
   const wrapRef = useRef(null);
@@ -63,6 +83,14 @@ export default function MapBoard({
   const groupDragRef = useRef(null); // { groupId, downX, downY, dx, dy }
   const [groupDragPos, setGroupDragPos] = useState(null); // { groupId, dx, dy } — unzoomed delta, visual only
   const [ruler, setRuler] = useState(null); // { start: {islandId,col,row}, end: {islandId,col,row} }
+  // The shape the DM is drawing right now (Draw tool), shown in its island
+  // until the pointer lifts. The ref holds the live copy the move/up
+  // handlers read; `draft` is what renders.
+  const drawRef = useRef(null);
+  const [draft, setDraft] = useState(null);
+  // A drawing being moved or resized with Select: { id, geometry } shown in
+  // place of the stored one until the pointer lifts.
+  const [editPreview, setEditPreview] = useState(null);
 
   // Hit numbers (lib/fx.js 'float' events): −7, a critical −18, +9, MISS —
   // each drifts up from its token and fades.
@@ -100,6 +128,22 @@ export default function MapBoard({
     const cellSize = island.cellSize * zoom;
     islandRects[id] = { island, x, y, cellSize, w: island.cols * cellSize, h: island.rows * cellSize };
   }
+  // Each island's drawings, oldest first.
+  const drawingsByIsland = new Map();
+  if (!hideDrawings) {
+    for (const id of drawingOrder) {
+      const stored = drawings[id];
+      if (!stored || !islandRects[stored.islandId]) continue;
+      const d = editPreview?.id === id ? { ...stored, geometry: editPreview.geometry } : stored;
+      if (!drawingsByIsland.has(d.islandId)) drawingsByIsland.set(d.islandId, []);
+      drawingsByIsland.get(d.islandId).push(d);
+    }
+  }
+  // The latest copy for the window listeners of a drag that began in an
+  // earlier render (the eraser removes drawings while it's still down).
+  const drawingsRef = useRef(drawingsByIsland);
+  drawingsRef.current = drawingsByIsland;
+
   // Padded generously beyond the islands' own bounding box (see
   // CANVAS_PAN_PADDING) so there's always room to pan in every direction —
   // computed from the stored island positions, not the live drag override
@@ -331,7 +375,7 @@ export default function MapBoard({
   // resolves the same reliable way token dragging already does.
 
   function handleIslandPointerDown(e, island) {
-    if (tool === 'ruler' || tool === 'pan') return;
+    if (tool === 'ruler' || tool === 'pan' || tool === 'draw') return;
     e.stopPropagation();
     const p = getRelativePoint(e.clientX, e.clientY);
     islandDragRef.current = { id: island.id, downX: p.x, downY: p.y, startX: island.x, startY: island.y };
@@ -491,11 +535,224 @@ export default function MapBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- Draw ----
+  // A press on an island starts a shape there — even on a token, which lets
+  // the press through outside the Play tool. The shape stays on that island
+  // whatever the pointer crosses; the island's SVG cuts off what's outside.
+  // Select picks the topmost drawing under the pointer (or a handle of the
+  // selected one) and drags it; Eraser removes every drawing it touches.
+  // drawRef.current.mode says which: 'create' | 'edit' | 'erase'.
+
+  function toIslandSquares(e, islandId) {
+    const r = islandRects[islandId];
+    if (!r) return null;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const left = (r.x - originX) * zoom;
+    const top = (r.y - originY) * zoom;
+    return [(p.x - left) / r.cellSize, (p.y - top) / r.cellSize];
+  }
+
+  // What the unfinished shape looks like right now, or null when it has no
+  // size yet.
+  function draftFrom(d) {
+    if (d.kind === 'pencil') return { id: 'draft', islandId: d.islandId, kind: 'pencil', geometry: { points: d.raw }, style: d.style };
+    const geometry = shapeGeometry(d.kind, d.start, d.end, d.snap);
+    return geometry ? { id: 'draft', islandId: d.islandId, kind: d.kind, geometry, style: d.style } : null;
+  }
+
+  // How far a press may miss a drawing's line and still hit it, in squares
+  // (a finger gets more room than a mouse).
+  function hitTolerance(e, cellSize) {
+    return Math.max(0.15, (e.pointerType === 'mouse' ? 6 : 14) / cellSize);
+  }
+
+  function startDrawing(e) {
+    if (!isHost || !drawSettings || !onAddDrawing) return;
+    if (drawRef.current) {
+      cancelDrawing();
+      return;
+    }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const found = findIslandAt(p.x, p.y);
+    const subTool = drawSettings.subTool;
+
+    if (subTool === 'select') {
+      e.preventDefault();
+      if (!startEditing(e, p, found)) onSelectDrawing?.(null);
+      return;
+    }
+    if (subTool === 'eraser') {
+      e.preventDefault();
+      drawRef.current = { mode: 'erase', erased: new Set(), sweep: `erase-${Date.now()}` };
+      eraseAt(e);
+      listenWhileDrawing();
+      return;
+    }
+    if (!found) return;
+    e.preventDefault();
+    const start = toIslandSquares(e, found.island.id);
+    drawRef.current = {
+      mode: 'create',
+      islandId: found.island.id,
+      kind: subTool,
+      raw: [start],
+      start,
+      end: start,
+      snap: drawSettings.snap,
+      style: { ...drawSettings.style },
+    };
+    setDraft(draftFrom(drawRef.current));
+    listenWhileDrawing();
+  }
+
+  // Select: a handle of the selected drawing first (they can sit past the
+  // island's edge), then the topmost drawing under the pointer. Returns
+  // false when the press hit nothing.
+  function startEditing(e, p, found) {
+    const selected = selectedDrawingId && drawings[selectedDrawingId];
+    const selectedRect = selected && islandRects[selected.islandId];
+    if (selected && selectedRect) {
+      const left = (selectedRect.x - originX) * zoom;
+      const top = (selectedRect.y - originY) * zoom;
+      const grab = e.pointerType === 'mouse' ? 9 : 22;
+      const handle = drawingHandles(selected).find(
+        (h) => Math.hypot(left + h.at[0] * selectedRect.cellSize - p.x, top + h.at[1] * selectedRect.cellSize - p.y) <= grab
+      );
+      if (handle) {
+        beginEdit(e, selected, 'handle', handle.id);
+        return true;
+      }
+    }
+    if (!found) return false;
+    const point = toIslandSquares(e, found.island.id);
+    const onIsland = drawingsRef.current.get(found.island.id) || [];
+    const tolerance = hitTolerance(e, found.cellSize);
+    const hit = [...onIsland].reverse().find((d) => hitsDrawing(d, point, tolerance));
+    if (!hit) return false;
+    onSelectDrawing?.(hit.id);
+    beginEdit(e, hit, 'move', null);
+    return true;
+  }
+
+  function beginEdit(e, drawing, op, handle) {
+    drawRef.current = {
+      mode: 'edit',
+      op,
+      handle,
+      drawing,
+      islandId: drawing.islandId,
+      start: toIslandSquares(e, drawing.islandId),
+      snap: drawSettings.snap,
+      geometry: drawing.geometry,
+    };
+    listenWhileDrawing();
+  }
+
+  // A moved drawing keeps the middle of its bounding box on its island, so
+  // it can hang over the edge but never leave.
+  function clampMove(drawing, dx, dy) {
+    const island = islandRects[drawing.islandId]?.island;
+    if (!island) return [dx, dy];
+    const [x0, y0, x1, y1] = drawingBounds(drawing);
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    return [Math.min(island.cols - cx, Math.max(-cx, dx)), Math.min(island.rows - cy, Math.max(-cy, dy))];
+  }
+
+  function eraseAt(e) {
+    const d = drawRef.current;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const found = findIslandAt(p.x, p.y);
+    if (!found) return;
+    const point = toIslandSquares(e, found.island.id);
+    const tolerance = hitTolerance(e, found.cellSize) + 0.15;
+    const doomed = (drawingsRef.current.get(found.island.id) || [])
+      .filter((drawing) => !d.erased.has(drawing.id) && hitsDrawing(drawing, point, tolerance))
+      .map((drawing) => drawing.id);
+    if (!doomed.length) return;
+    doomed.forEach((id) => d.erased.add(id));
+    onRemoveDrawings?.(doomed, d.sweep);
+  }
+
+  function listenWhileDrawing() {
+    window.addEventListener('pointermove', onDrawMove);
+    window.addEventListener('pointerup', onDrawUp);
+    window.addEventListener('pointercancel', cancelDrawing);
+  }
+
+  function onDrawMove(e) {
+    const d = drawRef.current;
+    if (!d) return;
+    if (gestureRef?.current?.pinch) {
+      cancelDrawing();
+      return;
+    }
+    if (d.mode === 'erase') {
+      eraseAt(e);
+      return;
+    }
+    const point = toIslandSquares(e, d.islandId);
+    if (!point) return;
+    if (d.mode === 'edit') {
+      let geometry;
+      if (d.op === 'move') {
+        const [dx, dy] = clampMove(d.drawing, point[0] - d.start[0], point[1] - d.start[1]);
+        geometry = movedGeometry(d.drawing, dx, dy, d.snap);
+      } else {
+        geometry = resizedGeometry(d.drawing, d.handle, point, d.snap) || d.geometry;
+      }
+      d.geometry = geometry;
+      setEditPreview({ id: d.drawing.id, geometry });
+      return;
+    }
+    if (d.kind === 'pencil') d.raw = [...d.raw, point];
+    else d.end = point;
+    setDraft(draftFrom(d));
+  }
+
+  function stopDrawingListeners() {
+    window.removeEventListener('pointermove', onDrawMove);
+    window.removeEventListener('pointerup', onDrawUp);
+    window.removeEventListener('pointercancel', cancelDrawing);
+  }
+
+  function onDrawUp() {
+    stopDrawingListeners();
+    const d = drawRef.current;
+    drawRef.current = null;
+    setDraft(null);
+    setEditPreview(null);
+    if (!d || d.mode === 'erase') return;
+    if (d.mode === 'edit') {
+      if (JSON.stringify(d.geometry) !== JSON.stringify(d.drawing.geometry)) onUpdateDrawing?.({ ...d.drawing, geometry: d.geometry });
+      return;
+    }
+    if (d.kind === 'pencil') {
+      const points = finishPencilPoints(d.raw);
+      if (points) onAddDrawing({ islandId: d.islandId, kind: 'pencil', geometry: { points }, style: d.style });
+      return;
+    }
+    const geometry = shapeGeometry(d.kind, d.start, d.end, d.snap);
+    if (geometry) onAddDrawing({ islandId: d.islandId, kind: d.kind, geometry, style: d.style });
+  }
+
+  function cancelDrawing() {
+    stopDrawingListeners();
+    drawRef.current = null;
+    setDraft(null);
+    setEditPreview(null);
+  }
+
   // ---- Ruler ----
 
   function handleStagePointerDown(e) {
     if (tool === 'pan') {
       startPan(e);
+      return;
+    }
+    if (tool === 'draw') {
+      startDrawing(e);
       return;
     }
     if (tool !== 'ruler') return;
@@ -561,9 +818,12 @@ export default function MapBoard({
     }
   }
 
-  // Leaving the Ruler tool wipes the measurement off the map.
+  // Leaving the Ruler tool wipes the measurement off the map; leaving Draw
+  // drops a shape that was never finished.
   useEffect(() => {
     if (tool !== 'ruler') setRuler(null);
+    if (tool !== 'draw' && drawRef.current) cancelDrawing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
   // Report the live measurement upward so the HUD can show it.
@@ -575,7 +835,7 @@ export default function MapBoard({
   return (
     <div
       ref={wrapRef}
-      className={`island-canvas tool-${tool}`}
+      className={`island-canvas tool-${tool}${tool === 'draw' && drawSettings ? ` draw-${drawSettings.subTool}` : ''}`}
       style={{ width: canvasWidth, height: canvasHeight }}
       onPointerDown={handleStagePointerDown}
       onClick={handleStageClick}
@@ -639,6 +899,8 @@ export default function MapBoard({
             </svg>
             {/* Dusk/night/dawn tint - over the map art and grid, under the tokens. */}
             {phase?.tint && <div className="island-daynight" style={{ background: phase.tint }} />}
+            {/* The DM's drawings — chalk on the floor, still under the tokens. */}
+            <IslandDrawings drawings={drawingsByIsland.get(id) || []} draft={draft?.islandId === id ? draft : null} cellPx={cellPx} width={w} height={h} />
           </div>
         );
       })}
@@ -774,12 +1036,65 @@ export default function MapBoard({
 
       {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
 
+      {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
+        <DrawFeetLabel
+          label={shapeFeetLabel(draft.kind, draft.geometry, feetPerSquare, drawRef.current?.snap)}
+          rect={islandRects[draft.islandId]}
+          left={(islandRects[draft.islandId].x - originX) * zoom}
+          top={(islandRects[draft.islandId].y - originY) * zoom}
+        />
+      )}
+      {tool === 'draw' && selectedDrawingId && drawings[selectedDrawingId] && islandRects[drawings[selectedDrawingId].islandId] && (() => {
+        const stored = drawings[selectedDrawingId];
+        const shown = editPreview?.id === stored.id ? { ...stored, geometry: editPreview.geometry } : stored;
+        const r = islandRects[shown.islandId];
+        const left = (r.x - originX) * zoom;
+        const top = (r.y - originY) * zoom;
+        return (
+          <>
+            <DrawSelection drawing={shown} rect={r} left={left} top={top} width={canvasWidth} height={canvasHeight} />
+            {editPreview && shown.kind !== 'pencil' && (
+              <DrawFeetLabel label={shapeFeetLabel(shown.kind, shown.geometry, feetPerSquare, drawSettings?.snap)} rect={r} left={left} top={top} />
+            )}
+          </>
+        );
+      })()}
+
       {rulerLine && (
         <svg className="grid-svg ruler-overlay" width={canvasWidth} height={canvasHeight}>
           <RulerOverlay p1={rulerLine.p1} p2={rulerLine.p2} feet={rulerLine.feet} />
         </svg>
       )}
     </div>
+  );
+}
+
+// The selected drawing's dashed box and its resize handles (Select). Drawn
+// over the whole canvas so handles past the island's edge still show;
+// MapBoard finds handles by distance, so this takes no pointer events.
+function DrawSelection({ drawing, rect, left, top, width, height }) {
+  const px = (at) => [left + at[0] * rect.cellSize, top + at[1] * rect.cellSize];
+  const [x0, y0, x1, y1] = drawingBounds(drawing);
+  const [bx, by] = px([x0, y0]);
+  const [bx1, by1] = px([x1, y1]);
+  return (
+    <svg className="grid-svg draw-selection" width={width} height={height} aria-hidden="true">
+      <rect x={bx - 4} y={by - 4} width={bx1 - bx + 8} height={by1 - by + 8} className="draw-selection-box" />
+      {drawingHandles(drawing).map((h) => {
+        const [hx, hy] = px(h.at);
+        return <rect key={h.id} x={hx - 6} y={hy - 6} width={12} height={12} rx={2} className="draw-handle" />;
+      })}
+    </svg>
+  );
+}
+
+// A shape's size in feet while it's being drawn, like the ruler's label.
+function DrawFeetLabel({ label, rect, left, top }) {
+  if (!label) return null;
+  return (
+    <span className="draw-feet" style={{ left: left + label.at[0] * rect.cellSize, top: top + label.at[1] * rect.cellSize }}>
+      {label.text}
+    </span>
   );
 }
 

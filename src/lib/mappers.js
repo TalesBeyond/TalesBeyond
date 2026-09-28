@@ -224,6 +224,29 @@ export function mapDbAudioTrack(row) {
   };
 }
 
+// Drawings (52_drawings.sql) — the DM's Draw tool. Geometry is in grid
+// squares from the island's top-left corner; see the migration for shapes.
+export function mapDbDrawing(row) {
+  return {
+    id: row.id,
+    islandId: row.island_id,
+    kind: row.kind,
+    geometry: row.geometry,
+    style: row.style || {},
+  };
+}
+
+export function drawingToDb(tableId, drawing) {
+  return {
+    id: drawing.id,
+    table_id: tableId,
+    island_id: drawing.islandId,
+    kind: drawing.kind,
+    geometry: drawing.geometry,
+    style: drawing.style || {},
+  };
+}
+
 export function audioTrackToDb(tableId, track) {
   return {
     id: track.id,

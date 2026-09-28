@@ -57,7 +57,7 @@ real-device pass and on REQ-008.
 
 **Players** — bottom bar Play · Pan · Ruler · Dice · Party.
 
-- **Table menu**: in-game time, palette, Mute on this device, effect volumes,
+- **Table menu**: in-game time, palette, Mute on this device, Hide drawings, effect volumes,
   this table (map, DM, seated), read-only map settings, Leave with a confirm.
 - **Party**: seated players, their hero and online state; Show on map, or the
   map they're on, or "Not on the map".
@@ -67,7 +67,13 @@ real-device pass and on REQ-008.
 - **Add** (`TokenSidebar` `layout="phone"`): Heroes · Monsters (bestiary, asset
   storage) · Doors · Chests · Traps · Your own.
 - **Edit** mode bar: island settings (Map settings), Group (tap islands, name
-  the group), Done.
+  the group), Draw, Done.
+- **Draw** (`DrawingBar.jsx` `PhoneDrawBar`): a two-row bar where the token card
+  sits — Pencil, Line, Circle, Rectangle, Select, Eraser; then Style (the
+  "Drawing style" sheet: colour wheel, swatches, thickness, fill, Snap to
+  grid, Clear this island / this map), Undo, Redo, Done. One finger draws; a
+  second finger cancels the unfinished stroke, so two-finger pan and pinch
+  still work. The encounter panel steps aside while drawing.
 - **Run the table** (`PhoneHostScreens.jsx`): encounter (round, turn, combat
   log, end) or Roll for initiative; compendiums and asset storage; clock and
   day/night; table music; dice; party.

@@ -390,3 +390,26 @@ export function saveLocalAudioVolumes(tableKey, volumes) {
     // storage blocked or full - the level just won't survive a refresh
   }
 }
+
+// The Draw tool's choices in this browser — the drawing tool, style, Snap to
+// grid, recent colours, and whether drawings are hidden here. Never synced;
+// tolerant of storage being unavailable like the audio volumes above.
+const DRAW_PREFS_KEY = 'hearthbound:drawprefs';
+
+export function loadDrawPrefs() {
+  try {
+    const raw = window.localStorage.getItem(DRAW_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveDrawPrefs(prefs) {
+  try {
+    window.localStorage.setItem(DRAW_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage blocked or full - the choices just won't survive a refresh
+  }
+}

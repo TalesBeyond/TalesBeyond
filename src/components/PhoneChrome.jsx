@@ -799,13 +799,16 @@ export function PhoneSwitch({ label, caption, checked, onChange }) {
 
 // ---------- look & sound ----------
 
-export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange }) {
+export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange }) {
   const [levels, setLevels] = useState(() => Object.fromEntries(SOUND_EFFECTS.map((e) => [e.id, getSfxVolume(e.id)])));
   return (
     <section className="phone-menu-section" aria-label="Look and sound">
       <span className="phone-label">Look &amp; sound</span>
       <PhonePaletteRow theme={theme} onChange={onThemeChange} />
       <PhoneSwitch label="Mute on this device" caption="Music and sound effects. Everyone else still hears theirs." checked={muted} onChange={onMutedChange} />
+      {onHideDrawingsChange && (
+        <PhoneSwitch label="Hide drawings" caption="The DM's drawings, on this device only." checked={Boolean(hideDrawings)} onChange={onHideDrawingsChange} />
+      )}
       <div className={`phone-volumes${muted ? ' muted' : ''}`}>
         <span className="phone-caption phone-caption-flush">Sound effect volume</span>
         {SOUND_EFFECTS.map((e) => (
@@ -833,7 +836,7 @@ export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange }
 
 // ---------- the player's table menu ----------
 
-export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, feetPerSquare, theme, onThemeChange, muted, onMutedChange, onLeave, onClose }) {
+export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onClose }) {
   const [confirming, setConfirming] = useState(false);
   const islandConds = (island?.conditions || []).map((k) => getIslandCondition(k)?.label).filter(Boolean);
   return (
@@ -847,7 +850,7 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
             </div>
           </section>
         )}
-        <PhoneLookAndSound theme={theme} onThemeChange={onThemeChange} muted={muted} onMutedChange={onMutedChange} />
+        <PhoneLookAndSound theme={theme} onThemeChange={onThemeChange} muted={muted} onMutedChange={onMutedChange} hideDrawings={hideDrawings} onHideDrawingsChange={onHideDrawingsChange} />
         <section className="phone-menu-section" aria-label="This table">
           <span className="phone-label">This table</span>
           <dl className="phone-facts">
@@ -942,7 +945,7 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
 
 // ---------- the DM's Edit / Group mode bar (phone) ----------
 
-export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDone }) {
+export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDraw, onDone }) {
   const grouping = tool === 'group';
   return (
     <div className="phone-edit-bar" role="status">
@@ -959,6 +962,11 @@ export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDone }) 
         {!grouping && (
           <button type="button" className="phone-btn-ghost" onClick={onGroup}>
             Group
+          </button>
+        )}
+        {!grouping && onDraw && (
+          <button type="button" className="phone-btn-ghost" onClick={onDraw}>
+            Draw
           </button>
         )}
         <button type="button" className="phone-btn-primary" onClick={onDone}>

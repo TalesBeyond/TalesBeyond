@@ -149,6 +149,8 @@ export function PhoneHostMenu({
   onThemeChange,
   muted,
   onMutedChange,
+  hideDrawings,
+  onHideDrawingsChange,
   onLeave,
   onClose,
 }) {
@@ -254,7 +256,7 @@ export function PhoneHostMenu({
           </div>
         </section>
 
-        <PhoneLookAndSound theme={theme} onThemeChange={onThemeChange} muted={muted} onMutedChange={onMutedChange} />
+        <PhoneLookAndSound theme={theme} onThemeChange={onThemeChange} muted={muted} onMutedChange={onMutedChange} hideDrawings={hideDrawings} onHideDrawingsChange={onHideDrawingsChange} />
 
         <button type="button" className="phone-btn-danger-ghost phone-btn-full" onClick={onLeave}>
           Leave the table
