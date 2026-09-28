@@ -6,7 +6,7 @@ import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCe
 import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
-import { DEFAULT_DRAW_STYLE } from '../utils/drawing.js';
+import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import DrawingBar from './DrawingBar.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
@@ -1361,6 +1361,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     setDrawSettingsState(next);
     saveDrawPrefs({ ...loadDrawPrefs(), subTool: next.subTool, style: next.style, snap: next.snap });
   }
+  // The last few colours actually drawn with, newest first.
+  const [recentColours, setRecentColours] = useState(() => loadDrawPrefs().recentColours || []);
+  function noteColourUsed(colour) {
+    const next = withRecentColour(recentColours, colour);
+    setRecentColours(next);
+    saveDrawPrefs({ ...loadDrawPrefs(), recentColours: next });
+  }
 
   // One write per finished action, like every other host edit: dispatch
   // here, then the cloud row or the guest broadcast. Local and guest tables
@@ -1374,6 +1381,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   function addDrawing(drawing) {
     writeDrawing({ ...drawing, id: generateEntityId() });
+    if (drawing.style?.color) noteColourUsed(drawing.style.color);
   }
 
   function removeDrawings(ids) {
@@ -2770,7 +2778,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          {isHost && !isPhone && tool === 'draw' && <DrawingBar settings={drawSettings} onChange={setDrawSettings} />}
+          {isHost && !isPhone && tool === 'draw' && <DrawingBar settings={drawSettings} onChange={setDrawSettings} recentColours={recentColours} />}
           <ZoomControl
             zoom={zoom}
             onZoomIn={zoomIn}

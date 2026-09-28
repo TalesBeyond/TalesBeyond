@@ -865,6 +865,92 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .draw-bar-btn.active { background: var(--ink-700); border-color: var(--gold-line); color: var(--gold-hi); }
 .draw-bar-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
 .draw-bar-sep { width: 24px; height: 1px; margin: 4px 0; background: var(--ink-700); }
+.draw-colour-dot {
+  display: block;
+  border: 3px solid;
+  border-radius: 50%;
+  box-sizing: border-box;
+  max-width: 28px;
+  max-height: 28px;
+}
+.draw-colour-dot.filled { background: color-mix(in srgb, var(--dot-colour) 35%, transparent); }
+.draw-style-popover {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 260px;
+  padding: 14px;
+  background: var(--ink-950);
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Colour, thickness and fill (DrawStyle.jsx) — popover and phone sheet. */
+.draw-style { display: flex; flex-direction: column; gap: 12px; color: var(--parchment-100); }
+.draw-wheel-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.draw-wheel {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle closest-side, #fff, rgba(255, 255, 255, 0)),
+    conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  cursor: crosshair;
+  touch-action: none;
+}
+.draw-wheel:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 3px; }
+.draw-wheel-shade { position: absolute; inset: 0; border-radius: 50%; background: #000; pointer-events: none; }
+.draw-wheel-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.draw-brightness { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; color: var(--parchment-300); }
+.draw-brightness input {
+  width: 100%;
+  accent-color: var(--draw-hue);
+  background: linear-gradient(to right, #000, var(--draw-hue));
+  border-radius: 999px;
+  height: 8px;
+  appearance: none;
+}
+.draw-brightness input::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--ink-950); }
+.draw-brightness input::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--ink-950); }
+.draw-swatch-row { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--parchment-300); }
+.draw-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.draw-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-700);
+  cursor: pointer;
+}
+.draw-swatch.active { border-color: var(--parchment-100); box-shadow: 0 0 0 2px var(--gold-line); }
+.draw-widths { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.draw-width {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: var(--ink-800);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.draw-width > span:first-child { display: block; width: 100%; border-radius: 999px; }
+.draw-width.active { border-color: var(--gold-line); background: var(--ink-700); }
+.draw-fill { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.draw-fill input { margin-top: 2px; accent-color: var(--gold-hi); }
+.draw-fill small { display: block; font-size: 11px; color: var(--parchment-300); }
 
 /* A shape's size while it's being drawn — sits above the shape. */
 .draw-feet {

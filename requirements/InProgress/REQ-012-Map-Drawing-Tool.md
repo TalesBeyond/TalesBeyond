@@ -58,9 +58,7 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 - **Desktop entry:** a **Draw** card in the Tools menu (`Toolbar.jsx` `ToolMenu`), host only, next to Edit and Merge Islands, with its own `TOOL_ICONS`/`TOOL_LABELS` entry.
 - **Drawing bar (desktop):** floats over the map while Draw is active and holds:
   - the six sub-tools (Pencil, Line, Circle, Rectangle, Select, Eraser);
-  - a colour button showing the current colour;
-  - the thickness presets (3–4);
-  - a Fill toggle, active for Circle and Rectangle;
+  - a colour button showing the current colour, thickness and fill, which opens the style popover (colour, the 4 thickness presets, and the Fill toggle for circles and rectangles);
   - a Snap to grid toggle;
   - Undo and Redo;
   - a Clear menu with "Clear this island" and "Clear this map".
@@ -190,8 +188,8 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S012 | U | Colour picker | Colour button in the drawing bar opening a popover: hue wheel, brightness slider, 8 preset swatches, the last 5 colours used (per-browser preference). | S009 | new component, `src/state/persistence.js`, `src/styles.css` |
-|  | S013 | U | Thickness and fill | 3–4 thickness presets and a Fill toggle (active for Circle and Rectangle); stored on each shape's `style`; rendered with a translucent fill; choices kept per browser. | S010, S012 | `src/components/MapBoard.jsx`, drawing bar component, `src/state/persistence.js` |
+| ✅ | S012 | U | Colour picker | Colour button in the drawing bar opening a popover: hue wheel, brightness slider, 8 preset swatches, the last 5 colours used (per-browser preference). | S009 | new component, `src/state/persistence.js`, `src/styles.css` |
+| ✅ | S013 | U | Thickness and fill | 3–4 thickness presets and a Fill toggle (active for Circle and Rectangle); stored on each shape's `style`; rendered with a translucent fill; choices kept per browser. | S010, S012 | `src/components/MapBoard.jsx`, drawing bar component, `src/state/persistence.js` |
 
 ### Slice 5 — Select, move, resize and erase
 
@@ -345,4 +343,5 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
+| 2026-09-27 | Blaxine | Slice 4: thickness and Fill moved from the bar into the colour popover, so the desktop popover and the phone style sheet are the same panel. |
 | 2026-09-27 | Blaxine | Initial plan, following a `/grill-me` interview that resolved scope and behaviour and a `/create-req` deep-dive that grounded it in the code. |

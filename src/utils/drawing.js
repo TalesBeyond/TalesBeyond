@@ -134,3 +134,40 @@ export function shapeFeetLabel(kind, geometry, feetPerSquare, snap) {
   }
   return null;
 }
+
+// ---- Colour ----
+
+// The quick swatches under the colour wheel.
+export const DRAW_SWATCHES = ['#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#2e86de', '#8e44ad', '#1d1a16', '#f5f0e6'];
+export const RECENT_COLOURS_MAX = 5;
+
+// '#rrggbb' <-> { h: 0-360, s: 0-1, v: 0-1 }
+export function hexToHsv(hex) {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  if (Number.isNaN(n)) return { h: 0, s: 1, v: 1 };
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
+}
+
+export function hsvToHex({ h, s, v }) {
+  const f = (k) => {
+    const x = (k + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(x, 4 - x, 1));
+  };
+  return '#' + [f(5), f(3), f(1)].map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
+}
+
+// The recent-colours list after using `colour`: newest first, no repeats.
+export function withRecentColour(recent, colour) {
+  return [colour, ...(recent || []).filter((c) => c !== colour)].slice(0, RECENT_COLOURS_MAX);
+}

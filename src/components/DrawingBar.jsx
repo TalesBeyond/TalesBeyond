@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import DrawStylePanel from './DrawStyle.jsx';
+import { drawWidthSquares } from '../utils/drawing.js';
 
 // The DM's drawing bar (desktop): floats at the map's left edge while the
-// Draw tool is active. Picks the drawing tool and Snap to grid; the chosen
-// settings live in GameView and are remembered in this browser.
+// Draw tool is active. Picks the drawing tool, the style (colour button →
+// popover) and Snap to grid; the chosen settings live in GameView and are
+// remembered in this browser.
 
 export const DRAW_SUB_TOOLS = [
   { id: 'pencil', label: 'Pencil', hint: 'Draw freehand', path: 'M3 17l1-4L14 3l3 3L7 16zM12 5l3 3' },
@@ -21,10 +24,32 @@ export function DrawIcon({ path }) {
   );
 }
 
-export default function DrawingBar({ settings, onChange }) {
+export default function DrawingBar({ settings, onChange, recentColours }) {
   const set = (patch) => onChange({ ...settings, ...patch });
+  const [styleOpen, setStyleOpen] = useState(false);
+  const barRef = useRef(null);
+
+  // The style popover closes on Esc or a press anywhere outside the bar.
+  useEffect(() => {
+    if (!styleOpen) return undefined;
+    function onDown(e) {
+      if (!barRef.current?.contains(e.target)) setStyleOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setStyleOpen(false);
+    }
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [styleOpen]);
+
+  const dotSize = 10 + drawWidthSquares(settings.style.width) * 30;
+
   return (
-    <div className="draw-bar" role="toolbar" aria-label="Drawing tools">
+    <div ref={barRef} className="draw-bar" role="toolbar" aria-label="Drawing tools">
       {DRAW_SUB_TOOLS.map((t) => (
         <button
           key={t.id}
@@ -41,6 +66,20 @@ export default function DrawingBar({ settings, onChange }) {
       <span className="draw-bar-sep" aria-hidden="true" />
       <button
         type="button"
+        className={`draw-bar-btn draw-bar-colour${styleOpen ? ' active' : ''}`}
+        aria-expanded={styleOpen}
+        title="Colour, thickness and fill"
+        onClick={() => setStyleOpen((o) => !o)}
+      >
+        <span
+          className={`draw-colour-dot${settings.style.fill ? ' filled' : ''}`}
+          style={{ width: dotSize, height: dotSize, borderColor: settings.style.color, '--dot-colour': settings.style.color }}
+          aria-hidden="true"
+        />
+        <span className="visually-hidden">Drawing style</span>
+      </button>
+      <button
+        type="button"
         className={`draw-bar-btn${settings.snap ? ' active' : ''}`}
         aria-pressed={settings.snap}
         title={settings.snap ? 'Snap to grid is on — shapes land on the grid' : 'Snap to grid is off — shapes follow the pointer'}
@@ -49,6 +88,11 @@ export default function DrawingBar({ settings, onChange }) {
         <DrawIcon path={SNAP_PATH} />
         <span className="visually-hidden">Snap to grid</span>
       </button>
+      {styleOpen && (
+        <div className="draw-style-popover" role="dialog" aria-label="Drawing style">
+          <DrawStylePanel style={settings.style} recent={recentColours} onChange={(style) => set({ style })} />
+        </div>
+      )}
     </div>
   );
 }
