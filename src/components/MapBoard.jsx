@@ -4,6 +4,8 @@ import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
 import { useFx } from '../lib/fx.js';
+import { finishPencilPoints } from '../utils/drawing.js';
+import IslandDrawings from './DrawingLayer.jsx';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
 const FLOAT_MS = 1300; // how long a hit number drifts up over a token
@@ -37,7 +39,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'group' | 'draw'
   zoom = 1,
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
@@ -45,6 +47,11 @@ export default function MapBoard({
   gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
   plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
+  drawings = {}, // the DM's drawings (utils/drawing.js), keyed by id
+  drawingOrder = [], // creation order — later drawings paint on top
+  hideDrawings = false, // this viewer's "Hide drawings"
+  drawSettings = null, // Draw tool: { subTool, style, snap }
+  onAddDrawing = null, // (drawing without an id) => void — the DM only
 }) {
   const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
   const wrapRef = useRef(null);
@@ -63,6 +70,11 @@ export default function MapBoard({
   const groupDragRef = useRef(null); // { groupId, downX, downY, dx, dy }
   const [groupDragPos, setGroupDragPos] = useState(null); // { groupId, dx, dy } — unzoomed delta, visual only
   const [ruler, setRuler] = useState(null); // { start: {islandId,col,row}, end: {islandId,col,row} }
+  // The shape the DM is drawing right now (Draw tool), shown in its island
+  // until the pointer lifts. The ref holds the live copy the move/up
+  // handlers read; `draft` is what renders.
+  const drawRef = useRef(null);
+  const [draft, setDraft] = useState(null);
 
   // Hit numbers (lib/fx.js 'float' events): −7, a critical −18, +9, MISS —
   // each drifts up from its token and fades.
@@ -100,6 +112,17 @@ export default function MapBoard({
     const cellSize = island.cellSize * zoom;
     islandRects[id] = { island, x, y, cellSize, w: island.cols * cellSize, h: island.rows * cellSize };
   }
+  // Each island's drawings, oldest first.
+  const drawingsByIsland = new Map();
+  if (!hideDrawings) {
+    for (const id of drawingOrder) {
+      const d = drawings[id];
+      if (!d || !islandRects[d.islandId]) continue;
+      if (!drawingsByIsland.has(d.islandId)) drawingsByIsland.set(d.islandId, []);
+      drawingsByIsland.get(d.islandId).push(d);
+    }
+  }
+
   // Padded generously beyond the islands' own bounding box (see
   // CANVAS_PAN_PADDING) so there's always room to pan in every direction —
   // computed from the stored island positions, not the live drag override
@@ -331,7 +354,7 @@ export default function MapBoard({
   // resolves the same reliable way token dragging already does.
 
   function handleIslandPointerDown(e, island) {
-    if (tool === 'ruler' || tool === 'pan') return;
+    if (tool === 'ruler' || tool === 'pan' || tool === 'draw') return;
     e.stopPropagation();
     const p = getRelativePoint(e.clientX, e.clientY);
     islandDragRef.current = { id: island.id, downX: p.x, downY: p.y, startX: island.x, startY: island.y };
@@ -491,11 +514,83 @@ export default function MapBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- Draw ----
+  // A press on an island starts a shape there — even on a token, which lets
+  // the press through outside the Play tool. The shape stays on that island
+  // whatever the pointer crosses; the island's SVG cuts off what's outside.
+
+  function toIslandSquares(e, islandId) {
+    const r = islandRects[islandId];
+    if (!r) return null;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const left = (r.x - originX) * zoom;
+    const top = (r.y - originY) * zoom;
+    return [(p.x - left) / r.cellSize, (p.y - top) / r.cellSize];
+  }
+
+  function draftFrom(d) {
+    return { id: 'draft', islandId: d.islandId, kind: d.kind, geometry: { points: d.raw }, style: d.style };
+  }
+
+  function startDrawing(e) {
+    if (!isHost || !drawSettings || !onAddDrawing) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const found = findIslandAt(p.x, p.y);
+    if (!found) return;
+    e.preventDefault();
+    drawRef.current = {
+      islandId: found.island.id,
+      kind: 'pencil',
+      raw: [toIslandSquares(e, found.island.id)],
+      style: { ...drawSettings.style },
+    };
+    setDraft(draftFrom(drawRef.current));
+    window.addEventListener('pointermove', onDrawMove);
+    window.addEventListener('pointerup', onDrawUp);
+    window.addEventListener('pointercancel', cancelDrawing);
+  }
+
+  function onDrawMove(e) {
+    const d = drawRef.current;
+    if (!d) return;
+    const point = toIslandSquares(e, d.islandId);
+    if (!point) return;
+    d.raw = [...d.raw, point];
+    setDraft(draftFrom(d));
+  }
+
+  function stopDrawingListeners() {
+    window.removeEventListener('pointermove', onDrawMove);
+    window.removeEventListener('pointerup', onDrawUp);
+    window.removeEventListener('pointercancel', cancelDrawing);
+  }
+
+  function onDrawUp() {
+    stopDrawingListeners();
+    const d = drawRef.current;
+    drawRef.current = null;
+    setDraft(null);
+    if (!d) return;
+    const points = finishPencilPoints(d.raw);
+    if (points) onAddDrawing({ islandId: d.islandId, kind: 'pencil', geometry: { points }, style: d.style });
+  }
+
+  function cancelDrawing() {
+    stopDrawingListeners();
+    drawRef.current = null;
+    setDraft(null);
+  }
+
   // ---- Ruler ----
 
   function handleStagePointerDown(e) {
     if (tool === 'pan') {
       startPan(e);
+      return;
+    }
+    if (tool === 'draw') {
+      startDrawing(e);
       return;
     }
     if (tool !== 'ruler') return;
@@ -561,9 +656,12 @@ export default function MapBoard({
     }
   }
 
-  // Leaving the Ruler tool wipes the measurement off the map.
+  // Leaving the Ruler tool wipes the measurement off the map; leaving Draw
+  // drops a shape that was never finished.
   useEffect(() => {
     if (tool !== 'ruler') setRuler(null);
+    if (tool !== 'draw' && drawRef.current) cancelDrawing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
   // Report the live measurement upward so the HUD can show it.
@@ -639,6 +737,8 @@ export default function MapBoard({
             </svg>
             {/* Dusk/night/dawn tint - over the map art and grid, under the tokens. */}
             {phase?.tint && <div className="island-daynight" style={{ background: phase.tint }} />}
+            {/* The DM's drawings — chalk on the floor, still under the tokens. */}
+            <IslandDrawings drawings={drawingsByIsland.get(id) || []} draft={draft?.islandId === id ? draft : null} cellPx={cellPx} width={w} height={h} />
           </div>
         );
       })}

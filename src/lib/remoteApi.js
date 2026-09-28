@@ -20,6 +20,8 @@ import {
   mapDbCustomAsset,
   mapDbAudioTrack,
   audioTrackToDb,
+  mapDbDrawing,
+  drawingToDb,
   mapDbPlayer,
 } from './mappers.js';
 
@@ -187,6 +189,17 @@ export async function fetchTableSnapshot(tableId) {
   const playbackRes = await supabase.from('tables').select('audio_playback').eq('id', tableId).maybeSingle();
   const audioPlayback = playbackRes.error ? null : playbackRes.data?.audio_playback ?? null;
 
+  // The DM's drawings (52_drawings.sql), forgiving like the rest, oldest
+  // first so later drawings paint on top.
+  const drawingsRes = await supabase.from('drawings').select('*').eq('table_id', tableId).order('created_at', { ascending: true });
+  const drawingRows = drawingsRes.error ? [] : drawingsRes.data;
+  const drawings = {};
+  const drawingOrder = [];
+  for (const row of drawingRows) {
+    drawings[row.id] = mapDbDrawing(row);
+    drawingOrder.push(row.id);
+  }
+
   const players = {};
   let hostPlayerId = null;
   for (const row of playerRows) {
@@ -245,6 +258,8 @@ export async function fetchTableSnapshot(tableId) {
     entityOrder,
     customAssets,
     customAssetOrder,
+    drawings,
+    drawingOrder,
     audio: {
       tracks: audioTracks,
       trackOrder: audioTrackOrder,
@@ -266,6 +281,18 @@ export async function upsertAudioTrackRemote(tableId, track) {
 
 export async function removeAudioTrackRemote(id) {
   must(await supabase.from('audio_tracks').delete().eq('id', id), 'removeAudioTrack');
+}
+
+// ---- Drawings (52_drawings.sql) — host only ----
+
+// Inserts a new drawing or rewrites a moved/resized one.
+export async function upsertDrawingRemote(tableId, drawing) {
+  must(await supabase.from('drawings').upsert(drawingToDb(tableId, drawing)), 'upsertDrawing');
+}
+
+export async function removeDrawingsRemote(ids) {
+  if (!ids.length) return;
+  must(await supabase.from('drawings').delete().in('id', ids), 'removeDrawings');
 }
 
 export async function updateAudioPlaybackRemote(tableId, playback) {

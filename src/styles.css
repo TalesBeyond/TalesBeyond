@@ -1776,6 +1776,8 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .stage.right-panning,
 .stage.right-panning * { cursor: grabbing !important; user-select: none; }
 .island-canvas.tool-ruler { cursor: crosshair; }
+.island-canvas.tool-draw { cursor: crosshair; user-select: none; }
+.island-canvas.tool-draw .grid-wrap { cursor: crosshair; }
 .island-canvas.tool-edit .grid-wrap { cursor: move; }
 .island-canvas.tool-group .grid-wrap { cursor: pointer; }
 .island-canvas:not(.tool-play) .token { cursor: inherit; }
@@ -1808,6 +1810,17 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   border: 2px solid rgba(23, 20, 15, 0.9);
   box-shadow: 0 1px 4px rgba(0,0,0,0.6);
   display: block;
+}
+
+/* The DM's drawings: over the map art, grid and tint, under the tokens
+   (which are siblings of the islands, rendered after them). Island-sized,
+   so anything drawn past the edge is cut off. */
+.drawing-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .island-daynight {

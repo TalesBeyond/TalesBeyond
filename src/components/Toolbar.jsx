@@ -88,6 +88,7 @@ const ICON_PATHS = {
   pan: 'M10 2v16M2 10h16M10 2L7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5',
   ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
   group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
+  draw: 'M3 17c2-1 3-3 5-3M13 3l4 4-8 8-4 1 1-4z',
   storage: 'M3 6h14v3H3zM4 9v8h12V9M8 12h4',
   layout: 'M3 3h14v14H3zM3 10h14M10 3v14',
   recenter: 'M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3',
@@ -137,8 +138,9 @@ const TOOL_ICONS = {
   pan: <Icon name="pan" />,
   ruler: <Icon name="ruler" />,
   group: <Icon name="group" />,
+  draw: <Icon name="draw" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands', draw: 'Draw' };
 
 export default function Toolbar({
   // The roll log and saved dice sets, kept in GameView so they survive
@@ -464,6 +466,13 @@ export default function Toolbar({
         />
         {isHost && (
           <>
+            <ToolCard
+              icon={TOOL_ICONS.draw}
+              label="Draw"
+              active={tool === 'draw'}
+              onClick={() => pick(() => onToolChange('draw'))}
+              title="Draw on the map — everyone at the table sees it"
+            />
             <ToolCard
               icon={TOOL_ICONS.edit}
               label="Edit"

@@ -6,6 +6,7 @@ import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCe
 import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
+import { DEFAULT_DRAW_STYLE } from '../utils/drawing.js';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -45,6 +46,8 @@ import {
   hideTrapRemote,
   addCustomAssetRemote,
   removeCustomAssetRemote,
+  upsertDrawingRemote,
+  removeDrawingsRemote,
   updateTableClockRemote,
   upsertAudioTrackRemote,
   removeAudioTrackRemote,
@@ -1338,6 +1341,32 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     dispatch({ type: 'ADD_CUSTOM_ASSET', item });
     if (isRemote) addCustomAssetRemote(state.session.tableId, item).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_CUSTOM_ASSET', item });
+  }
+
+  // ---- Drawings (the DM's Draw tool) ----
+  // Settings for the next shape: which drawing tool, its style, and whether
+  // shapes snap to the grid. Local to this browser.
+  const [drawSettings, setDrawSettings] = useState(() => ({ subTool: 'pencil', style: { ...DEFAULT_DRAW_STYLE }, snap: true }));
+
+  // One write per finished action, like every other host edit: dispatch
+  // here, then the cloud row or the guest broadcast. Local and guest tables
+  // save the whole state themselves (GameProvider's autosave).
+  function writeDrawing(drawing) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_DRAWING', drawing });
+    if (isRemote) upsertDrawingRemote(state.session.tableId, drawing).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'SET_DRAWING', drawing });
+  }
+
+  function addDrawing(drawing) {
+    writeDrawing({ ...drawing, id: generateEntityId() });
+  }
+
+  function removeDrawings(ids) {
+    if (!isHost || !ids.length) return;
+    dispatch({ type: 'REMOVE_DRAWINGS', ids });
+    if (isRemote) removeDrawingsRemote(ids).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_DRAWINGS', ids });
   }
 
   function removeCustomAsset(id) {
@@ -2661,6 +2690,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               gestureRef={touchGestureRef}
               onTapCell={isPhone ? handleTapCell : null}
               plannedMove={isPhone ? plannedMoveForMap : null}
+              drawings={state.drawings}
+              drawingOrder={state.drawingOrder}
+              drawSettings={isHost ? drawSettings : null}
+              onAddDrawing={isHost ? addDrawing : null}
             />
           </div>
           {isPhone && (

@@ -10,7 +10,7 @@
 // SPEC.md §9.5 for the reasoning and future refinement ideas.
 
 import { supabase } from './supabaseClient.js';
-import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack } from './mappers.js';
+import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
 // CHANNEL_ERROR transition of this one channel (see REALTIME_SUBSCRIBE_STATES
@@ -148,6 +148,13 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         dispatch({ type: 'REMOVE_AUDIO_TRACK', id: payload.old.id });
       } else {
         dispatch({ type: 'SET_AUDIO_TRACK', track: mapDbAudioTrack(payload.new) });
+      }
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'drawings', filter: `table_id=eq.${tableId}` }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'REMOVE_DRAWINGS', ids: [payload.old.id] });
+      } else {
+        dispatch({ type: 'SET_DRAWING', drawing: mapDbDrawing(payload.new) });
       }
     })
     .on(
