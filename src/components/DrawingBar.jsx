@@ -12,6 +12,8 @@ export const DRAW_SUB_TOOLS = [
   { id: 'line', label: 'Line', hint: 'Drag a straight line', path: 'M4 16L16 4' },
   { id: 'circle', label: 'Circle', hint: 'Drag out from the centre', path: 'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14z' },
   { id: 'rect', label: 'Rectangle', hint: 'Drag from corner to corner', path: 'M4 5h12v10H4z' },
+  { id: 'select', label: 'Select', hint: 'Pick a drawing to move it or drag its handles', path: 'M5 3l10 7-5 1-2 5z' },
+  { id: 'eraser', label: 'Eraser', hint: 'Drag across drawings to remove them', path: 'M3 13l7-7 6 6-4 4H6zM9 17h8' },
 ];
 
 const SNAP_PATH = 'M3 3h14v14H3zM3 8h14M3 12h14M8 3v14M12 3v14';

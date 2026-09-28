@@ -1357,7 +1357,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       snap: prefs.snap ?? true,
     };
   });
+  // The drawing Select has picked, if any.
+  const [selectedDrawingId, setSelectedDrawingId] = useState(null);
   function setDrawSettings(next) {
+    // A style change while a drawing is selected restyles that drawing too
+    // (just the fields that changed).
+    const selected = selectedDrawingId && state.drawings?.[selectedDrawingId];
+    if (selected && next.style !== drawSettings.style) {
+      const patch = {};
+      for (const key of Object.keys(next.style)) if (next.style[key] !== drawSettings.style[key]) patch[key] = next.style[key];
+      if (Object.keys(patch).length) updateDrawing({ ...selected, style: { ...selected.style, ...patch } });
+    }
+    if (next.subTool !== 'select') setSelectedDrawingId(null);
     setDrawSettingsState(next);
     saveDrawPrefs({ ...loadDrawPrefs(), subTool: next.subTool, style: next.style, snap: next.snap });
   }
@@ -1378,6 +1389,35 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isRemote) upsertDrawingRemote(state.session.tableId, drawing).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'SET_DRAWING', drawing });
   }
+
+  function updateDrawing(drawing) {
+    writeDrawing(drawing);
+  }
+
+  // Leaving Draw, or the selected drawing disappearing (erased, its island
+  // deleted), drops the selection.
+  const selectedDrawingGone = Boolean(selectedDrawingId) && !state.drawings?.[selectedDrawingId];
+  useEffect(() => {
+    if (tool !== 'draw' || selectedDrawingGone) setSelectedDrawingId(null);
+  }, [tool, selectedDrawingGone]);
+
+  // Esc drops the selection; Delete or Backspace removes the selected
+  // drawing — never while typing in a field.
+  useEffect(() => {
+    if (!isHost || tool !== 'draw') return undefined;
+    function onKey(e) {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === 'Escape') setSelectedDrawingId(null);
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId) {
+        e.preventDefault();
+        removeDrawings([selectedDrawingId]);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, tool, selectedDrawingId]);
 
   function addDrawing(drawing) {
     writeDrawing({ ...drawing, id: generateEntityId() });
@@ -2716,6 +2756,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               drawingOrder={state.drawingOrder}
               drawSettings={isHost ? drawSettings : null}
               onAddDrawing={isHost ? addDrawing : null}
+              onUpdateDrawing={isHost ? updateDrawing : null}
+              onRemoveDrawings={isHost ? removeDrawings : null}
+              selectedDrawingId={tool === 'draw' ? selectedDrawingId : null}
+              onSelectDrawing={setSelectedDrawingId}
             />
           </div>
           {isPhone && (

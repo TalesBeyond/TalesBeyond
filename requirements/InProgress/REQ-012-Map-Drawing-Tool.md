@@ -198,9 +198,9 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S014 | S | Hit-testing | Pure helpers: distance from a point to a polyline, a circle's rim, a rectangle's edges, and inside-fill tests; the topmost hit on an island in drawing order. | S010 | new module under `src/utils/` |
-|  | S015 | U | Select, move, resize | Select sub-tool: click selects the topmost shape; handles per kind; body drag moves within its island; handle drags resize (snapping when on) with the feet label; pencil strokes move only; the colour, thickness and Fill controls restyle the selected shape; Esc, empty-map click and tool change deselect; Delete/Backspace removes it; commit as an update on release. | S011, S013, S014 | `src/components/MapBoard.jsx`, drawing bar component, `src/components/GameView.jsx` |
-|  | S016 | U | Whole-shape eraser | Eraser sub-tool with a round cursor; every shape the drag touches is removed whole with a delete write. | S014 | `src/components/MapBoard.jsx`, drawing bar component |
+| ✅ | S014 | S | Hit-testing | Pure helpers: distance from a point to a polyline, a circle's rim, a rectangle's edges, and inside-fill tests; the topmost hit on an island in drawing order. | S010 | new module under `src/utils/` |
+| ✅ | S015 | U | Select, move, resize | Select sub-tool: click selects the topmost shape; handles per kind; body drag moves within its island; handle drags resize (snapping when on) with the feet label; pencil strokes move only; the colour, thickness and Fill controls restyle the selected shape; Esc, empty-map click and tool change deselect; Delete/Backspace removes it; commit as an update on release. | S011, S013, S014 | `src/components/MapBoard.jsx`, drawing bar component, `src/components/GameView.jsx` |
+| ✅ | S016 | U | Whole-shape eraser | Eraser sub-tool with a round cursor; every shape the drag touches is removed whole with a delete write. | S014 | `src/components/MapBoard.jsx`, drawing bar component |
 
 ### Slice 6 — Undo, clears, Hide drawings, island edges
 

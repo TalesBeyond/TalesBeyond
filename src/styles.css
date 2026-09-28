@@ -1913,6 +1913,16 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .island-canvas.tool-ruler { cursor: crosshair; }
 .island-canvas.tool-draw { cursor: crosshair; user-select: none; }
 .island-canvas.tool-draw .grid-wrap { cursor: crosshair; }
+.island-canvas.draw-select,
+.island-canvas.draw-select .grid-wrap { cursor: default; }
+.island-canvas.draw-eraser,
+.island-canvas.draw-eraser .grid-wrap {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='rgba(255,255,255,0.35)' stroke='%2317140f' stroke-width='2'/%3E%3C/svg%3E") 12 12, cell;
+}
+/* Select's chrome around the chosen drawing. */
+.draw-selection { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; overflow: visible; }
+.draw-selection-box { fill: none; stroke: var(--ember, #d9822b); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.draw-handle { fill: #fff; stroke: #17140f; stroke-width: 1.5; }
 .island-canvas.tool-edit .grid-wrap { cursor: move; }
 .island-canvas.tool-group .grid-wrap { cursor: pointer; }
 .island-canvas:not(.tool-play) .token { cursor: inherit; }

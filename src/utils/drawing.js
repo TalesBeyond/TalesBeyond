@@ -171,3 +171,108 @@ export function hsvToHex({ h, s, v }) {
 export function withRecentColour(recent, colour) {
   return [colour, ...(recent || []).filter((c) => c !== colour)].slice(0, RECENT_COLOURS_MAX);
 }
+
+// ---- Hit-testing, handles, moving and resizing ----
+
+function distToSegment([px, py], [ax, ay], [bx, by]) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function rectCorners({ x, y, w, h }) {
+  return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+}
+
+// Whether island point `p` (squares) touches a drawing: its line (within
+// `tolerance` squares plus half its thickness), or its inside when filled.
+export function hitsDrawing(drawing, p, tolerance) {
+  const { kind, geometry, style = {} } = drawing;
+  const reach = tolerance + drawWidthSquares(style.width) / 2;
+  if (kind === 'pencil') {
+    const pts = geometry.points || [];
+    for (let i = 1; i < pts.length; i++) if (distToSegment(p, pts[i - 1], pts[i]) <= reach) return true;
+    return false;
+  }
+  if (kind === 'line') return distToSegment(p, geometry.from, geometry.to) <= reach;
+  if (kind === 'circle') {
+    const d = Math.hypot(p[0] - geometry.center[0], p[1] - geometry.center[1]);
+    return Math.abs(d - geometry.radius) <= reach || (style.fill && d <= geometry.radius);
+  }
+  if (kind === 'rect') {
+    const c = rectCorners(geometry);
+    for (let i = 0; i < 4; i++) if (distToSegment(p, c[i], c[(i + 1) % 4]) <= reach) return true;
+    const inside = p[0] >= geometry.x && p[0] <= geometry.x + geometry.w && p[1] >= geometry.y && p[1] <= geometry.y + geometry.h;
+    return Boolean(style.fill && inside);
+  }
+  return false;
+}
+
+// The drawing's bounding box in island squares: [minX, minY, maxX, maxY].
+export function drawingBounds({ kind, geometry }) {
+  let pts;
+  if (kind === 'pencil') pts = geometry.points || [];
+  else if (kind === 'line') pts = [geometry.from, geometry.to];
+  else if (kind === 'circle') {
+    const [cx, cy] = geometry.center;
+    const r = geometry.radius;
+    pts = [[cx - r, cy - r], [cx + r, cy + r]];
+  } else pts = rectCorners(geometry);
+  const xs = pts.map((q) => q[0]);
+  const ys = pts.map((q) => q[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+// Where a selected drawing's resize handles sit (island squares). A pencil
+// stroke has none — it can only be moved.
+export function drawingHandles({ kind, geometry }) {
+  if (kind === 'line') return [{ id: 'from', at: geometry.from }, { id: 'to', at: geometry.to }];
+  if (kind === 'circle') return [{ id: 'radius', at: [geometry.center[0] + geometry.radius, geometry.center[1]] }];
+  if (kind === 'rect') {
+    const [nw, ne, se, sw] = rectCorners(geometry);
+    return [{ id: 'nw', at: nw }, { id: 'ne', at: ne }, { id: 'se', at: se }, { id: 'sw', at: sw }];
+  }
+  return [];
+}
+
+// A drawing moved by (dx, dy) squares. Snapped, the move is in whole squares
+// for rectangles (corners stay on grid corners) and half squares otherwise;
+// a pencil stroke never snaps.
+export function movedGeometry({ kind, geometry }, dx, dy, snap) {
+  if (snap && kind !== 'pencil') {
+    const step = kind === 'rect' ? 1 : 0.5;
+    dx = Math.round(dx / step) * step;
+    dy = Math.round(dy / step) * step;
+  }
+  const move = ([x, y]) => [round2(x + dx), round2(y + dy)];
+  if (kind === 'pencil') return { points: geometry.points.map(move) };
+  if (kind === 'line') return { from: move(geometry.from), to: move(geometry.to) };
+  if (kind === 'circle') return { ...geometry, center: move(geometry.center) };
+  if (kind === 'rect') return { ...geometry, x: round2(geometry.x + dx), y: round2(geometry.y + dy) };
+  return geometry;
+}
+
+// A drawing with one handle dragged to island point `p`, or null when that
+// would leave it with no size.
+export function resizedGeometry({ kind, geometry }, handle, p, snap) {
+  if (kind === 'line') {
+    const fixed = handle === 'from' ? geometry.to : geometry.from;
+    const g = shapeGeometry('line', fixed, p, snap);
+    if (!g) return null;
+    // shapeGeometry snaps both ends; keep the fixed end exactly where it was.
+    return handle === 'from' ? { from: g.to, to: fixed } : { from: fixed, to: g.to };
+  }
+  if (kind === 'circle') {
+    const reach = Math.hypot(p[0] - geometry.center[0], p[1] - geometry.center[1]);
+    if (reach < MIN_SIZE) return null;
+    return { ...geometry, radius: snap ? Math.max(1, Math.round(reach)) : round2(reach) };
+  }
+  if (kind === 'rect') {
+    const [nw, ne, se, sw] = rectCorners(geometry);
+    const opposite = { nw: se, ne: sw, se: nw, sw: ne }[handle];
+    return shapeGeometry('rect', opposite, p, snap);
+  }
+  return null;
+}
