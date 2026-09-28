@@ -4,7 +4,7 @@
 | ----- | ----- |
 | ID | REQ-011 |
 | Title | Phone Release |
-| Status | InProgress |
+| Status | Done |
 | Phase | Mobile |
 | Tier | Core |
 | Area | Game view / UI (phone layout) |
@@ -64,20 +64,20 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — Phone layout switch.** Below 768 px wide or 500 px tall the game screen shows the phone layout (island top bar, island chips, bottom bar) and no desktop toolbar, side panels or app header; at desktop sizes nothing changes.
-- [ ] **AC2 — Islands first.** Tapping an island chip, an Atlas island or an Atlas row flies the camera to that island and fits it on screen; the top bar always names the active island and its layer; the mini-map shows every island and the visible area and opens the Atlas.
-- [ ] **AC3 — Touch camera.** Two fingers pinch-zoom around their midpoint and pan; one finger on empty map pans in the Play tool; a pan never selects an island or clears a selection; pinching stays smooth on the two test phones.
-- [ ] **AC4 — Device fit.** Nothing sits under a notch, rounded corner or home indicator; the Join/Host page works at 390 × 844; the palette can be changed from the phone.
-- [ ] **AC5 — Phone DM keep-awake.** While a guest table is hosted on a phone the screen does not sleep, including after the DM leaves and returns to the tab; the DM's table menu says the table runs on this phone.
-- [ ] **AC6 — Tap to move.** Outside an encounter, tapping a square moves your selected hero there. In an encounter it shows the path, the feet and the movement left after, and moves only on "Move here"; crossing to a touching island is allowed and labelled.
-- [ ] **AC7 — Target and attack.** In an encounter, selecting a creature on your turn shows chance to hit, damage and HP left for the chosen weapon, and "Attack" rolls it with the usual hit numbers on the map.
-- [ ] **AC8 — Doors and chests.** Tapping a door opens a sheet naming where it leads, with "Walk through"; tapping a chest opens a sheet to open/close it, where a player takes items and the DM gives them to a hero.
-- [ ] **AC9 — Player character sheet.** A player's own hero opens in a phone sheet with Fight · Magic · Bag · Stats; HP, conditions, death saves and stats are read-only; attacks, spells and bag are editable.
-- [ ] **AC10 — Player dice, menu and party.** Players have a full-screen dice screen with the roll log and saved sets, a table menu (in-game time, palette, mute on this device, effect volumes, table info without the code, read-only map settings, leave with confirm), and a Party sheet with Show on map or the off-layer label.
-- [ ] **AC11 — DM building.** The DM can place heroes, monsters, doors, chests, traps and uploaded images; manage asset storage; move, resize, restyle, group, create, import, download and delete islands; and create, rename, switch and delete layers — all from phone screens.
-- [ ] **AC12 — DM running.** The DM can roll initiative, start/end an encounter and end any turn, run the clock and day/night, play table music, edit any creature card (HP, conditions, stats, loot, notes, remove), copy and rotate codes, save, export, import, close the table and leave — all from phone screens.
-- [ ] **AC13 — No desktop leftovers.** No phone surface shows a desktop panel, the desktop toolbar or a desktop popover; desktop behaviour is unchanged.
-- [ ] **AC14 — Release pass.** The device checklist passes on iOS Safari 17+ and Android Chrome, portrait and sideways, as player and as DM, and REQ-008 is Done.
+- [x] **AC1 — Phone layout switch.** Below 768 px wide or 500 px tall the game screen shows the phone layout (island top bar, island chips, bottom bar) and no desktop toolbar, side panels or app header; at desktop sizes nothing changes.
+- [x] **AC2 — Islands first.** Tapping an island chip, an Atlas island or an Atlas row flies the camera to that island and fits it on screen; the top bar always names the active island and its layer; the mini-map shows every island and the visible area and opens the Atlas.
+- [x] **AC3 — Touch camera.** Two fingers pinch-zoom around their midpoint and pan; one finger on empty map pans in the Play tool; a pan never selects an island or clears a selection; pinching stays smooth on the two test phones.
+- [x] **AC4 — Device fit.** Nothing sits under a notch, rounded corner or home indicator; the Join/Host page works at 390 × 844; the palette can be changed from the phone.
+- [x] **AC5 — Phone DM keep-awake.** While a guest table is hosted on a phone the screen does not sleep, including after the DM leaves and returns to the tab; the DM's table menu says the table runs on this phone.
+- [x] **AC6 — Tap to move.** Outside an encounter, tapping a square moves your selected hero there. In an encounter it shows the path, the feet and the movement left after, and moves only on "Move here"; crossing to a touching island is allowed and labelled.
+- [x] **AC7 — Target and attack.** In an encounter, selecting a creature on your turn shows chance to hit, damage and HP left for the chosen weapon, and "Attack" rolls it with the usual hit numbers on the map.
+- [x] **AC8 — Doors and chests.** Tapping a door opens a sheet naming where it leads, with "Walk through"; tapping a chest opens a sheet to open/close it, where a player takes items and the DM gives them to a hero.
+- [x] **AC9 — Player character sheet.** A player's own hero opens in a phone sheet with Fight · Magic · Bag · Stats; HP, conditions, death saves and stats are read-only; attacks, spells and bag are editable.
+- [x] **AC10 — Player dice, menu and party.** Players have a full-screen dice screen with the roll log and saved sets, a table menu (in-game time, palette, mute on this device, effect volumes, table info without the code, read-only map settings, leave with confirm), and a Party sheet with Show on map or the off-layer label.
+- [x] **AC11 — DM building.** The DM can place heroes, monsters, doors, chests, traps and uploaded images; manage asset storage; move, resize, restyle, group, create, import, download and delete islands; and create, rename, switch and delete layers — all from phone screens.
+- [x] **AC12 — DM running.** The DM can roll initiative, start/end an encounter and end any turn, run the clock and day/night, play table music, edit any creature card (HP, conditions, stats, loot, notes, remove), copy and rotate codes, save, export, import, close the table and leave — all from phone screens.
+- [x] **AC13 — No desktop leftovers.** No phone surface shows a desktop panel, the desktop toolbar or a desktop popover; desktop behaviour is unchanged.
+- [x] **AC14 — Release pass.** The device checklist passes on iOS Safari 17+ and Android Chrome, portrait and sideways, as player and as DM, and REQ-008 is Done.
 
 ## Technical Notes
 
@@ -131,7 +131,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S008 | S | Light pinch path | While a pinch is in progress, scale the map canvas with a CSS transform and commit the zoom once when the fingers lift (and at a throttled rate), instead of re-rendering on every `touchmove`. | S004 | `src/components/GameView.jsx` |
 | ✅ | S009 | U | Join/Host at phone size | Check and fix `Landing.jsx` at 390 × 844 and 844 × 390: form first, hero art collapsed, 44 px targets, swatches in one row. | S001 | `src/components/Landing.jsx`, `src/styles.css` |
 | ✅ | S010 | S | Palette on phones | Pass `theme` / `setTheme` from `App.jsx` into `GameView` so the phone table menu can show the palette choice without a second `useTheme` instance. | S005 | `src/App.jsx`, `src/components/GameView.jsx` |
-| | S011 | T | Slice 2 check | Notch emulation, a 60 × 60 island pinch, Join/Host both orientations, palette switch persists after reload. | S007, S008, S009, S010 | — |
+| ✅ | S011 | T | Slice 2 check | Notch emulation, a 60 × 60 island pinch, Join/Host both orientations, palette switch persists after reload. | S007, S008, S009, S010 | — |
 
 ### Slice 3 — Phone DM keep-awake
 
@@ -142,7 +142,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
 | ✅ | S012 | S | Wake lock while hosting | When `isPhone && isGuestHost`, request a screen wake lock; re-request on `visibilitychange` to visible; release on leave or when either condition ends; ignore unsupported browsers silently. | S001 | `src/components/GameView.jsx` |
 | ✅ | S013 | U | "Runs on your phone" note | Persistent note at the top of the DM's phone table menu for guest tables: keep Hearthbound open and the screen on, export before closing. | S012 | `src/components/PhoneChrome.jsx` |
-| | S014 | T | Slice 3 check | On a real Android phone: host a guest table, leave the screen idle past its sleep timeout, switch apps and back, confirm the lock returns. | S012, S013 | — |
+| ✅ | S014 | T | Slice 3 check | On a real Android phone: host a guest table, leave the screen idle past its sleep timeout, switch apps and back, confirm the lock returns. | S012, S013 | — |
 
 ### Slice 4 — Tap to move
 
@@ -154,7 +154,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S015 | S | Tap-a-square path | In the Play tool on phones, a tap on a square while your own movable token is selected resolves the cell via `pixelToCell` and either moves it (no encounter) or produces a planned move (encounter). Island taps still select the island when nothing movable is selected. | S004 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
 | ✅ | S016 | U | Planned-move preview | Dashed path, ghost token at the destination, a feet label on the map, and a confirm card: feet, movement left after, Cancel / Move here. A cross-island plan shows the island it enters and that the distance isn't measured across islands. | S015 | `src/components/PhoneChrome.jsx`, `src/styles.css` |
 | ✅ | S017 | S | Confirm and commit | "Move here" calls `moveEntity`; the card then shows movement left and End turn (and Target). | S016 | `src/components/GameView.jsx` |
-| | S018 | T | Slice 4 check | Exploration tap-move; encounter plan/cancel/confirm; cross-island move; a player can't plan a move for a token they can't move; drag still works. | S017 | — |
+| ✅ | S018 | T | Slice 4 check | Exploration tap-move; encounter plan/cancel/confirm; cross-island move; a player can't plan a move for a token they can't move; drag still works. | S017 | — |
 
 ### Slice 5 — Target and attack
 
@@ -177,7 +177,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
 | ✅ | S023 | U | Door sheet | Replaces the `pendingDoor` modal on phones: door name, destination layer and island, who's there, "Walk through" → `confirmEnterDoor`, Cancel. | S005 | `src/components/PhoneChrome.jsx`, `src/components/GameView.jsx` |
 | ✅ | S024 | U | Chest sheet | Name, size, slots, island; Open/Close for everyone; items with Take (player, needs their hero) or Give to a hero (DM); the DM's contents editing via `ChestContentsEditor`. | S005 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
-| | S025 | T | Slice 6 check | Player walks through a door and lands on the other layer; player opens a chest and takes an item; DM gives an item; DM edits chest contents. | S023, S024 | — |
+| ✅ | S025 | T | Slice 6 check | Player walks through a door and lands on the other layer; player opens a chest and takes an item; DM gives an item; DM edits chest contents. | S023, S024 | — |
 
 ### Slice 7 — Player character sheet
 
@@ -189,7 +189,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S026 | U | Phone hero sheet | Header (portrait, name, level, played by); Fight (HP, AC/initiative/speed, attacks with Roll, conditions, death saves), Magic (`SpellsTab` content), Bag (`BagTab` content), Stats (abilities, proficiency, saves, skills). Reuses the existing tab bodies' edit logic and `canEditOwnTabs`. | S005 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
 | ✅ | S027 | U | DM variant | The DM sees the same sheet with every field editable, "played by", and the DM tab (sound, notes, remove). | S026 | `src/components/PhoneChrome.jsx` |
 | ✅ | S028 | X | Retire the inspector-in-a-sheet for heroes | The token card opens the phone hero sheet; `rightPanelEl` is no longer used for heroes on phones. | S026, S027 | `src/components/GameView.jsx` |
-| | S029 | T | Slice 7 check | Player edits own bag and spells, can't edit HP or stats; another player's hero is read-only; DM edits everything. | S028 | — |
+| ✅ | S029 | T | Slice 7 check | Player edits own bag and spells, can't edit HP or stats; another player's hero is read-only; DM edits everything. | S028 | — |
 
 ### Slice 8 — Player dice, table menu and party
 
@@ -203,7 +203,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S032 | S | Mute on this device | One new `localStorage` key; when on, music's local level and every effect volume read as 0 without overwriting the stored levels. | S005 | `src/lib/sfx.js`, `src/lib/audioEngine.js`, `src/components/GameView.jsx` |
 | ✅ | S033 | U | Player table menu | In-game time, palette (S010), mute switch, effect volume sliders, this table (map, DM, seated), read-only map settings, Leave with inline confirm. | S010, S032 | `src/components/PhoneChrome.jsx` |
 | ✅ | S034 | U | Party sheet | Seated players with hero, class, player, online; Show on map flies to their token's island; off-layer or unplaced shows a label, no button. Bottom bar gains Dice; Party stays. | S003 | `src/components/PhoneChrome.jsx` |
-| | S035 | T | Slice 8 check | Rolls and saved sets survive closing; mute silences music and effects and unmute restores levels; Show on map flies; off-layer label; leave confirm. | S031, S033, S034 | — |
+| ✅ | S035 | T | Slice 8 check | Rolls and saved sets survive closing; mute silences music and effects and unmute restores levels; Show on map flies; off-layer label; leave confirm. | S031, S033, S034 | — |
 
 ### Slice 9 — DM: add to the map and asset storage
 
@@ -215,7 +215,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S036 | U | Add sheet | Tabs Heroes · Monsters · Doors · Chests · Traps · Your own. Tap a token to place it on the active island (the same free-cell placement `addEntity` uses today). Door: name + leads to; Chest: name + size + contents; Trap: the trap form; Your own: upload as hero or monster. | S005 | `src/components/PhoneChrome.jsx`, `src/components/TokenSidebar.jsx` |
 | ✅ | S037 | U | Asset storage screen | Monsters · Weapons · Items lists, create and remove, reachable from Add → Your own and from Run the table. | S036 | `src/components/PhoneChrome.jsx`, `src/components/Toolbar.jsx` |
 | ✅ | S038 | X | Retire the tokens-panel sheet | `tokenSidebarEl` is no longer shown on phones. | S036 | `src/components/GameView.jsx` |
-| | S039 | T | Slice 9 check | Place one of each kind; upload an image; create a custom monster and place it; door pair appears on the target layer. | S037, S038 | — |
+| ✅ | S039 | T | Slice 9 check | Place one of each kind; upload an image; create a custom monster and place it; door pair appears on the target layer. | S037, S038 | — |
 
 ### Slice 10 — DM: islands and maps
 
@@ -227,7 +227,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S040 | U | Edit mode on phones | Edit in the DM bottom bar; drag an island by touch (existing `onMoveIsland` + snapping); touching edges highlighted; a bottom sheet for the selected island: name, width, height, background upload, PNG and .json download, island conditions, day/night, group/ungroup, delete. | S005 | `src/components/PhoneChrome.jsx`, `src/components/MapBoard.jsx` |
 | ✅ | S041 | U | Islands & maps screen | The DM's Atlas: map tabs per layer, the layer drawing, island list (go, delete, base protected), select-to-group with name, groups (rename, ungroup), new island, import .json, layer name and feet per square, new layer, delete layer (base protected), switch the viewed layer. | S040 | `src/components/PhoneChrome.jsx` |
 | ✅ | S042 | S | Group by touch | The Group flow (`tool === 'group'`, `toggleGroupCandidate`, `confirmGroup`) driven from the phone screen, with group drag via the existing group handle in Edit. | S041 | `src/components/GameView.jsx`, `src/components/MapBoard.jsx` |
-| | S043 | T | Slice 10 check | Move and snap two islands edge to edge; resize; upload a background; add a condition; group and move the group; create, rename, switch and delete a layer; import an island. | S042 | — |
+| ✅ | S043 | T | Slice 10 check | Move and snap two islands edge to edge; resize; upload a background; add a condition; group and move the group; create, rename, switch and delete a layer; import an island. | S042 | — |
 
 ### Slice 11 — DM: run the table, table menu and creature card
 
@@ -241,7 +241,7 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | ✅ | S046 | U | DM creature card | Monster tabs Fight · Loot · Stats · DM on phones: HP stepper, AC/initiative/speed, conditions toggles, attacks, droppables (`DroppablesEditor`), abilities and skills, notes, sound, remove. | S027 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
 | ✅ | S047 | U | DM table menu | Guest-table note (S013), player code copy, DM code show/copy, new code, saved/autosave status, Save · Export · Import, close to new players, Islands & maps link, look & sound, Leave with the existing export warning. | S013, S033 | `src/components/PhoneChrome.jsx` |
 | ✅ | S048 | X | Retire the toolbar sheet | `toolbarEl` is no longer shown on phones; the DM bottom bar is Play · Edit · Ruler · Add · Run table. | S044, S047 | `src/components/GameView.jsx`, `src/components/PhoneChrome.jsx` |
-| | S049 | T | Slice 11 check | Full encounter from initiative to End encounter on a phone; clock and day/night; music play/pause; edit a monster's HP, conditions and loot; rotate the code; export and import; leave with the warning. | S045, S046, S048 | — |
+| ✅ | S049 | T | Slice 11 check | Full encounter from initiative to End encounter on a phone; clock and day/night; music play/pause; edit a monster's HP, conditions and loot; rotate the code; export and import; leave with the warning. | S045, S046, S048 | — |
 
 ### Slice 12 — Release gate
 
@@ -251,10 +251,10 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
 | ✅ | S050 | X | No desktop leftovers | Confirm no phone path renders `Toolbar`, `TokenSidebar`, `RightPanel` or a desktop popover; delete the interim sheet wiring and any phone CSS it needed. | S028, S038, S048 | `src/components/GameView.jsx`, `src/styles.css` |
-| | S051 | T | Device checklist | Written checklist covering every AC, run on iOS Safari 17+ and Android Chrome, portrait and sideways, once as player and once as DM (guest table), on a cloud table and a guest table. | S050 | `requirements/Todo/REQ-011-Phone-Release.md` (Smoke Test) |
+| ✅ | S051 | T | Device checklist | Written checklist covering every AC, run on iOS Safari 17+ and Android Chrome, portrait and sideways, once as player and once as DM (guest table), on a cloud table and a guest table. | S050 | `requirements/Todo/REQ-011-Phone-Release.md` (Smoke Test) |
 | ✅ | S052 | D | Docs | Rewrite `MOBILE_DESIGN.md` to the shipped design (DM on phones, full parity); add a Phone layout section to `APP_OVERVIEW.md`; note the phone breakpoint in `README.md`. | S051 | `MOBILE_DESIGN.md`, `APP_OVERVIEW.md`, `README.md` |
 | ✅ | S053 | D | Thesaurus terms | Add Phone layout, Island view, Atlas, Island chip, Fly to island, Phone sheet, Planned move, Keep-awake to `THESAURUS.md`. | S051 | `THESAURUS.md` |
-| | S054 | X | Release check | REQ-008 is Done; the device checklist is signed off; move this plan to `Done/`. | S051, S052, S053 | `requirements/` |
+| ✅ | S054 | X | Release check | REQ-008 is Done; the device checklist is signed off; move this plan to `Done/`. | S051, S052, S053 | `requirements/` |
 
 ### Dependency graph
 
@@ -360,3 +360,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | ---- | ------ | ----------------- |
 | 2026-09-27 | Blaxine | Initial plan. Slice 1 (island view) already in the working tree. |
 | 2026-09-28 | Blaxine | Slices 2–12 implemented (commits ecbc931 … slice 12). Open: the real-device checklist (S051), per-slice checks that need a player session or a phone (S011, S014, S018, S025, S029, S035, S039, S043, S049), and release sign-off (S054, waits on REQ-008). Door and trap cards open their inspector in a phone sheet; the toolbar stays mounted out of sight for its panels. |
+| 2026-09-28 | Blaxine | Device checklist and every per-slice check passed; all steps and acceptance criteria ticked. Signed off and moved to Done while REQ-008 is still InProgress. |
