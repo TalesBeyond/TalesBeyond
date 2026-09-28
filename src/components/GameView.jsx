@@ -87,6 +87,7 @@ import {
   PhoneDoorSheet,
   PhoneChestSheet,
 } from './PhoneChrome.jsx';
+import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
 import FxLayer from './FxLayer.jsx';
@@ -2624,7 +2625,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 <PhoneTokenCard
                   entity={selectedEntity}
                   isHost={isHost}
-                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : 'panel')}
+                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' ? 'creature' : 'panel')}
                   onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
                   onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
                 />
@@ -2821,6 +2822,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onUpdate={updateEntity}
               onGive={giveChestItemToHero}
               onTake={takeChestItem}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'creature' && selectedEntity && (selectedEntity.kind === 'hero' || selectedEntity.kind === 'mob') && (
+            <PhoneCreatureSheet
+              entity={selectedEntity}
+              isHost={isHost}
+              meId={me.id}
+              players={state.players}
+              entities={layerEntities}
+              audio={audioApi}
+              onUpdate={updateEntity}
+              onRemove={removeEntity}
               onClose={() => setPhoneSheet(null)}
             />
           )}

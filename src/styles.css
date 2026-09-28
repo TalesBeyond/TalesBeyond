@@ -4479,3 +4479,65 @@ button.card-notes { border-style: solid; }
 .phone-chest-items { display: flex; flex-direction: column; gap: 6px; }
 .phone-chest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 0 6px 0 14px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); font-size: 15px; }
 .phone-chest-row .btn { min-height: 40px; }
+
+/* The creature sheet (phone): numbers up top on the dark sheet, the sheet's
+   own tabs on a paper page like the desktop card's. */
+.phone-creature { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 24px; }
+.phone-creature-head { display: flex; align-items: center; gap: 12px; }
+.phone-creature-avatar { width: 56px; height: 56px; }
+.phone-creature-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.phone-creature-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--parchment-100); }
+.phone-creature .card-ed { color: inherit; }
+.phone-owner { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--parchment-300); }
+.phone-owner select { min-height: 40px; padding: 0 10px; border: 1px dashed var(--gold-line); border-radius: 8px; background: var(--ink-800); color: var(--parchment-100); font: inherit; font-size: 14px; }
+.phone-creature-tabs button { min-width: 0; flex: 1 1 0; }
+.phone-creature-body { display: flex; flex-direction: column; gap: 14px; }
+.phone-hp { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--ink-700); border-radius: 16px; background: var(--ink-800); }
+.phone-hp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.phone-hp-step { width: 56px; height: 56px; flex-shrink: 0; border: 1px solid var(--ink-700); border-radius: 50%; background: var(--ink-900); color: var(--parchment-100); font-size: 26px; line-height: 1; cursor: pointer; }
+.phone-hp-value { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px; font-family: var(--font-mono); }
+.phone-hp-now { font-size: 40px; font-weight: 600; line-height: 1; color: var(--parchment-100); }
+.phone-hp-max { font-size: 18px; color: var(--parchment-300); }
+.phone-hp-temp { font-size: 13px; color: #9ec3ea; }
+.phone-hp-bar { height: 10px; border-radius: 5px; }
+.phone-plaques { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.phone-plaques > div { min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); text-align: center; }
+.phone-plaques b, .phone-plaques .card-ed { font-family: var(--font-mono); font-size: 18px; font-weight: 600; color: var(--parchment-100); }
+.phone-plaques span { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-300); }
+.phone-conditions-list, .phone-death { display: flex; flex-direction: column; gap: 8px; }
+.phone-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.phone-cond {
+  min-height: 40px;
+  padding: 0 12px 0 6px;
+  border: 1px dashed var(--ink-700);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--parchment-300);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.phone-cond:disabled { cursor: default; }
+.phone-cond.on { border-style: solid; border-color: var(--gold-line); background: var(--ink-800); color: var(--parchment-100); }
+.phone-cond-chit { width: 26px; height: 26px; border-radius: 50%; background-size: cover; background-position: center; }
+.phone-death-row { display: flex; align-items: center; gap: 8px; }
+.phone-death-row .phone-caption { width: 84px; }
+.phone-death-pip { width: 32px; height: 32px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--moss); background: transparent; cursor: pointer; }
+.phone-death-row.failures .phone-death-pip { border-color: var(--danger); }
+.phone-death-pip.filled { background: var(--moss); }
+.phone-death-row.failures .phone-death-pip.filled { background: var(--danger); }
+.phone-death-pip:disabled { cursor: default; }
+.phone-card-page { border-width: 3px; }
+.phone-card-page .card-tab-body { padding: 12px; }
+.phone-abilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.phone-abilities > div { min-height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-800); }
+.phone-abilities b { font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
+.phone-ability-score { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
+.phone-creature-id .card-ed { justify-content: flex-start; text-align: left; }
+.phone-creature-id .phone-creature-name { align-self: flex-start; }
+.phone-plaques > div:last-child b, .phone-plaques > div:last-child .card-ed { font-family: var(--font-ui); font-size: 13px; }
+.phone-abilities .card-ed { min-height: 28px; min-width: 44px; }

@@ -186,9 +186,9 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S026 | U | Phone hero sheet | Header (portrait, name, level, played by); Fight (HP, AC/initiative/speed, attacks with Roll, conditions, death saves), Magic (`SpellsTab` content), Bag (`BagTab` content), Stats (abilities, proficiency, saves, skills). Reuses the existing tab bodies' edit logic and `canEditOwnTabs`. | S005 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
-| | S027 | U | DM variant | The DM sees the same sheet with every field editable, "played by", and the DM tab (sound, notes, remove). | S026 | `src/components/PhoneChrome.jsx` |
-| | S028 | X | Retire the inspector-in-a-sheet for heroes | The token card opens the phone hero sheet; `rightPanelEl` is no longer used for heroes on phones. | S026, S027 | `src/components/GameView.jsx` |
+| ✅ | S026 | U | Phone hero sheet | Header (portrait, name, level, played by); Fight (HP, AC/initiative/speed, attacks with Roll, conditions, death saves), Magic (`SpellsTab` content), Bag (`BagTab` content), Stats (abilities, proficiency, saves, skills). Reuses the existing tab bodies' edit logic and `canEditOwnTabs`. | S005 | `src/components/PhoneChrome.jsx`, `src/components/RightPanel.jsx` |
+| ✅ | S027 | U | DM variant | The DM sees the same sheet with every field editable, "played by", and the DM tab (sound, notes, remove). | S026 | `src/components/PhoneChrome.jsx` |
+| ✅ | S028 | X | Retire the inspector-in-a-sheet for heroes | The token card opens the phone hero sheet; `rightPanelEl` is no longer used for heroes on phones. | S026, S027 | `src/components/GameView.jsx` |
 | | S029 | T | Slice 7 check | Player edits own bag and spells, can't edit HP or stats; another player's hero is read-only; DM edits everything. | S028 | — |
 
 ### Slice 8 — Player dice, table menu and party

@@ -696,7 +696,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
 
 // The DM-only tab on a hero's or monster's card: its sound, private notes
 // (click-to-edit, like the rest of the card) and removing the token.
-function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
+export function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
   return (
     <div className="card-dm">
       <span className="card-dm-badge">Only you see this</span>
@@ -721,7 +721,7 @@ function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
   );
 }
 
-function SavesSkillsTab({ sheet, updateSheet }) {
+export function SavesSkillsTab({ sheet, updateSheet }) {
   const profBonus = sheet.proficiencyBonus ?? 2;
 
   function computedBonus(abilityKey, proficient) {
@@ -813,7 +813,7 @@ function SavesSkillsTab({ sheet, updateSheet }) {
 }
 
 
-function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
+export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
@@ -996,7 +996,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
   );
 }
 
-function SpellsTab({ sheet, updateSheet }) {
+export function SpellsTab({ sheet, updateSheet }) {
   const spellcasting = normalizeSpellcasting(sheet.spellcasting);
   const [activeLevel, setActiveLevel] = useState(0);
   const level = spellcasting.levels[activeLevel];
@@ -1153,7 +1153,7 @@ const EQUIPMENT_CATEGORIES = [
   { key: 'other', label: 'Other items', hint: 'Rations, rope, potions, trinkets…' },
 ];
 
-function BagTab({ sheet, updateSheet }) {
+export function BagTab({ sheet, updateSheet }) {
   const equipment = normalizeEquipment(sheet.equipment);
   const currency = normalizeCurrency(sheet);
   const [activeCategory, setActiveCategory] = useState('gear');
