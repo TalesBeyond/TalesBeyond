@@ -4541,3 +4541,47 @@ button.card-notes { border-style: solid; }
 .phone-creature-id .phone-creature-name { align-self: flex-start; }
 .phone-plaques > div:last-child b, .phone-plaques > div:last-child .card-ed { font-family: var(--font-ui); font-size: 13px; }
 .phone-abilities .card-ed { min-height: 28px; min-width: 44px; }
+
+/* Player table menu, look & sound, party (phone). */
+.phone-menu-section { display: flex; flex-direction: column; gap: 8px; }
+.phone-menu-section .phone-palettes { padding: 0; }
+.phone-clock { padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
+.phone-switch-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 6px 6px 14px; border: 1px solid var(--ink-700); border-radius: 14px; }
+.phone-switch-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.phone-switch-label { font-size: 15px; font-weight: 600; }
+.phone-switch { position: relative; width: 56px; height: 44px; flex-shrink: 0; border: 0; background: transparent; cursor: pointer; }
+.phone-switch span { position: absolute; left: 4px; top: 8px; width: 48px; height: 28px; border-radius: 14px; background: var(--ink-700); transition: background 0.15s; }
+.phone-switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--parchment-100); transition: left 0.15s; }
+.phone-switch.on span { background: var(--gold-hi); }
+.phone-switch.on span::after { left: 23px; }
+.phone-switch:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; border-radius: 10px; }
+.phone-volumes { display: flex; flex-direction: column; gap: 2px; }
+.phone-volumes.muted { opacity: 0.45; }
+.phone-volume { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 44px; font-size: 14px; }
+.phone-volume input { width: 100%; accent-color: var(--gold-hi); }
+.phone-facts { margin: 0; display: grid; grid-template-columns: 128px minmax(0, 1fr); row-gap: 8px; column-gap: 12px; font-size: 15px; }
+.phone-facts dt { color: var(--parchment-300); }
+.phone-facts dd { margin: 0; }
+.phone-confirm { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--danger); border-radius: 14px; background: var(--ink-800); }
+.phone-confirm p { margin: 0; font-size: 15px; line-height: 1.45; }
+.phone-btn-danger { min-height: 48px; border: 0; border-radius: 12px; background: var(--danger); color: #ffffff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.phone-btn-danger-ghost { min-height: 52px; border: 1px solid var(--danger); border-radius: 14px; background: transparent; color: var(--parchment-100); font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; }
+.phone-party { list-style: none; margin: 0; padding: 8px 16px; display: flex; flex-direction: column; }
+.phone-party li { display: flex; align-items: center; gap: 12px; min-height: 68px; border-bottom: 1px solid var(--ink-800); }
+.phone-party-avatar { position: relative; width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--parchment-100); }
+.phone-party-dot { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--ink-900); background: var(--ink-700); }
+.phone-party-dot.online { background: var(--moss); }
+.phone-party-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.phone-party-text b { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.phone-party-text span { font-size: 13px; color: var(--parchment-300); }
+.phone-party-where { max-width: 120px; text-align: right; font-size: 13px; line-height: 1.35; color: var(--parchment-200); }
+
+/* Every modal on a phone (dice, compendium, map settings, layers...) rises
+   as a bottom sheet instead of floating mid-screen. */
+body:has(.game-screen.phone) .book-backdrop { padding: 0; align-items: flex-end; }
+body:has(.game-screen.phone) .book-card {
+  max-width: none;
+  max-height: calc(92dvh - env(safe-area-inset-top));
+  border-radius: 22px 22px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}

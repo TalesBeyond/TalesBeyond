@@ -3,11 +3,13 @@ import { getIslandCondition } from '../data/islandConditions.js';
 import { PALETTES } from '../state/theme.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { attackPreview, resolveAttackRoll, weaponStatsFor, ATTACK_BEAT_MS } from '../utils/combat.js';
-import { playDiceSound } from '../lib/sfx.js';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import { GiveChestItemButton, TakeChestItemButton } from './RightPanel.jsx';
+import ClockReadout from './ClockReadout.jsx';
+import { SOUND_EFFECTS } from '../data/defaultAudio.js';
+import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -42,6 +44,7 @@ const ICONS = {
   fog: 'M4 9h13 M7 13h13 M4 17h11',
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
+  dice: 'M12 2l9 5v10l-9 5-9-5V7z M3 7l9 6 9-6 M12 13v9',
 };
 
 export function PhoneIcon({ name, size = 22, strokeWidth = 1.8 }) {
@@ -280,13 +283,18 @@ export function PhoneNav({ isHost, tool, onTool, onOpen }) {
           {label}
         </button>
       ))}
-      {isHost && (
+      {isHost ? (
         <button type="button" onClick={() => onOpen('add')}>
           <PhoneIcon name="add" />
           Add
         </button>
+      ) : (
+        <button type="button" onClick={() => onOpen('dice')}>
+          <PhoneIcon name="dice" />
+          Dice
+        </button>
       )}
-      <button type="button" onClick={() => onOpen('panel')}>
+      <button type="button" onClick={() => onOpen('party')}>
         <PhoneIcon name="party" />
         Party
       </button>
@@ -744,6 +752,168 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
           </>
         )}
       </div>
+    </PhoneSheet>
+  );
+}
+
+// ---------- a switch row ----------
+
+export function PhoneSwitch({ label, caption, checked, onChange }) {
+  const id = React.useId();
+  return (
+    <div className="phone-switch-row">
+      <span className="phone-switch-text">
+        <span id={id} className="phone-switch-label">
+          {label}
+        </span>
+        {caption && <span className="phone-caption phone-caption-flush">{caption}</span>}
+      </span>
+      <button type="button" role="switch" aria-checked={checked} aria-labelledby={id} className={`phone-switch${checked ? ' on' : ''}`} onClick={() => onChange(!checked)}>
+        <span />
+      </button>
+    </div>
+  );
+}
+
+// ---------- look & sound ----------
+
+export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange }) {
+  const [levels, setLevels] = useState(() => Object.fromEntries(SOUND_EFFECTS.map((e) => [e.id, getSfxVolume(e.id)])));
+  return (
+    <section className="phone-menu-section" aria-label="Look and sound">
+      <span className="phone-label">Look &amp; sound</span>
+      <PhonePaletteRow theme={theme} onChange={onThemeChange} />
+      <PhoneSwitch label="Mute on this device" caption="Music and sound effects. Everyone else still hears theirs." checked={muted} onChange={onMutedChange} />
+      <div className={`phone-volumes${muted ? ' muted' : ''}`}>
+        <span className="phone-caption phone-caption-flush">Sound effect volume</span>
+        {SOUND_EFFECTS.map((e) => (
+          <label key={e.id} className="phone-volume">
+            <span>{e.name}</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={levels[e.id]}
+              disabled={muted}
+              onChange={(ev) => {
+                const v = Number(ev.target.value);
+                setSfxVolume(e.id, v);
+                setLevels((prev) => ({ ...prev, [e.id]: v }));
+              }}
+            />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------- the player's table menu ----------
+
+export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, feetPerSquare, theme, onThemeChange, muted, onMutedChange, onLeave, onClose }) {
+  const [confirming, setConfirming] = useState(false);
+  const islandConds = (island?.conditions || []).map((k) => getIslandCondition(k)?.label).filter(Boolean);
+  return (
+    <PhoneSheet title="Table menu" onClose={onClose}>
+      <div className="phone-sheet-pad">
+        {clock && (
+          <section className="phone-menu-section" aria-label="In-game time">
+            <span className="phone-label">In-game time</span>
+            <div className="phone-clock">
+              <ClockReadout clock={clock} isHost={false} phaseOverride={phaseOverride} />
+            </div>
+          </section>
+        )}
+        <PhoneLookAndSound theme={theme} onThemeChange={onThemeChange} muted={muted} onMutedChange={onMutedChange} />
+        <section className="phone-menu-section" aria-label="This table">
+          <span className="phone-label">This table</span>
+          <dl className="phone-facts">
+            <dt>Map</dt>
+            <dd>{layerName}</dd>
+            <dt>DM</dt>
+            <dd>{dmName || '—'}</dd>
+            <dt>Seated</dt>
+            <dd>{seated.join(', ') || '—'}</dd>
+          </dl>
+        </section>
+        <section className="phone-menu-section" aria-label="Map settings">
+          <span className="phone-label">Map settings</span>
+          <dl className="phone-facts">
+            <dt>Island</dt>
+            <dd>{island?.name || '—'}</dd>
+            <dt>Feet per square</dt>
+            <dd>{feetPerSquare}</dd>
+            <dt>Island conditions</dt>
+            <dd>{islandConds.length ? islandConds.join(', ') : 'None'}</dd>
+          </dl>
+          <span className="phone-caption phone-caption-flush">Only the host can change map settings.</span>
+        </section>
+        {confirming ? (
+          <div className="phone-confirm" role="alertdialog" aria-label="Leave the table?">
+            <p>Leave {layerName}? You’ll need the invitation code to join again.</p>
+            <div className="phone-move-actions">
+              <button type="button" className="phone-btn-ghost" onClick={() => setConfirming(false)}>
+                Stay
+              </button>
+              <button type="button" className="phone-btn-danger" onClick={onLeave}>
+                Leave
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="phone-btn-danger-ghost phone-btn-full" onClick={() => setConfirming(true)}>
+            Leave the table
+          </button>
+        )}
+      </div>
+    </PhoneSheet>
+  );
+}
+
+// ---------- party ----------
+
+export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onClose }) {
+  const heroes = Object.values(entities || {}).filter((e) => e.kind === 'hero');
+  const seated = Object.values(players || {}).filter((p) => p.id !== hostId);
+  const dm = players?.[hostId];
+  return (
+    <PhoneSheet title="Party" onClose={onClose}>
+      <ul className="phone-party">
+        {seated.map((p) => {
+          const hero = heroes.find((h) => h.ownerId === p.id);
+          const here = hero && hero.layerId === currentLayerId;
+          const who = hero ? (p.id === meId ? 'you' : `played by ${p.name}`) : p.id === meId ? 'you · no hero yet' : 'no hero yet';
+          return (
+            <li key={p.id}>
+              <span className="phone-party-avatar" style={{ background: p.color }} aria-hidden="true">
+                <span className={`phone-party-dot${p.connected ? ' online' : ''}`} />
+              </span>
+              <span className="phone-party-text">
+                <b>{hero ? hero.name : p.name}</b>
+                <span>
+                  {who} · {p.connected ? 'online' : 'away'}
+                </span>
+              </span>
+              {hero && here ? (
+                <button type="button" className="phone-btn-ghost" onClick={() => onShow(hero)} aria-label={`Show ${hero.name} on the map`}>
+                  Show on map
+                </button>
+              ) : hero ? (
+                <span className="phone-party-where">On {layers?.[hero.layerId]?.name || 'another map'}</span>
+              ) : (
+                <span className="phone-party-where">Not on the map</span>
+              )}
+            </li>
+          );
+        })}
+        {seated.length === 0 && <li className="phone-caption">Nobody has joined yet.</li>}
+      </ul>
+      {dm && (
+        <p className="phone-caption">
+          DM · {dm.name} {dm.connected ? 'is online' : 'is away'}
+        </p>
+      )}
     </PhoneSheet>
   );
 }

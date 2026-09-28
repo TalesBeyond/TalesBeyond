@@ -141,6 +141,9 @@ const TOOL_ICONS = {
 const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands' };
 
 export default function Toolbar({
+  // The roll log and saved dice sets, kept in GameView so they survive
+  // closing the popover and the phone dice screen shares them.
+  dice,
   isHost,
   isGuestHost,
   layer,
@@ -213,12 +216,6 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
-  // Lifted out of DiceModal so the roll log and saved dice sets
-  // survive closing and reopening the popover, instead of resetting every
-  // time it unmounts.
-  const [diceRolls, setDiceRolls] = useState([]);
-  const [diceSaved, setDiceSaved] = useState([]);
-
   // Keep the bar on a single row: try each density from roomiest to
   // tightest and settle on the first where Leave (always the last item) ends
   // inside the bar. Only if even the tightest overflows is it allowed to wrap.
@@ -637,12 +634,7 @@ export default function Toolbar({
         <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceModal
-            saved={diceSaved}
-            rolls={diceRolls}
-            onRoll={(roll) => setDiceRolls((prev) => [roll, ...prev].slice(0, 50))}
-            onClearRolls={() => setDiceRolls([])}
-            onSave={(entry) => setDiceSaved((prev) => [...prev, entry])}
-            onRemoveSaved={(id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id))}
+            {...dice}
             onClose={() => setShowDice(false)}
           />
         )}

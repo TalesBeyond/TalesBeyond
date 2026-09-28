@@ -198,11 +198,11 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S030 | S | Lift dice state | Move `diceRolls` / `diceSaved` from `Toolbar.jsx` to `GameView` and pass them to both the desktop Dice popover and the phone dice screen. | S005 | `src/components/Toolbar.jsx`, `src/components/GameView.jsx` |
-| | S031 | U | Phone dice screen | Result card, roll log, d4–d20 grid with quantity, saved sets with Roll, sounds and the big-die moment as on desktop. | S030 | `src/components/PhoneChrome.jsx`, `src/components/DiceModal.jsx` |
-| | S032 | S | Mute on this device | One new `localStorage` key; when on, music's local level and every effect volume read as 0 without overwriting the stored levels. | S005 | `src/lib/sfx.js`, `src/lib/audioEngine.js`, `src/components/GameView.jsx` |
-| | S033 | U | Player table menu | In-game time, palette (S010), mute switch, effect volume sliders, this table (map, DM, seated), read-only map settings, Leave with inline confirm. | S010, S032 | `src/components/PhoneChrome.jsx` |
-| | S034 | U | Party sheet | Seated players with hero, class, player, online; Show on map flies to their token's island; off-layer or unplaced shows a label, no button. Bottom bar gains Dice; Party stays. | S003 | `src/components/PhoneChrome.jsx` |
+| ✅ | S030 | S | Lift dice state | Move `diceRolls` / `diceSaved` from `Toolbar.jsx` to `GameView` and pass them to both the desktop Dice popover and the phone dice screen. | S005 | `src/components/Toolbar.jsx`, `src/components/GameView.jsx` |
+| ✅ | S031 | U | Phone dice screen | Result card, roll log, d4–d20 grid with quantity, saved sets with Roll, sounds and the big-die moment as on desktop. | S030 | `src/components/PhoneChrome.jsx`, `src/components/DiceModal.jsx` |
+| ✅ | S032 | S | Mute on this device | One new `localStorage` key; when on, music's local level and every effect volume read as 0 without overwriting the stored levels. | S005 | `src/lib/sfx.js`, `src/lib/audioEngine.js`, `src/components/GameView.jsx` |
+| ✅ | S033 | U | Player table menu | In-game time, palette (S010), mute switch, effect volume sliders, this table (map, DM, seated), read-only map settings, Leave with inline confirm. | S010, S032 | `src/components/PhoneChrome.jsx` |
+| ✅ | S034 | U | Party sheet | Seated players with hero, class, player, online; Show on map flies to their token's island; off-layer or unplaced shows a label, no button. Bottom bar gains Dice; Party stays. | S003 | `src/components/PhoneChrome.jsx` |
 | | S035 | T | Slice 8 check | Rolls and saved sets survive closing; mute silences music and effects and unmute restores levels; Show on map flies; off-layer label; leave confirm. | S031, S033, S034 | — |
 
 ### Slice 9 — DM: add to the map and asset storage

@@ -25,6 +25,30 @@ export function getSfxVolume(id) {
   }
 }
 
+// "Mute on this device": nothing plays while it is on, and whatever is
+// playing goes quiet — the per-effect levels stay stored untouched.
+const MUTE_KEY = 'tb.muteDevice';
+
+export function isDeviceMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setDeviceMuted(muted) {
+  try {
+    if (muted) localStorage.setItem(MUTE_KEY, '1');
+    else localStorage.removeItem(MUTE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  if (!muted) return;
+  for (const id of Object.keys(playing)) playing[id].gain.gain.value = 0;
+  for (const id of Object.keys(fallbackPlayers)) fallbackPlayers[id].pause();
+}
+
 export function setSfxVolume(id, value) {
   const v = clamp01(value);
   try {
@@ -143,6 +167,7 @@ function playFallback(effect) {
 }
 
 export function playSfx(id) {
+  if (isDeviceMuted()) return;
   const effect = SOUND_EFFECTS.find((s) => s.id === id);
   if (!effect) return;
   const c = context();

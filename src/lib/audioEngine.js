@@ -55,7 +55,7 @@ export function audibleTrack(playback, tracks, { currentLayerId, layers, expired
  *   tables, whose files expire)
  * @returns {{ blocked: boolean, unlock: () => void, expired: Set<string> }}
  */
-export function useTableAudio({ enabled, playback, tracks, currentLayerId, layers, localVolumes, checkFiles, override }) {
+export function useTableAudio({ enabled, playback, tracks, currentLayerId, layers, localVolumes, checkFiles, override, muted = false }) {
   const elRef = useRef(null);
   const [blocked, setBlocked] = useState(false);
   const [expired, setExpired] = useState(() => new Set());
@@ -73,7 +73,10 @@ export function useTableAudio({ enabled, playback, tracks, currentLayerId, layer
   // table music re-seeks to wherever its synced position has reached.
   const overrideUrl = override?.url || null;
   const overrideStartedRef = useRef(false);
-  const volume = overrideUrl
+  // muted: "Mute on this device" (lib/sfx.js) — this browser only.
+  const volume = muted
+    ? 0
+    : overrideUrl
     ? clamp01(override.volume ?? 1)
     : track
       ? clamp01(track.baseVolume ?? 1) * clamp01(localVolumes?.[track.id] ?? 1)

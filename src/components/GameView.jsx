@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { playDiceSound, playSfx, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
+import { playDiceSound, playSfx, getSfxVolume, setSfxVolume, isDeviceMuted, setDeviceMuted } from '../lib/sfx.js';
 import { emitFx, useFx, takeCrit } from '../lib/fx.js';
 import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
 import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
@@ -86,8 +86,11 @@ import {
   PhoneTargetSheet,
   PhoneDoorSheet,
   PhoneChestSheet,
+  PhonePlayerMenu,
+  PhonePartySheet,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
+import DiceModal from './DiceModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
 import FxLayer from './FxLayer.jsx';
@@ -504,6 +507,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [encounterMusicVolume, setEncounterMusicVolume] = useState(() => getSfxVolume(ENCOUNTER_MUSIC.id));
   // Each player's own level per track — this browser only.
   const [localAudioVolumes, setLocalAudioVolumes] = useState(() => loadLocalAudioVolumes(audioScope));
+  // "Mute on this device" (phone table menu): silences table music and effects here only.
+  const [deviceMuted, setDeviceMutedState] = useState(isDeviceMuted);
+  function toggleDeviceMuted(next) {
+    setDeviceMuted(next);
+    setDeviceMutedState(next);
+  }
+  // The dice roll log and saved dice sets, shared by the toolbar's Dice popover and the phone dice screen.
+  const [diceRolls, setDiceRolls] = useState([]);
+  const [diceSaved, setDiceSaved] = useState([]);
+  const diceApi = {
+    saved: diceSaved,
+    rolls: diceRolls,
+    onRoll: (roll) => setDiceRolls((prev) => [roll, ...prev].slice(0, 50)),
+    onClearRolls: () => setDiceRolls([]),
+    onSave: (entry) => setDiceSaved((prev) => [...prev, entry]),
+    onRemoveSaved: (id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id)),
+  };
   const { blocked: audioBlocked, unlock: unlockAudio, expired: expiredAudio } = useTableAudio({
     enabled: audioEnabled,
     playback: state.audio?.playback,
@@ -514,6 +534,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     checkFiles: isGuest,
     // The encounter's own theme, for everyone at the table while a fight runs.
     override: state.encounter ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
+    muted: deviceMuted,
   });
 
   // Which island new tokens/doors get placed onto, and which island is
@@ -2430,6 +2451,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // what lets it keep its labels on an ordinary laptop screen.
   const toolbarEl = (
       <Toolbar
+        dice={diceApi}
         isHost={isHost}
         isGuestHost={isGuestHost}
         layer={currentLayer}
@@ -2852,7 +2874,43 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               {tokenSidebarEl}
             </PhoneSheet>
           )}
-          {phoneSheet === 'menu' && (
+          {phoneSheet === 'menu' && !isHost && (
+            <PhonePlayerMenu
+              clock={state.clock}
+              phaseOverride={state.dayNightOverride}
+              layerName={currentLayer.name}
+              dmName={state.players[state.session.hostPlayerId]?.name}
+              seated={Object.values(state.players)
+                .filter((p) => p.id !== state.session.hostPlayerId)
+                .map((p) => (p.id === me.id ? `${p.name} (you)` : p.name))}
+              island={activeIsland}
+              feetPerSquare={currentLayer.feetPerSquare}
+              theme={theme}
+              onThemeChange={onThemeChange}
+              muted={deviceMuted}
+              onMutedChange={toggleDeviceMuted}
+              onLeave={leaveTable}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'party' && (
+            <PhonePartySheet
+              players={state.players}
+              hostId={state.session.hostPlayerId}
+              meId={me.id}
+              entities={state.entities}
+              layers={state.layers}
+              currentLayerId={currentLayerId}
+              onShow={(hero) => {
+                setPhoneSheet(null);
+                flyToIsland(hero.islandId);
+                setSelectedId(hero.id);
+              }}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'dice' && <DiceModal {...diceApi} onClose={() => setPhoneSheet(null)} />}
+          {phoneSheet === 'menu' && isHost && (
             <PhoneSheet title="Table menu" onClose={() => setPhoneSheet(null)} className="phone-sheet-toolbar">
               {isGuestHost && <PhoneGuestHostNote />}
               <PhonePaletteRow theme={theme} onChange={onThemeChange} />
