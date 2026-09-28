@@ -209,10 +209,10 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S017 | S | Undo and redo | A session history of the DM's drawing actions with their inverses (insert ↔ delete, update ↔ previous values, clear ↔ re-insert); each step applied through the normal write path; entries whose island is gone are skipped; Undo/Redo buttons in the bar; Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y while Draw is active and focus isn't in a text field. | S015, S016 | `src/components/GameView.jsx`, drawing bar component |
-|  | S018 | U | Clear this island / Clear this map | Clear menu in the bar; confirm naming the count and the island or map; one delete of those ids; recorded as one undo step. | S017 | drawing bar component, `src/components/GameView.jsx`, `src/lib/remoteApi.js` |
-|  | S019 | U | Hide drawings | Per-browser switch for everyone: toggle card in the desktop Tools menu; the render layer hides when it's on. | S005 | `src/components/Toolbar.jsx`, `src/components/MapBoard.jsx`, `src/state/persistence.js` |
-|  | S020 | S | Island edges and cascade | Verify drawings move with island and group drags; the island `.json` download and import carry no drawings; shrinking clips and growing restores; island and layer deletion clears drawings in cloud (foreign key + realtime), guest and local tables. | S008, S017 | `src/components/GameView.jsx`, `src/state/store.jsx` |
+| ✅ | S017 | S | Undo and redo | A session history of the DM's drawing actions with their inverses (insert ↔ delete, update ↔ previous values, clear ↔ re-insert); each step applied through the normal write path; entries whose island is gone are skipped; Undo/Redo buttons in the bar; Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y while Draw is active and focus isn't in a text field. | S015, S016 | `src/components/GameView.jsx`, drawing bar component |
+| ✅ | S018 | U | Clear this island / Clear this map | Clear menu in the bar; confirm naming the count and the island or map; one delete of those ids; recorded as one undo step. | S017 | drawing bar component, `src/components/GameView.jsx`, `src/lib/remoteApi.js` |
+| ✅ | S019 | U | Hide drawings | Per-browser switch for everyone: toggle card in the desktop Tools menu; the render layer hides when it's on. | S005 | `src/components/Toolbar.jsx`, `src/components/MapBoard.jsx`, `src/state/persistence.js` |
+| ✅ | S020 | S | Island edges and cascade | Verify drawings move with island and group drags; the island `.json` download and import carry no drawings; shrinking clips and growing restores; island and layer deletion clears drawings in cloud (foreign key + realtime), guest and local tables. | S008, S017 | `src/components/GameView.jsx`, `src/state/store.jsx` |
 
 ### Slice 7 — Phone
 

@@ -62,7 +62,7 @@ export default function MapBoard({
   drawSettings = null, // Draw tool: { subTool, style, snap }
   onAddDrawing = null, // (drawing without an id) => void — the DM only
   onUpdateDrawing = null, // (drawing) => void — a move or resize, the DM only
-  onRemoveDrawings = null, // (ids) => void — the eraser, the DM only
+  onRemoveDrawings = null, // (ids, sweepKey) => void — the eraser, the DM only
   selectedDrawingId = null, // the drawing Select has picked
   onSelectDrawing = null, // (id | null) => void
 }) {
@@ -580,7 +580,7 @@ export default function MapBoard({
     }
     if (subTool === 'eraser') {
       e.preventDefault();
-      drawRef.current = { mode: 'erase', erased: new Set() };
+      drawRef.current = { mode: 'erase', erased: new Set(), sweep: `erase-${Date.now()}` };
       eraseAt(e);
       listenWhileDrawing();
       return;
@@ -668,7 +668,7 @@ export default function MapBoard({
       .map((drawing) => drawing.id);
     if (!doomed.length) return;
     doomed.forEach((id) => d.erased.add(id));
-    onRemoveDrawings?.(doomed);
+    onRemoveDrawings?.(doomed, d.sweep);
   }
 
   function listenWhileDrawing() {

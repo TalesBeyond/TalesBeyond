@@ -89,6 +89,7 @@ const ICON_PATHS = {
   ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
   group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
   draw: 'M3 17c2-1 3-3 5-3M13 3l4 4-8 8-4 1 1-4z',
+  hidedraw: 'M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6zM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM3 17L17 3',
   storage: 'M3 6h14v3H3zM4 9v8h12V9M8 12h4',
   layout: 'M3 3h14v14H3zM3 10h14M10 3v14',
   recenter: 'M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3',
@@ -152,6 +153,8 @@ export default function Toolbar({
   activeIsland,
   tool,
   onToolChange,
+  hideDrawings = false,
+  onToggleHideDrawings,
   onLayerPatch,
   onIslandPatch,
   session,
@@ -463,6 +466,13 @@ export default function Toolbar({
           active={tool === 'ruler'}
           onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
+        />
+        <ToolCard
+          icon={<Icon name="hidedraw" />}
+          label={hideDrawings ? 'Show drawings' : 'Hide drawings'}
+          active={hideDrawings}
+          onClick={() => pick(() => onToggleHideDrawings?.())}
+          title={hideDrawings ? 'Drawings are hidden in this browser — show them again' : 'Hide the DM\'s drawings in this browser only'}
         />
         {isHost && (
           <>

@@ -1390,8 +1390,98 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     else if (isGuestHost) broadcastGuestChange({ type: 'SET_DRAWING', drawing });
   }
 
+  function deleteDrawings(ids) {
+    if (!isHost || !ids.length) return;
+    dispatch({ type: 'REMOVE_DRAWINGS', ids });
+    if (isRemote) removeDrawingsRemote(ids).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_DRAWINGS', ids });
+  }
+
+  // Undo/redo for the DM's own drawing actions, this browser and this
+  // session only. Each step is a list of { id, before, after } (a drawing,
+  // or null where it didn't exist); undoing writes every `before` back
+  // through the normal write path, so it reaches the table like any edit.
+  // `group` merges a step into the previous one with the same key (one
+  // eraser sweep is one step).
+  const drawUndoRef = useRef([]);
+  const drawRedoRef = useRef([]);
+  const [drawHistoryTick, setDrawHistoryTick] = useState(0);
+  function recordDrawStep(changes, group = null) {
+    const undo = drawUndoRef.current;
+    const last = undo[undo.length - 1];
+    if (group && last?.group === group) last.changes.push(...changes);
+    else undo.push({ group, changes });
+    if (undo.length > 100) undo.shift();
+    drawRedoRef.current = [];
+    setDrawHistoryTick((t) => t + 1);
+  }
+  function applyDrawStep(step, direction) {
+    const current = stateRef.current;
+    const islandAlive = (islandId) => Object.values(current.layers).some((layer) => layer.islands?.[islandId]);
+    const doomed = [];
+    for (const change of step.changes) {
+      const target = direction === 'undo' ? change.before : change.after;
+      if (!target) {
+        if (current.drawings?.[change.id]) doomed.push(change.id);
+      } else if (islandAlive(target.islandId)) {
+        writeDrawing(target);
+      }
+    }
+    deleteDrawings(doomed);
+  }
+  function undoDrawing() {
+    const step = drawUndoRef.current.pop();
+    if (!step) return;
+    applyDrawStep(step, 'undo');
+    drawRedoRef.current.push(step);
+    setDrawHistoryTick((t) => t + 1);
+  }
+  function redoDrawing() {
+    const step = drawRedoRef.current.pop();
+    if (!step) return;
+    applyDrawStep(step, 'redo');
+    drawUndoRef.current.push(step);
+    setDrawHistoryTick((t) => t + 1);
+  }
+  const canUndoDrawing = drawHistoryTick >= 0 && drawUndoRef.current.length > 0;
+  const canRedoDrawing = drawHistoryTick >= 0 && drawRedoRef.current.length > 0;
+
   function updateDrawing(drawing) {
+    const before = state.drawings?.[drawing.id];
+    if (!before) return;
     writeDrawing(drawing);
+    recordDrawStep([{ id: drawing.id, before, after: drawing }]);
+  }
+
+  function addDrawing(drawing) {
+    const created = { ...drawing, id: generateEntityId() };
+    writeDrawing(created);
+    recordDrawStep([{ id: created.id, before: null, after: created }]);
+    if (drawing.style?.color) noteColourUsed(drawing.style.color);
+  }
+
+  function removeDrawings(ids, group = null) {
+    const present = ids.filter((id) => state.drawings?.[id]);
+    if (!present.length) return;
+    deleteDrawings(present);
+    recordDrawStep(
+      present.map((id) => ({ id, before: state.drawings[id], after: null })),
+      group
+    );
+  }
+
+  // "Clear this island" / "Clear this map": the drawings each would take.
+  const drawingIdsOnIsland = (islandId) => (state.drawingOrder || []).filter((id) => state.drawings[id]?.islandId === islandId);
+  const drawingIdsOnMap = () => {
+    const onMap = new Set(currentLayer.islandOrder);
+    return (state.drawingOrder || []).filter((id) => onMap.has(state.drawings[id]?.islandId));
+  };
+
+  // "Hide drawings": this browser only, for anyone at the table.
+  const [hideDrawings, setHideDrawingsState] = useState(() => Boolean(loadDrawPrefs().hide));
+  function setHideDrawings(hide) {
+    setHideDrawingsState(hide);
+    saveDrawPrefs({ ...loadDrawPrefs(), hide });
   }
 
   // Leaving Draw, or the selected drawing disappearing (erased, its island
@@ -1401,35 +1491,33 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (tool !== 'draw' || selectedDrawingGone) setSelectedDrawingId(null);
   }, [tool, selectedDrawingGone]);
 
-  // Esc drops the selection; Delete or Backspace removes the selected
-  // drawing — never while typing in a field.
+  // While drawing: Esc drops the selection, Delete or Backspace removes the
+  // selected drawing, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes —
+  // never while typing in a field.
   useEffect(() => {
     if (!isHost || tool !== 'draw') return undefined;
     function onKey(e) {
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      if (e.key === 'Escape') setSelectedDrawingId(null);
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId) {
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redoDrawing();
+        else undoDrawing();
+      } else if (mod && key === 'y') {
+        e.preventDefault();
+        redoDrawing();
+      } else if (e.key === 'Escape') {
+        setSelectedDrawingId(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId) {
         e.preventDefault();
         removeDrawings([selectedDrawingId]);
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHost, tool, selectedDrawingId]);
-
-  function addDrawing(drawing) {
-    writeDrawing({ ...drawing, id: generateEntityId() });
-    if (drawing.style?.color) noteColourUsed(drawing.style.color);
-  }
-
-  function removeDrawings(ids) {
-    if (!isHost || !ids.length) return;
-    dispatch({ type: 'REMOVE_DRAWINGS', ids });
-    if (isRemote) removeDrawingsRemote(ids).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_DRAWINGS', ids });
-  }
+  });
 
   function removeCustomAsset(id) {
     if (!isHost) return;
@@ -2582,6 +2670,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         layer={currentLayer}
         activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
         tool={tool}
+        hideDrawings={hideDrawings}
+        onToggleHideDrawings={() => setHideDrawings(!hideDrawings)}
         onToolChange={setTool}
         onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
         onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
@@ -2753,6 +2843,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onTapCell={isPhone ? handleTapCell : null}
               plannedMove={isPhone ? plannedMoveForMap : null}
               drawings={state.drawings}
+              hideDrawings={hideDrawings}
               drawingOrder={state.drawingOrder}
               drawSettings={isHost ? drawSettings : null}
               onAddDrawing={isHost ? addDrawing : null}
@@ -2822,7 +2913,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          {isHost && !isPhone && tool === 'draw' && <DrawingBar settings={drawSettings} onChange={setDrawSettings} recentColours={recentColours} />}
+          {isHost && !isPhone && tool === 'draw' && (
+            <DrawingBar
+              settings={drawSettings}
+              onChange={setDrawSettings}
+              recentColours={recentColours}
+              canUndo={canUndoDrawing}
+              canRedo={canRedoDrawing}
+              onUndo={undoDrawing}
+              onRedo={redoDrawing}
+              islandName={currentLayer.islands[activeIslandId]?.name || 'this island'}
+              mapName={currentLayer.name}
+              islandCount={drawingIdsOnIsland(activeIslandId).length}
+              mapCount={drawingIdsOnMap().length}
+              onClearIsland={() => removeDrawings(drawingIdsOnIsland(activeIslandId))}
+              onClearMap={() => removeDrawings(drawingIdsOnMap())}
+            />
+          )}
           <ZoomControl
             zoom={zoom}
             onZoomIn={zoomIn}

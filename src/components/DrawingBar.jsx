@@ -17,6 +17,53 @@ export const DRAW_SUB_TOOLS = [
 ];
 
 const SNAP_PATH = 'M3 3h14v14H3zM3 8h14M3 12h14M8 3v14M12 3v14';
+const UNDO_PATH = 'M7 5L3 9l4 4M3 9h9a5 5 0 0 1 0 10H9';
+const REDO_PATH = 'M13 5l4 4-4 4M17 9H8a5 5 0 0 0 0 10h3';
+const CLEAR_PATH = 'M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11';
+
+// "Clear this island" / "Clear this map", each behind a confirm naming how
+// many drawings go. Shared with the phone's drawing style sheet.
+export function DrawClearMenu({ islandName, mapName, islandCount, mapCount, onClearIsland, onClearMap, onDone }) {
+  const [asking, setAsking] = useState(null); // 'island' | 'map' | null
+  if (asking) {
+    const count = asking === 'island' ? islandCount : mapCount;
+    const where = asking === 'island' ? islandName : mapName;
+    return (
+      <div className="draw-clear" role="alertdialog" aria-label="Confirm clearing drawings">
+        <p>
+          Clear {count} drawing{count === 1 ? '' : 's'} from {where}? Everyone at the table stops seeing them.
+        </p>
+        <div className="draw-clear-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => setAsking(null)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={() => {
+              if (asking === 'island') onClearIsland();
+              else onClearMap();
+              setAsking(null);
+              onDone?.();
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="draw-clear">
+      <button type="button" className="draw-clear-option" disabled={!islandCount} onClick={() => setAsking('island')}>
+        Clear this island <small>{islandName} · {islandCount}</small>
+      </button>
+      <button type="button" className="draw-clear-option" disabled={!mapCount} onClick={() => setAsking('map')}>
+        Clear this map <small>{mapName} · {mapCount}</small>
+      </button>
+    </div>
+  );
+}
 
 export function DrawIcon({ path }) {
   return (
@@ -26,19 +73,21 @@ export function DrawIcon({ path }) {
   );
 }
 
-export default function DrawingBar({ settings, onChange, recentColours }) {
+export default function DrawingBar({ settings, onChange, recentColours, canUndo, canRedo, onUndo, onRedo, ...clear }) {
   const set = (patch) => onChange({ ...settings, ...patch });
-  const [styleOpen, setStyleOpen] = useState(false);
+  const [open, setOpen] = useState(null); // 'style' | 'clear' | null
+  const styleOpen = open === 'style';
+  const setStyleOpen = (next) => setOpen((o) => ((typeof next === 'function' ? next(o === 'style') : next) ? 'style' : null));
   const barRef = useRef(null);
 
-  // The style popover closes on Esc or a press anywhere outside the bar.
+  // A popover closes on Esc or a press anywhere outside the bar.
   useEffect(() => {
-    if (!styleOpen) return undefined;
+    if (!open) return undefined;
     function onDown(e) {
-      if (!barRef.current?.contains(e.target)) setStyleOpen(false);
+      if (!barRef.current?.contains(e.target)) setOpen(null);
     }
     function onKey(e) {
-      if (e.key === 'Escape') setStyleOpen(false);
+      if (e.key === 'Escape') setOpen(null);
     }
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
@@ -46,7 +95,7 @@ export default function DrawingBar({ settings, onChange, recentColours }) {
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [styleOpen]);
+  }, [open]);
 
   const dotSize = 10 + drawWidthSquares(settings.style.width) * 30;
 
@@ -90,6 +139,30 @@ export default function DrawingBar({ settings, onChange, recentColours }) {
         <DrawIcon path={SNAP_PATH} />
         <span className="visually-hidden">Snap to grid</span>
       </button>
+      <span className="draw-bar-sep" aria-hidden="true" />
+      <button type="button" className="draw-bar-btn" disabled={!canUndo} title="Undo (Ctrl+Z)" onClick={onUndo}>
+        <DrawIcon path={UNDO_PATH} />
+        <span className="visually-hidden">Undo</span>
+      </button>
+      <button type="button" className="draw-bar-btn" disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" onClick={onRedo}>
+        <DrawIcon path={REDO_PATH} />
+        <span className="visually-hidden">Redo</span>
+      </button>
+      <button
+        type="button"
+        className={`draw-bar-btn${open === 'clear' ? ' active' : ''}`}
+        aria-expanded={open === 'clear'}
+        title="Clear drawings"
+        onClick={() => setOpen((o) => (o === 'clear' ? null : 'clear'))}
+      >
+        <DrawIcon path={CLEAR_PATH} />
+        <span className="visually-hidden">Clear drawings</span>
+      </button>
+      {open === 'clear' && (
+        <div className="draw-style-popover draw-clear-popover" role="dialog" aria-label="Clear drawings">
+          <DrawClearMenu {...clear} onDone={() => setOpen(null)} />
+        </div>
+      )}
       {styleOpen && (
         <div className="draw-style-popover" role="dialog" aria-label="Drawing style">
           <DrawStylePanel style={settings.style} recent={recentColours} onChange={(style) => set({ style })} />
