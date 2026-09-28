@@ -212,9 +212,9 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S036 | U | Add sheet | Tabs Heroes · Monsters · Doors · Chests · Traps · Your own. Tap a token to place it on the active island (the same free-cell placement `addEntity` uses today). Door: name + leads to; Chest: name + size + contents; Trap: the trap form; Your own: upload as hero or monster. | S005 | `src/components/PhoneChrome.jsx`, `src/components/TokenSidebar.jsx` |
-| | S037 | U | Asset storage screen | Monsters · Weapons · Items lists, create and remove, reachable from Add → Your own and from Run the table. | S036 | `src/components/PhoneChrome.jsx`, `src/components/Toolbar.jsx` |
-| | S038 | X | Retire the tokens-panel sheet | `tokenSidebarEl` is no longer shown on phones. | S036 | `src/components/GameView.jsx` |
+| ✅ | S036 | U | Add sheet | Tabs Heroes · Monsters · Doors · Chests · Traps · Your own. Tap a token to place it on the active island (the same free-cell placement `addEntity` uses today). Door: name + leads to; Chest: name + size + contents; Trap: the trap form; Your own: upload as hero or monster. | S005 | `src/components/PhoneChrome.jsx`, `src/components/TokenSidebar.jsx` |
+| ✅ | S037 | U | Asset storage screen | Monsters · Weapons · Items lists, create and remove, reachable from Add → Your own and from Run the table. | S036 | `src/components/PhoneChrome.jsx`, `src/components/Toolbar.jsx` |
+| ✅ | S038 | X | Retire the tokens-panel sheet | `tokenSidebarEl` is no longer shown on phones. | S036 | `src/components/GameView.jsx` |
 | | S039 | T | Slice 9 check | Place one of each kind; upload an image; create a custom monster and place it; door pair appears on the target layer. | S037, S038 | — |
 
 ### Slice 10 — DM: islands and maps

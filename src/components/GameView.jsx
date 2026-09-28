@@ -2520,6 +2520,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           customAssets={state.customAssets}
           collapsed={isPhone ? false : leftCollapsed}
           onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('left'))}
+          layout={isPhone ? 'phone' : 'panel'}
         />
   );
 
@@ -2815,6 +2816,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
       {isPhone && (
         <>
+          {/* The host's toolbar stays mounted (hidden) on a phone so its panels —
+              bestiary, initiative, layers, islands, asset storage — can open over
+              lib/fx.js from the phone screens. */}
+          {isHost && phoneSheet !== 'menu' && <div className="phone-toolbar-host">{toolbarEl}</div>}
           <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
           {phoneSheet === 'panel' && (
             <PhoneSheet title={selectedEntity ? selectedEntity.name : 'Party'} onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">

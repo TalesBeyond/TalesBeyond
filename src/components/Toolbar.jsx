@@ -306,6 +306,10 @@ export default function Toolbar({
     else if (!isHost) return;
     else if (event.panel === 'map') togglePopover('mapSettings');
     else if (event.panel === 'armory') togglePopover('compendium');
+    // The phone layout opens the rest of the host's panels the same way.
+    else if (event.panel === 'items') togglePopover('itemCompendium');
+    else if (['layers', 'islands', 'initiative', 'assetStorage'].includes(event.panel)) togglePopover(event.panel);
+    else if (event.panel === 'clock') onOpenClock?.();
     else if (event.panel === 'bestiary') {
       const open = showMonsterCompendium;
       togglePopover(null);
