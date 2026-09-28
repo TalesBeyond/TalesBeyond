@@ -45,6 +45,7 @@ const ICONS = {
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
   dice: 'M12 2l9 5v10l-9 5-9-5V7z M3 7l9 6 9-6 M12 13v9',
+  run: 'M4 5h16v14H4z M12 5v14 M7 9h2 M7 12h2 M15 9h2 M15 12h2',
 };
 
 export function PhoneIcon({ name, size = 22, strokeWidth = 1.8 }) {
@@ -294,10 +295,17 @@ export function PhoneNav({ isHost, tool, onTool, onOpen }) {
           Dice
         </button>
       )}
-      <button type="button" onClick={() => onOpen('party')}>
-        <PhoneIcon name="party" />
-        Party
-      </button>
+      {isHost ? (
+        <button type="button" onClick={() => onOpen('run')}>
+          <PhoneIcon name="run" />
+          Run table
+        </button>
+      ) : (
+        <button type="button" onClick={() => onOpen('party')}>
+          <PhoneIcon name="party" />
+          Party
+        </button>
+      )}
     </nav>
   );
 }

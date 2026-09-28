@@ -80,8 +80,6 @@ import {
   PhoneSheet,
   PhoneLayersSheet,
   PhoneAtlas,
-  PhonePaletteRow,
-  PhoneGuestHostNote,
   PhoneMoveCard,
   PhoneTargetSheet,
   PhoneDoorSheet,
@@ -91,6 +89,7 @@ import {
   PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
+import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
@@ -2658,7 +2657,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 <PhoneTokenCard
                   entity={selectedEntity}
                   isHost={isHost}
-                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' ? 'creature' : 'panel')}
+                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'panel')}
                   onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
                   onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
                 />
@@ -2829,7 +2828,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           {/* The host's toolbar stays mounted (hidden) on a phone so its panels —
               bestiary, initiative, layers, islands, asset storage — can open over
               lib/fx.js from the phone screens. */}
-          {isHost && phoneSheet !== 'menu' && <div className="phone-toolbar-host">{toolbarEl}</div>}
+          {isHost && <div className="phone-toolbar-host">{toolbarEl}</div>}
           <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
           {phoneSheet === 'panel' && (
             <PhoneSheet title={selectedEntity ? selectedEntity.name : 'Party'} onClose={() => setPhoneSheet(null)} className="phone-sheet-panel">
@@ -2926,10 +2925,52 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
           {phoneSheet === 'dice' && <DiceModal {...diceApi} onClose={() => setPhoneSheet(null)} />}
           {phoneSheet === 'menu' && isHost && (
-            <PhoneSheet title="Table menu" onClose={() => setPhoneSheet(null)} className="phone-sheet-toolbar">
-              {isGuestHost && <PhoneGuestHostNote />}
-              <PhonePaletteRow theme={theme} onChange={onThemeChange} />
-              {toolbarEl}
+            <PhoneHostMenu
+              session={state.session}
+              isGuestHost={isGuestHost}
+              savedLabel={savedAgo}
+              autosaveSecondsLeft={autosaveSecondsLeft}
+              onRegenerateCode={regenerateCode}
+              onToggleOpen={toggleOpen}
+              onSaveNow={saveNow}
+              onExport={exportTable}
+              onImport={importTable}
+              onManageIslands={() => {
+                setPhoneSheet(null);
+                emitFx({ type: 'open', panel: 'islands' });
+              }}
+              onManageLayers={() => {
+                setPhoneSheet(null);
+                emitFx({ type: 'open', panel: 'layers' });
+              }}
+              theme={theme}
+              onThemeChange={onThemeChange}
+              muted={deviceMuted}
+              onMutedChange={toggleDeviceMuted}
+              onLeave={leaveTable}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'run' && isHost && (
+            <PhoneRunTable
+              encounter={encounter}
+              actorName={actor?.name}
+              onEndEncounter={() => setEncounter(null)}
+              onShowLog={() => setPhoneSheet('log')}
+              clock={state.clock}
+              phaseOverride={state.dayNightOverride}
+              onSetClockRunning={setClockRunning}
+              onSetDayNight={updateDayNightOverride}
+              audioEnabled={audioEnabled}
+              onOpenMusic={() => setShowMusicModal(true)}
+              onOpenDice={() => setPhoneSheet('dice')}
+              onOpenParty={() => setPhoneSheet('party')}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'log' && (
+            <PhoneSheet title="Combat log" onClose={() => setPhoneSheet(null)} className="phone-sheet-log">
+              <CombatLog log={combatLog} onClose={() => setPhoneSheet(null)} />
             </PhoneSheet>
           )}
           {phoneSheet === 'layers' && (
