@@ -224,9 +224,9 @@ a real iPhone (Safari) and a real Android phone (Chrome).
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-| | S040 | U | Edit mode on phones | Edit in the DM bottom bar; drag an island by touch (existing `onMoveIsland` + snapping); touching edges highlighted; a bottom sheet for the selected island: name, width, height, background upload, PNG and .json download, island conditions, day/night, group/ungroup, delete. | S005 | `src/components/PhoneChrome.jsx`, `src/components/MapBoard.jsx` |
-| | S041 | U | Islands & maps screen | The DM's Atlas: map tabs per layer, the layer drawing, island list (go, delete, base protected), select-to-group with name, groups (rename, ungroup), new island, import .json, layer name and feet per square, new layer, delete layer (base protected), switch the viewed layer. | S040 | `src/components/PhoneChrome.jsx` |
-| | S042 | S | Group by touch | The Group flow (`tool === 'group'`, `toggleGroupCandidate`, `confirmGroup`) driven from the phone screen, with group drag via the existing group handle in Edit. | S041 | `src/components/GameView.jsx`, `src/components/MapBoard.jsx` |
+| ✅ | S040 | U | Edit mode on phones | Edit in the DM bottom bar; drag an island by touch (existing `onMoveIsland` + snapping); touching edges highlighted; a bottom sheet for the selected island: name, width, height, background upload, PNG and .json download, island conditions, day/night, group/ungroup, delete. | S005 | `src/components/PhoneChrome.jsx`, `src/components/MapBoard.jsx` |
+| ✅ | S041 | U | Islands & maps screen | The DM's Atlas: map tabs per layer, the layer drawing, island list (go, delete, base protected), select-to-group with name, groups (rename, ungroup), new island, import .json, layer name and feet per square, new layer, delete layer (base protected), switch the viewed layer. | S040 | `src/components/PhoneChrome.jsx` |
+| ✅ | S042 | S | Group by touch | The Group flow (`tool === 'group'`, `toggleGroupCandidate`, `confirmGroup`) driven from the phone screen, with group drag via the existing group handle in Edit. | S041 | `src/components/GameView.jsx`, `src/components/MapBoard.jsx` |
 | | S043 | T | Slice 10 check | Move and snap two islands edge to edge; resize; upload a background; add a condition; group and move the group; create, rename, switch and delete a layer; import an island. | S042 | — |
 
 ### Slice 11 — DM: run the table, table menu and creature card

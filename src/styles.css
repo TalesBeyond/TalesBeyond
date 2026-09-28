@@ -4600,3 +4600,34 @@ body:has(.game-screen.phone) .book-card {
 .phone-add-body .token-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .phone-add-body .field, .phone-add-body .btn { min-height: 44px; }
 .phone-add-body .side-btn { min-height: 44px; }
+
+/* Edit and Group modes on a phone. */
+.phone-edit-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 116px;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink-950) 94%, transparent);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.phone-edit-text { font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
+.phone-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.phone-edit-actions button { flex: 1 1 auto; min-height: 44px; }
+.game-screen.phone .group-confirm-panel { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; width: auto; max-width: none; border-radius: 16px; }
+.game-screen.phone .group-confirm-panel .btn { min-height: 44px; }
+.phone-atlas-manage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
+}
+.game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
+
+/* Condition badges in phone sheets get full-size touch targets. */
+body:has(.game-screen.phone) .condition-row { gap: 6px; }
+body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }

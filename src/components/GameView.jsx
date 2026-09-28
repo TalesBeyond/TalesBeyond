@@ -88,6 +88,7 @@ import {
   PhoneChestSheet,
   PhonePlayerMenu,
   PhonePartySheet,
+  PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
 import DiceModal from './DiceModal.jsx';
@@ -2570,7 +2571,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             entities={layerEntities}
             activeIslandId={activeIslandId}
             onPick={flyToIsland}
-            onAddIsland={isHost ? () => setPhoneSheet('menu') : null}
+            onAddIsland={isHost ? () => emitFx({ type: 'open', panel: 'islands' }) : null}
           />
         </>
       ) : (
@@ -2642,6 +2643,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 onOpen={() => setPhoneSheet('atlas')}
               />
               <PhoneIslandConditions island={activeIsland} />
+              {isHost && (tool === 'edit' || tool === 'group') && (
+                <PhoneEditBar
+                  tool={tool}
+                  islandName={activeIsland?.name}
+                  onSettings={() => emitFx({ type: 'open', panel: 'map' })}
+                  onGroup={() => setTool('group')}
+                  onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
+                />
+              )}
               {plannedMoveInfo ? (
                 <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
               ) : (
@@ -2933,7 +2943,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 setHostViewLayerId(id);
                 setPhoneSheet(null);
               }}
-              onManage={() => setPhoneSheet('menu')}
+              onManage={() => {
+                setPhoneSheet(null);
+                emitFx({ type: 'open', panel: 'layers' });
+              }}
               onClose={() => setPhoneSheet(null)}
             />
           )}
@@ -2949,6 +2962,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 flyToIsland(id);
               }}
               onClose={() => setPhoneSheet(null)}
+              onManageIslands={
+                isHost
+                  ? () => {
+                      setPhoneSheet(null);
+                      emitFx({ type: 'open', panel: 'islands' });
+                    }
+                  : null
+              }
+              onManageLayers={
+                isHost
+                  ? () => {
+                      setPhoneSheet(null);
+                      emitFx({ type: 'open', panel: 'layers' });
+                    }
+                  : null
+              }
             />
           )}
         </>

@@ -386,7 +386,7 @@ function LayerThumb({ layer }) {
 
 // ---------- atlas: every island on the layer ----------
 
-export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLabel, onPick, onClose }) {
+export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLabel, onPick, onClose, onManageIslands, onManageLayers }) {
   const [box, setBox] = useState({ w: 358, h: 300 });
   const ref = React.useRef(null);
   useEffect(() => {
@@ -486,6 +486,20 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
           })}
         </ul>
         <p className="phone-caption">Tokens walk straight across where two islands touch. Doors lead to other maps.</p>
+        {(onManageIslands || onManageLayers) && (
+          <div className="phone-atlas-manage">
+            {onManageIslands && (
+              <button type="button" className="phone-btn-ghost" onClick={onManageIslands}>
+                Manage islands
+              </button>
+            )}
+            {onManageLayers && (
+              <button type="button" className="phone-btn-ghost" onClick={onManageLayers}>
+                Manage maps
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -915,5 +929,34 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
         </p>
       )}
     </PhoneSheet>
+  );
+}
+
+// ---------- the DM's Edit / Group mode bar (phone) ----------
+
+export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDone }) {
+  const grouping = tool === 'group';
+  return (
+    <div className="phone-edit-bar" role="status">
+      <span className="phone-edit-text">
+        <b>{grouping ? 'Group islands.' : 'Edit mode.'}</b>{' '}
+        {grouping ? 'Tap islands to add them, then name the group below.' : 'Drag an island to move it; edges snap together where they touch.'}
+      </span>
+      <div className="phone-edit-actions">
+        {!grouping && (
+          <button type="button" className="phone-btn-ghost" onClick={onSettings}>
+            {islandName ? `${islandName} settings` : 'Island settings'}
+          </button>
+        )}
+        {!grouping && (
+          <button type="button" className="phone-btn-ghost" onClick={onGroup}>
+            Group
+          </button>
+        )}
+        <button type="button" className="phone-btn-primary" onClick={onDone}>
+          {grouping ? 'Back to Edit' : 'Done'}
+        </button>
+      </div>
+    </div>
   );
 }
