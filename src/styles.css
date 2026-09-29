@@ -898,7 +898,7 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 22;
+  z-index: 24; /* its popovers go over the Draw mode bar */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -926,10 +926,13 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .draw-bar-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
 .draw-bar-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
 .draw-clear-popover { width: 240px; padding: 8px; }
-/* The active tool's slider (DrawingBar.jsx ToolSlider): Fill's opacity. */
+/* The active tool's slider (DrawingBar.jsx ToolSlider): the Pencil's
+   thickness, Fill's opacity. */
 .draw-tool-slider-pop {
   position: absolute;
   left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
   width: 200px;
   padding: 10px 12px;
   background: var(--ink-950);
@@ -941,6 +944,8 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .draw-tool-slider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .draw-tool-slider-head b { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-weight: 600; color: var(--parchment-100); }
 .draw-tool-slider input { width: 100%; margin: 0; accent-color: var(--gold-hi); }
+.draw-tool-slider-head b { min-height: 18px; }
+.draw-tool-slider-line { width: 40px; border-radius: 999px; }
 .draw-tool-slider-swatch {
   width: 16px;
   height: 16px;

@@ -7,7 +7,8 @@
 // it paints its whole island one colour, under the grid.
 
 // Line thickness presets, as a fraction of one grid square — chalk on the
-// floor, so it scales with the map.
+// floor, so it scales with the map. A style's `width` is a preset's id or,
+// from the Pencil's Thickness slider, a number of squares.
 export const DRAW_WIDTHS = [
   { id: 'fine', label: 'Fine', squares: 0.06 },
   { id: 'medium', label: 'Medium', squares: 0.12 },
@@ -26,8 +27,13 @@ export const PENCIL_MAX_POINTS = 400;
 // Points closer than this to the simplified line (in squares) are dropped.
 const PENCIL_TOLERANCE = 0.04;
 
-export function drawWidthSquares(widthId) {
-  return (DRAW_WIDTHS.find((w) => w.id === widthId) || DRAW_WIDTHS[1]).squares;
+// The Thickness slider's range, in squares.
+export const DRAW_WIDTH_MIN = 0.03;
+export const DRAW_WIDTH_MAX = 0.6;
+
+export function drawWidthSquares(width) {
+  if (typeof width === 'number' && Number.isFinite(width)) return Math.max(DRAW_WIDTH_MIN, Math.min(DRAW_WIDTH_MAX, width));
+  return (DRAW_WIDTHS.find((w) => w.id === width) || DRAW_WIDTHS[1]).squares;
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;

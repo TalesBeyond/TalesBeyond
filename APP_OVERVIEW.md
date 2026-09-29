@@ -329,8 +329,9 @@ map; every seated player sees the result, and only the DM can draw.
   drawing it touches, whole). A press in Draw always draws, even on a token;
   right-drag still pans.
 - **Style**: a colour wheel with brightness, 8 swatches and the last 5
-  colours used; 4 thicknesses; a see-through fill for circles and
-  rectangles. **Snap to grid** puts line ends and circle centres on grid
+  colours used; 4 thicknesses, and with the Pencil a Thickness slider beside
+  the bar (a style's `width` is then a number of squares); a see-through
+  fill for circles and rectangles. **Snap to grid** puts line ends and circle centres on grid
   corners or square centres, radii on whole squares and rectangle corners on
   grid corners. A feet label (the ruler's look) shows while drawing or
   resizing.

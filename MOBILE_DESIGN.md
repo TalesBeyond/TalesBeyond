@@ -79,7 +79,7 @@ real-device pass and on REQ-008.
   groups below can be renamed or ungrouped.
 - **Draw** (`DrawingBar.jsx` `PhoneDrawBar`): a two-row bar where the token card
   sits — Pencil, Line, Circle, Rectangle, Fill island, Select, Eraser; the
-  active tool's slider (Fill's opacity) as its own row; then Style (the
+  active tool's slider (the Pencil's thickness, Fill's opacity) as its own row; then Style (the
   "Drawing style" sheet: colour wheel, swatches, thickness, fill, Snap to
   grid, Clear this island / this map), Undo, Redo, Done. One finger draws; a
   second finger cancels the unfinished stroke, so two-finger pan and pinch
