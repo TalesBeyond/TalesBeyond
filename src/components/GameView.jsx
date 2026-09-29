@@ -7,6 +7,7 @@ import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from 
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
+import { islandConditionKeys } from '../data/islandConditions.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
 import { RollToasts, RollLog } from './RollFeed.jsx';
@@ -2080,7 +2081,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Merge Islands tool picks on the map (pendingGroupIslandIds).
   function confirmGroup(name, islandIds = pendingGroupIslandIds) {
     if (!isHost || islandIds.length < 2) return;
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds };
+    // The group starts with every condition its islands had; from here on
+    // the group's conditions stand for all of them.
+    const conditions = [...new Set(islandIds.flatMap((id) => currentLayer.islands[id]?.conditions || []))];
+    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds, conditions };
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -2109,8 +2113,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
 
   function renameGroup(groupId, name) {
+    updateGroup(groupId, { name: name.trim() || 'Untitled Group' });
+  }
+
+  function updateGroup(groupId, patch) {
     if (!isHost) return;
-    const patch = { name: name.trim() || 'Untitled Group' };
     dispatch({ type: 'UPDATE_ISLAND_GROUP', layerId: currentLayerId, groupId, patch });
     if (isRemote) {
       const existing = currentLayer.islandGroups?.[groupId];
@@ -2790,6 +2797,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onImportIsland={importIsland}
         onUngroupIslands={ungroupIslands}
         onRenameGroup={renameGroup}
+        onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}
+        onGroupConditions={(groupId, conditions) => updateGroup(groupId, { conditions })}
         heroes={heroes}
         onUpdateEntity={updateEntity}
         initiativeHeroes={initiativeHeroes}
@@ -2948,7 +2957,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 activeIslandId={activeIslandId}
                 onOpen={() => setPhoneSheet('atlas')}
               />
-              <PhoneIslandConditions island={activeIsland} />
+              <PhoneIslandConditions conditions={islandConditionKeys(currentLayer, activeIslandId)} />
               {isHost && (tool === 'edit' || tool === 'group') && (
                 <PhoneEditBar
                   tool={tool}
@@ -3311,6 +3320,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 .filter((p) => p.id !== state.session.hostPlayerId)
                 .map((p) => (p.id === me.id ? `${p.name} (you)` : p.name))}
               island={activeIsland}
+              islandConditions={islandConditionKeys(currentLayer, activeIslandId)}
               feetPerSquare={currentLayer.feetPerSquare}
               theme={theme}
               onThemeChange={onThemeChange}

@@ -195,6 +195,8 @@ export default function Toolbar({
   onImportIsland,
   onUngroupIslands,
   onRenameGroup,
+  onIslandConditions,
+  onGroupConditions,
   heroes,
   onUpdateEntity,
   initiativeHeroes,
@@ -561,6 +563,8 @@ export default function Toolbar({
                   onImportIsland={onImportIsland}
                   onUngroupIslands={onUngroupIslands}
                   onRenameGroup={onRenameGroup}
+                  onIslandConditions={onIslandConditions}
+                  onGroupConditions={onGroupConditions}
                   onSwitchToEdit={() => {
                     onToolChange('edit');
                     setShowIslands(false);
@@ -907,22 +911,18 @@ function DayNightPopover({ override, hasClock, hasCycle, onSelect, onClose }) {
   );
 }
 
-// The island's condition states - fog, darkness, fire, and so on. Toggling
-// one applies immediately (like a token's conditions), not via "Apply
-// changes", and everyone at the table sees the resulting badges on the map.
-function IslandConditionsField({ island, isHost, onPatch }) {
-  const active = island.conditions || [];
-
+// An island's or a group's condition states - fog, darkness, fire, and so
+// on - in the Islands dialog. Toggling one applies immediately (like a
+// token's conditions), and everyone at the table sees the resulting badges
+// on the map.
+function ConditionPicker({ active = [], onChange }) {
   function toggle(key) {
-    if (!isHost) return;
-    onPatch({ conditions: active.includes(key) ? active.filter((k) => k !== key) : [...active, key] });
+    onChange(active.includes(key) ? active.filter((k) => k !== key) : [...active, key]);
   }
+  const labels = active.map((key) => ISLAND_CONDITIONS.find((c) => c.key === key)?.label).filter(Boolean);
 
   return (
-    <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Island conditions {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
-      </label>
+    <div className="island-row-conditions">
       <div className="condition-row">
         {ISLAND_CONDITIONS.map((c) => (
           <button
@@ -931,27 +931,14 @@ function IslandConditionsField({ island, isHost, onPatch }) {
             className={`condition-badge${active.includes(c.key) ? ' active' : ''}`}
             style={{ backgroundImage: `url(${c.imageUrl})` }}
             title={`${c.label} — ${c.description}`}
+            aria-label={c.label}
             aria-pressed={active.includes(c.key)}
-            disabled={!isHost}
             onClick={() => toggle(c.key)}
           />
         ))}
       </div>
-      {active.length > 0 && (
-        <ul className="condition-list" style={{ marginBottom: 6 }}>
-          {active.map((key) => {
-            const c = ISLAND_CONDITIONS.find((cond) => cond.key === key);
-            if (!c) return null;
-            return (
-              <li key={key} title={c.description}>
-                <img src={c.imageUrl} alt="" width={16} height={16} />
-                {c.label}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </>
+      <span className="island-row-note">{labels.length ? labels.join(' · ') : 'No conditions'}</span>
+    </div>
   );
 }
 
@@ -991,8 +978,6 @@ function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIsla
           <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} disabled={!isHost} />
         </div>
       </div>
-
-      <IslandConditionsField island={island} isHost={isHost} onPatch={onIslandPatch} />
 
       <SoundField audio={audio} targetKind="layer" targetId={layer.id} label="Layer sound (plays for players on this layer)" />
 
@@ -1140,9 +1125,12 @@ function IslandManagerPopover({
   onImportIsland,
   onUngroupIslands,
   onRenameGroup,
+  onIslandConditions,
+  onGroupConditions,
   onSwitchToEdit,
   onClose,
 }) {
+  const groupOf = (islandId) => Object.values(islandGroups || {}).find((g) => g.islandIds.includes(islandId));
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
@@ -1171,8 +1159,10 @@ function IslandManagerPopover({
         const isSole = islandOrder.length === 1;
         const isBase = i === 0 && !isSole;
         const isActive = id === activeIslandId;
+        const group = groupOf(id);
         return (
-          <div key={id} className="player-row" style={{ justifyContent: 'space-between' }}>
+          <div key={id} className="island-row">
+          <div className="player-row" style={{ justifyContent: 'space-between' }}>
             <span className="player-name">{island.name}</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
@@ -1195,6 +1185,14 @@ function IslandManagerPopover({
               </button>
             </div>
           </div>
+          {group ? (
+            <span className="island-row-note">
+              In <b>{group.name}</b> — its conditions are set on the group below.
+            </span>
+          ) : (
+            onIslandConditions && <ConditionPicker active={island.conditions || []} onChange={(keys) => onIslandConditions(id, keys)} />
+          )}
+          </div>
         );
       })}
 
@@ -1202,7 +1200,7 @@ function IslandManagerPopover({
         <>
           <div className="section-label">Groups on this layer</div>
           {Object.values(islandGroups).map((group) => (
-            <GroupRow key={group.id} group={group} onRename={onRenameGroup} onUngroup={onUngroupIslands} />
+            <GroupRow key={group.id} group={group} onRename={onRenameGroup} onUngroup={onUngroupIslands} onConditions={onGroupConditions} />
           ))}
         </>
       )}
@@ -1241,12 +1239,14 @@ function IslandManagerPopover({
 
 // One row per island group in IslandManagerPopover — an inline rename
 // field (local-state-then-Save, same shape as MapSettingsPopover's name
-// field) plus an Ungroup button. Ungrouping only dissolves the group;
-// member islands are untouched.
-function GroupRow({ group, onRename, onUngroup }) {
+// field) plus an Ungroup button, then the group's conditions, which stand
+// for every member island. Ungrouping only dissolves the group; member
+// islands are untouched and get their own conditions back.
+function GroupRow({ group, onRename, onUngroup, onConditions }) {
   const [name, setName] = useState(group.name);
   const dirty = name !== group.name;
   return (
+    <div className="island-row">
     <div className="player-row" style={{ justifyContent: 'space-between' }}>
       <input className="field" style={{ marginBottom: 0 }} value={name} onChange={(e) => setName(e.target.value)} />
       <div style={{ display: 'flex', gap: 6 }}>
@@ -1259,6 +1259,8 @@ function GroupRow({ group, onRename, onUngroup }) {
           Ungroup
         </button>
       </div>
+    </div>
+    {onConditions && <ConditionPicker active={group.conditions || []} onChange={(keys) => onConditions(group.id, keys)} />}
     </div>
   );
 }

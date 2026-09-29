@@ -84,3 +84,17 @@ export const ISLAND_CONDITIONS = CATALOG.map((c) => ({ ...c, imageUrl: makeIconD
 export function getIslandCondition(key) {
   return ISLAND_CONDITIONS.find((c) => c.key === key);
 }
+
+// The group an island belongs to on its layer, if any.
+export function islandGroupOf(layer, islandId) {
+  return Object.values(layer?.islandGroups || {}).find((g) => g.islandIds.includes(islandId)) || null;
+}
+
+// The conditions in force on an island: its group's while it's in one (the
+// island's own are kept, unseen, and come back if the group is undone),
+// otherwise its own.
+export function islandConditionKeys(layer, islandId) {
+  const group = islandGroupOf(layer, islandId);
+  if (group) return group.conditions || [];
+  return layer?.islands?.[islandId]?.conditions || [];
+}

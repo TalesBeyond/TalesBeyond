@@ -1625,6 +1625,14 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--parchment-100);
 }
 
+/* The Islands dialog: each island (or group) row, with its conditions
+   picker underneath. */
+.island-row { padding: 2px 0 10px; border-bottom: 1px solid var(--ink-800); }
+.island-row:last-of-type { border-bottom: 0; }
+.island-row-conditions { display: flex; flex-direction: column; gap: 2px; padding: 0 6px; }
+.island-row-conditions .condition-row { margin-bottom: 0; }
+.island-row-note { display: block; padding: 0 6px; font-size: 12px; color: var(--parchment-300); }
+.island-row-conditions .island-row-note { padding: 0; }
 .condition-list {
   list-style: none;
   margin: 4px 0 0;
@@ -2145,6 +2153,9 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   gap: 3px;
   z-index: 2;
 }
+/* A group's badges sit over the group's box, above its members' own
+   day/night badges. */
+.group-conditions { top: -34px; right: 0; pointer-events: auto; }
 .island-conditions img {
   width: 26px;
   height: 26px;

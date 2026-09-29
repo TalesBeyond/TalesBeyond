@@ -891,11 +891,12 @@ export default function MapBoard({
                 single shared title (rendered below) stands in for it. */}
             {!groupIdByIslandId.has(id) && <div className="island-label">{island.name}</div>}
             {/* Condition badges (fog, fire, ...) sit on the island's top edge for
-                everyone - a grouped island keeps its own, unlike the label. */}
-            {(phase || island.conditions?.length > 0) && (
+                everyone. A grouped island shows only its day/night badge: the
+                group's conditions sit on the group's title instead. */}
+            {(phase || (!groupIdByIslandId.has(id) && island.conditions?.length > 0)) && (
               <div className="island-conditions">
                 {phase && <img src={phase.imageUrl} alt={phase.label} title={`${phase.label} — ${phase.description}`} />}
-                {(island.conditions || []).map((key) => {
+                {(groupIdByIslandId.has(id) ? [] : island.conditions || []).map((key) => {
                   const c = getIslandCondition(key);
                   if (!c) return null;
                   return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
@@ -952,6 +953,15 @@ export default function MapBoard({
               />
             )}
             <div className="group-label">{group.name}</div>
+            {group.conditions?.length > 0 && (
+              <div className="island-conditions group-conditions">
+                {group.conditions.map((key) => {
+                  const c = getIslandCondition(key);
+                  if (!c) return null;
+                  return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                })}
+              </div>
+            )}
           </div>
         );
       })}

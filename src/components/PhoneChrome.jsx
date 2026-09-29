@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getIslandCondition } from '../data/islandConditions.js';
+import { getIslandCondition, islandConditionKeys } from '../data/islandConditions.js';
 import { PALETTES } from '../state/theme.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { attackPreview, resolveAttackRoll, weaponStatsFor, ATTACK_BEAT_MS } from '../utils/combat.js';
@@ -214,8 +214,10 @@ export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePad
 
 // ---------- the island's conditions (Fog, Darkness…) ----------
 
-export function PhoneIslandConditions({ island }) {
-  const labels = (island?.conditions || []).map((key) => getIslandCondition(key)?.label).filter(Boolean);
+// `conditions`: the keys in force (islandConditionKeys — a group's, for a
+// grouped island).
+export function PhoneIslandConditions({ conditions = [] }) {
+  const labels = conditions.map((key) => getIslandCondition(key)?.label).filter(Boolean);
   if (!labels.length) return null;
   return (
     <div className="phone-conditions" role="status" aria-label={`Island conditions: ${labels.join(', ')}`}>
@@ -610,7 +612,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
             if (!i) return null;
             const who = occupantsOf(entities, id);
             const group = groupNameOf(layer, id);
-            const conds = (i.conditions || []).map((k) => getIslandCondition(k)?.label).filter(Boolean);
+            const conds = islandConditionKeys(layer, id).map((k) => getIslandCondition(k)?.label).filter(Boolean);
             return (
               <li key={id}>
                 <button type="button" onClick={() => onPick(id)}>
@@ -981,9 +983,9 @@ export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, 
 
 // ---------- the player's table menu ----------
 
-export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onClose }) {
+export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, islandConditions = [], feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onClose }) {
   const [confirming, setConfirming] = useState(false);
-  const islandConds = (island?.conditions || []).map((k) => getIslandCondition(k)?.label).filter(Boolean);
+  const islandConds = islandConditions.map((k) => getIslandCondition(k)?.label).filter(Boolean);
   return (
     <PhoneSheet title="Table menu" onClose={onClose}>
       <div className="phone-sheet-pad">
