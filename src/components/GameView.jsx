@@ -1588,6 +1588,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         layerOrder: [...state.layerOrder, layer.id],
       });
     }
+    return layer.id;
   }
 
   // Places a freshly built island (from createIsland or importIsland) next
@@ -2730,6 +2731,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const tokenSidebarEl = (
         <TokenSidebar
           onAddEntity={addEntity}
+          onCreateLayer={isHost ? createLayer : null}
           layers={state.layers}
           layerOrder={state.layerOrder}
           currentLayerId={currentLayerId}

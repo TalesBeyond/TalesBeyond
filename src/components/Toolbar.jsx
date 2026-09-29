@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
+import { useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
@@ -116,6 +117,7 @@ const ICON_PATHS = {
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
+  hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
 };
 
 // How the bar sheds width when it can't fit on one row, cheapest first. Each
@@ -219,6 +221,7 @@ export default function Toolbar({
   const [showDayNight, setShowDayNight] = useState(false);
   // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
+  const hintPrefs = useHintPrefs();
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Keep the bar on a single row: try each density from roomiest to
@@ -752,7 +755,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="config" />}
         label="Configurations"
-        title="Save, export, import, close, and leave"
+        title="Save, export, import, close, hints, and leave"
         open={openMenu === 'configurations'}
         onToggle={() => toggleMenu('configurations')}
         onClose={closeMenu}
@@ -772,6 +775,20 @@ export default function Toolbar({
               title={session.isOpen ? 'Close table to new joins' : 'Table closed — reopen'}
             />
           </>
+        )}
+        <ToolCard
+          icon={<Icon name="hints" />}
+          label={hintPrefs.show ? 'Hints on' : 'Hints off'}
+          active={hintPrefs.show}
+          onClick={() => pick(() => hintPrefs.setShow(!hintPrefs.show))}
+          title={
+            hintPrefs.show
+              ? 'Show hints and tips (on this device) — click to turn tips and mode bars off. Inline hints stay.'
+              : 'Hints and tips are off on this device — click to turn them back on'
+          }
+        />
+        {hintPrefs.show && hintPrefs.anyDismissed && (
+          <ToolCard icon={<Icon name="refresh" />} label="Tips again" onClick={() => pick(hintPrefs.resetDismissed)} title="Show every tip and mode bar you've hidden again" />
         )}
       </ToolMenu>
 

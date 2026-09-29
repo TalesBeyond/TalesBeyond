@@ -413,3 +413,25 @@ export function saveDrawPrefs(prefs) {
     // storage blocked or full - the choices just won't survive a refresh
   }
 }
+
+// Hints and tips (components/Hints.jsx) in this browser: whether tips and
+// mode bars show at all, and which tips / mode bars were already dismissed.
+const HINT_PREFS_KEY = 'hearthbound:hints';
+
+export function loadHintPrefs() {
+  try {
+    const raw = window.localStorage.getItem(HINT_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveHintPrefs(prefs) {
+  try {
+    window.localStorage.setItem(HINT_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
