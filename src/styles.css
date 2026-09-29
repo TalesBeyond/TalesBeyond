@@ -3750,8 +3750,50 @@ button.card-plaque-value { border-style: solid; }
 }
 button.card-notes { border-style: solid; }
 .card-notes-input { width: 100%; min-height: 96px; padding: 8px 10px; font-family: var(--font-display); font-size: 15px; font-style: italic; resize: vertical; }
-.card-remove { align-self: flex-start; min-height: 36px; padding: 0 14px; border: 1px solid #9b2d20; border-radius: 8px; background: transparent; color: #9b2d20; font-size: 13px; font-weight: 700; cursor: pointer; }
-.card-remove:hover { background: #9b2d20; color: #fbeccb; }
+/* Remove from the table: a trash icon at the top of the card, then a
+   "Remove" to confirm. */
+.card-remove-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(201, 162, 74, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #e7b9a8;
+  cursor: pointer;
+}
+.card-remove-icon:hover,
+.card-remove-icon:focus-visible { border-color: #c0392b; background: #9b2d20; color: #fbeccb; }
+.card-remove-ask { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
+.card-remove-yes {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #9b2d20;
+  color: #fbeccb;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.card-remove-no {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(201, 162, 74, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #f2e9d4;
+  font-size: 16px;
+  cursor: pointer;
+}
+.phone-creature-remove { align-self: flex-start; margin-left: auto; }
+.phone-creature-remove.card-remove-icon,
+.phone-creature-remove .card-remove-no { width: 44px; height: 44px; }
+.phone-creature-remove .card-remove-yes { min-height: 44px; padding: 0 16px; font-size: 14px; }
 
 .target-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; background: var(--ink-950); border: 1px solid var(--ink-700); border-radius: 12px; }
 .target-preview div { display: flex; flex-direction: column; gap: 2px; }

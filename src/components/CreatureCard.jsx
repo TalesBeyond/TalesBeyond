@@ -205,6 +205,43 @@ function sizeName(size) {
   return label.match(/\(([^)]+)\)/)?.[1] || `${size || 1} × ${size || 1}`;
 }
 
+// The DM's "remove this token from the table", a trash icon at the top of
+// the card. Removing can't be undone, so the first press asks and the
+// second removes; it stands down on its own after a few seconds.
+export function RemoveTokenButton({ name, onRemove, className = '' }) {
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (!asking) return undefined;
+    const timer = setTimeout(() => setAsking(false), 4000);
+    return () => clearTimeout(timer);
+  }, [asking]);
+  if (asking) {
+    return (
+      <span className={`card-remove-ask ${className}`} role="group" aria-label={`Remove ${name} from the table?`}>
+        <button type="button" className="card-remove-yes" onClick={onRemove}>
+          Remove
+        </button>
+        <button type="button" className="card-remove-no" aria-label="Keep it" title="Keep it" onClick={() => setAsking(false)}>
+          ×
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`card-remove-icon ${className}`}
+      aria-label={`Remove ${name} from the table`}
+      title="Remove from the table"
+      onClick={() => setAsking(true)}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+      </svg>
+    </button>
+  );
+}
+
 // canEdit: this viewer may edit the card's own fields (the DM). The tab
 // contents handle their own permissions (a hero's owner edits Battle,
 // Spells and Bag). showStats: false hides a monster's initiative, speed and
@@ -223,6 +260,7 @@ export default function CreatureCard({
   tabs = [],
   tabNote,
   notice = null, // a hint under the type line (e.g. a hero nobody plays yet)
+  onRemove = null, // the DM's remove-from-table; shows the trash icon
 }) {
   const isMob = entity.kind === 'mob';
   const [tabKey, setTabKey] = useState(tabs[0]?.key);
@@ -342,6 +380,7 @@ export default function CreatureCard({
               onCommit={(level) => updateSheet({ level })}
             />
           )}
+          {onRemove && <RemoveTokenButton name={entity.name} onRemove={() => onRemove(entity.id)} />}
         </header>
 
         <div className="target-card-art" style={{ backgroundImage: `url(${entity.imageUrl})` }}>

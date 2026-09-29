@@ -604,7 +604,7 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
         {
           key: 'dm',
           label: 'DM',
-          content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} onRemove={onRemove} placeholder="Private notes about this monster…" />,
+          content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this monster…" />,
         },
       ]
     : [];
@@ -616,6 +616,7 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
       updateSheet={updateSheet}
       onUpdate={onUpdate}
       canEdit={isHost}
+      onRemove={isHost ? onRemove : null}
       showStats={isHost}
       typeLine={`Monster · square (${entity.col}, ${entity.row})`}
       actor={encounterActor}
@@ -658,7 +659,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
     { key: 'bag', label: 'Bag', content: locked(canEditOwnTabs, <BagTab sheet={sheet} updateSheet={updateSheet} />) },
     { key: 'skills', label: 'Skills', content: locked(isHost, <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />) },
     ...(isHost
-      ? [{ key: 'dm', label: 'DM', content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} onRemove={onRemove} placeholder="Private notes about this player…" /> }]
+      ? [{ key: 'dm', label: 'DM', content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this player…" /> }]
       : []),
   ];
 
@@ -690,6 +691,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
       updateSheet={updateSheet}
       onUpdate={onUpdate}
       canEdit={isHost}
+      onRemove={isHost ? onRemove : null}
       showDeathSaves
       typeLine={`Hero · square (${entity.col}, ${entity.row})`}
       owner={owner}
@@ -709,9 +711,10 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
   );
 }
 
-// The DM-only tab on a hero's or monster's card: its sound, private notes
-// (click-to-edit, like the rest of the card) and removing the token.
-export function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
+// The DM-only tab on a hero's or monster's card: its sound and private notes
+// (click-to-edit, like the rest of the card). Removing the token is the trash
+// icon at the top of the card.
+export function DmTab({ entity, audio, onUpdate, placeholder }) {
   return (
     <div className="card-dm">
       <span className="card-dm-badge">Only you see this</span>
@@ -729,9 +732,6 @@ export function DmTab({ entity, audio, onUpdate, onRemove, placeholder }) {
           onCommit={(dmNotes) => onUpdate(entity.id, { dmNotes })}
         />
       </div>
-      <button type="button" className="card-remove" onClick={() => onRemove(entity.id)}>
-        Remove token
-      </button>
     </div>
   );
 }
