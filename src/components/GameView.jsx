@@ -464,9 +464,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // get mutated from a Presence callback that isn't triggered by React.
   const [hostAbsentBanner, setHostAbsentBanner] = useState(null);
   const hostAbsentTimersRef = useRef({ graceTimer: null, endTimer: null });
+  // Whether the host was in the channel at the last presence sync, so a
+  // player can tell when the host (re)appears.
+  const hostSeenRef = useRef(false);
 
   function handleHostPresenceChange(hostPresent) {
     const timers = hostAbsentTimersRef.current;
+    // The host just showed up (this player opened the table first, or the
+    // host reloaded): anything asked for before went unanswered, so ask
+    // for the table as it is now.
+    if (hostPresent && !hostSeenRef.current) guestChannelRef.current?.sendStateRequest(me.id);
+    hostSeenRef.current = hostPresent;
     if (hostPresent) {
       if (timers.graceTimer) clearTimeout(timers.graceTimer);
       if (timers.endTimer) clearTimeout(timers.endTimer);
@@ -1002,15 +1010,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       guestChannelRef.current?.sendStateSnapshot(requesterId, toGuestSnapshot(stateRef.current));
     }
 
-    // Player-side only: a channel recovery that isn't the very first join
-    // means a real drop happened in between, so ask the host for current
-    // state rather than trusting whatever this browser still has —
-    // mirrors REQ-001's resync intent, but over broadcast/state_snapshot
-    // instead of fetchTableSnapshot, since a guest table has no Postgres
-    // row to fetch from.
-    function handleGuestStatusChange(status, isInitialJoin) {
+    // Player-side only: every time the channel connects — opening the
+    // table after a reload as much as recovering from a drop — ask the host
+    // for current state rather than trusting whatever this browser saved
+    // last, which misses anything the DM changed meanwhile. Mirrors
+    // REQ-001's resync intent, but over broadcast/state_snapshot instead of
+    // fetchTableSnapshot, since a guest table has no Postgres row to fetch
+    // from. If the host isn't there yet, handleHostPresenceChange asks again
+    // when they arrive.
+    function handleGuestStatusChange(status) {
       if (isGuestHost) return;
-      if (status === 'SUBSCRIBED' && !isInitialJoin) {
+      if (status === 'SUBSCRIBED') {
         guestChannelRef.current?.sendStateRequest(me.id);
       }
     }
