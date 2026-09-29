@@ -9,6 +9,7 @@ import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
+import { ModeBar } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -2938,6 +2939,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          {/* While a tool changes what a press does, say so across the top of
+              the map (the phone's Edit and Draw have their own bars). */}
+          {tool === 'ruler' && (
+            <ModeBar id="ruler" className="map-mode-bar" label="Ruler." doneLabel="Play" onDone={() => setTool('play')}>
+              Drag from one square to another. Every second diagonal counts as {(currentLayer.feetPerSquare || 5) * 2} ft.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'edit' && (
+            <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
+              Drag an island to move it. Where edges touch, tokens walk across.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'group' && (
+            <ModeBar id="group" className="map-mode-bar" label="Merge islands." doneLabel="Cancel" onDone={cancelGroup}>
+              Click islands to add them to a group. A group moves together and shares one name.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'draw' && (
+            <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
+              Everyone at the table sees what you draw. Right-drag moves the map.
+            </ModeBar>
+          )}
           {isHost && !isPhone && tool === 'draw' && (
             <DrawingBar
               settings={drawSettings}

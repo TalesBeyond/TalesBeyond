@@ -4982,6 +4982,24 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 .mode-bar-icon { flex-shrink: 0; color: var(--gold-hi); }
+/* Over the map: top-left on desktop, clear of the drawing bar; below the
+   turn order when one is showing. */
+.map-mode-bar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 23;
+  width: min(520px, calc(100% - 32px));
+  box-sizing: border-box;
+}
+.stage-wrap:has(.draw-bar) .map-mode-bar { left: 76px; width: min(520px, calc(100% - 92px)); }
+.stage-wrap:has(.hud-initiative) .map-mode-bar { top: 84px; }
+.stage-wrap:has(.turn-ribbon) .map-mode-bar { top: 136px; }
+.game-screen.phone .map-mode-bar { top: 116px; left: 12px; right: 12px; width: auto; }
+.game-screen.phone .stage-wrap:has(.hud-initiative) .map-mode-bar { top: 116px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .map-mode-bar { top: 12px; left: 116px; right: 68px; }
+}
 .mode-bar-text { flex-grow: 1; font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
 .mode-bar-done,
 .mode-bar-close {
