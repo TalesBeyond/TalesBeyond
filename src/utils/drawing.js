@@ -1,12 +1,14 @@
 // The DM's Draw tool — pure helpers shared by the map (MapBoard.jsx), the
 // drawing bar and the phone screens. A drawing is
-// { id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect', geometry, style }
+// { id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect' | 'fill', geometry, style }
 // with geometry in grid squares from its island's top-left corner (see
 // supabase/migrations/20250101000052_drawings.sql for each kind's shape), so
-// zoom and the island's cell size never change it.
+// zoom and the island's cell size never change it. A 'fill' has no geometry:
+// it paints its whole island one colour, under the grid.
 
 // Line thickness presets, as a fraction of one grid square — chalk on the
-// floor, so it scales with the map.
+// floor, so it scales with the map. A style's `width` is a preset's id or,
+// from the Pencil's Thickness slider, a number of squares.
 export const DRAW_WIDTHS = [
   { id: 'fine', label: 'Fine', squares: 0.06 },
   { id: 'medium', label: 'Medium', squares: 0.12 },
@@ -14,7 +16,8 @@ export const DRAW_WIDTHS = [
   { id: 'heavy', label: 'Heavy', squares: 0.32 },
 ];
 
-export const DEFAULT_DRAW_STYLE = { color: '#c0392b', width: 'medium', fill: false };
+// `opacity` is Fill's: how much of the map art shows through (1 = solid).
+export const DEFAULT_DRAW_STYLE = { color: '#c0392b', width: 'medium', fill: false, opacity: 1 };
 
 // How see-through a filled circle or rectangle is.
 export const DRAW_FILL_OPACITY = 0.28;
@@ -24,8 +27,13 @@ export const PENCIL_MAX_POINTS = 400;
 // Points closer than this to the simplified line (in squares) are dropped.
 const PENCIL_TOLERANCE = 0.04;
 
-export function drawWidthSquares(widthId) {
-  return (DRAW_WIDTHS.find((w) => w.id === widthId) || DRAW_WIDTHS[1]).squares;
+// The Thickness slider's range, in squares.
+export const DRAW_WIDTH_MIN = 0.03;
+export const DRAW_WIDTH_MAX = 0.6;
+
+export function drawWidthSquares(width) {
+  if (typeof width === 'number' && Number.isFinite(width)) return Math.max(DRAW_WIDTH_MIN, Math.min(DRAW_WIDTH_MAX, width));
+  return (DRAW_WIDTHS.find((w) => w.id === width) || DRAW_WIDTHS[1]).squares;
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -135,6 +143,15 @@ export function shapeFeetLabel(kind, geometry, feetPerSquare, snap) {
   return null;
 }
 
+// ---- Island fill ----
+
+// The CSS colour an island fill paints with: its colour at its opacity.
+export function islandFillColour(style = {}) {
+  const n = parseInt(String(style.color || '#c0392b').replace('#', ''), 16) || 0;
+  const opacity = Math.max(0, Math.min(1, style.opacity ?? 1));
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${opacity})`;
+}
+
 // ---- Colour ----
 
 // The quick swatches under the colour wheel.
@@ -188,8 +205,11 @@ function rectCorners({ x, y, w, h }) {
 
 // Whether island point `p` (squares) touches a drawing: its line (within
 // `tolerance` squares plus half its thickness), or its inside when filled.
+// An island fill never does — Select and the Eraser pass over it; Fill
+// again with the same colour, or Clear, takes it off.
 export function hitsDrawing(drawing, p, tolerance) {
   const { kind, geometry, style = {} } = drawing;
+  if (kind === 'fill') return false;
   const reach = tolerance + drawWidthSquares(style.width) / 2;
   if (kind === 'pencil') {
     const pts = geometry.points || [];

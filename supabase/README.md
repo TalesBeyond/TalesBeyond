@@ -67,6 +67,7 @@ The sixteen migrations, in order:
 23. `..._realtime_publication.sql` — adds every table the app listens to (`entities`, `entity_dm_data`, `players`, `layers`, `islands`, `tables`, `custom_assets`, `audio_tracks`, `invite_codes`) to the `supabase_realtime` publication. Without it players' browsers get no live updates at all — see the file for why one missing table breaks everything
 24. `..._temp_hp.sql` — temporary hit points on hero and mob tokens (`entities.temp_hp`), the blue layer on the life bar; damage spends them first
 25. `..._drawings.sql` — the DM's Draw tool: a `drawings` table (one row per pencil stroke, line, circle or rectangle, tied to its island and deleted with it; members read, host writes), added to the realtime publication
+26. `..._island_fill.sql` — lets a drawing be a `fill`: the Draw tool's Fill, which paints a whole island one colour
 
 ## 3. Enable anonymous sign-in
 

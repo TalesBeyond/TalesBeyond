@@ -4,12 +4,14 @@ import { DRAW_FILL_OPACITY, drawWidthSquares, pencilPath } from '../utils/drawin
 // One island's drawings, painted inside the island (MapBoard.jsx) over the
 // map art, grid and day/night tint and under every token. The SVG is the
 // island's size, so anything past its edge is cut off. `draft` is the shape
-// the DM is drawing right now, shown before it's saved.
+// the DM is drawing right now, shown before it's saved. Island fills aren't
+// shapes: MapBoard paints them into the island's background, under the grid.
 export default function IslandDrawings({ drawings, draft, cellPx, width, height }) {
-  if (!drawings.length && !draft) return null;
+  const shapes = drawings.filter((d) => d.kind !== 'fill');
+  if (!shapes.length && !draft) return null;
   return (
     <svg className="drawing-svg" width={width} height={height} aria-hidden="true">
-      {drawings.map((d) => (
+      {shapes.map((d) => (
         <DrawingShape key={d.id} drawing={d} cellPx={cellPx} />
       ))}
       {draft && <DrawingShape drawing={draft} cellPx={cellPx} />}
