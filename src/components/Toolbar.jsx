@@ -155,6 +155,8 @@ export default function Toolbar({
   activeIsland,
   tool,
   onToolChange,
+  revealRolls = false,
+  onRevealRollsChange,
   hideDrawings = false,
   onToggleHideDrawings,
   onLayerPatch,
@@ -814,6 +816,15 @@ export default function Toolbar({
               : 'Hints and tips are off on this device — click to turn them back on'
           }
         />
+        {isHost && onRevealRollsChange && (
+          <label className="toolbar-menu-check">
+            <input type="checkbox" checked={revealRolls} onChange={(e) => onRevealRollsChange(e.target.checked)} />
+            <span>
+              <b>Reveal rolls to players</b>
+              <small>Off: only you see the rolls you make. On: every roll you make shows for the players too. Players’ rolls always reach you.</small>
+            </span>
+          </label>
+        )}
         {hintPrefs.show && hintPrefs.anyDismissed && (
           <ToolCard icon={<Icon name="refresh" />} label="Tips again" onClick={() => pick(hintPrefs.resetDismissed)} title="Show every tip and mode bar you've hidden again" />
         )}

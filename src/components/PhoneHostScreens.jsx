@@ -152,6 +152,8 @@ export function PhoneHostMenu({
   onMutedChange,
   hideDrawings,
   onHideDrawingsChange,
+  revealRolls = false,
+  onRevealRollsChange,
   onLeave,
   onClose,
 }) {
@@ -212,6 +214,18 @@ export function PhoneHostMenu({
           )}
         </section>
 
+        {onRevealRollsChange && (
+          <section className="phone-menu-section" aria-label="Dice">
+            <span className="phone-label">Dice</span>
+            <label className="phone-check">
+              <input type="checkbox" checked={revealRolls} onChange={(e) => onRevealRollsChange(e.target.checked)} />
+              <span>
+                <b>Reveal rolls to players</b>
+                <small>Off: only you see the rolls you make. On: every roll you make shows for the players too. Players’ rolls always reach you.</small>
+              </span>
+            </label>
+          </section>
+        )}
         <section className="phone-menu-section" aria-label="Save and share">
           <span className="phone-label">Save &amp; share</span>
           <span className="phone-caption phone-caption-flush" role="status">

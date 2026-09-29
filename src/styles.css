@@ -1507,6 +1507,33 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .stage-wrap:has(.hud-initiative:not(.folded)) .roll-toasts { top: 84px; }
 .stage-wrap:has(.turn-ribbon:not(.folded)) .roll-toasts { top: 136px; }
 .stage-wrap:has(.hud-initiative.folded, .turn-ribbon.folded) .roll-toasts { top: 72px; }
+/* "Reveal rolls to players": a checkbox row in Configurations and the
+   phone's DM table menu. */
+.toolbar-menu-check,
+.phone-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: var(--ink-900);
+  cursor: pointer;
+}
+.toolbar-menu-check { flex-basis: 100%; order: 10; box-sizing: border-box; }
+.toolbar-menu:has(> .toolbar-menu-check) { width: 480px; }
+.toolbar-menu-check input,
+.phone-check input { width: 20px; height: 20px; flex-shrink: 0; margin: 1px 0 0; accent-color: var(--gold-hi); }
+.toolbar-menu-check span,
+.phone-check span { display: flex; flex-direction: column; gap: 3px; }
+.toolbar-menu-check b,
+.phone-check b { font-size: 14px; color: var(--parchment-100); }
+.toolbar-menu-check small,
+.phone-check small { font-size: 12px; line-height: 1.45; color: var(--parchment-300); }
+.phone-check { min-height: 44px; }
+.phone-check b { font-size: 15px; }
+.phone-check small { font-size: 13px; }
+.dm-result .roll-chip { align-self: center; margin-top: 6px; }
 .game-screen.phone .roll-toasts,
 .game-screen.phone .stage-wrap .roll-toasts { top: 12px; left: 12px; right: 12px; width: auto; z-index: 30; }
 .inspector-card { display: flex; flex-direction: column; }

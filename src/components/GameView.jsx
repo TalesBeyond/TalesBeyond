@@ -822,6 +822,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // latest receiver through this.
   const receiveRollRef = useRef(receiveRoll);
   receiveRollRef.current = receiveRoll;
+  // Who sees a roll made in this browser (DiceModal's note).
+  const rollShare = isHost ? (revealRolls ? 'revealed' : 'hidden') : isRemote || isGuest ? 'table' : 'local';
   useFx((event) => {
     if (event.type !== 'rolled') return;
     const player = stateRef.current.players[me.id];
@@ -2740,7 +2742,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // what lets it keep its labels on an ordinary laptop screen.
   const toolbarEl = (
       <Toolbar
-        dice={diceApi}
+        dice={{ ...diceApi, share: rollShare }}
+        revealRolls={revealRolls}
+        onRevealRollsChange={setRevealRolls}
         isHost={isHost}
         isGuestHost={isGuestHost}
         layer={currentLayer}
@@ -3367,7 +3371,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onClose={() => setPhoneSheet(null)}
             />
           )}
-          {phoneSheet === 'dice' && <DiceModal {...diceApi} onClose={() => setPhoneSheet(null)} />}
+          {phoneSheet === 'dice' && <DiceModal {...diceApi} share={rollShare} onClose={() => setPhoneSheet(null)} />}
           {phoneSheet === 'menu' && isHost && (
             <PhoneHostMenu
               session={state.session}
@@ -3393,6 +3397,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onMutedChange={toggleDeviceMuted}
               hideDrawings={hideDrawings}
               onHideDrawingsChange={setHideDrawings}
+              revealRolls={revealRolls}
+              onRevealRollsChange={setRevealRolls}
               onLeave={leaveTable}
               onClose={() => setPhoneSheet(null)}
             />

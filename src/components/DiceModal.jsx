@@ -3,6 +3,7 @@ import ModalShell from './ModalShell.jsx';
 import { useCatalog, dieImage } from '../lib/catalog.js';
 import { playDiceSound } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
+import { RollChip } from './RollFeed.jsx';
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const MAX_PER_TYPE = 20;
@@ -97,7 +98,10 @@ function rollPool(pool, modifier, mode, name) {
 
 // The "Roll the dice" modal: tap dice into a pool, add a modifier and
 // advantage/disadvantage, roll once. Saved rolls reload a pool in one tap.
-export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose }) {
+// share: who sees a roll made here — 'table' (a player: everyone), 'hidden'
+// or 'revealed' (the DM, per "Reveal rolls to players"), 'local' (a local
+// demo table: nobody else is connected).
+export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose, share = 'local' }) {
   useCatalog(); // re-render when the catalog's dice pictures arrive
   const [pool, setPool] = useState({ 20: 1 });
   const [modifier, setModifier] = useState(0);
@@ -255,6 +259,8 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
                 <div className="dm-total">{latest.total}</div>
                 {latest.flag && <span className={`dm-flag${latest.flag === 'Natural 1' ? ' bad' : ''}`}>{latest.flag}</span>}
                 <div className="dm-sub">{latest.detail}</div>
+                {share === 'hidden' && <RollChip hidden>Only you see this roll</RollChip>}
+                {share === 'revealed' && <RollChip>Shown to the players</RollChip>}
               </>
             ) : (
               <div className="dm-sub" style={{ padding: '36px 0' }}>Your roll will show up here.</div>
@@ -273,7 +279,15 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
             ))}
           </div>
           <div className="dm-foot">
-            <span className="dm-hint">Rolls stay on your screen.</span>
+            <span className="dm-hint">
+              {share === 'table'
+                ? 'Everyone at the table sees your rolls.'
+                : share === 'hidden'
+                  ? 'Your rolls stay hidden. Turn on Reveal rolls to players in Configurations to show them.'
+                  : share === 'revealed'
+                    ? 'Reveal is on: players see every roll you make.'
+                    : 'Rolls stay on your screen.'}
+            </span>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClearRolls} disabled={rolls.length === 0}>
               Clear history
             </button>
