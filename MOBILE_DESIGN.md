@@ -60,7 +60,10 @@ real-device pass and on REQ-008.
 - **Table menu**: in-game time, palette, Mute on this device, Hide drawings, Show hints and tips, effect volumes,
   this table (map, DM, seated), read-only map settings, Leave with a confirm.
 - **Party**: seated players, their hero and online state; Show on map, or the
-  map they're on, or "Not on the map".
+  map they're on, or "Not on the map"; **Roll log** (everyone's rolls this
+  session).
+- **Dice rolls**: other people's rolls land as a card over the top of the map;
+  the dice sheet says "Everyone at the table sees your rolls."
 
 **DM** — bottom bar Play · Edit · Ruler · Add · Run table.
 
@@ -83,7 +86,8 @@ real-device pass and on REQ-008.
 - **Run the table** (`PhoneHostScreens.jsx`): encounter (round, turn, combat
   log, end) or Roll for initiative; compendiums and asset storage; clock and
   day/night; table music; dice; party.
-- **Table menu**: guest-table note, player and DM codes, new code, save
+- **Table menu**: guest-table note, player and DM codes, new code, **Dice →
+  Reveal rolls to players** (off by default), save
   status, Save / Export / Import, Close to new players, islands and maps, look
   & sound, Leave.
 - The desktop toolbar stays mounted out of sight; its panels open over

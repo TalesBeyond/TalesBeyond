@@ -1043,7 +1043,7 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
 
 // ---------- party ----------
 
-export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onClose }) {
+export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onShowRolls, rollCount = 0, onClose }) {
   const heroes = Object.values(entities || {}).filter((e) => e.kind === 'hero');
   const seated = Object.values(players || {}).filter((p) => p.id !== hostId);
   const dm = players?.[hostId];
@@ -1083,6 +1083,11 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
         <p className="phone-caption">
           DM · {dm.name} {dm.connected ? 'is online' : 'is away'}
         </p>
+      )}
+      {onShowRolls && (
+        <button type="button" className="phone-btn-ghost phone-btn-block" onClick={onShowRolls}>
+          Roll log{rollCount ? ` · ${rollCount}` : ''}
+        </button>
       )}
     </PhoneSheet>
   );

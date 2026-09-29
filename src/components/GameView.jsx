@@ -3368,6 +3368,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 flyToIsland(hero.islandId);
                 setSelectedId(hero.id);
               }}
+              onShowRolls={() => setPhoneSheet('rolls')}
+              rollCount={rollLog.length}
               onClose={() => setPhoneSheet(null)}
             />
           )}
@@ -3409,6 +3411,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               actorName={actor?.name}
               onEndEncounter={() => setEncounter(null)}
               onShowLog={() => setPhoneSheet('log')}
+              onShowRolls={() => setPhoneSheet('rolls')}
+              rollCount={rollLog.length}
               clock={state.clock}
               phaseOverride={state.dayNightOverride}
               onSetClockRunning={setClockRunning}
@@ -3419,6 +3423,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onOpenParty={() => setPhoneSheet('party')}
               onClose={() => setPhoneSheet(null)}
             />
+          )}
+          {phoneSheet === 'rolls' && (
+            <PhoneSheet title="Roll log" onClose={() => setPhoneSheet(null)} className="phone-sheet-rolls">
+              <div className="phone-sheet-pad">
+                <p className="phone-caption phone-caption-flush">
+                  {isHost
+                    ? revealRolls
+                      ? 'Everyone’s rolls this session. Reveal is on: players see yours too.'
+                      : 'Everyone’s rolls this session. Yours are marked “Only you”.'
+                    : 'Everyone’s rolls this session, and the DM’s when they show them.'}
+                </p>
+                <RollLog entries={rollLog} />
+              </div>
+            </PhoneSheet>
           )}
           {phoneSheet === 'log' && (
             <PhoneSheet title="Combat log" onClose={() => setPhoneSheet(null)} className="phone-sheet-log">

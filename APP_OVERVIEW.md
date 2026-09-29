@@ -340,6 +340,27 @@ map; every seated player sees the result, and only the DM can draw.
   drawing preferences (tool, style, Snap, recent colours, Hide) are
   `hearthbound:drawprefs` in this browser only.
 
+### Dice rolls at the table (`RollFeed.jsx`)
+
+Players roll in the open; the DM's own rolls stay on the DM's screen unless
+they choose otherwise.
+
+- Every roll — the dice window, Roll d20 in a fight, attack rolls (with the
+  target and hit or miss) — announces itself on `lib/fx.js` as
+  `{ type: 'rolled', what, dice, detail, total, flag }`. `GameView` sends a
+  player's roll to the whole table; a DM's roll only when **Reveal rolls to
+  players** is on (Configurations; the Dice section of the phone's DM table
+  menu; off by default; this browser only, `hearthbound:revealRolls`).
+- Rolls travel live and are never stored: Supabase Broadcast on the cloud
+  table's own `table:<id>` channel (`subscribeToTable`'s `onRoll` /
+  `sendRoll`), or the guest channel's `roll` event. A local table has no one
+  else to tell.
+- Everyone else sees a short card over the map as a roll lands, and every
+  roll goes into the **Roll log** (under the players on desktop; Run table or
+  Party → Roll log on a phone). The DM's hidden rolls are marked "Only you";
+  revealed ones show as "The DM" with "Shown by the DM". The dice window says
+  who will see the next roll.
+
 ### Hints (`Hints.jsx`)
 
 Wherever someone gets stuck, the app says why something can't be used yet,

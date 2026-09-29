@@ -18,6 +18,8 @@ export function PhoneRunTable({
   actorName,
   onEndEncounter,
   onShowLog,
+  onShowRolls,
+  rollCount = 0,
   clock,
   phaseOverride,
   onSetClockRunning,
@@ -63,6 +65,11 @@ export function PhoneRunTable({
           ) : (
             <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={go(() => open('initiative'))}>
               Roll for initiative
+            </button>
+          )}
+          {onShowRolls && (
+            <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onShowRolls)}>
+              Roll log{rollCount ? ` · ${rollCount}` : ''}
             </button>
           )}
         </section>
