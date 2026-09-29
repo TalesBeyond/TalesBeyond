@@ -831,6 +831,62 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .hud-zoom button:hover { background: var(--ink-800); }
 .hud-zoom button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: -2px; }
 .hud-zoom .hud-zoom-value { min-width: 60px; font-family: var(--font-mono); font-size: 13px; color: var(--parchment-200); }
+/* Folding HUD pieces away (TableHud.jsx useHudFold): the chevron, and the
+   small button a folded piece becomes. */
+.hud-fold {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--parchment-300);
+  cursor: pointer;
+}
+.hud-fold:hover { background: var(--ink-800); color: var(--parchment-100); }
+.hud-unfold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  background: var(--ink-950);
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.hud-unfold svg { color: var(--gold-hi); flex-shrink: 0; }
+.hud-initiative.folded,
+.turn-ribbon.folded { padding: 0 14px; gap: 8px; flex-wrap: nowrap; overflow: visible; }
+.turn-ribbon.folded { min-height: 44px; }
+.turn-ribbon-fold { align-self: center; }
+/* The phone's mini-map: a chevron on its top-right corner (a 44 px touch
+   area), folding it to one map button. */
+.phone-minimap-fold {
+  position: absolute;
+  left: 76px;
+  top: 14px;
+  z-index: 24;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--ink-950);
+  border: 1px solid var(--ink-700);
+}
+.phone-minimap-fold::after { content: ''; position: absolute; inset: -9px; }
+.phone-minimap.folded { width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.phone-minimap.folded svg { width: 22px; height: 22px; }
+.game-screen.phone .stage-wrap:has(.phone-minimap.folded) .hud-initiative,
+.game-screen.phone .stage-wrap:has(.phone-minimap.folded) .turn-ribbon { left: 68px; max-width: calc(100% - 136px); }
+.game-screen.phone:has(.phone-edit-bar) .phone-minimap-fold { display: none; }
 /* Fold the zoom buttons away, and back. */
 .hud-zoom .hud-zoom-toggle { display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
 .hud-zoom .hud-zoom-hide { min-width: 32px; border-left: 1px solid var(--ink-700); }

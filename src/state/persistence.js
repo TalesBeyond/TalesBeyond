@@ -436,21 +436,21 @@ export function saveHintPrefs(prefs) {
   }
 }
 
-// Whether the map's zoom and recenter buttons are folded away in this
-// browser (TableHud.jsx's ZoomControl).
-const ZOOM_HIDDEN_KEY = 'hearthbound:zoomHidden';
+// Which pieces of the map's HUD are folded away in this browser
+// (TableHud.jsx's useHudFold): 'zoom', 'initiative', 'minimap'.
+const HUD_FOLD_NAMESPACE = 'hearthbound:hud:';
 
-export function loadZoomHidden() {
+export function loadHudFolded(name) {
   try {
-    return window.localStorage.getItem(ZOOM_HIDDEN_KEY) === '1';
+    return window.localStorage.getItem(HUD_FOLD_NAMESPACE + name) === '1';
   } catch {
     return false;
   }
 }
 
-export function saveZoomHidden(hidden) {
+export function saveHudFolded(name, folded) {
   try {
-    window.localStorage.setItem(ZOOM_HIDDEN_KEY, hidden ? '1' : '0');
+    window.localStorage.setItem(HUD_FOLD_NAMESPACE + name, folded ? '1' : '0');
   } catch {
     // storage blocked or full - the choice just won't survive a refresh
   }

@@ -11,6 +11,7 @@ import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
 import { Hint, useHintPrefs } from './Hints.jsx';
+import { useHudFold, HudFoldButton } from './TableHud.jsx';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -148,6 +149,7 @@ export function PhoneIslandStrip({ layer, entities, activeIslandId, onPick, onAd
 
 export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePadding, activeIslandId, onOpen }) {
   const [view, setView] = useState(null);
+  const [folded, setFolded] = useHudFold('minimap');
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return undefined;
@@ -173,9 +175,20 @@ export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePad
     };
   }, [stageRef, zoom, originX, originY, stagePadding]);
 
+  if (folded) {
+    return (
+      <button type="button" className="phone-minimap folded hud-unfold" aria-label="Show the mini-map" title="Show the mini-map" onClick={() => setFolded(false)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" />
+        </svg>
+      </button>
+    );
+  }
   const b = islandBounds(layer);
   const pad = Math.max(b.w, b.h) * 0.06;
   return (
+    <>
+    <HudFoldButton label="Hide the mini-map" className="phone-minimap-fold" onClick={() => setFolded(true)} />
     <button type="button" className="phone-minimap" onClick={onOpen} aria-label="Island overview">
       <svg viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         {layer.islandOrder.map((id) => {
@@ -195,6 +208,7 @@ export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePad
         {view && <rect x={view.x} y={view.y} width={view.w} height={view.h} className="phone-minimap-view" vectorEffect="non-scaling-stroke" />}
       </svg>
     </button>
+    </>
   );
 }
 

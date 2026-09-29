@@ -1,5 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { loadZoomHidden, saveZoomHidden } from '../state/persistence.js';
+import { loadHudFolded, saveHudFolded } from '../state/persistence.js';
+
+// Pieces of the map's HUD (zoom, turn order, the phone's mini-map) can be
+// folded down to one small button to leave more of the map in view. Each
+// piece's choice is remembered in this browser.
+export function useHudFold(name) {
+  const [folded, setFolded] = useState(() => loadHudFolded(name));
+  return [
+    folded,
+    (next) => {
+      setFolded(next);
+      saveHudFolded(name, next);
+    },
+  ];
+}
+
+// The chevron that folds a HUD piece away.
+export function HudFoldButton({ label, onClick, className = '' }) {
+  return (
+    <button type="button" className={`hud-fold ${className}`} aria-label={label} title={label} onClick={onClick}>
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M5 12.5l5-5 5 5" />
+      </svg>
+    </button>
+  );
+}
 import { useNow } from '../state/useGameClock.js';
 import { DAY_PHASES } from '../data/dayPhases.js';
 import { clockTotalMinutes, splitTotalMinutes, formatClockTime, dayPhase } from '../utils/gameClock.js';
@@ -64,6 +89,7 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
 // view as the turns go round.
 export function InitiativeBar({ entities, encounter = null }) {
   const barRef = useRef(null);
+  const [folded, setFolded] = useHudFold('initiative');
   const order = encounter
     ? encounter.order
         .map((entry) => (entities?.[entry.id] ? { ...entities[entry.id], initiativeRoll: entry.roll } : null))
@@ -90,6 +116,15 @@ export function InitiativeBar({ entities, encounter = null }) {
   }, [activeId]);
 
   if (order.length === 0) return null;
+  if (folded) {
+    const active = order.find((e) => e.id === activeId);
+    return (
+      <button type="button" className="hud-initiative folded hud-unfold" aria-label="Show the initiative order" title="Show the initiative order" onClick={() => setFolded(false)}>
+        <InitiativeIcon />
+        <span>{encounter && active ? `${active.name}’s turn` : 'Initiative'}</span>
+      </button>
+    );
+  }
   return (
     <div ref={barRef} className="hud-initiative" role="list" aria-label="Initiative order">
       <span className="hud-caption">Initiative</span>
@@ -107,7 +142,16 @@ export function InitiativeBar({ entities, encounter = null }) {
           </span>
         );
       })}
+      <HudFoldButton label="Hide the initiative order" className="hud-initiative-fold" onClick={() => setFolded(true)} />
     </div>
+  );
+}
+
+export function InitiativeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 5h12M4 10h12M4 15h8" />
+    </svg>
   );
 }
 
@@ -127,14 +171,8 @@ export function RulerReadout({ feet }) {
 }
 
 // Bottom-right: zoom and recenter, always in reach.
-// The zoom and recenter buttons can be folded down to one button (this
-// browser remembers it) to leave more of the map in view.
 export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter }) {
-  const [hidden, setHiddenState] = useState(loadZoomHidden);
-  const setHidden = (next) => {
-    setHiddenState(next);
-    saveZoomHidden(next);
-  };
+  const [hidden, setHidden] = useHudFold('zoom');
   if (hidden) {
     return (
       <div className="hud-zoom folded">
