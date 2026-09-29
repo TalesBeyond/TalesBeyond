@@ -5,6 +5,8 @@ import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
 import { playSfx } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
+import { Hint } from './Hints.jsx';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
 // table), so it is there next time the book opens on any table.
@@ -502,6 +504,18 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
             <span className="cbook-feedback" role="status">
               {feedback}
             </span>
+            {heroes.length === 0 && (
+              <Hint
+                className="cbook-hint"
+                action="Open Tokens"
+                onAction={() => {
+                  emitFx({ type: 'open', panel: 'tokens' });
+                  onClose?.();
+                }}
+              >
+                Loot goes to a hero. Place one from <b>Tokens → Default heroes</b> first.
+              </Hint>
+            )}
           </div>
           )}
         </div>

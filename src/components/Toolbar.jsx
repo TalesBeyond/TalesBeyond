@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
-import { useHintPrefs } from './Hints.jsx';
+import { Hint, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
@@ -168,6 +168,7 @@ export default function Toolbar({
   onOpenClock,
   audio,
   onOpenMusic,
+  musicHint = 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.',
   onSetClockRunning,
   dayPhase,
   dayNightOverride,
@@ -222,6 +223,7 @@ export default function Toolbar({
   // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
   const hintPrefs = useHintPrefs();
+  const [showMusicHint, setShowMusicHint] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Keep the bar on a single row: try each density from roomiest to
@@ -548,6 +550,10 @@ export default function Toolbar({
                   onImportIsland={onImportIsland}
                   onUngroupIslands={onUngroupIslands}
                   onRenameGroup={onRenameGroup}
+                  onSwitchToEdit={() => {
+                    onToolChange('edit');
+                    setShowIslands(false);
+                  }}
                   onClose={() => setShowIslands(false)}
                 />
               )}
@@ -594,6 +600,13 @@ export default function Toolbar({
           }
         >
           <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
+          {isHost && !clock && (
+            <div className="toolbar-menu-hint">
+              <Hint action="Set the time" onAction={() => pick(onOpenClock)}>
+                Set an in-game time to show a clock and let dusk and night fall on the map.
+              </Hint>
+            </div>
+          )}
           <ToolCard
             icon={dayPhase ? '' : <Icon name="daynight" />}
             image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}
@@ -649,14 +662,20 @@ export default function Toolbar({
             title="Roll for Initiative"
           />
         )}
-        <ToolCard
-          icon={<Icon name="music" />}
-          label="Music"
-          active={Boolean(audio?.playback?.nowPlaying)}
-          disabled={!audio?.enabled}
-          onClick={onOpenMusic}
-          title={audio?.enabled ? 'Table music' : 'Music is available to the DM of a cloud or guest table only'}
-        />
+        <span className="toolbar-hint-anchor">
+          <ToolCard
+            icon={<Icon name="music" />}
+            label="Music"
+            active={Boolean(audio?.playback?.nowPlaying) || showMusicHint}
+            onClick={audio?.enabled ? onOpenMusic : () => setShowMusicHint((s) => !s)}
+            title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
+          />
+          {showMusicHint && !audio?.enabled && (
+            <div className="toolbar-hint-pop">
+              <Hint>{musicHint}</Hint>
+            </div>
+          )}
+        </span>
         <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceModal
@@ -1064,6 +1083,10 @@ function LayerSwitcherPopover({
         );
       })}
 
+      {(layerOrder || []).length > 1 && (
+        <Hint className="hint-tight">The first map is the base — new players land there, so it can’t be deleted.</Hint>
+      )}
+
       <div className="divider-word">new layer</div>
 
       <label className="field-label">Name</label>
@@ -1098,6 +1121,7 @@ function IslandManagerPopover({
   onImportIsland,
   onUngroupIslands,
   onRenameGroup,
+  onSwitchToEdit,
   onClose,
 }) {
   const [name, setName] = useState('');
@@ -1189,9 +1213,9 @@ function IslandManagerPopover({
         </button>
       </div>
       <input ref={importIslandRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportIslandFile} />
-      <p className="footer-note" style={{ border: 'none', padding: '8px 0 0' }}>
-        Drag an island's background on the map to reposition it.
-      </p>
+      <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
+        Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
+      </Hint>
     </ModalShell>
   );
 }
@@ -1301,6 +1325,13 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
             ))}
           </select>
 
+          {participantIds.length === 0 && (
+            <Hint className="hint-tight">
+              {heroes.length + mobs.length === 0
+                ? 'Nobody to roll for yet. Place heroes and monsters on this map first.'
+                : 'Pick who joins from the two lists above, then roll.'}
+            </Hint>
+          )}
           {participantIds.length > 0 && (
             <div style={{ marginTop: 12 }}>
               {participantIds.map((id) => (

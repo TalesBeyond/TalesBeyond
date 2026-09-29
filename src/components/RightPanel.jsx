@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { playDiceSound } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
+import { Hint } from './Hints.jsx';
 import {
   ABILITIES,
   SKILLS,
@@ -463,6 +465,11 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
           <label className="field-label" style={{ marginTop: 14 }}>
             Give to a player
           </label>
+          {items.length > 0 && (heroes || []).length === 0 && (
+            <Hint className="hint-tight" action="Open Tokens" onAction={() => emitFx({ type: 'open', panel: 'tokens' })}>
+              Loot goes to a hero. Place one from <b>Tokens → Default heroes</b> first.
+            </Hint>
+          )}
           {items.length === 0 ? (
             <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
               Nothing left to give.
@@ -527,6 +534,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
             </ul>
           ) : (
             <div className="chest-item-list">
+              {!myHero && <Hint className="hint-tight">You need a hero to carry loot. Ask your DM to link one to you.</Hint>}
               {items.map((item) => (
                 <div className="chest-item-row" key={item.id} style={{ gridTemplateColumns: '1fr auto' }}>
                   <div className="chest-item-info">
@@ -681,6 +689,9 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
       showDeathSaves
       typeLine={`Hero · square (${entity.col}, ${entity.row})`}
       owner={owner}
+      notice={
+        isHost && !entity.ownerId ? <Hint>Pick a player under <b>played by</b> so they can move this hero. Until then, only you can.</Hint> : null
+      }
       actor={encounterActor}
       tabs={tabs}
       tabNote={
@@ -992,6 +1003,12 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
       >
         + Add battle equipment
       </button>
+      {bagWeapons.length === 0 && (
+        <Hint className="hint-tight" action="Open the Bag" onAction={() => emitFx({ type: 'cardTab', key: 'bag' })}>
+          Equipment comes from the bag. Add a weapon under the <b>Bag</b> tab, then equip it here.
+        </Hint>
+      )}
+      {items.length > 0 && targets.length === 0 && <Hint className="hint-tight">There’s nothing to attack on this map yet.</Hint>}
     </div>
   );
 }

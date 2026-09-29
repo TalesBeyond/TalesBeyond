@@ -3,6 +3,7 @@ import { CONDITIONS } from '../data/conditions.js';
 import { ABILITIES, abilityModifier, formatModifier } from '../data/characterSheet.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import { acOf, attackPreview } from '../utils/combat.js';
+import { useFx } from '../lib/fx.js';
 
 // A hero's or monster's whole inspector, drawn as one collectible card: the
 // name on the title bar, the token's art with its armor (shield) and hit
@@ -221,11 +222,16 @@ export default function CreatureCard({
   actor,
   tabs = [],
   tabNote,
+  notice = null, // a hint under the type line (e.g. a hero nobody plays yet)
 }) {
   const isMob = entity.kind === 'mob';
   const [tabKey, setTabKey] = useState(tabs[0]?.key);
   const [addingCondition, setAddingCondition] = useState(false);
   const activeTab = tabs.find((t) => t.key === tabKey) || tabs[0];
+  // A hint's "Open the Bag" (and the like) switches this card's tab.
+  useFx((event) => {
+    if (event.type === 'cardTab' && tabs.some((t) => t.key === event.key)) setTabKey(event.key);
+  });
   useEffect(() => {
     if (!canEdit) setAddingCondition(false);
   }, [canEdit]);
@@ -377,6 +383,7 @@ export default function CreatureCard({
           <span>{typeLine}</span>
           {owner}
         </div>
+        {notice && <div className="card-notice">{notice}</div>}
 
         <div className="card-life">
           {canEdit && (

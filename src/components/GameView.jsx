@@ -2409,6 +2409,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
   const isPhone = usePhoneLayout();
   const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
+  // A hint's "Open Tokens": the Tokens panel on desktop, the Add sheet on a
+  // phone.
+  useFx((event) => {
+    if (event.type !== 'open' || event.panel !== 'tokens' || !isHost) return;
+    if (isPhone) setPhoneSheet('add');
+    else if (leftCollapsed) togglePanel('left');
+  });
 
   // The zoom that fits a whole island inside the stage, less its padding.
   function fitZoomFor(island) {
@@ -2687,6 +2694,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onAddEntity={addEntity}
         onOpenClock={() => setShowClockModal(true)}
         audio={audioApi}
+        musicHint={isGuest ? 'On a guest table the music plays only on the DM’s own device.' : 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.'}
         onOpenMusic={() => setShowMusicModal(true)}
         onSetClockRunning={setClockRunning}
         dayPhase={tablePhase}

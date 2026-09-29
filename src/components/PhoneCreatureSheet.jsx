@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useFx } from '../lib/fx.js';
 import { ABILITIES, abilityModifier, formatModifier, defaultCharacterSheet } from '../data/characterSheet.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
@@ -40,6 +41,10 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
         ]
       : [];
   const [tab, setTab] = useState('fight');
+  // A hint's "Open the Bag" switches to that tab here too.
+  useFx((event) => {
+    if (event.type === 'cardTab' && tabs.some((t) => t.key === event.key)) setTab(event.key);
+  });
 
   function updateSheet(patch) {
     onUpdate(entity.id, { [sheetKey]: { ...sheet, ...patch } });
