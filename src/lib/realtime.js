@@ -26,9 +26,13 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // unlike postgres_changes' players-row DELETE, which a host leaving never
 // triggers — see doLeaveTable in GameView.jsx). Used to auto-end a table's
 // player sessions a few minutes after the host disappears.
-export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
+// onRoll, if given, receives the dice rolls other people at the table
+// announce over this same channel (Broadcast, never stored); the returned
+// unsubscribe function carries `sendRoll(roll)` to announce one.
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
+  if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
 
   if (presence?.onHostPresenceChange) {
     channel.on('presence', { event: 'sync' }, () => {
@@ -178,7 +182,9 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
       if (status === 'SUBSCRIBED' && presence?.isHost) channel.track({ isHost: true });
     });
 
-  return () => {
+  const unsubscribe = () => {
     supabase.removeChannel(channel);
   };
+  unsubscribe.sendRoll = (roll) => channel.send({ type: 'broadcast', event: 'roll', payload: roll });
+  return unsubscribe;
 }

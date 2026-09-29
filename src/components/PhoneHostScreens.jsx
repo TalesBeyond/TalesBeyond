@@ -3,6 +3,7 @@ import ClockReadout from './ClockReadout.jsx';
 import { DAY_PHASES } from '../data/dayPhases.js';
 import { emitFx } from '../lib/fx.js';
 import { PhoneSheet, PhoneLookAndSound, PhoneSwitch, PhoneGuestHostNote } from './PhoneChrome.jsx';
+import { Tip } from './Hints.jsx';
 
 // The DM's phone screens that stand in for the desktop toolbar: "Run the
 // table" (the session: encounter, compendium, clock, music, dice, party) and
@@ -17,6 +18,8 @@ export function PhoneRunTable({
   actorName,
   onEndEncounter,
   onShowLog,
+  onShowRolls,
+  rollCount = 0,
   clock,
   phaseOverride,
   onSetClockRunning,
@@ -62,6 +65,11 @@ export function PhoneRunTable({
           ) : (
             <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={go(() => open('initiative'))}>
               Roll for initiative
+            </button>
+          )}
+          {onShowRolls && (
+            <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onShowRolls)}>
+              Roll log{rollCount ? ` · ${rollCount}` : ''}
             </button>
           )}
         </section>
@@ -151,6 +159,8 @@ export function PhoneHostMenu({
   onMutedChange,
   hideDrawings,
   onHideDrawingsChange,
+  revealRolls = false,
+  onRevealRollsChange,
   onLeave,
   onClose,
 }) {
@@ -176,6 +186,9 @@ export function PhoneHostMenu({
       <div className="phone-sheet-pad">
         <section className="phone-menu-section" aria-label="Codes">
           <span className="phone-label">Codes</span>
+          <Tip id="codes" title="Share the player code" className="phone-tip">
+            Players join with the player code. Keep the {isGuestHost ? 'DM code' : 'host key'} to yourself — it’s how you get the table back.
+          </Tip>
           <div className="phone-code-row">
             <span className="phone-code">
               <span>Player code</span>
@@ -208,6 +221,18 @@ export function PhoneHostMenu({
           )}
         </section>
 
+        {onRevealRollsChange && (
+          <section className="phone-menu-section" aria-label="Dice">
+            <span className="phone-label">Dice</span>
+            <label className="phone-check">
+              <input type="checkbox" checked={revealRolls} onChange={(e) => onRevealRollsChange(e.target.checked)} />
+              <span>
+                <b>Reveal rolls to players</b>
+                <small>Off: only you see the rolls you make. On: every roll you make shows for the players too. Players’ rolls always reach you.</small>
+              </span>
+            </label>
+          </section>
+        )}
         <section className="phone-menu-section" aria-label="Save and share">
           <span className="phone-label">Save &amp; share</span>
           <span className="phone-caption phone-caption-flush" role="status">

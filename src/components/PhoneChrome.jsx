@@ -10,6 +10,8 @@ import { GiveChestItemButton, TakeChestItemButton } from './RightPanel.jsx';
 import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
+import { Hint, useHintPrefs } from './Hints.jsx';
+import { useHudFold, HudFoldButton } from './TableHud.jsx';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -147,6 +149,7 @@ export function PhoneIslandStrip({ layer, entities, activeIslandId, onPick, onAd
 
 export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePadding, activeIslandId, onOpen }) {
   const [view, setView] = useState(null);
+  const [folded, setFolded] = useHudFold('minimap');
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return undefined;
@@ -172,9 +175,20 @@ export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePad
     };
   }, [stageRef, zoom, originX, originY, stagePadding]);
 
+  if (folded) {
+    return (
+      <button type="button" className="phone-minimap folded hud-unfold" aria-label="Show the mini-map" title="Show the mini-map" onClick={() => setFolded(false)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" />
+        </svg>
+      </button>
+    );
+  }
   const b = islandBounds(layer);
   const pad = Math.max(b.w, b.h) * 0.06;
   return (
+    <>
+    <HudFoldButton label="Hide the mini-map" className="phone-minimap-fold" onClick={() => setFolded(true)} />
     <button type="button" className="phone-minimap" onClick={onOpen} aria-label="Island overview">
       <svg viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         {layer.islandOrder.map((id) => {
@@ -194,6 +208,7 @@ export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePad
         {view && <rect x={view.x} y={view.y} width={view.w} height={view.h} className="phone-minimap-view" vectorEffect="non-scaling-stroke" />}
       </svg>
     </button>
+    </>
   );
 }
 
@@ -389,6 +404,129 @@ function LayerThumb({ layer }) {
         return i ? <rect key={id} x={i.x} y={i.y} width={i.cols * i.cellSize} height={i.rows * i.cellSize} /> : null;
       })}
     </svg>
+  );
+}
+
+// ---------- grouping islands (DM) ----------
+// On a phone the islands are too small to tap one by one on the map, so a
+// group is picked here instead: a map of the layer where a tap toggles an
+// island, the same islands as a list, then a name. An island already in a
+// group is shown but can't be picked; existing groups can be renamed or
+// ungrouped below.
+
+export function PhoneGroupSheet({ layer, tokenCounts, activeIslandId, onGroup, onRename, onUngroup, onClose }) {
+  const [picked, setPicked] = useState([]);
+  const [name, setName] = useState('');
+  const groups = Object.values(layer.islandGroups || {});
+  const groupOf = new Map();
+  for (const g of groups) for (const id of g.islandIds) groupOf.set(id, g);
+  const toggle = (id) => {
+    if (groupOf.has(id)) return;
+    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const free = layer.islandOrder.filter((id) => layer.islands[id] && !groupOf.has(id));
+  const b = islandBounds(layer);
+  const pad = Math.max(b.w, b.h) * 0.03;
+
+  return (
+    <PhoneSheet title="Group islands" onClose={onClose} className="phone-sheet-group">
+      <div className="phone-sheet-pad">
+        <p className="phone-caption phone-caption-flush">
+          A group moves together and shares one name. Each island keeps its own grid and background.
+        </p>
+        {free.length < 2 ? (
+          <Hint>
+            Grouping needs two islands that aren’t in a group yet. Add another with <b>+ Island</b> at the top.
+          </Hint>
+        ) : (
+          <>
+            <svg
+              className="phone-group-map"
+              viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`}
+              preserveAspectRatio="xMidYMid meet"
+              role="group"
+              aria-label="Islands on this map — tap to pick"
+            >
+              {layer.islandOrder.map((id) => {
+                const i = layer.islands[id];
+                if (!i) return null;
+                const state = groupOf.has(id) ? 'grouped' : picked.includes(id) ? 'picked' : 'free';
+                return (
+                  <rect
+                    key={id}
+                    className={`phone-group-island ${state}${id === activeIslandId ? ' active' : ''}`}
+                    x={i.x}
+                    y={i.y}
+                    width={i.cols * i.cellSize}
+                    height={i.rows * i.cellSize}
+                    onClick={() => toggle(id)}
+                  />
+                );
+              })}
+            </svg>
+            <ul className="phone-group-list">
+              {layer.islandOrder.map((id) => {
+                const i = layer.islands[id];
+                if (!i) return null;
+                const group = groupOf.get(id);
+                const count = tokenCounts?.[id] || 0;
+                return (
+                  <li key={id}>
+                    <label className={`phone-group-row${group ? ' grouped' : ''}${picked.includes(id) ? ' picked' : ''}`}>
+                      <input type="checkbox" checked={picked.includes(id)} disabled={Boolean(group)} onChange={() => toggle(id)} />
+                      <span className="phone-group-text">
+                        <b>{i.name}</b>
+                        <span>
+                          {group ? `In ${group.name}` : `${i.cols} × ${i.rows}${count ? ` · ${count} ${count === 1 ? 'token' : 'tokens'}` : ''}`}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            <label className="phone-group-name">
+              <span className="phone-label">Group name</span>
+              <input className="field" value={name} placeholder="e.g. East Wing" onChange={(e) => setName(e.target.value)} />
+            </label>
+            <button
+              type="button"
+              className="phone-btn-primary phone-btn-block-primary"
+              disabled={picked.length < 2}
+              onClick={() => {
+                onGroup(picked, name);
+                setPicked([]);
+                setName('');
+              }}
+            >
+              {picked.length < 2 ? 'Pick at least two islands' : `Group ${picked.length} islands`}
+            </button>
+          </>
+        )}
+        {groups.length > 0 && (
+          <section className="phone-menu-section" aria-label="Groups on this map">
+            <span className="phone-label">Groups on this map</span>
+            {groups.map((g) => (
+              <PhoneGroupRow key={g.id} group={g} layer={layer} onRename={onRename} onUngroup={onUngroup} />
+            ))}
+          </section>
+        )}
+      </div>
+    </PhoneSheet>
+  );
+}
+
+function PhoneGroupRow({ group, layer, onRename, onUngroup }) {
+  const [draft, setDraft] = useState(group.name);
+  const members = group.islandIds.map((id) => layer.islands[id]?.name).filter(Boolean).join(', ');
+  return (
+    <div className="phone-group-existing">
+      <input className="field" aria-label="Group name" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => draft.trim() && draft !== group.name && onRename(group.id, draft)} />
+      <span className="phone-caption phone-caption-flush">{members}</span>
+      <button type="button" className="phone-btn-ghost" onClick={() => onUngroup(group.id)}>
+        Ungroup
+      </button>
+    </div>
   );
 }
 
@@ -801,6 +939,7 @@ export function PhoneSwitch({ label, caption, checked, onChange }) {
 
 export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange }) {
   const [levels, setLevels] = useState(() => Object.fromEntries(SOUND_EFFECTS.map((e) => [e.id, getSfxVolume(e.id)])));
+  const hints = useHintPrefs();
   return (
     <section className="phone-menu-section" aria-label="Look and sound">
       <span className="phone-label">Look &amp; sound</span>
@@ -808,6 +947,12 @@ export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, 
       <PhoneSwitch label="Mute on this device" caption="Music and sound effects. Everyone else still hears theirs." checked={muted} onChange={onMutedChange} />
       {onHideDrawingsChange && (
         <PhoneSwitch label="Hide drawings" caption="The DM's drawings, on this device only." checked={Boolean(hideDrawings)} onChange={onHideDrawingsChange} />
+      )}
+      <PhoneSwitch label="Show hints and tips" caption="On this device. Inline hints stay; tips and mode bars go." checked={hints.show} onChange={hints.setShow} />
+      {hints.show && hints.anyDismissed && (
+        <button type="button" className="phone-btn-ghost phone-btn-full" onClick={hints.resetDismissed}>
+          Show all tips again
+        </button>
       )}
       <div className={`phone-volumes${muted ? ' muted' : ''}`}>
         <span className="phone-caption phone-caption-flush">Sound effect volume</span>
@@ -898,7 +1043,7 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
 
 // ---------- party ----------
 
-export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onClose }) {
+export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onShowRolls, rollCount = 0, onClose }) {
   const heroes = Object.values(entities || {}).filter((e) => e.kind === 'hero');
   const seated = Object.values(players || {}).filter((p) => p.id !== hostId);
   const dm = players?.[hostId];
@@ -939,6 +1084,11 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
           DM · {dm.name} {dm.connected ? 'is online' : 'is away'}
         </p>
       )}
+      {onShowRolls && (
+        <button type="button" className="phone-btn-ghost phone-btn-block" onClick={onShowRolls}>
+          Roll log{rollCount ? ` · ${rollCount}` : ''}
+        </button>
+      )}
     </PhoneSheet>
   );
 }
@@ -961,7 +1111,7 @@ export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDraw, on
         )}
         {!grouping && (
           <button type="button" className="phone-btn-ghost" onClick={onGroup}>
-            Group
+            Group islands
           </button>
         )}
         {!grouping && onDraw && (

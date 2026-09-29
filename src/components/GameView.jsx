@@ -9,6 +9,8 @@ import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
+import { RollToasts, RollLog } from './RollFeed.jsx';
+import { ModeBar, EmptyState } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -31,6 +33,8 @@ import {
   loadLocalAudioVolumes,
   saveLocalAudioVolumes,
   loadDrawPrefs,
+  loadRevealRolls,
+  saveRevealRolls,
   saveDrawPrefs,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
@@ -85,6 +89,7 @@ import {
   PhoneTokenCard,
   PhoneNav,
   PhoneSheet,
+  PhoneGroupSheet,
   PhoneSwitch,
   PhoneLayersSheet,
   PhoneAtlas,
@@ -755,11 +760,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       }, RECONNECT_GRACE_MS);
     }
 
-    const unsubscribe = subscribeToTable(tableId, dispatch, handleStatusChange, {
-      isHost,
-      onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
-    });
+    const unsubscribe = subscribeToTable(
+      tableId,
+      dispatch,
+      handleStatusChange,
+      {
+        isHost,
+        onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
+      },
+      (roll) => receiveRollRef.current(roll)
+    );
+    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll };
     return () => {
+      tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
       if (backoffTimer) clearTimeout(backoffTimer);
       unsubscribe();
@@ -780,6 +793,58 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // change and turn change it sees (those come from synced state, so every
   // player's log agrees on them).
   const [combatLog, setCombatLog] = useState([]);
+
+  // ---- Dice rolls at the table (RollFeed.jsx) ----
+  // Players roll in the open: every roll a player makes is announced to the
+  // whole table. The DM's own rolls stay on the DM's screen unless they turn
+  // on "Reveal rolls to players" (this browser's choice — only the DM's
+  // client ever decides to send them). Rolls travel live over the table's
+  // channel and are never stored.
+  const [revealRolls, setRevealRollsState] = useState(() => loadRevealRolls());
+  function setRevealRolls(next) {
+    setRevealRollsState(next);
+    saveRevealRolls(next);
+  }
+  const [rollLog, setRollLog] = useState([]);
+  const [rollToasts, setRollToasts] = useState([]);
+  const tableChannelRef = useRef(null); // cloud: { sendRoll }
+  function addRoll(entry) {
+    setRollLog((prev) => [entry, ...prev].slice(0, 100));
+    if (entry.mine) return;
+    setRollToasts((prev) => [entry, ...prev].slice(0, 3));
+    setTimeout(() => setRollToasts((prev) => prev.filter((t) => t.id !== entry.id)), 6000);
+  }
+  function receiveRoll(roll) {
+    if (!roll || roll.byId === me.id) return;
+    addRoll({ ...roll, mine: false, hidden: false });
+  }
+  // The channels are opened in effects that outlive a render; they call the
+  // latest receiver through this.
+  const receiveRollRef = useRef(receiveRoll);
+  receiveRollRef.current = receiveRoll;
+  // Who sees a roll made in this browser (DiceModal's note).
+  const rollShare = isHost ? (revealRolls ? 'revealed' : 'hidden') : isRemote || isGuest ? 'table' : 'local';
+  useFx((event) => {
+    if (event.type !== 'rolled') return;
+    const player = stateRef.current.players[me.id];
+    const hidden = isHost && !revealRolls;
+    const roll = {
+      id: `${me.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      byId: me.id,
+      name: player?.name || 'Someone',
+      color: player?.color || null,
+      isDm: isHost,
+      what: event.what || null,
+      dice: event.dice || '',
+      detail: event.detail || '',
+      total: event.total,
+      flag: event.flag || null,
+    };
+    addRoll({ ...roll, mine: true, hidden });
+    if (hidden) return;
+    if (isRemote) tableChannelRef.current?.sendRoll(roll);
+    else if (isGuest) guestChannelRef.current?.sendRoll(roll);
+  });
   const [chronicleOpen, setChronicleOpen] = useState(false); // Grimoire's Chronicle tab (BookTabs.jsx)
   const logSeq = useRef(0);
   useFx((event) => {
@@ -962,6 +1027,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       onStatusChange: handleGuestStatusChange,
       isHost: isGuestHost,
       onHostPresenceChange: isGuestHost ? undefined : handleHostPresenceChange,
+      onRoll: (roll) => receiveRollRef.current(roll),
     });
     guestChannelRef.current = channel;
     return () => {
@@ -1588,6 +1654,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         layerOrder: [...state.layerOrder, layer.id],
       });
     }
+    return layer.id;
   }
 
   // Places a freshly built island (from createIsland or importIsland) next
@@ -2009,9 +2076,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // grid/background/size; only their membership and the group's own name
   // are new state. Requires at least 2 islands (a group of one is
   // meaningless).
-  function confirmGroup(name) {
-    if (!isHost || pendingGroupIslandIds.length < 2) return;
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds: pendingGroupIslandIds };
+  // `islandIds`: the phone's group sheet picks from a list; the desktop
+  // Merge Islands tool picks on the map (pendingGroupIslandIds).
+  function confirmGroup(name, islandIds = pendingGroupIslandIds) {
+    if (!isHost || islandIds.length < 2) return;
+    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds };
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -2408,6 +2477,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
   const isPhone = usePhoneLayout();
   const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
+  // A hint's "Open Tokens": the Tokens panel on desktop, the Add sheet on a
+  // phone.
+  useFx((event) => {
+    if (event.type !== 'open' || event.panel !== 'tokens' || !isHost) return;
+    if (isPhone) setPhoneSheet('add');
+    else if (leftCollapsed) togglePanel('left');
+  });
 
   // The zoom that fits a whole island inside the stage, less its padding.
   function fitZoomFor(island) {
@@ -2666,7 +2742,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // what lets it keep its labels on an ordinary laptop screen.
   const toolbarEl = (
       <Toolbar
-        dice={diceApi}
+        dice={{ ...diceApi, share: rollShare }}
+        revealRolls={revealRolls}
+        onRevealRollsChange={setRevealRolls}
         isHost={isHost}
         isGuestHost={isGuestHost}
         layer={currentLayer}
@@ -2686,6 +2764,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onAddEntity={addEntity}
         onOpenClock={() => setShowClockModal(true)}
         audio={audioApi}
+        musicHint={isGuest ? 'On a guest table the music plays only on the DM’s own device.' : 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.'}
         onOpenMusic={() => setShowMusicModal(true)}
         onSetClockRunning={setClockRunning}
         dayPhase={tablePhase}
@@ -2730,6 +2809,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const tokenSidebarEl = (
         <TokenSidebar
           onAddEntity={addEntity}
+          onCreateLayer={isHost ? createLayer : null}
           layers={state.layers}
           layerOrder={state.layerOrder}
           currentLayerId={currentLayerId}
@@ -2761,6 +2841,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
+          rollLog={rollLog}
         />
   );
 
@@ -2873,7 +2954,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                   tool={tool}
                   islandName={activeIsland?.name}
                   onSettings={() => emitFx({ type: 'open', panel: 'map' })}
-                  onGroup={() => setTool('group')}
+                  onGroup={() => setPhoneSheet('group')}
                   onDraw={() => setTool('draw')}
                   onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
                 />
@@ -2889,6 +2970,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                   onStyle={() => setPhoneSheet('drawstyle')}
                   onDone={() => setTool('edit')}
                 />
+              )}
+              {!isHost && tool !== 'draw' && !selectedEntity && !heroes.some((h) => h.ownerId === me.id) && (
+                <div className="phone-no-hero">
+                  <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
+                    Ask your DM to pick you under <b>played by</b> on a hero’s card. You can look around and roll dice meanwhile.
+                  </EmptyState>
+                </div>
               )}
               {tool === 'draw' ? null : plannedMoveInfo ? (
                 <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
@@ -2928,6 +3016,47 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
+          {isHost && tool === 'play' && Object.keys(layerEntities).length === 0 && (
+            <div className="map-empty">
+              <EmptyState
+                icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>}
+                title="This map is empty"
+                action={isPhone ? 'Add to the map' : 'Open Tokens'}
+                onAction={() => emitFx({ type: 'open', panel: 'tokens' })}
+              >
+                {isPhone ? (
+                  <>Add heroes, monsters, doors and chests with the <b>Add</b> button below.</>
+                ) : (
+                  <>
+                    Add heroes, monsters, doors and chests from the <b>Tokens</b> panel on the left.
+                  </>
+                )}
+              </EmptyState>
+            </div>
+          )}
+          {/* While a tool changes what a press does, say so across the top of
+              the map (the phone's Edit and Draw have their own bars). */}
+          {tool === 'ruler' && (
+            <ModeBar id="ruler" className="map-mode-bar" label="Ruler." doneLabel="Play" onDone={() => setTool('play')}>
+              Drag from one square to another. Every second diagonal counts as {(currentLayer.feetPerSquare || 5) * 2} ft.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'edit' && (
+            <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
+              Drag an island to move it. Where edges touch, tokens walk across.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'group' && (
+            <ModeBar id="group" className="map-mode-bar" label="Merge islands." doneLabel="Cancel" onDone={cancelGroup}>
+              Click islands to add them to a group. A group moves together and shares one name.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'draw' && (
+            <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
+              Everyone at the table sees what you draw. Right-drag moves the map.
+            </ModeBar>
+          )}
           {isHost && !isPhone && tool === 'draw' && (
             <DrawingBar
               settings={drawSettings}
@@ -3036,7 +3165,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </div>
         )}
 
-        {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+        {tool === 'group' && !isPhone && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
 
         {pendingLeaveWarning && (
           <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
@@ -3193,6 +3322,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onClose={() => setPhoneSheet(null)}
             />
           )}
+          {phoneSheet === 'group' && isHost && (
+            <PhoneGroupSheet
+              layer={currentLayer}
+              tokenCounts={Object.values(layerEntities).reduce((acc, e) => ({ ...acc, [e.islandId]: (acc[e.islandId] || 0) + 1 }), {})}
+              activeIslandId={activeIslandId}
+              onGroup={(ids, name) => {
+                confirmGroup(name, ids);
+                setPhoneSheet(null);
+              }}
+              onRename={renameGroup}
+              onUngroup={ungroupIslands}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
           {phoneSheet === 'drawstyle' && isHost && (
             <PhoneSheet title="Drawing style" onClose={() => setPhoneSheet(null)} className="phone-sheet-drawstyle">
               <DrawStylePanel style={drawSettings.style} recent={recentColours} onChange={(style) => setDrawSettings({ ...drawSettings, style })} />
@@ -3225,10 +3368,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 flyToIsland(hero.islandId);
                 setSelectedId(hero.id);
               }}
+              onShowRolls={() => setPhoneSheet('rolls')}
+              rollCount={rollLog.length}
               onClose={() => setPhoneSheet(null)}
             />
           )}
-          {phoneSheet === 'dice' && <DiceModal {...diceApi} onClose={() => setPhoneSheet(null)} />}
+          {phoneSheet === 'dice' && <DiceModal {...diceApi} share={rollShare} onClose={() => setPhoneSheet(null)} />}
           {phoneSheet === 'menu' && isHost && (
             <PhoneHostMenu
               session={state.session}
@@ -3254,6 +3399,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onMutedChange={toggleDeviceMuted}
               hideDrawings={hideDrawings}
               onHideDrawingsChange={setHideDrawings}
+              revealRolls={revealRolls}
+              onRevealRollsChange={setRevealRolls}
               onLeave={leaveTable}
               onClose={() => setPhoneSheet(null)}
             />
@@ -3264,6 +3411,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               actorName={actor?.name}
               onEndEncounter={() => setEncounter(null)}
               onShowLog={() => setPhoneSheet('log')}
+              onShowRolls={() => setPhoneSheet('rolls')}
+              rollCount={rollLog.length}
               clock={state.clock}
               phaseOverride={state.dayNightOverride}
               onSetClockRunning={setClockRunning}
@@ -3274,6 +3423,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onOpenParty={() => setPhoneSheet('party')}
               onClose={() => setPhoneSheet(null)}
             />
+          )}
+          {phoneSheet === 'rolls' && (
+            <PhoneSheet title="Roll log" onClose={() => setPhoneSheet(null)} className="phone-sheet-rolls">
+              <div className="phone-sheet-pad">
+                <p className="phone-caption phone-caption-flush">
+                  {isHost
+                    ? revealRolls
+                      ? 'Everyone’s rolls this session. Reveal is on: players see yours too.'
+                      : 'Everyone’s rolls this session. Yours are marked “Only you”.'
+                    : 'Everyone’s rolls this session, and the DM’s when they show them.'}
+                </p>
+                <RollLog entries={rollLog} />
+              </div>
+            </PhoneSheet>
           )}
           {phoneSheet === 'log' && (
             <PhoneSheet title="Combat log" onClose={() => setPhoneSheet(null)} className="phone-sheet-log">

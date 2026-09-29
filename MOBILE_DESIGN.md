@@ -8,7 +8,7 @@ real-device pass and on REQ-008.
 - **Design canvas (private until shared):**
   https://claude.ai/artifact/7FphnpyRQe7hpyAp4nPLJq — the **Phone** page
   (islands first, interacting on an island, everything else) and the
-  **Hints** page (a separate plan).
+  **Hints** page (built — see APP_OVERVIEW.md "Hints").
 - **Frame size:** designed at 390 × 844 CSS px; layouts stretch in width.
 - **Code:** `src/components/PhoneChrome.jsx` (chrome, sheets, atlas, party,
   menus), `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`, the phone branch
@@ -57,17 +57,26 @@ real-device pass and on REQ-008.
 
 **Players** — bottom bar Play · Pan · Ruler · Dice · Party.
 
-- **Table menu**: in-game time, palette, Mute on this device, Hide drawings, effect volumes,
+- **Table menu**: in-game time, palette, Mute on this device, Hide drawings, Show hints and tips, effect volumes,
   this table (map, DM, seated), read-only map settings, Leave with a confirm.
 - **Party**: seated players, their hero and online state; Show on map, or the
-  map they're on, or "Not on the map".
+  map they're on, or "Not on the map"; **Roll log** (everyone's rolls this
+  session).
+- **Dice rolls**: other people's rolls land as a card over the top of the map;
+  the dice sheet says "Everyone at the table sees your rolls."
 
 **DM** — bottom bar Play · Edit · Ruler · Add · Run table.
 
 - **Add** (`TokenSidebar` `layout="phone"`): Heroes · Monsters (bestiary, asset
   storage) · Doors · Chests · Traps · Your own.
-- **Edit** mode bar: island settings (Map settings), Group (tap islands, name
-  the group), Draw, Done.
+- **Edit** mode bar: island settings (Map settings), Group islands, Draw, Done.
+  While it's up, the island chips, mini-map, zoom column, turn order and
+  condition banner hide and the bar takes the chips' place (pinch still zooms).
+- **Group islands** (`PhoneGroupSheet`): islands are too small to tap one by one
+  on a phone map, so a sheet picks them instead — a map of the layer where a
+  tap toggles an island, the same islands as a checklist (an island already in
+  a group is shown but can't be picked), a name, and Group N islands. Existing
+  groups below can be renamed or ungrouped.
 - **Draw** (`DrawingBar.jsx` `PhoneDrawBar`): a two-row bar where the token card
   sits — Pencil, Line, Circle, Rectangle, Select, Eraser; then Style (the
   "Drawing style" sheet: colour wheel, swatches, thickness, fill, Snap to
@@ -77,7 +86,8 @@ real-device pass and on REQ-008.
 - **Run the table** (`PhoneHostScreens.jsx`): encounter (round, turn, combat
   log, end) or Roll for initiative; compendiums and asset storage; clock and
   day/night; table music; dice; party.
-- **Table menu**: guest-table note, player and DM codes, new code, save
+- **Table menu**: guest-table note, player and DM codes, new code, **Dice →
+  Reveal rolls to players** (off by default), save
   status, Save / Export / Import, Close to new players, islands and maps, look
   & sound, Leave.
 - The desktop toolbar stays mounted out of sight; its panels open over
@@ -168,6 +178,5 @@ The phone zoom floor is 20 % (desktop 40 %), so a whole island fits a phone.
 - **Cross-island movement in encounters** reads 0 ft left after crossing
   (existing behaviour; REQ-011 Q10).
 - **Short desktop windows** under 500 px tall get the phone layout (REQ-011 Q9).
-- **Hints** (the canvas's Hints page) are a separate plan.
 - **Large text**: the phone chrome uses fixed px sizes and doesn't yet grow
   with the phone's text-size setting.

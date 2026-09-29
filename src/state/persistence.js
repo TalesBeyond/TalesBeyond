@@ -413,3 +413,65 @@ export function saveDrawPrefs(prefs) {
     // storage blocked or full - the choices just won't survive a refresh
   }
 }
+
+// Hints and tips (components/Hints.jsx) in this browser: whether tips and
+// mode bars show at all, and which tips / mode bars were already dismissed.
+const HINT_PREFS_KEY = 'hearthbound:hints';
+
+export function loadHintPrefs() {
+  try {
+    const raw = window.localStorage.getItem(HINT_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveHintPrefs(prefs) {
+  try {
+    window.localStorage.setItem(HINT_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
+
+// Which pieces of the map's HUD are folded away in this browser
+// (TableHud.jsx's useHudFold): 'zoom', 'initiative', 'minimap'.
+const HUD_FOLD_NAMESPACE = 'hearthbound:hud:';
+
+export function loadHudFolded(name) {
+  try {
+    return window.localStorage.getItem(HUD_FOLD_NAMESPACE + name) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveHudFolded(name, folded) {
+  try {
+    window.localStorage.setItem(HUD_FOLD_NAMESPACE + name, folded ? '1' : '0');
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
+
+// The DM's "Reveal rolls to players" (Configurations), this browser only:
+// off keeps the DM's own dice rolls on their screen.
+const REVEAL_ROLLS_KEY = 'hearthbound:revealRolls';
+
+export function loadRevealRolls() {
+  try {
+    return window.localStorage.getItem(REVEAL_ROLLS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveRevealRolls(reveal) {
+  try {
+    window.localStorage.setItem(REVEAL_ROLLS_KEY, reveal ? '1' : '0');
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}

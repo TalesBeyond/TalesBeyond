@@ -831,6 +831,66 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .hud-zoom button:hover { background: var(--ink-800); }
 .hud-zoom button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: -2px; }
 .hud-zoom .hud-zoom-value { min-width: 60px; font-family: var(--font-mono); font-size: 13px; color: var(--parchment-200); }
+/* Folding HUD pieces away (TableHud.jsx useHudFold): the chevron, and the
+   small button a folded piece becomes. */
+.hud-fold {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--parchment-300);
+  cursor: pointer;
+}
+.hud-fold:hover { background: var(--ink-800); color: var(--parchment-100); }
+.hud-unfold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  background: var(--ink-950);
+  color: var(--parchment-100);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.hud-unfold svg { color: var(--gold-hi); flex-shrink: 0; }
+.hud-initiative.folded,
+.turn-ribbon.folded { padding: 0 14px; gap: 8px; flex-wrap: nowrap; overflow: visible; }
+.turn-ribbon.folded { min-height: 44px; }
+.turn-ribbon-fold { align-self: center; }
+/* The phone's mini-map: a chevron on its top-right corner (a 44 px touch
+   area), folding it to one map button. */
+.phone-minimap-fold {
+  position: absolute;
+  left: 76px;
+  top: 14px;
+  z-index: 24;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--ink-950);
+  border: 1px solid var(--ink-700);
+}
+.phone-minimap-fold::after { content: ''; position: absolute; inset: -9px; }
+.phone-minimap.folded { width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.phone-minimap.folded svg { width: 22px; height: 22px; }
+.game-screen.phone .stage-wrap:has(.phone-minimap.folded) .hud-initiative,
+.game-screen.phone .stage-wrap:has(.phone-minimap.folded) .turn-ribbon { left: 68px; max-width: calc(100% - 136px); }
+.game-screen.phone:has(.phone-edit-bar) .phone-minimap-fold { display: none; }
+/* Fold the zoom buttons away, and back. */
+.hud-zoom .hud-zoom-toggle { display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
+.hud-zoom .hud-zoom-hide { min-width: 32px; border-left: 1px solid var(--ink-700); }
+.hud-zoom.folded .hud-zoom-toggle { min-width: 44px; color: var(--parchment-100); }
 
 /* The DM's drawing bar: a column at the map's left edge while Draw is on. */
 .draw-bar {
@@ -1388,6 +1448,94 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 /* ---------- Selected entity inspector ---------- */
 
 .inspector-scroll { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+
+/* Dice rolls at the table (RollFeed.jsx): the log under the players, and
+   cards over the map as rolls arrive. */
+.roll-log-panel { flex: none; max-height: 24%; border-top: 1px solid var(--ink-700); }
+.roll-log { list-style: none; margin: 6px 0 0; padding: 0; }
+.roll-log li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ink-800); }
+.roll-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }
+.roll-log-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; line-height: 1.35; color: var(--parchment-100); }
+.roll-log-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
+.roll-log-detail { font-family: var(--font-mono); font-size: 11px; color: var(--parchment-300); }
+.roll-log-empty { margin: 6px 0 0; font-size: 12px; color: var(--parchment-300); }
+.roll-total { flex-shrink: 0; font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--parchment-100); }
+.roll-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold-hi) 14%, transparent);
+  color: var(--gold-hi);
+  font-size: 11px;
+  font-weight: 700;
+}
+.roll-chip.hidden { border-color: var(--ink-600, #5c5648); background: rgba(138, 124, 94, 0.18); color: var(--parchment-200); }
+.roll-toasts {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100% - 32px));
+}
+.roll-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--ink-900);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: roll-toast-in 0.25s ease-out;
+}
+@keyframes roll-toast-in { from { opacity: 0; transform: translateY(-8px); } }
+.roll-avatar { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display-caps); font-size: 17px; font-weight: 700; color: #fff; }
+.roll-toast-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.3; }
+.roll-toast-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
+.roll-toast .roll-total { font-size: 28px; }
+.stage-wrap:has(.hud-initiative:not(.folded)) .roll-toasts { top: 84px; }
+.stage-wrap:has(.turn-ribbon:not(.folded)) .roll-toasts { top: 136px; }
+.stage-wrap:has(.hud-initiative.folded, .turn-ribbon.folded) .roll-toasts { top: 72px; }
+/* "Reveal rolls to players": a checkbox row in Configurations and the
+   phone's DM table menu. */
+.toolbar-menu-check,
+.phone-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: var(--ink-900);
+  cursor: pointer;
+}
+.toolbar-menu-check { flex-basis: 100%; order: 10; box-sizing: border-box; }
+.toolbar-menu:has(> .toolbar-menu-check) { width: 480px; }
+.toolbar-menu-check input,
+.phone-check input { width: 20px; height: 20px; flex-shrink: 0; margin: 1px 0 0; accent-color: var(--gold-hi); }
+.toolbar-menu-check span,
+.phone-check span { display: flex; flex-direction: column; gap: 3px; }
+.toolbar-menu-check b,
+.phone-check b { font-size: 14px; color: var(--parchment-100); }
+.toolbar-menu-check small,
+.phone-check small { font-size: 12px; line-height: 1.45; color: var(--parchment-300); }
+.phone-check { min-height: 44px; }
+.phone-check b { font-size: 15px; }
+.phone-check small { font-size: 13px; }
+.dm-result .roll-chip { align-self: center; margin-top: 6px; }
+.game-screen.phone .roll-toasts,
+.game-screen.phone .stage-wrap .roll-toasts { top: 12px; left: 12px; right: 12px; width: auto; z-index: 30; }
 .inspector-card { display: flex; flex-direction: column; }
 .inspector-card h4 {
   margin: 0 0 8px;
@@ -2527,6 +2675,95 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .compendium-give-picker button:hover { background: var(--parchment-300); }
 
 /* ---------- Compendium book ---------- */
+
+/* The compendium on a phone (CompendiumBook.jsx, isPhone): one scrolling
+   parchment page, tabs and filters above, the chosen entry below. */
+.cphone {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-950);
+  color: var(--parchment-100);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+.cphone-head { display: flex; align-items: center; gap: 8px; padding: 12px 8px 8px 16px; }
+.cphone-head h2 { flex: 1; margin: 0; font-family: var(--font-display-caps); font-size: 20px; font-weight: 600; letter-spacing: 0.04em; }
+.cphone-close { width: 44px; height: 44px; border: 1px solid var(--gold-line); border-radius: 999px; background: transparent; color: var(--parchment-100); font-size: 24px; line-height: 1; cursor: pointer; }
+.cphone-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0 16px; padding: 4px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-900); }
+.cphone-tabs button { min-height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--parchment-300); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.cphone-tabs button.active { background: var(--ember); color: #fff; }
+.cphone-controls { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 12px; }
+.cphone-search { min-height: 46px; padding: 0 14px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-900); color: var(--parchment-100); font: inherit; font-size: 16px; }
+.cphone-filter-row { display: flex; align-items: center; gap: 10px; }
+.cphone-chips { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.cphone-chips button { flex-shrink: 0; min-height: 36px; padding: 0 14px; border: 1px solid var(--ink-700); border-radius: 999px; background: transparent; color: var(--parchment-200); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cphone-chips button.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 16%, transparent); color: var(--gold-hi); }
+.cphone-select { flex: 1; min-width: 0; min-height: 40px; padding: 0 10px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); color: var(--parchment-100); font: inherit; font-size: 15px; }
+.cphone-count { flex-shrink: 0; font-size: 12px; color: var(--parchment-300); }
+.cphone-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 12px;
+  padding: 6px 12px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(180deg, #f3e8cd, #ecdfc0);
+  color: #2b241c;
+  -webkit-overflow-scrolling: touch;
+}
+.cphone-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 8px 6px;
+  border: 0;
+  border-bottom: 1px dotted rgba(107, 90, 62, 0.45);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cphone-row.selected { background: rgba(184, 74, 42, 0.13); box-shadow: inset 3px 0 0 #b84a2a; }
+.cphone-row-img { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; background: #e3d5b0; object-fit: cover; }
+.cphone-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cphone-row-name { font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.2; color: #2b241c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cphone-row-sub { font-size: 12px; color: #6b5a3e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cphone-row-side { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cphone-row-big { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: #9a3d1f; }
+.cphone-row-small { font-size: 12px; color: #6b5a3e; }
+.cphone-empty { margin: 24px 6px; font-family: var(--font-display); font-style: italic; color: #6b5a3e; }
+.cphone-detail {
+  flex-shrink: 0;
+  max-height: 55%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--gold-line);
+  background: var(--ink-900);
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.45);
+}
+.cphone-detail-empty { margin: 0; font-size: 13px; color: var(--parchment-300); text-align: center; }
+.cphone-detail-head { display: flex; align-items: center; gap: 8px; }
+.cphone-detail-head b { flex: 1; font-family: var(--font-display); font-size: 20px; font-weight: 600; }
+.cphone-detail-close { width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 999px; background: var(--ink-800); color: var(--parchment-200); font-size: 20px; cursor: pointer; }
+.cphone-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.cphone-stats span { padding: 3px 8px; border: 1px solid var(--ink-700); border-radius: 999px; font-family: var(--font-mono); font-size: 11px; color: var(--parchment-200); }
+.cphone-detail-text { margin: 0; font-size: 14px; line-height: 1.45; color: var(--parchment-200); }
+.cphone-attack { font-style: italic; }
+.cphone-give { display: flex; flex-direction: column; gap: 10px; }
+.cphone-give-to { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--parchment-300); }
+.cphone-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.cphone-btn { min-height: 48px; padding: 0 12px; border: 1px solid var(--gold-line); border-radius: 12px; background: transparent; color: var(--gold-hi); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.cphone-btn.primary { border: 0; background: var(--ember); color: #fff; }
+.cphone-btn:disabled { opacity: 0.5; cursor: default; }
+.cphone-feedback { margin: 0; font-size: 13px; font-weight: 600; color: #9fbf8f; }
 
 .cbook-backdrop {
   position: fixed;
@@ -3750,8 +3987,50 @@ button.card-plaque-value { border-style: solid; }
 }
 button.card-notes { border-style: solid; }
 .card-notes-input { width: 100%; min-height: 96px; padding: 8px 10px; font-family: var(--font-display); font-size: 15px; font-style: italic; resize: vertical; }
-.card-remove { align-self: flex-start; min-height: 36px; padding: 0 14px; border: 1px solid #9b2d20; border-radius: 8px; background: transparent; color: #9b2d20; font-size: 13px; font-weight: 700; cursor: pointer; }
-.card-remove:hover { background: #9b2d20; color: #fbeccb; }
+/* Remove from the table: a trash icon at the top of the card, then a
+   "Remove" to confirm. */
+.card-remove-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(201, 162, 74, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #e7b9a8;
+  cursor: pointer;
+}
+.card-remove-icon:hover,
+.card-remove-icon:focus-visible { border-color: #c0392b; background: #9b2d20; color: #fbeccb; }
+.card-remove-ask { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
+.card-remove-yes {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #9b2d20;
+  color: #fbeccb;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.card-remove-no {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(201, 162, 74, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #f2e9d4;
+  font-size: 16px;
+  cursor: pointer;
+}
+.phone-creature-remove { align-self: flex-start; margin-left: auto; }
+.phone-creature-remove.card-remove-icon,
+.phone-creature-remove .card-remove-no { width: 44px; height: 44px; }
+.phone-creature-remove .card-remove-yes { min-height: 44px; padding: 0 16px; font-size: 14px; }
 
 .target-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; background: var(--ink-950); border: 1px solid var(--ink-700); border-radius: 12px; }
 .target-preview div { display: flex; flex-direction: column; gap: 2px; }
@@ -4333,6 +4612,8 @@ button.card-notes { border-style: solid; }
 .game-screen.phone .hud-zoom { top: 12px; right: 12px; bottom: auto; flex-direction: column; }
 .game-screen.phone .hud-zoom .hud-zoom-value { min-width: 44px; font-size: 11px; }
 .game-screen.phone .hud-zoom .hud-zoom-recenter { border-left: 0; border-top: 1px solid var(--ink-700); }
+.game-screen.phone .hud-zoom .hud-zoom-hide { min-width: 44px; height: 32px; border-left: 0; border-top: 1px solid var(--ink-700); }
+.game-screen.phone .hud-zoom .hud-zoom-hide svg { transform: rotate(-90deg); }
 .game-screen.phone .hud-initiative,
 .game-screen.phone .turn-ribbon { top: 12px; left: 116px; right: 68px; transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
 .game-screen.phone .hud-initiative { width: max-content; max-width: calc(100% - 184px); scrollbar-width: none; }
@@ -4726,7 +5007,11 @@ button.card-notes { border-style: solid; }
 .phone-abilities .card-ed { min-height: 28px; min-width: 44px; }
 
 /* Player table menu, look & sound, party (phone). */
-.phone-menu-section { display: flex; flex-direction: column; gap: 8px; }
+.phone-menu-section { display: flex; flex-direction: column; gap: 10px; }
+/* Sections of a phone menu (Run the table, the table menu) breathe apart,
+   with a thin rule between them. */
+.phone-menu-section + .phone-menu-section { margin-top: 10px; padding-top: 20px; border-top: 1px solid var(--ink-700); }
+.phone-menu-section > .phone-label { margin-bottom: 2px; }
 .phone-menu-section .phone-palettes { padding: 0; }
 .phone-clock { padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
 .phone-switch-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 6px 6px 14px; border: 1px solid var(--ink-700); border-radius: 14px; }
@@ -4774,7 +5059,8 @@ body:has(.game-screen.phone) .book-card {
 .phone-toolbar-host { position: fixed; left: 0; top: 0; width: 100%; height: 0; overflow: visible; z-index: 170; }
 .phone-toolbar-host > .toolbar { position: absolute; left: 0; top: 0; width: 100%; height: 0; padding: 0; border: 0; overflow: visible; visibility: hidden; }
 .phone-toolbar-host .book-backdrop,
-.phone-toolbar-host .cbook-backdrop { visibility: visible; }
+.phone-toolbar-host .cbook-backdrop,
+.phone-toolbar-host .cphone { visibility: visible; }
 
 /* The Add sheet (phone): the tokens panel's sections behind tabs. */
 .phone-add { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 20px; }
@@ -4810,6 +5096,58 @@ body:has(.game-screen.phone) .book-card {
   .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
 }
 .game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
+/* Edit mode on a phone clears the top of the screen for the map: no island
+   chips, mini-map, zoom column, turn order or condition banner (pinch still
+   zooms), and the Edit bar takes the island chips' place. Done brings it all
+   back. */
+.game-screen.phone:has(.phone-edit-bar) .phone-strip,
+.game-screen.phone:has(.phone-edit-bar) .phone-minimap,
+.game-screen.phone:has(.phone-edit-bar) .hud-zoom,
+.game-screen.phone:has(.phone-edit-bar) .hud-initiative,
+.game-screen.phone:has(.phone-edit-bar) .turn-ribbon { display: none; }
+.game-screen.phone .phone-edit-bar { top: 12px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .phone-edit-bar { top: 12px; left: 12px; right: 12px; }
+}
+
+/* Grouping islands on a phone (PhoneGroupSheet): a tappable map of the
+   layer, the same islands as a checklist, then a name. */
+.phone-group-map {
+  width: 100%;
+  height: 170px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--ink-700);
+  border-radius: 14px;
+  background: var(--ink-950);
+}
+.phone-group-island { fill: var(--ink-700); stroke: var(--ink-950); stroke-width: 3; vector-effect: non-scaling-stroke; cursor: pointer; }
+.phone-group-island.active { stroke: var(--parchment-300); }
+.phone-group-island.picked { fill: var(--gold-hi); stroke: #fff; }
+.phone-group-island.grouped { fill: var(--ink-800); stroke-dasharray: 6 4; stroke: var(--parchment-300); cursor: default; }
+.phone-group-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.phone-group-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 6px 14px;
+  border: 1px solid var(--ink-700);
+  border-radius: 14px;
+  background: var(--ink-800);
+  cursor: pointer;
+}
+.phone-group-row.picked { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 10%, var(--ink-800)); }
+.phone-group-row.grouped { opacity: 0.55; cursor: default; }
+.phone-group-row input { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--gold-hi); }
+.phone-group-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.phone-group-text b { font-size: 15px; }
+.phone-group-text span { font-size: 13px; color: var(--parchment-300); }
+.phone-group-name { display: flex; flex-direction: column; gap: 6px; }
+.phone-group-name .field,
+.phone-group-existing .field { min-height: 48px; font-size: 16px; }
+.phone-group-existing { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
+.phone-group-existing .phone-caption { grid-column: 1 / -1; order: 3; }
 
 /* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), where the token
    card sits otherwise. */
@@ -4886,3 +5224,184 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .phone-code span { font-size: 12px; color: var(--parchment-300); }
 .phone-code b { font-family: var(--font-mono); font-size: 17px; font-weight: 600; letter-spacing: 0.12em; }
 .phone-sheet-log .combat-log { position: static; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+
+/* ---- Hints (components/Hints.jsx): why something can't be used yet, and
+   where to fix it. ---- */
+.hint {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--gold-hi) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gold-hi) 8%, transparent);
+  text-align: left;
+}
+.hint-tight { margin-top: 8px; padding: 8px 10px; }
+.card-notice { margin: 4px 12px 8px; }
+/* On the paper creature cards, a hint reads in the card's own ink. */
+.target-card .hint { border-color: color-mix(in srgb, var(--card-gold) 60%, transparent); background: color-mix(in srgb, var(--card-gold) 14%, transparent); }
+.target-card .hint-icon, .target-card .hint-action { color: #7a5412; }
+.target-card .hint-action { border-color: var(--card-gold); }
+.target-card .hint-body p { color: var(--card-ink); }
+.cbook-hint { flex-basis: 100%; margin-top: 8px; }
+.toolbar-hint-anchor { position: relative; display: inline-flex; }
+.toolbar-hint-pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 120; width: 280px; padding: 6px; border: 1px solid var(--gold-line); border-radius: 12px; background: var(--ink-900); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5); }
+.hint-icon { flex-shrink: 0; margin-top: 1px; color: var(--gold-hi); }
+.hint-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.hint-body p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-100); }
+.hint-action {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gold-hi);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.hint-action:hover { background: color-mix(in srgb, var(--gold-hi) 12%, transparent); }
+.hint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gold-hi) 6%, transparent);
+}
+.hint-form .field-label { display: flex; flex-direction: column; gap: 6px; }
+.hint-form-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.hint-form-note { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--parchment-300); }
+.hint-done { margin: 0 0 6px; font-size: 13px; color: #9fbf8f; }
+
+.hint-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
+  border: 1px dashed var(--ink-600, #5c5648);
+  border-radius: 12px;
+  text-align: center;
+}
+.hint-empty-icon { color: var(--gold-line); }
+.hint-empty b { font-size: 15px; color: var(--parchment-100); }
+.hint-empty p { margin: 0; max-width: 280px; font-size: 13px; line-height: 1.45; color: var(--parchment-300); }
+.hint-empty-action {
+  margin-top: 4px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ember, #c1502e);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink-950) 88%, var(--gold-hi));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.mode-bar-icon { flex-shrink: 0; color: var(--gold-hi); }
+/* Over the map: top-left on desktop, clear of the drawing bar; below the
+   turn order when one is showing. */
+.map-mode-bar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 23;
+  width: min(520px, calc(100% - 32px));
+  box-sizing: border-box;
+}
+.stage-wrap:has(.draw-bar) .map-mode-bar { left: 76px; width: min(520px, calc(100% - 92px)); }
+.stage-wrap:has(.hud-initiative) .map-mode-bar { top: 84px; }
+.stage-wrap:has(.turn-ribbon) .map-mode-bar { top: 136px; }
+.game-screen.phone .map-mode-bar { top: 116px; left: 12px; right: 12px; width: auto; }
+.game-screen.phone .stage-wrap:has(.hud-initiative) .map-mode-bar { top: 116px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .map-mode-bar { top: 12px; left: 116px; right: 68px; }
+}
+.mode-bar-text { flex-grow: 1; font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
+.mode-bar-done,
+.mode-bar-close {
+  flex-shrink: 0;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.mode-bar-done { padding: 0 12px; color: var(--gold-hi); font-size: 14px; font-weight: 700; }
+.mode-bar-close { width: 40px; display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
+.mode-bar-done:hover,
+.mode-bar-close:hover { background: var(--ink-800); }
+
+.tip {
+  position: relative;
+  width: 290px;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid var(--gold-hi);
+  border-radius: 14px;
+  background: var(--ink-900);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.tip-arrow {
+  position: absolute;
+  left: 28px;
+  top: -7px;
+  width: 12px;
+  height: 12px;
+  background: var(--ink-900);
+  border-left: 1px solid var(--gold-hi);
+  border-top: 1px solid var(--gold-hi);
+  transform: rotate(45deg);
+}
+.toolbar-codes-inline,
+.toolbar-codes-menu { position: relative; }
+.toolbar-codes-tip { position: absolute; top: calc(100% + 12px); left: 0; z-index: 130; }
+.phone-tip { width: auto; margin: 4px 0 8px; }
+.phone-tip .tip-arrow { display: none; }
+/* The DM's empty map: centred over the grid, clicks elsewhere still reach it. */
+.map-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+.map-empty .hint-empty { pointer-events: auto; max-width: 320px; background: var(--ink-900); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45); }
+.phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 24; }
+.phone-no-hero .hint-empty { background: var(--ink-900); border-style: solid; border-color: var(--gold-line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55); }
+.inspector-scroll .hint-empty { margin: 12px 4px; }
+.asset-empty-hint { margin-bottom: 14px; }
+.tip-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-hi); }
+.tip-title { font-family: var(--font-display, 'Spectral', serif); font-size: 17px; font-weight: 600; color: var(--parchment-100); }
+.tip p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-100); }
+.tip-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
+.tip-off { min-height: 36px; padding: 0; border: 0; background: transparent; color: var(--parchment-300); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.tip-ok { min-height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--gold-hi); color: #17140f; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
+import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
@@ -116,6 +117,7 @@ const ICON_PATHS = {
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
+  hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
 };
 
 // How the bar sheds width when it can't fit on one row, cheapest first. Each
@@ -153,6 +155,8 @@ export default function Toolbar({
   activeIsland,
   tool,
   onToolChange,
+  revealRolls = false,
+  onRevealRollsChange,
   hideDrawings = false,
   onToggleHideDrawings,
   onLayerPatch,
@@ -166,6 +170,7 @@ export default function Toolbar({
   onOpenClock,
   audio,
   onOpenMusic,
+  musicHint = 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.',
   onSetClockRunning,
   dayPhase,
   dayNightOverride,
@@ -219,6 +224,8 @@ export default function Toolbar({
   const [showDayNight, setShowDayNight] = useState(false);
   // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
+  const hintPrefs = useHintPrefs();
+  const [showMusicHint, setShowMusicHint] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Keep the bar on a single row: try each density from roomiest to
@@ -419,6 +426,15 @@ export default function Toolbar({
     </>
   );
 
+  // Once, the first time someone hosts: which code to share. Shown by the
+  // inline codes or, when the bar folds them away, by the Invite menu — CSS
+  // shows whichever of the two is on screen.
+  const codesTip = isHost && (
+    <Tip id="codes" title="Share the player code" className="toolbar-codes-tip">
+      Players join with the player code. Keep the {isGuestHost ? 'DM code' : 'host key'} to yourself — it’s how you get the table back.
+    </Tip>
+  );
+
   if (collapsed) {
     return (
       <div className="toolbar collapsed">
@@ -545,6 +561,10 @@ export default function Toolbar({
                   onImportIsland={onImportIsland}
                   onUngroupIslands={onUngroupIslands}
                   onRenameGroup={onRenameGroup}
+                  onSwitchToEdit={() => {
+                    onToolChange('edit');
+                    setShowIslands(false);
+                  }}
                   onClose={() => setShowIslands(false)}
                 />
               )}
@@ -646,14 +666,20 @@ export default function Toolbar({
             title="Roll for Initiative"
           />
         )}
-        <ToolCard
-          icon={<Icon name="music" />}
-          label="Music"
-          active={Boolean(audio?.playback?.nowPlaying)}
-          disabled={!audio?.enabled}
-          onClick={onOpenMusic}
-          title={audio?.enabled ? 'Table music' : 'Music is available to the DM of a cloud or guest table only'}
-        />
+        <span className="toolbar-hint-anchor">
+          <ToolCard
+            icon={<Icon name="music" />}
+            label="Music"
+            active={Boolean(audio?.playback?.nowPlaying) || showMusicHint}
+            onClick={audio?.enabled ? onOpenMusic : () => setShowMusicHint((s) => !s)}
+            title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
+          />
+          {showMusicHint && !audio?.enabled && (
+            <div className="toolbar-hint-pop">
+              <Hint>{musicHint}</Hint>
+            </div>
+          )}
+        </span>
         <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceModal
@@ -666,7 +692,12 @@ export default function Toolbar({
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
           are always rendered — CSS shows one. */}
-      {isHost && <div className="toolbar-group toolbar-codes-inline">{codeChips}</div>}
+      {isHost && (
+        <div className="toolbar-group toolbar-codes-inline">
+          {codeChips}
+          {codesTip}
+        </div>
+      )}
       {isHost && (
         <ToolMenu
           className="toolbar-codes-menu"
@@ -676,6 +707,7 @@ export default function Toolbar({
           open={openMenu === 'codes'}
           onToggle={() => toggleMenu('codes')}
           onClose={closeMenu}
+          popovers={openMenu !== 'codes' && codesTip}
         >
           {codeChips}
         </ToolMenu>
@@ -752,7 +784,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="config" />}
         label="Configurations"
-        title="Save, export, import, close, and leave"
+        title="Save, export, import, close, hints, and leave"
         open={openMenu === 'configurations'}
         onToggle={() => toggleMenu('configurations')}
         onClose={closeMenu}
@@ -772,6 +804,29 @@ export default function Toolbar({
               title={session.isOpen ? 'Close table to new joins' : 'Table closed — reopen'}
             />
           </>
+        )}
+        <ToolCard
+          icon={<Icon name="hints" />}
+          label={hintPrefs.show ? 'Hints on' : 'Hints off'}
+          active={hintPrefs.show}
+          onClick={() => pick(() => hintPrefs.setShow(!hintPrefs.show))}
+          title={
+            hintPrefs.show
+              ? 'Show hints and tips (on this device) — click to turn tips and mode bars off. Inline hints stay.'
+              : 'Hints and tips are off on this device — click to turn them back on'
+          }
+        />
+        {isHost && onRevealRollsChange && (
+          <label className="toolbar-menu-check">
+            <input type="checkbox" checked={revealRolls} onChange={(e) => onRevealRollsChange(e.target.checked)} />
+            <span>
+              <b>Reveal rolls to players</b>
+              <small>Off: only you see the rolls you make. On: every roll you make shows for the players too. Players’ rolls always reach you.</small>
+            </span>
+          </label>
+        )}
+        {hintPrefs.show && hintPrefs.anyDismissed && (
+          <ToolCard icon={<Icon name="refresh" />} label="Tips again" onClick={() => pick(hintPrefs.resetDismissed)} title="Show every tip and mode bar you've hidden again" />
         )}
       </ToolMenu>
 
@@ -1047,6 +1102,10 @@ function LayerSwitcherPopover({
         );
       })}
 
+      {(layerOrder || []).length > 1 && (
+        <Hint className="hint-tight">The first map is the base — new players land there, so it can’t be deleted.</Hint>
+      )}
+
       <div className="divider-word">new layer</div>
 
       <label className="field-label">Name</label>
@@ -1081,6 +1140,7 @@ function IslandManagerPopover({
   onImportIsland,
   onUngroupIslands,
   onRenameGroup,
+  onSwitchToEdit,
   onClose,
 }) {
   const [name, setName] = useState('');
@@ -1172,9 +1232,9 @@ function IslandManagerPopover({
         </button>
       </div>
       <input ref={importIslandRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportIslandFile} />
-      <p className="footer-note" style={{ border: 'none', padding: '8px 0 0' }}>
-        Drag an island's background on the map to reposition it.
-      </p>
+      <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
+        Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
+      </Hint>
     </ModalShell>
   );
 }
@@ -1284,6 +1344,13 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
             ))}
           </select>
 
+          {participantIds.length === 0 && (
+            <Hint className="hint-tight">
+              {heroes.length + mobs.length === 0
+                ? 'Nobody to roll for yet. Place heroes and monsters on this map first.'
+                : 'Pick who joins from the two lists above, then roll.'}
+            </Hint>
+          )}
           {participantIds.length > 0 && (
             <div style={{ marginTop: 12 }}>
               {participantIds.map((id) => (
@@ -1380,6 +1447,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
 
   const activeTab = ASSET_STORAGE_TABS.find((t) => t.key === tab);
   const ownEntries = Object.values(customAssets || {}).filter((item) => item.assetType === tab);
+  const nothingSaved = Object.keys(customAssets || {}).length === 0;
 
   function addMonster() {
     const name = monsterDraft.name.trim();
@@ -1460,6 +1528,11 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
         </div>
 
         <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          {nothingSaved && (
+            <Hint className="asset-empty-hint">
+              Nothing saved here yet. Make a monster, weapon or item once below, then place it as often as you like at this table.
+            </Hint>
+          )}
           {tab === 'monster' && (
             <>
               <label className="field-label">Name</label>

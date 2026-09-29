@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { useFx } from '../lib/fx.js';
 import { ABILITIES, abilityModifier, formatModifier, defaultCharacterSheet } from '../data/characterSheet.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import { acOf } from '../utils/combat.js';
-import { Editable } from './CreatureCard.jsx';
+import { Editable, RemoveTokenButton } from './CreatureCard.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab } from './RightPanel.jsx';
 import { PhoneSheet } from './PhoneChrome.jsx';
@@ -40,6 +41,10 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
         ]
       : [];
   const [tab, setTab] = useState('fight');
+  // A hint's "Open the Bag" switches to that tab here too.
+  useFx((event) => {
+    if (event.type === 'cardTab' && tabs.some((t) => t.key === event.key)) setTab(event.key);
+  });
 
   function updateSheet(patch) {
     onUpdate(entity.id, { [sheetKey]: { ...sheet, ...patch } });
@@ -107,6 +112,16 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
               </label>
             )}
           </div>
+          {isHost && (
+            <RemoveTokenButton
+              name={entity.name}
+              className="phone-creature-remove"
+              onRemove={() => {
+                onRemove(entity.id);
+                onClose();
+              }}
+            />
+          )}
         </header>
 
         {tabs.length > 0 && (
@@ -287,7 +302,7 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
         )}
         {tab === 'dm' && isHost && (
           <div className="phone-creature-body">
-            {paper(<DmTab entity={entity} audio={audio} onUpdate={onUpdate} onRemove={(id) => { onRemove(id); onClose(); }} placeholder={isHero ? 'Private notes about this player…' : 'Private notes about this monster…'} />)}
+            {paper(<DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder={isHero ? 'Private notes about this player…' : 'Private notes about this monster…'} />)}
           </div>
         )}
       </div>

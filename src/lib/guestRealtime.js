@@ -32,7 +32,7 @@ function channelNameFor(code) {
 //   ever signal the host leaving.
 export function subscribeToGuestTable(
   code,
-  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange } = {}
+  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange, onRoll } = {}
 ) {
   const channel = supabase.channel(channelNameFor(code));
   let hasJoinedOnce = false;
@@ -56,6 +56,11 @@ export function subscribeToGuestTable(
   }
   if (onStateRequest) {
     channel.on('broadcast', { event: 'state_request' }, ({ payload }) => onStateRequest(payload.requesterId));
+  }
+  // Dice rolls anyone at the table announces (GameView.jsx's announceRoll) —
+  // not state, so every client just shows them.
+  if (onRoll) {
+    channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
   }
   if (onStateSnapshot) {
     channel.on('broadcast', { event: 'state_snapshot' }, ({ payload }) => onStateSnapshot(payload.state, payload.forId));
@@ -89,6 +94,9 @@ export function subscribeToGuestTable(
     },
     sendStateSnapshot(forId, state) {
       channel.send({ type: 'broadcast', event: 'state_snapshot', payload: { forId, state } });
+    },
+    sendRoll(roll) {
+      channel.send({ type: 'broadcast', event: 'roll', payload: roll });
     },
   };
 }

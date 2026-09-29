@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { playDiceSound } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
 import { rollDie } from '../utils/combat.js';
+import { useHudFold, HudFoldButton, InitiativeIcon } from './TableHud.jsx';
 
 // The encounter's HUD, shown over the map only while a fight is running
 // (state.encounter, see utils/encounter.js): the turn order along the top,
@@ -11,9 +12,23 @@ import { rollDie } from '../utils/combat.js';
 // Top of the map: the round, then every participant in initiative order,
 // the acting one raised and flagged.
 export function TurnOrderRibbon({ encounter, entities, meId }) {
+  const [folded, setFolded] = useHudFold('initiative');
   const entries = encounter.order
     .map((entry, index) => ({ ...entry, index, entity: entities[entry.id] }))
     .filter((entry) => entry.entity);
+  if (folded) {
+    const acting = entries.find((entry) => entry.index === encounter.turn)?.entity;
+    const mine = acting?.kind === 'hero' && acting.ownerId === meId;
+    return (
+      <button type="button" className="turn-ribbon folded hud-unfold" aria-label="Show the turn order" title="Show the turn order" onClick={() => setFolded(false)}>
+        <InitiativeIcon />
+        <span>
+          Round {encounter.round}
+          {acting ? ` · ${mine ? 'Your turn' : `${acting.name}’s turn`}` : ''}
+        </span>
+      </button>
+    );
+  }
   return (
     <div className="turn-ribbon" role="list" aria-label="Turn order">
       <div className="turn-round" aria-label={`Round ${encounter.round}`}>
@@ -38,6 +53,7 @@ export function TurnOrderRibbon({ encounter, entities, meId }) {
           </div>
         );
       })}
+      <HudFoldButton label="Hide the turn order" className="turn-ribbon-fold" onClick={() => setFolded(true)} />
     </div>
   );
 }
@@ -53,6 +69,7 @@ export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHos
     setLastRoll({ value, key: Date.now() });
     emitFx({ type: 'log', tone: 'roll', text: `You rolled a d20: ${value}${value === 20 ? ' (natural 20)' : value === 1 ? ' (natural 1)' : ''}` });
     emitFx({ type: 'die', value });
+    emitFx({ type: 'rolled', what: null, dice: '1d20', detail: '', total: value, flag: value === 20 ? 'Natural 20' : value === 1 ? 'Natural 1' : null });
   }
 
   const endLabel = canEndTurn ? 'End turn' : actor ? `${actor.name}'s turn` : 'Waiting';

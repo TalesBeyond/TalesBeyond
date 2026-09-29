@@ -88,6 +88,15 @@ export function resolveAttackRoll(attack, target, { attackerName, playSounds = f
     text: `${attackerName || 'Attack'} → ${target.name}: ${attackTotal} vs AC ${targetAC}, ${hit ? 'hit' : 'miss'}${d20 === 20 ? ' (natural 20)' : d20 === 1 ? ' (natural 1)' : ''}`,
   });
 
+  emitFx({
+    type: 'rolled',
+    what: `an attack on ${target.name}`,
+    dice: `1d20${toHitMod < 0 ? '−' : '+'}${Math.abs(toHitMod)}`,
+    detail: `${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} · ${hit ? 'hit' : 'miss'} vs AC ${targetAC}`,
+    total: attackTotal,
+    flag: d20 === 20 ? 'Natural 20' : d20 === 1 ? 'Natural 1' : null,
+  });
+
   if (hit) {
     const sides = parseInt(weapon.diceType.slice(1), 10);
     let diceTotal = 0;

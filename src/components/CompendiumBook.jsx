@@ -5,6 +5,9 @@ import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
 import { playSfx } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
+import { Hint } from './Hints.jsx';
+import { usePhoneLayout } from './PhoneChrome.jsx';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
 // table), so it is there next time the book opens on any table.
@@ -109,6 +112,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const [feedback, setFeedback] = useState('');
   const pagesRef = useRef(null);
   const timers = useRef([]);
+  const isPhone = usePhoneLayout();
 
   const { weapons, items, monsters } = useCatalog();
   const isWeapons = kind === 'weapons';
@@ -344,6 +348,197 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     );
   }
 
+  // On a phone the open book doesn't fit: one scrolling page instead, the
+  // tabs and filters above it, and the chosen entry's details and actions
+  // in a panel along the bottom.
+  if (isPhone) {
+    const filters = isMonsters ? MONSTER_CR_FILTERS : isWeapons ? WEAPON_TYPE_FILTERS : null;
+    return (
+      <div className="cphone" role="dialog" aria-modal="true" aria-label={chapter}>
+        <header className="cphone-head">
+          <h2>{chapter}</h2>
+          <button type="button" className="cphone-close" aria-label="Close compendium" onClick={onClose}>
+            &times;
+          </button>
+        </header>
+        <div className="cphone-tabs" role="tablist" aria-label="Compendium">
+          {[
+            ['weapons', 'Weapons'],
+            ['items', 'Items'],
+            ['monsters', 'Monsters'],
+          ].map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={kind === k}
+              className={kind === k ? 'active' : ''}
+              onClick={() => {
+                if (kind === k) return;
+                setSelectedKey(null);
+                onSwitchKind(k);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="cphone-controls">
+          <input
+            className="cphone-search"
+            type="search"
+            aria-label={`Search ${noun}`}
+            placeholder={`Search ${noun}…`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="cphone-filter-row">
+            {filters ? (
+              <div className="cphone-chips">
+                {filters.map((t) => {
+                  const on = (isMonsters ? crFilter : typeFilter) === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      aria-pressed={on}
+                      className={on ? 'active' : ''}
+                      onClick={() => (isMonsters ? setCrFilter(t.key) : setTypeFilter(t.key))}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <select className="cphone-select" aria-label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                <option value="all">All categories</option>
+                {ITEM_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {cap(c)}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span className="cphone-count">
+              {entries.length} of {totalCount}
+            </span>
+          </div>
+        </div>
+
+        <div className="cphone-list" role="list">
+          {entries.map((e) => (
+            <button
+              key={e.key}
+              type="button"
+              role="listitem"
+              className={`cphone-row${e.key === selectedKey ? ' selected' : ''}`}
+              aria-pressed={e.key === selectedKey}
+              onClick={() => setSelectedKey(e.key === selectedKey ? null : e.key)}
+            >
+              {e.image ? <img className="cphone-row-img" src={e.image} alt="" loading="lazy" /> : <span className="cphone-row-img" aria-hidden="true" />}
+              <span className="cphone-row-main">
+                <span className="cphone-row-name">{e.name}</span>
+                <span className="cphone-row-sub">{e.sub}</span>
+              </span>
+              <span className="cphone-row-side">
+                <span className="cphone-row-big">{e.big}</span>
+                {e.small && <span className="cphone-row-small">{e.small}</span>}
+              </span>
+            </button>
+          ))}
+          {entries.length === 0 && <p className="cphone-empty">Nothing in the book matches that search.</p>}
+        </div>
+
+        <footer className={`cphone-detail${selected ? ' open' : ''}`}>
+          {!selected ? (
+            <p className="cphone-detail-empty">Tap an entry to see it and {isMonsters ? 'place it on the map' : 'give it to a hero'}.</p>
+          ) : (
+            <>
+              <div className="cphone-detail-head">
+                <b>{selected.name}</b>
+                <button type="button" className="cphone-detail-close" aria-label="Back to the list" onClick={() => setSelectedKey(null)}>
+                  &times;
+                </button>
+              </div>
+              {selected.monster && (
+                <div className="cphone-stats" aria-label="Stat block">
+                  <span>HP {selected.monster.hp}</span>
+                  <span>AC {selected.monster.ac}</span>
+                  <span>Speed {selected.monster.speed} ft</span>
+                  {Object.entries(selected.monster.abilities).map(([k, v]) => (
+                    <span key={k}>
+                      {k.toUpperCase()} {v} ({abilityMod(v)})
+                    </span>
+                  ))}
+                </div>
+              )}
+              {selected.detail && <p className="cphone-detail-text">{selected.detail}</p>}
+              {selected.monster && <p className="cphone-detail-text cphone-attack">{selected.monster.attack}</p>}
+              {isMonsters ? (
+                <div className="cphone-actions">
+                  {selected.monster && (
+                    <>
+                      <button type="button" className="cphone-btn" onClick={() => imageInputRef.current?.click()}>
+                        Use my own image
+                      </button>
+                      {selected.ownImage && (
+                        <button type="button" className="cphone-btn" onClick={resetMonsterImage}>
+                          Reset image
+                        </button>
+                      )}
+                      <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleMonsterImage} />
+                    </>
+                  )}
+                  <button type="button" className="cphone-btn primary" disabled={!onAddMonster} onClick={addToMap}>
+                    Add to the map
+                  </button>
+                </div>
+              ) : heroes.length === 0 ? (
+                <Hint
+                  action="Open Tokens"
+                  onAction={() => {
+                    emitFx({ type: 'open', panel: 'tokens' });
+                    onClose?.();
+                  }}
+                >
+                  Loot goes to a hero. Place one from <b>Add → Heroes</b> first.
+                </Hint>
+              ) : (
+                <div className="cphone-give">
+                  <label className="cphone-give-to">
+                    <span>Give to</span>
+                    <select className="cphone-select" value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+                      {heroes.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                          {h.ownerName ? ` (${h.ownerName})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="cphone-actions">
+                    <button type="button" className="cphone-btn primary" disabled={!heroId} onClick={() => give(false)}>
+                      Give
+                    </button>
+                    <button type="button" className="cphone-btn" disabled={!heroId} onClick={() => give(true)}>
+                      Buy ({formatCost(selected.item.cost)})
+                    </button>
+                  </div>
+                </div>
+              )}
+              {feedback && (
+                <p className="cphone-feedback" role="status">
+                  {feedback}
+                </p>
+              )}
+            </>
+          )}
+        </footer>
+      </div>
+    );
+  }
+
   const L = shownSpread * 2;
   const go = flip.phase === 'go';
   const trans = go ? `transform ${FLIP_MS}ms cubic-bezier(0.45, 0.05, 0.25, 1)` : 'none';
@@ -502,6 +697,18 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
             <span className="cbook-feedback" role="status">
               {feedback}
             </span>
+            {heroes.length === 0 && (
+              <Hint
+                className="cbook-hint"
+                action="Open Tokens"
+                onAction={() => {
+                  emitFx({ type: 'open', panel: 'tokens' });
+                  onClose?.();
+                }}
+              >
+                Loot goes to a hero. Place one from <b>Tokens → Default heroes</b> first.
+              </Hint>
+            )}
           </div>
           )}
         </div>

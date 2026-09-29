@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
+import { Hint } from './Hints.jsx';
 import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { CHEST_SIZES } from '../data/chests.js';
@@ -33,7 +34,7 @@ function TokenCard({ name, imageUrl, shape, onPlace }) {
   );
 }
 
-export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
+export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
   const fileInputRef = useRef(null);
   const [pendingKind, setPendingKind] = useState('hero');
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
@@ -47,6 +48,11 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
   const [showTrapModal, setShowTrapModal] = useState(false);
   const [trapDraft, setTrapDraft] = useState(emptyTrapDraft);
   const [phoneTab, setPhoneTab] = useState('heroes');
+  // A door needs a second map: the hint's "Create a layer" opens this form
+  // right here, and the door form then picks the new map.
+  const [newMapOpen, setNewMapOpen] = useState(false);
+  const [newMapName, setNewMapName] = useState('');
+  const [madeLayerId, setMadeLayerId] = useState(null);
 
   if (collapsed) {
     return (
@@ -168,11 +174,53 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
 
           {placeableKind === 'door' &&
             (otherLayerIds.length === 0 ? (
-              <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-                Create another layer first to link a door to it.
-              </p>
+              newMapOpen ? (
+                <form
+                  className="hint-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const id = onCreateLayer?.({ name: newMapName, cols: 20, rows: 15 });
+                    if (id) {
+                      setMadeLayerId(id);
+                      setDoorTarget(id);
+                    }
+                    setNewMapOpen(false);
+                    setNewMapName('');
+                  }}
+                >
+                  <label className="field-label" style={{ marginTop: 0 }}>
+                    New map name
+                    <input className="field" autoFocus value={newMapName} placeholder="e.g. The Undercroft" onChange={(e) => setNewMapName(e.target.value)} />
+                  </label>
+                  <div className="hint-form-actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setNewMapOpen(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Create map
+                    </button>
+                  </div>
+                  <p className="hint-form-note">It starts with one 20 × 15 island. You stay on this map.</p>
+                </form>
+              ) : (
+                <Hint action={onCreateLayer ? (layout === 'phone' ? 'Create a map' : 'Create a layer') : null} onAction={() => setNewMapOpen(true)}>
+                  Doors connect two maps. This table has only <b>{layers?.[currentLayerId]?.name || 'this map'}</b> so far.{' '}
+                  {layout === 'phone' ? (
+                    <>Add a second map now, or later from the <b>maps</b> button at the top.</>
+                  ) : (
+                    <>
+                      Add a second map here, or later in <b>Mapping → Layers</b>.
+                    </>
+                  )}
+                </Hint>
+              )
             ) : (
               <>
+                {madeLayerId && layers?.[madeLayerId] && (
+                  <p role="status" className="hint-done">
+                    ✓ <b>{layers[madeLayerId].name}</b> is ready.
+                  </p>
+                )}
                 <label className="field-label">Door name</label>
                 <input className="field" value={doorName} onChange={(e) => setDoorName(e.target.value)} />
 
@@ -186,9 +234,15 @@ export default function TokenSidebar({ onAddEntity, layers, layerOrder, currentL
                   ))}
                 </select>
 
+                {!doorTarget && <Hint className="hint-tight">Pick the map this door opens onto. Its partner door appears there.</Hint>}
                 <button className="btn btn-secondary btn-block" style={{ marginTop: 8 }} disabled={!doorTarget} onClick={placeDoor}>
                   Place door
                 </button>
+                {madeLayerId && doorTarget === madeLayerId && (
+                  <p className="hint-form-note">
+                    The door lands on the island you’re viewing. Its partner appears on {layers?.[madeLayerId]?.name} — drag both where you want them.
+                  </p>
+                )}
               </>
             ))}
 
