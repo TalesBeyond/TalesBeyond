@@ -609,13 +609,6 @@ export default function Toolbar({
           }
         >
           <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
-          {isHost && !clock && (
-            <div className="toolbar-menu-hint">
-              <Hint action="Set the time" onAction={() => pick(onOpenClock)}>
-                Set an in-game time to show a clock and let dusk and night fall on the map.
-              </Hint>
-            </div>
-          )}
           <ToolCard
             icon={dayPhase ? '' : <Icon name="daynight" />}
             image={dayPhase ? DAY_PHASES[dayPhase].imageUrl : undefined}

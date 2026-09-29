@@ -4908,7 +4908,6 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .cbook-hint { flex-basis: 100%; margin-top: 8px; }
 .toolbar-hint-anchor { position: relative; display: inline-flex; }
 .toolbar-hint-pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 120; width: 280px; padding: 6px; border: 1px solid var(--gold-line); border-radius: 12px; background: var(--ink-900); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5); }
-.toolbar-menu-hint { flex-basis: 100%; max-width: 300px; }
 .hint-icon { flex-shrink: 0; margin-top: 1px; color: var(--gold-hi); }
 .hint-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .hint-body p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-100); }

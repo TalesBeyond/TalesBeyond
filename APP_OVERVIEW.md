@@ -350,8 +350,8 @@ Layers") and offering the fix when it's one step. Four patterns:
   layer opens an inline form; the new map is then picked for the door), a
   door with no map picked, a hero nobody plays, Battle with an empty bag
   (Open the Bag), nothing to attack, loot with no heroes (Open Tokens),
-  taking loot without a hero, Initiative with nobody picked, no in-game
-  clock (Set the time), Islands (Switch to Edit), the base layer, asset
+  taking loot without a hero, Initiative with nobody picked, Islands
+  (Switch to Edit), the base layer, asset
   storage with nothing saved, and Music where it can't play.
 - **Empty state**: the DM's empty map (Open Tokens / the Add sheet), and a
   player without a hero (inspector, phone card).
