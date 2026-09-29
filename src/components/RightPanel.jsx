@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { playDiceSound } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
-import { Hint } from './Hints.jsx';
+import { Hint, EmptyState } from './Hints.jsx';
 import {
   ABILITIES,
   SKILLS,
@@ -102,7 +102,11 @@ export default function RightPanel({
 
       <div className="panel-scroll inspector-scroll">
         <div className="cap">Inspector</div>
-        {!selectedEntity ? (
+        {!selectedEntity && !isHost && !Object.values(entities || {}).some((e) => e.kind === 'hero' && e.ownerId === meId) ? (
+          <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
+            Ask your DM to pick you under <b>played by</b> on a hero’s card. It shows up here the moment they do.
+          </EmptyState>
+        ) : !selectedEntity ? (
           <div className="empty-state">Select a token on the map to see its details here.</div>
         ) : selectedEntity.kind === 'hero' ? (
           <HeroInspector

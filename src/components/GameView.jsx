@@ -9,7 +9,7 @@ import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
-import { ModeBar } from './Hints.jsx';
+import { ModeBar, EmptyState } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -2901,6 +2901,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                   onDone={() => setTool('edit')}
                 />
               )}
+              {!isHost && tool !== 'draw' && !selectedEntity && !heroes.some((h) => h.ownerId === me.id) && (
+                <div className="phone-no-hero">
+                  <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
+                    Ask your DM to pick you under <b>played by</b> on a hero’s card. You can look around and roll dice meanwhile.
+                  </EmptyState>
+                </div>
+              )}
               {tool === 'draw' ? null : plannedMoveInfo ? (
                 <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
               ) : (
@@ -2939,6 +2946,24 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          {isHost && tool === 'play' && Object.keys(layerEntities).length === 0 && (
+            <div className="map-empty">
+              <EmptyState
+                icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>}
+                title="This map is empty"
+                action={isPhone ? 'Add to the map' : 'Open Tokens'}
+                onAction={() => emitFx({ type: 'open', panel: 'tokens' })}
+              >
+                {isPhone ? (
+                  <>Add heroes, monsters, doors and chests with the <b>Add</b> button below.</>
+                ) : (
+                  <>
+                    Add heroes, monsters, doors and chests from the <b>Tokens</b> panel on the left.
+                  </>
+                )}
+              </EmptyState>
+            </div>
+          )}
           {/* While a tool changes what a press does, say so across the top of
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (

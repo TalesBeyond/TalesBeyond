@@ -93,12 +93,12 @@ export function Hint({ children, action, onAction, className = '' }) {
 
 export function EmptyState({ icon, title, children, action, onAction, className = '' }) {
   return (
-    <div className={`empty-state ${className}`}>
-      {icon && <span className="empty-state-icon">{icon}</span>}
+    <div className={`hint-empty ${className}`}>
+      {icon && <span className="hint-empty-icon">{icon}</span>}
       <b>{title}</b>
       <p>{children}</p>
       {action && onAction && (
-        <button type="button" className="empty-state-action" onClick={onAction}>
+        <button type="button" className="hint-empty-action" onClick={onAction}>
           {action}
         </button>
       )}

@@ -3,6 +3,7 @@ import ClockReadout from './ClockReadout.jsx';
 import { DAY_PHASES } from '../data/dayPhases.js';
 import { emitFx } from '../lib/fx.js';
 import { PhoneSheet, PhoneLookAndSound, PhoneSwitch, PhoneGuestHostNote } from './PhoneChrome.jsx';
+import { Tip } from './Hints.jsx';
 
 // The DM's phone screens that stand in for the desktop toolbar: "Run the
 // table" (the session: encounter, compendium, clock, music, dice, party) and
@@ -176,6 +177,9 @@ export function PhoneHostMenu({
       <div className="phone-sheet-pad">
         <section className="phone-menu-section" aria-label="Codes">
           <span className="phone-label">Codes</span>
+          <Tip id="codes" title="Share the player code" className="phone-tip">
+            Players join with the player code. Keep the {isGuestHost ? 'DM code' : 'host key'} to yourself — it’s how you get the table back.
+          </Tip>
           <div className="phone-code-row">
             <span className="phone-code">
               <span>Player code</span>

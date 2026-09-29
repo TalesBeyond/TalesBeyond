@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
-import { Hint, useHintPrefs } from './Hints.jsx';
+import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
@@ -424,6 +424,15 @@ export default function Toolbar({
     </>
   );
 
+  // Once, the first time someone hosts: which code to share. Shown by the
+  // inline codes or, when the bar folds them away, by the Invite menu — CSS
+  // shows whichever of the two is on screen.
+  const codesTip = isHost && (
+    <Tip id="codes" title="Share the player code" className="toolbar-codes-tip">
+      Players join with the player code. Keep the {isGuestHost ? 'DM code' : 'host key'} to yourself — it’s how you get the table back.
+    </Tip>
+  );
+
   if (collapsed) {
     return (
       <div className="toolbar collapsed">
@@ -688,7 +697,12 @@ export default function Toolbar({
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
           are always rendered — CSS shows one. */}
-      {isHost && <div className="toolbar-group toolbar-codes-inline">{codeChips}</div>}
+      {isHost && (
+        <div className="toolbar-group toolbar-codes-inline">
+          {codeChips}
+          {codesTip}
+        </div>
+      )}
       {isHost && (
         <ToolMenu
           className="toolbar-codes-menu"
@@ -698,6 +712,7 @@ export default function Toolbar({
           open={openMenu === 'codes'}
           onToggle={() => toggleMenu('codes')}
           onClose={closeMenu}
+          popovers={openMenu !== 'codes' && codesTip}
         >
           {codeChips}
         </ToolMenu>
@@ -1428,6 +1443,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
 
   const activeTab = ASSET_STORAGE_TABS.find((t) => t.key === tab);
   const ownEntries = Object.values(customAssets || {}).filter((item) => item.assetType === tab);
+  const nothingSaved = Object.keys(customAssets || {}).length === 0;
 
   function addMonster() {
     const name = monsterDraft.name.trim();
@@ -1508,6 +1524,11 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
         </div>
 
         <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          {nothingSaved && (
+            <Hint className="asset-empty-hint">
+              Nothing saved here yet. Make a monster, weapon or item once below, then place it as often as you like at this table.
+            </Hint>
+          )}
           {tab === 'monster' && (
             <>
               <label className="field-label">Name</label>

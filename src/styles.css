@@ -4943,7 +4943,7 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .hint-form-note { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--parchment-300); }
 .hint-done { margin: 0 0 6px; font-size: 13px; color: #9fbf8f; }
 
-.empty-state {
+.hint-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4953,10 +4953,10 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
   border-radius: 12px;
   text-align: center;
 }
-.empty-state-icon { color: var(--gold-line); }
-.empty-state b { font-size: 15px; color: var(--parchment-100); }
-.empty-state p { margin: 0; max-width: 280px; font-size: 13px; line-height: 1.45; color: var(--parchment-300); }
-.empty-state-action {
+.hint-empty-icon { color: var(--gold-line); }
+.hint-empty b { font-size: 15px; color: var(--parchment-100); }
+.hint-empty p { margin: 0; max-width: 280px; font-size: 13px; line-height: 1.45; color: var(--parchment-300); }
+.hint-empty-action {
   margin-top: 4px;
   min-height: 40px;
   padding: 0 16px;
@@ -5041,6 +5041,27 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
   border-top: 1px solid var(--gold-hi);
   transform: rotate(45deg);
 }
+.toolbar-codes-inline,
+.toolbar-codes-menu { position: relative; }
+.toolbar-codes-tip { position: absolute; top: calc(100% + 12px); left: 0; z-index: 130; }
+.phone-tip { width: auto; margin: 4px 0 8px; }
+.phone-tip .tip-arrow { display: none; }
+/* The DM's empty map: centred over the grid, clicks elsewhere still reach it. */
+.map-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+.map-empty .hint-empty { pointer-events: auto; max-width: 320px; background: var(--ink-900); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45); }
+.phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 24; }
+.phone-no-hero .hint-empty { background: var(--ink-900); border-style: solid; border-color: var(--gold-line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55); }
+.inspector-scroll .hint-empty { margin: 12px 4px; }
+.asset-empty-hint { margin-bottom: 14px; }
 .tip-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-hi); }
 .tip-title { font-family: var(--font-display, 'Spectral', serif); font-size: 17px; font-weight: 600; color: var(--parchment-100); }
 .tip p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-100); }
