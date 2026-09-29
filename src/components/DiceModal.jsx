@@ -123,6 +123,8 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
     const { moment, ...result } = rollPool(pool, modifier, mode, name);
     onRoll(result);
     emitFx({ type: 'log', tone: 'roll', text: `You rolled ${result.title}: ${result.total}${result.flag ? ` (${result.flag})` : ''}` });
+    const dice = describePool(pool, modifier) + (mode === 'advantage' ? ' (advantage)' : mode === 'disadvantage' ? ' (disadvantage)' : '');
+    emitFx({ type: 'rolled', what: name.trim() || null, dice, detail: result.detail, total: result.total, flag: result.flag });
     // The big die over the table (FxLayer.jsx) — see rollPool's `moment`.
     if (moment) emitFx({ type: 'die', ...moment, detail: `${result.title} · total ${result.total}` });
   }

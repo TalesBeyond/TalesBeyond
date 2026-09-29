@@ -69,6 +69,7 @@ export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHos
     setLastRoll({ value, key: Date.now() });
     emitFx({ type: 'log', tone: 'roll', text: `You rolled a d20: ${value}${value === 20 ? ' (natural 20)' : value === 1 ? ' (natural 1)' : ''}` });
     emitFx({ type: 'die', value });
+    emitFx({ type: 'rolled', what: null, dice: '1d20', detail: '', total: value, flag: value === 20 ? 'Natural 20' : value === 1 ? 'Natural 1' : null });
   }
 
   const endLabel = canEndTurn ? 'End turn' : actor ? `${actor.name}'s turn` : 'Waiting';

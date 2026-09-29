@@ -1448,6 +1448,67 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 /* ---------- Selected entity inspector ---------- */
 
 .inspector-scroll { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+
+/* Dice rolls at the table (RollFeed.jsx): the log under the players, and
+   cards over the map as rolls arrive. */
+.roll-log-panel { flex: none; max-height: 24%; border-top: 1px solid var(--ink-700); }
+.roll-log { list-style: none; margin: 6px 0 0; padding: 0; }
+.roll-log li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ink-800); }
+.roll-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }
+.roll-log-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; line-height: 1.35; color: var(--parchment-100); }
+.roll-log-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
+.roll-log-detail { font-family: var(--font-mono); font-size: 11px; color: var(--parchment-300); }
+.roll-log-empty { margin: 6px 0 0; font-size: 12px; color: var(--parchment-300); }
+.roll-total { flex-shrink: 0; font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--parchment-100); }
+.roll-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold-hi) 14%, transparent);
+  color: var(--gold-hi);
+  font-size: 11px;
+  font-weight: 700;
+}
+.roll-chip.hidden { border-color: var(--ink-600, #5c5648); background: rgba(138, 124, 94, 0.18); color: var(--parchment-200); }
+.roll-toasts {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100% - 32px));
+}
+.roll-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--ink-900);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: roll-toast-in 0.25s ease-out;
+}
+@keyframes roll-toast-in { from { opacity: 0; transform: translateY(-8px); } }
+.roll-avatar { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display-caps); font-size: 17px; font-weight: 700; color: #fff; }
+.roll-toast-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.3; }
+.roll-toast-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
+.roll-toast .roll-total { font-size: 28px; }
+.stage-wrap:has(.hud-initiative:not(.folded)) .roll-toasts { top: 84px; }
+.stage-wrap:has(.turn-ribbon:not(.folded)) .roll-toasts { top: 136px; }
+.stage-wrap:has(.hud-initiative.folded, .turn-ribbon.folded) .roll-toasts { top: 72px; }
+.game-screen.phone .roll-toasts,
+.game-screen.phone .stage-wrap .roll-toasts { top: 12px; left: 12px; right: 12px; width: auto; z-index: 30; }
 .inspector-card { display: flex; flex-direction: column; }
 .inspector-card h4 {
   margin: 0 0 8px;

@@ -9,6 +9,7 @@ import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
+import { RollToasts, RollLog } from './RollFeed.jsx';
 import { ModeBar, EmptyState } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
@@ -32,6 +33,8 @@ import {
   loadLocalAudioVolumes,
   saveLocalAudioVolumes,
   loadDrawPrefs,
+  loadRevealRolls,
+  saveRevealRolls,
   saveDrawPrefs,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
@@ -757,11 +760,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       }, RECONNECT_GRACE_MS);
     }
 
-    const unsubscribe = subscribeToTable(tableId, dispatch, handleStatusChange, {
-      isHost,
-      onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
-    });
+    const unsubscribe = subscribeToTable(
+      tableId,
+      dispatch,
+      handleStatusChange,
+      {
+        isHost,
+        onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
+      },
+      (roll) => receiveRollRef.current(roll)
+    );
+    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll };
     return () => {
+      tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
       if (backoffTimer) clearTimeout(backoffTimer);
       unsubscribe();
@@ -782,6 +793,56 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // change and turn change it sees (those come from synced state, so every
   // player's log agrees on them).
   const [combatLog, setCombatLog] = useState([]);
+
+  // ---- Dice rolls at the table (RollFeed.jsx) ----
+  // Players roll in the open: every roll a player makes is announced to the
+  // whole table. The DM's own rolls stay on the DM's screen unless they turn
+  // on "Reveal rolls to players" (this browser's choice — only the DM's
+  // client ever decides to send them). Rolls travel live over the table's
+  // channel and are never stored.
+  const [revealRolls, setRevealRollsState] = useState(() => loadRevealRolls());
+  function setRevealRolls(next) {
+    setRevealRollsState(next);
+    saveRevealRolls(next);
+  }
+  const [rollLog, setRollLog] = useState([]);
+  const [rollToasts, setRollToasts] = useState([]);
+  const tableChannelRef = useRef(null); // cloud: { sendRoll }
+  function addRoll(entry) {
+    setRollLog((prev) => [entry, ...prev].slice(0, 100));
+    if (entry.mine) return;
+    setRollToasts((prev) => [entry, ...prev].slice(0, 3));
+    setTimeout(() => setRollToasts((prev) => prev.filter((t) => t.id !== entry.id)), 6000);
+  }
+  function receiveRoll(roll) {
+    if (!roll || roll.byId === me.id) return;
+    addRoll({ ...roll, mine: false, hidden: false });
+  }
+  // The channels are opened in effects that outlive a render; they call the
+  // latest receiver through this.
+  const receiveRollRef = useRef(receiveRoll);
+  receiveRollRef.current = receiveRoll;
+  useFx((event) => {
+    if (event.type !== 'rolled') return;
+    const player = stateRef.current.players[me.id];
+    const hidden = isHost && !revealRolls;
+    const roll = {
+      id: `${me.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      byId: me.id,
+      name: player?.name || 'Someone',
+      color: player?.color || null,
+      isDm: isHost,
+      what: event.what || null,
+      dice: event.dice || '',
+      detail: event.detail || '',
+      total: event.total,
+      flag: event.flag || null,
+    };
+    addRoll({ ...roll, mine: true, hidden });
+    if (hidden) return;
+    if (isRemote) tableChannelRef.current?.sendRoll(roll);
+    else if (isGuest) guestChannelRef.current?.sendRoll(roll);
+  });
   const [chronicleOpen, setChronicleOpen] = useState(false); // Grimoire's Chronicle tab (BookTabs.jsx)
   const logSeq = useRef(0);
   useFx((event) => {
@@ -964,6 +1025,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       onStatusChange: handleGuestStatusChange,
       isHost: isGuestHost,
       onHostPresenceChange: isGuestHost ? undefined : handleHostPresenceChange,
+      onRoll: (roll) => receiveRollRef.current(roll),
     });
     guestChannelRef.current = channel;
     return () => {
@@ -2775,6 +2837,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
+          rollLog={rollLog}
         />
   );
 
@@ -2949,6 +3012,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
           {isHost && tool === 'play' && Object.keys(layerEntities).length === 0 && (
             <div className="map-empty">
               <EmptyState

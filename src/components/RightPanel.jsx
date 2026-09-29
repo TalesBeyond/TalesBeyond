@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { playDiceSound } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
 import { Hint, EmptyState } from './Hints.jsx';
+import { RollLog } from './RollFeed.jsx';
 import {
   ABILITIES,
   SKILLS,
@@ -51,6 +52,7 @@ export default function RightPanel({
   collapsed,
   onToggleCollapsed,
   encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
+  rollLog = [], // this session's dice rolls at the table (RollFeed.jsx)
 }) {
   if (collapsed) {
     return (
@@ -98,6 +100,11 @@ export default function RightPanel({
             );
           })
         )}
+      </div>
+
+      <div className="panel-scroll roll-log-panel">
+        <div className="cap">Roll log</div>
+        <RollLog entries={rollLog} />
       </div>
 
       <div className="panel-scroll inspector-scroll">

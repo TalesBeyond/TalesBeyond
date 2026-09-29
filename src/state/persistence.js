@@ -455,3 +455,23 @@ export function saveHudFolded(name, folded) {
     // storage blocked or full - the choice just won't survive a refresh
   }
 }
+
+// The DM's "Reveal rolls to players" (Configurations), this browser only:
+// off keeps the DM's own dice rolls on their screen.
+const REVEAL_ROLLS_KEY = 'hearthbound:revealRolls';
+
+export function loadRevealRolls() {
+  try {
+    return window.localStorage.getItem(REVEAL_ROLLS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveRevealRolls(reveal) {
+  try {
+    window.localStorage.setItem(REVEAL_ROLLS_KEY, reveal ? '1' : '0');
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
