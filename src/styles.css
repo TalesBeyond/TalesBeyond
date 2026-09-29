@@ -831,6 +831,10 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .hud-zoom button:hover { background: var(--ink-800); }
 .hud-zoom button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: -2px; }
 .hud-zoom .hud-zoom-value { min-width: 60px; font-family: var(--font-mono); font-size: 13px; color: var(--parchment-200); }
+/* Fold the zoom buttons away, and back. */
+.hud-zoom .hud-zoom-toggle { display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
+.hud-zoom .hud-zoom-hide { min-width: 32px; border-left: 1px solid var(--ink-700); }
+.hud-zoom.folded .hud-zoom-toggle { min-width: 44px; color: var(--parchment-100); }
 
 /* The DM's drawing bar: a column at the map's left edge while Draw is on. */
 .draw-bar {
@@ -4375,6 +4379,8 @@ button.card-notes { border-style: solid; }
 .game-screen.phone .hud-zoom { top: 12px; right: 12px; bottom: auto; flex-direction: column; }
 .game-screen.phone .hud-zoom .hud-zoom-value { min-width: 44px; font-size: 11px; }
 .game-screen.phone .hud-zoom .hud-zoom-recenter { border-left: 0; border-top: 1px solid var(--ink-700); }
+.game-screen.phone .hud-zoom .hud-zoom-hide { min-width: 44px; height: 32px; border-left: 0; border-top: 1px solid var(--ink-700); }
+.game-screen.phone .hud-zoom .hud-zoom-hide svg { transform: rotate(-90deg); }
 .game-screen.phone .hud-initiative,
 .game-screen.phone .turn-ribbon { top: 12px; left: 116px; right: 68px; transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
 .game-screen.phone .hud-initiative { width: max-content; max-width: calc(100% - 184px); scrollbar-width: none; }

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { loadZoomHidden, saveZoomHidden } from '../state/persistence.js';
 import { useNow } from '../state/useGameClock.js';
 import { DAY_PHASES } from '../data/dayPhases.js';
 import { clockTotalMinutes, splitTotalMinutes, formatClockTime, dayPhase } from '../utils/gameClock.js';
@@ -126,7 +127,25 @@ export function RulerReadout({ feet }) {
 }
 
 // Bottom-right: zoom and recenter, always in reach.
+// The zoom and recenter buttons can be folded down to one button (this
+// browser remembers it) to leave more of the map in view.
 export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter }) {
+  const [hidden, setHiddenState] = useState(loadZoomHidden);
+  const setHidden = (next) => {
+    setHiddenState(next);
+    saveZoomHidden(next);
+  };
+  if (hidden) {
+    return (
+      <div className="hud-zoom folded">
+        <button type="button" className="hud-zoom-toggle" aria-label="Show zoom controls" title="Show zoom and recenter" onClick={() => setHidden(false)}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12.2 12.2l4.3 4.3M6.5 8.5h4M8.5 6.5v4" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="hud-zoom">
       <button type="button" aria-label="Zoom out" onClick={onZoomOut}>
@@ -141,6 +160,11 @@ export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter
       <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current island" title="Scroll back to the currently selected island" onClick={onRecenter}>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3" />
+        </svg>
+      </button>
+      <button type="button" className="hud-zoom-toggle hud-zoom-hide" aria-label="Hide zoom controls" title="Hide zoom and recenter" onClick={() => setHidden(true)}>
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 5l5 5-5 5" />
         </svg>
       </button>
     </div>

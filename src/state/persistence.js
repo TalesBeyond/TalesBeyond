@@ -435,3 +435,23 @@ export function saveHintPrefs(prefs) {
     // storage blocked or full - the choice just won't survive a refresh
   }
 }
+
+// Whether the map's zoom and recenter buttons are folded away in this
+// browser (TableHud.jsx's ZoomControl).
+const ZOOM_HIDDEN_KEY = 'hearthbound:zoomHidden';
+
+export function loadZoomHidden() {
+  try {
+    return window.localStorage.getItem(ZOOM_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveZoomHidden(hidden) {
+  try {
+    window.localStorage.setItem(ZOOM_HIDDEN_KEY, hidden ? '1' : '0');
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
