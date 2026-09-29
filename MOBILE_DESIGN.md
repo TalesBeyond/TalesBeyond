@@ -66,8 +66,12 @@ real-device pass and on REQ-008.
 
 - **Add** (`TokenSidebar` `layout="phone"`): Heroes · Monsters (bestiary, asset
   storage) · Doors · Chests · Traps · Your own.
-- **Edit** mode bar: island settings (Map settings), Group (tap islands, name
-  the group), Draw, Done.
+- **Edit** mode bar: island settings (Map settings), Group islands, Draw, Done.
+- **Group islands** (`PhoneGroupSheet`): islands are too small to tap one by one
+  on a phone map, so a sheet picks them instead — a map of the layer where a
+  tap toggles an island, the same islands as a checklist (an island already in
+  a group is shown but can't be picked), a name, and Group N islands. Existing
+  groups below can be renamed or ungrouped.
 - **Draw** (`DrawingBar.jsx` `PhoneDrawBar`): a two-row bar where the token card
   sits — Pencil, Line, Circle, Rectangle, Select, Eraser; then Style (the
   "Drawing style" sheet: colour wheel, swatches, thickness, fill, Snap to

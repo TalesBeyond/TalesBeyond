@@ -4853,6 +4853,45 @@ body:has(.game-screen.phone) .book-card {
 }
 .game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
 
+/* Grouping islands on a phone (PhoneGroupSheet): a tappable map of the
+   layer, the same islands as a checklist, then a name. */
+.phone-group-map {
+  width: 100%;
+  height: 170px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--ink-700);
+  border-radius: 14px;
+  background: var(--ink-950);
+}
+.phone-group-island { fill: var(--ink-700); stroke: var(--ink-950); stroke-width: 3; vector-effect: non-scaling-stroke; cursor: pointer; }
+.phone-group-island.active { stroke: var(--parchment-300); }
+.phone-group-island.picked { fill: var(--gold-hi); stroke: #fff; }
+.phone-group-island.grouped { fill: var(--ink-800); stroke-dasharray: 6 4; stroke: var(--parchment-300); cursor: default; }
+.phone-group-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.phone-group-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 6px 14px;
+  border: 1px solid var(--ink-700);
+  border-radius: 14px;
+  background: var(--ink-800);
+  cursor: pointer;
+}
+.phone-group-row.picked { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 10%, var(--ink-800)); }
+.phone-group-row.grouped { opacity: 0.55; cursor: default; }
+.phone-group-row input { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--gold-hi); }
+.phone-group-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.phone-group-text b { font-size: 15px; }
+.phone-group-text span { font-size: 13px; color: var(--parchment-300); }
+.phone-group-name { display: flex; flex-direction: column; gap: 6px; }
+.phone-group-name .field,
+.phone-group-existing .field { min-height: 48px; font-size: 16px; }
+.phone-group-existing { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
+.phone-group-existing .phone-caption { grid-column: 1 / -1; order: 3; }
+
 /* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), where the token
    card sits otherwise. */
 .phone-draw-bar {

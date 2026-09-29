@@ -86,6 +86,7 @@ import {
   PhoneTokenCard,
   PhoneNav,
   PhoneSheet,
+  PhoneGroupSheet,
   PhoneSwitch,
   PhoneLayersSheet,
   PhoneAtlas,
@@ -2011,9 +2012,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // grid/background/size; only their membership and the group's own name
   // are new state. Requires at least 2 islands (a group of one is
   // meaningless).
-  function confirmGroup(name) {
-    if (!isHost || pendingGroupIslandIds.length < 2) return;
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds: pendingGroupIslandIds };
+  // `islandIds`: the phone's group sheet picks from a list; the desktop
+  // Merge Islands tool picks on the map (pendingGroupIslandIds).
+  function confirmGroup(name, islandIds = pendingGroupIslandIds) {
+    if (!isHost || islandIds.length < 2) return;
+    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds };
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -2884,7 +2887,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                   tool={tool}
                   islandName={activeIsland?.name}
                   onSettings={() => emitFx({ type: 'open', panel: 'map' })}
-                  onGroup={() => setTool('group')}
+                  onGroup={() => setPhoneSheet('group')}
                   onDraw={() => setTool('draw')}
                   onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
                 />
@@ -3094,7 +3097,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </div>
         )}
 
-        {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+        {tool === 'group' && !isPhone && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
 
         {pendingLeaveWarning && (
           <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
@@ -3248,6 +3251,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               hideDrawings={hideDrawings}
               onHideDrawingsChange={setHideDrawings}
               onLeave={leaveTable}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'group' && isHost && (
+            <PhoneGroupSheet
+              layer={currentLayer}
+              tokenCounts={Object.values(layerEntities).reduce((acc, e) => ({ ...acc, [e.islandId]: (acc[e.islandId] || 0) + 1 }), {})}
+              activeIslandId={activeIslandId}
+              onGroup={(ids, name) => {
+                confirmGroup(name, ids);
+                setPhoneSheet(null);
+              }}
+              onRename={renameGroup}
+              onUngroup={ungroupIslands}
               onClose={() => setPhoneSheet(null)}
             />
           )}
