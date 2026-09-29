@@ -4830,7 +4830,11 @@ button.card-notes { border-style: solid; }
 .phone-abilities .card-ed { min-height: 28px; min-width: 44px; }
 
 /* Player table menu, look & sound, party (phone). */
-.phone-menu-section { display: flex; flex-direction: column; gap: 8px; }
+.phone-menu-section { display: flex; flex-direction: column; gap: 10px; }
+/* Sections of a phone menu (Run the table, the table menu) breathe apart,
+   with a thin rule between them. */
+.phone-menu-section + .phone-menu-section { margin-top: 10px; padding-top: 20px; border-top: 1px solid var(--ink-700); }
+.phone-menu-section > .phone-label { margin-bottom: 2px; }
 .phone-menu-section .phone-palettes { padding: 0; }
 .phone-clock { padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-800); }
 .phone-switch-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 6px 6px 14px; border: 1px solid var(--ink-700); border-radius: 14px; }
