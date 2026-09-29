@@ -11,6 +11,7 @@ import {
   hitsDrawing,
   drawingBounds,
   drawingHandles,
+  islandFillColour,
   movedGeometry,
   resizedGeometry,
 } from '../utils/drawing.js';
@@ -591,6 +592,10 @@ export default function MapBoard({
     }
     if (!found) return;
     e.preventDefault();
+    if (subTool === 'fill') {
+      fillIsland(found.island.id);
+      return;
+    }
     const start = toIslandSquares(e, found.island.id);
     drawRef.current = {
       mode: 'create',
@@ -604,6 +609,18 @@ export default function MapBoard({
     };
     setDraft(draftFrom(drawRef.current));
     listenWhileDrawing();
+  }
+
+  // Fill: paints the whole island one colour. A press on an island that
+  // already has a fill recolours it; the same colour and opacity again
+  // takes it off.
+  function fillIsland(islandId) {
+    const style = { color: drawSettings.style.color, opacity: drawSettings.style.opacity ?? 1 };
+    const fills = drawingOrder.map((id) => drawings[id]).filter((d) => d?.islandId === islandId && d.kind === 'fill');
+    const existing = fills[fills.length - 1];
+    if (!existing) onAddDrawing({ islandId, kind: 'fill', geometry: {}, style });
+    else if (existing.style?.color === style.color && (existing.style?.opacity ?? 1) === style.opacity) onRemoveDrawings?.(fills.map((d) => d.id));
+    else onUpdateDrawing?.({ ...existing, style });
   }
 
   // Select: a handle of the selected drawing first (they can sit past the
@@ -852,6 +869,10 @@ export default function MapBoard({
         const isPendingGroupMember = pendingGroupIslandIds.includes(id);
         // This island's own day/night setting, else the table clock's phase.
         const phase = DAY_PHASES[islandPhase(island, dayPhase)];
+        // Fill (Draw tool): a colour laid over the map art, under the grid.
+        const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
+        const fillColour = fill && islandFillColour(fill.style);
+        const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, island.backgroundImage && `url(${island.backgroundImage})`].filter(Boolean);
 
         return (
           <div
@@ -862,7 +883,7 @@ export default function MapBoard({
               top,
               width: w,
               height: h,
-              backgroundImage: island.backgroundImage ? `url(${island.backgroundImage})` : undefined,
+              backgroundImage: background.length ? background.join(', ') : undefined,
             }}
             onPointerDown={(e) => handleIslandPointerDown(e, island)}
           >

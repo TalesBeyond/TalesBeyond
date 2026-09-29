@@ -314,14 +314,17 @@ The DM's **Draw** tool (Tools menu; on a phone, Edit → Draw) marks up the
 map; every seated player sees the result, and only the DM can draw.
 
 - **Where drawings live**: each belongs to the island it was drawn on —
-  `{ id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect', geometry, style }`
+  `{ id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect' | 'fill', geometry, style }`
   in `state.drawings` / `state.drawingOrder` (creation order, newest on top),
   geometry in grid squares from the island's top-left corner. They paint in
   an SVG inside the island, over the map art, grid and day/night tint and
   under every token, so anything past the island's edge is cut off. Dragging
   the island moves them; deleting it (or its layer) deletes them.
 - **Tools**: Pencil, Line, Circle (grows from its centre), Rectangle,
-  Select (move any drawing within its island; handles resize lines, circles
+  Fill island (a click paints the whole island in the current colour, laid
+  over the map art and under the grid; an Opacity slider sits beside the
+  bar; clicking a filled island recolours it, and the same colour again
+  clears it; Select and Eraser pass over fills), Select (move any drawing within its island; handles resize lines, circles
   and rectangles; pencil strokes move only) and Eraser (removes every
   drawing it touches, whole). A press in Draw always draws, even on a token;
   right-drag still pans.

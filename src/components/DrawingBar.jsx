@@ -12,6 +12,7 @@ export const DRAW_SUB_TOOLS = [
   { id: 'line', label: 'Line', hint: 'Drag a straight line', path: 'M4 16L16 4' },
   { id: 'circle', label: 'Circle', hint: 'Drag out from the centre', path: 'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14z' },
   { id: 'rect', label: 'Rectangle', hint: 'Drag from corner to corner', path: 'M4 5h12v10H4z' },
+  { id: 'fill', label: 'Fill island', hint: 'Click an island to paint it one colour; the same colour again clears it', path: 'M9 3l7 7-6 6-7-7zM3 9h13M17 12.5c1 1.4 1.5 2.3 1.5 3a1.5 1.5 0 0 1-3 0c0-.7.5-1.6 1.5-3z' },
   { id: 'select', label: 'Select', hint: 'Pick a drawing to move it or drag its handles', path: 'M5 3l10 7-5 1-2 5z' },
   { id: 'eraser', label: 'Eraser', hint: 'Drag across drawings to remove them', path: 'M3 13l7-7 6 6-4 4H6zM9 17h8' },
 ];
@@ -65,6 +66,47 @@ export function DrawClearMenu({ islandName, mapName, islandCount, mapCount, onCl
   );
 }
 
+// The one setting the active tool wants at hand, as a slider: Fill's
+// opacity. Beside the desktop bar, and a row of the phone's bar.
+const TOOL_SLIDERS = {
+  fill: {
+    label: 'Opacity',
+    min: 10,
+    max: 100,
+    step: 5,
+    read: (style) => Math.round((style.opacity ?? 1) * 100),
+    write: (v) => ({ opacity: v / 100 }),
+    text: (v) => `${v}%`,
+    preview: (v, style) => <i className="draw-tool-slider-swatch" style={{ background: style.color, opacity: v / 100 }} />,
+  },
+};
+
+export function ToolSlider({ settings, onChange }) {
+  const spec = TOOL_SLIDERS[settings.subTool];
+  if (!spec) return null;
+  const value = spec.read(settings.style);
+  return (
+    <label className="draw-tool-slider">
+      <span className="draw-tool-slider-head">
+        <span>{spec.label}</span>
+        <b>
+          {spec.preview(value, settings.style)}
+          {spec.text(value)}
+        </b>
+      </span>
+      <input
+        type="range"
+        min={spec.min}
+        max={spec.max}
+        step={spec.step}
+        value={value}
+        aria-valuetext={spec.text(value)}
+        onChange={(e) => onChange({ ...settings, style: { ...settings.style, ...spec.write(Number(e.target.value)) } })}
+      />
+    </label>
+  );
+}
+
 export function DrawIcon({ path }) {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -73,8 +115,8 @@ export function DrawIcon({ path }) {
   );
 }
 
-// The phone's drawing bar, above the bottom nav while Draw is on: the six
-// tools, then style (opens the "Drawing style" sheet), Undo, Redo and Done.
+// The phone's drawing bar, above the bottom nav while Draw is on: the
+// seven tools, the active tool's slider (if it has one), then style (opens the "Drawing style" sheet), Undo, Redo and Done.
 export function PhoneDrawBar({ settings, onChange, canUndo, canRedo, onUndo, onRedo, onStyle, onDone }) {
   const set = (patch) => onChange({ ...settings, ...patch });
   return (
@@ -93,6 +135,7 @@ export function PhoneDrawBar({ settings, onChange, canUndo, canRedo, onUndo, onR
           </button>
         ))}
       </div>
+      <ToolSlider settings={settings} onChange={onChange} />
       <div className="phone-draw-row">
         <button type="button" className="phone-draw-style" onClick={onStyle}>
           <span
@@ -204,6 +247,11 @@ export default function DrawingBar({ settings, onChange, recentColours, canUndo,
       {open === 'clear' && (
         <div className="draw-style-popover draw-clear-popover" role="dialog" aria-label="Clear drawings">
           <DrawClearMenu {...clear} onDone={() => setOpen(null)} />
+        </div>
+      )}
+      {!open && TOOL_SLIDERS[settings.subTool] && (
+        <div className="draw-tool-slider-pop" style={{ top: 4 + DRAW_SUB_TOOLS.findIndex((t) => t.id === settings.subTool) * 42 }}>
+          <ToolSlider settings={settings} onChange={onChange} />
         </div>
       )}
       {styleOpen && (
