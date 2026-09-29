@@ -4852,6 +4852,19 @@ body:has(.game-screen.phone) .book-card {
   .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
 }
 .game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
+/* Edit mode on a phone clears the top of the screen for the map: no island
+   chips, mini-map, zoom column, turn order or condition banner (pinch still
+   zooms), and the Edit bar takes the island chips' place. Done brings it all
+   back. */
+.game-screen.phone:has(.phone-edit-bar) .phone-strip,
+.game-screen.phone:has(.phone-edit-bar) .phone-minimap,
+.game-screen.phone:has(.phone-edit-bar) .hud-zoom,
+.game-screen.phone:has(.phone-edit-bar) .hud-initiative,
+.game-screen.phone:has(.phone-edit-bar) .turn-ribbon { display: none; }
+.game-screen.phone .phone-edit-bar { top: 12px; }
+@media (max-height: 499px) and (orientation: landscape) {
+  .game-screen.phone .phone-edit-bar { top: 12px; left: 12px; right: 12px; }
+}
 
 /* Grouping islands on a phone (PhoneGroupSheet): a tappable map of the
    layer, the same islands as a checklist, then a name. */
