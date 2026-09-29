@@ -8,7 +8,7 @@ real-device pass and on REQ-008.
 - **Design canvas (private until shared):**
   https://claude.ai/artifact/7FphnpyRQe7hpyAp4nPLJq — the **Phone** page
   (islands first, interacting on an island, everything else) and the
-  **Hints** page (a separate plan).
+  **Hints** page (built — see APP_OVERVIEW.md "Hints").
 - **Frame size:** designed at 390 × 844 CSS px; layouts stretch in width.
 - **Code:** `src/components/PhoneChrome.jsx` (chrome, sheets, atlas, party,
   menus), `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`, the phone branch
@@ -57,7 +57,7 @@ real-device pass and on REQ-008.
 
 **Players** — bottom bar Play · Pan · Ruler · Dice · Party.
 
-- **Table menu**: in-game time, palette, Mute on this device, Hide drawings, effect volumes,
+- **Table menu**: in-game time, palette, Mute on this device, Hide drawings, Show hints and tips, effect volumes,
   this table (map, DM, seated), read-only map settings, Leave with a confirm.
 - **Party**: seated players, their hero and online state; Show on map, or the
   map they're on, or "Not on the map".
@@ -168,6 +168,5 @@ The phone zoom floor is 20 % (desktop 40 %), so a whole island fits a phone.
 - **Cross-island movement in encounters** reads 0 ft left after crossing
   (existing behaviour; REQ-011 Q10).
 - **Short desktop windows** under 500 px tall get the phone layout (REQ-011 Q9).
-- **Hints** (the canvas's Hints page) are a separate plan.
 - **Large text**: the phone chrome uses fixed px sizes and doesn't yet grow
   with the phone's text-size setting.

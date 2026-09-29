@@ -340,6 +340,33 @@ map; every seated player sees the result, and only the DM can draw.
   drawing preferences (tool, style, Snap, recent colours, Hide) are
   `hearthbound:drawprefs` in this browser only.
 
+### Hints (`Hints.jsx`)
+
+Wherever someone gets stuck, the app says why something can't be used yet,
+then where to fix it — naming places the way the screen does ("Mapping →
+Layers") and offering the fix when it's one step. Four patterns:
+
+- **Hint** (inline, always shown): the door on a one-map table (Create a
+  layer opens an inline form; the new map is then picked for the door), a
+  door with no map picked, a hero nobody plays, Battle with an empty bag
+  (Open the Bag), nothing to attack, loot with no heroes (Open Tokens),
+  taking loot without a hero, Initiative with nobody picked, no in-game
+  clock (Set the time), Islands (Switch to Edit), the base layer, asset
+  storage with nothing saved, and Music where it can't play.
+- **Empty state**: the DM's empty map (Open Tokens / the Add sheet), and a
+  player without a hero (inspector, phone card).
+- **Mode bar** across the top of the map while Ruler, Edit, Merge islands
+  or Draw changes what a press does, with a way out; each has an × that
+  hides it on this device.
+- **Tip**, once per device: which code to share on first hosting.
+
+**Show hints and tips** (Configurations → Hints on/off; Look & sound on a
+phone) turns tips and mode bars off on this device — inline hints stay.
+**Tips again** / **Show all tips again** brings dismissed ones back. Stored
+as `hearthbound:hints` in this browser only. "Open Tokens" and "Open the
+Bag" travel over `lib/fx.js` (`{ type: 'open', panel: 'tokens' }`,
+`{ type: 'cardTab', key }`).
+
 ### Phone layout (`PhoneChrome.jsx`, `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`)
 
 Below `(max-width: 767px), (max-height: 499px)` (`PHONE_QUERY`) `GameView`

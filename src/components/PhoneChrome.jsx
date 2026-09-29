@@ -10,6 +10,7 @@ import { GiveChestItemButton, TakeChestItemButton } from './RightPanel.jsx';
 import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
+import { useHintPrefs } from './Hints.jsx';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -801,6 +802,7 @@ export function PhoneSwitch({ label, caption, checked, onChange }) {
 
 export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange }) {
   const [levels, setLevels] = useState(() => Object.fromEntries(SOUND_EFFECTS.map((e) => [e.id, getSfxVolume(e.id)])));
+  const hints = useHintPrefs();
   return (
     <section className="phone-menu-section" aria-label="Look and sound">
       <span className="phone-label">Look &amp; sound</span>
@@ -808,6 +810,12 @@ export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, 
       <PhoneSwitch label="Mute on this device" caption="Music and sound effects. Everyone else still hears theirs." checked={muted} onChange={onMutedChange} />
       {onHideDrawingsChange && (
         <PhoneSwitch label="Hide drawings" caption="The DM's drawings, on this device only." checked={Boolean(hideDrawings)} onChange={onHideDrawingsChange} />
+      )}
+      <PhoneSwitch label="Show hints and tips" caption="On this device. Inline hints stay; tips and mode bars go." checked={hints.show} onChange={hints.setShow} />
+      {hints.show && hints.anyDismissed && (
+        <button type="button" className="phone-btn-ghost phone-btn-full" onClick={hints.resetDismissed}>
+          Show all tips again
+        </button>
       )}
       <div className={`phone-volumes${muted ? ' muted' : ''}`}>
         <span className="phone-caption phone-caption-flush">Sound effect volume</span>
