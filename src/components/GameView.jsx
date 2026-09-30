@@ -24,7 +24,6 @@ import {
   downloadSessionAsFile,
   downloadGuestSessionAsFile,
   downloadDataUrl,
-  readJsonFromFile,
   readEncodedJsonFromFile,
   saveIdentity,
   clearCurrentPointer,
@@ -1667,7 +1666,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return layer.id;
   }
 
-  // Places a freshly built island (from createIsland or importIsland) next
+  // Places a freshly built island (from createIsland) next
   // to the active island (not the rightmost edge across every island on the
   // layer) — a merge can make one island's own footprint huge, and
   // anchoring off the layer-wide edge would drop a new island far from
@@ -1725,29 +1724,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     } catch {
       alert("Could not export this island's image — its background image could not be loaded.");
     }
-  }
-
-  // Reads a previously exported island-shell file and adds it as a
-  // brand-new island via the same placement logic createIsland uses,
-  // without touching the currently active/selected island beforehand.
-  function importIsland(file) {
-    if (!isHost) return;
-    readJsonFromFile(file)
-      .then((raw) => {
-        if (typeof raw?.name !== 'string' || !Number.isFinite(raw.cols) || !Number.isFinite(raw.rows) || !Number.isFinite(raw.cellSize)) {
-          alert('That file does not look like a Hearthbound island export.');
-          return;
-        }
-        const island = createInitialIsland({
-          name: raw.name.trim() || 'Untitled Island',
-          cols: clampGridDims(raw.cols),
-          rows: clampGridDims(raw.rows),
-          cellSize: raw.cellSize,
-          backgroundImage: typeof raw.backgroundImage === 'string' ? raw.backgroundImage : null,
-        });
-        placeAndAddIsland(island);
-      })
-      .catch(() => alert('Could not read that file — is it a valid Hearthbound island export?'));
   }
 
   function updateIsland(islandId, patch) {
@@ -2796,7 +2772,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onRemoveIsland={removeIsland}
         onDownloadIslandImage={downloadIslandImage}
         onUpdateIsland={updateIsland}
-        onImportIsland={importIsland}
         onUngroupIslands={ungroupIslands}
         onRenameGroup={renameGroup}
         onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}

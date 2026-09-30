@@ -192,7 +192,6 @@ export default function Toolbar({
   onRemoveIsland,
   onDownloadIslandImage,
   onUpdateIsland,
-  onImportIsland,
   onUngroupIslands,
   onRenameGroup,
   onIslandConditions,
@@ -557,7 +556,6 @@ export default function Toolbar({
                   onSelectIsland={onSelectIsland}
                   onCreateIsland={onCreateIsland}
                   onRemoveIsland={onRemoveIsland}
-                  onImportIsland={onImportIsland}
                   onUngroupIslands={onUngroupIslands}
                   onRenameGroup={onRenameGroup}
                   onIslandConditions={onIslandConditions}
@@ -1121,7 +1119,6 @@ function IslandManagerPopover({
   onSelectIsland,
   onCreateIsland,
   onRemoveIsland,
-  onImportIsland,
   onUngroupIslands,
   onRenameGroup,
   onIslandConditions,
@@ -1139,7 +1136,6 @@ function IslandManagerPopover({
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
-  const importIslandRef = useRef(null);
 
   function addIsland() {
     if (!name.trim()) return;
@@ -1147,13 +1143,6 @@ function IslandManagerPopover({
     setName('');
     setCols(20);
     setRows(15);
-  }
-
-  function handleImportIslandFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    onImportIsland?.(file);
-    e.target.value = '';
   }
 
   return (
@@ -1244,15 +1233,9 @@ function IslandManagerPopover({
         </div>
       </div>
 
-      <div className="field-row" style={{ marginTop: 8 }}>
-        <button className="btn btn-primary" onClick={addIsland}>
-          + Add island
-        </button>
-        <button className="btn btn-secondary" onClick={() => importIslandRef.current?.click()} title="Import a previously downloaded island .json file">
-          Import island
-        </button>
-      </div>
-      <input ref={importIslandRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportIslandFile} />
+      <button className="btn btn-primary" onClick={addIsland} style={{ marginTop: 8 }}>
+        + Add island
+      </button>
       <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
         Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
       </Hint>
