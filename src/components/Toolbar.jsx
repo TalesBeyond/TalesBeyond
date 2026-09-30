@@ -1136,13 +1136,20 @@ function IslandManagerPopover({
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
+  // The new-island form stays folded behind one button until it's wanted.
+  const [adding, setAdding] = useState(false);
+
+  function closeAdding() {
+    setAdding(false);
+    setName('');
+    setCols(20);
+    setRows(15);
+  }
 
   function addIsland() {
     if (!name.trim()) return;
     onCreateIsland({ name: name.trim(), cols, rows });
-    setName('');
-    setCols(20);
-    setRows(15);
+    closeAdding();
   }
 
   return (
@@ -1217,25 +1224,50 @@ function IslandManagerPopover({
         </>
       )}
 
-      <div className="divider-word">new island</div>
-
-      <label className="field-label">Name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Side Chamber" />
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+      {adding ? (
+        <div className="island-settings island-new">
+          <div className="section-label" style={{ marginTop: 0 }}>
+            New island
+          </div>
+          <label className="field-label">Name</label>
+          <input
+            className="field"
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') addIsland();
+              else if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeAdding();
+              }
+            }}
+            placeholder="e.g. Side Chamber"
+          />
+          <div className="field-row">
+            <div>
+              <label className="field-label">Width</label>
+              <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Height</label>
+              <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
+            </div>
+          </div>
+          <div className="field-row">
+            <button className="btn btn-secondary" onClick={closeAdding}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={addIsland} disabled={!name.trim()}>
+              Add island
+            </button>
+          </div>
         </div>
-        <div>
-          <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
-        </div>
-      </div>
-
-      <button className="btn btn-primary" onClick={addIsland} style={{ marginTop: 8 }}>
-        + Add island
-      </button>
+      ) : (
+        <button className="btn btn-secondary btn-block" onClick={() => setAdding(true)} style={{ marginTop: 10 }}>
+          + New island
+        </button>
+      )}
       <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
         Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
       </Hint>
