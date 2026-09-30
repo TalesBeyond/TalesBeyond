@@ -13,6 +13,7 @@ import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
+import { RollLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import { useFx } from '../lib/fx.js';
 
@@ -28,10 +29,15 @@ function formatCountdown(totalSeconds) {
 // select, popover trigger, or one-shot command) is one of these instead of
 // a text button or a dropdown item, so the whole bar reads as a row of
 // little tiles rather than a list of menus.
-function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
+function ToolCard({ icon, image, label, active, onClick, disabled, title, badge }) {
   return (
     <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label}>
       <span className="tool-card-icon">{image ? <img className="tool-card-image" src={image} alt="" /> : icon}</span>
+      {badge ? (
+        <span className="tool-card-badge" aria-label={`${badge} new`}>
+          {badge > 9 ? '9+' : badge}
+        </span>
+      ) : null}
       <span className="tool-card-label">{label}</span>
     </button>
   );
@@ -44,7 +50,7 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
 // `align="end"` opens the menu leftward from the trigger's right edge — for
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align }) {
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -65,7 +71,7 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
 
   return (
     <div className={`toolbar-group ${className}`} ref={ref}>
-      <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} />
+      <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
       {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
       {popovers}
     </div>
@@ -116,6 +122,7 @@ const ICON_PATHS = {
   unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
+  rolllog: 'M4 3h9l3 3v11H4zM7 8h6M7 11h6M7 14h4',
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
@@ -175,6 +182,8 @@ function PlayerList({ players, hostId, entities, meId }) {
 }
 
 export default function Toolbar({
+  // This session's dice rolls at the table, newest first (RollFeed.jsx).
+  rollLog = [],
   players = {},
   hostId = null,
   allEntities = {},
@@ -260,6 +269,15 @@ export default function Toolbar({
   const [islandsFocusId, setIslandsFocusId] = useState(null);
   // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
+  // The newest roll seen with the Roll log open; anything newer from someone
+  // else counts on the button's badge.
+  const [seenRollId, setSeenRollId] = useState(() => rollLog[0]?.id ?? null);
+  const rollLogOpen = openMenu === 'rolls';
+  useEffect(() => {
+    if (rollLogOpen && rollLog[0]) setSeenRollId(rollLog[0].id);
+  }, [rollLogOpen, rollLog]);
+  const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
+  const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
   const hintPrefs = useHintPrefs();
   const [showMusicHint, setShowMusicHint] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -728,6 +746,24 @@ export default function Toolbar({
           />
         )}
       </div>
+
+      {/* This session's rolls — everyone's, and the DM's own (marked when
+          hidden). Open to everyone at the table. */}
+      <ToolMenu
+        icon={<Icon name="rolllog" />}
+        label="Roll log"
+        title="Every roll at the table this session"
+        open={rollLogOpen}
+        onToggle={() => toggleMenu('rolls')}
+        onClose={closeMenu}
+        menuClassName="players-menu roll-log-menu"
+        badge={rollLogOpen ? 0 : unseenRolls}
+      >
+        <div className="players-menu-head">
+          Roll log <span>{rollLog.length ? `${rollLog.length} this session` : ''}</span>
+        </div>
+        <RollLog entries={rollLog} />
+      </ToolMenu>
 
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both

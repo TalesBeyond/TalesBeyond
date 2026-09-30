@@ -125,7 +125,8 @@ Mode toggle between **Host a table** and **Join a table**. Host form collects DM
 - **Left panel — Tokens:** upload-and-place your own image (as Hero or Monster), plus scrollable galleries of default heroes and monsters, each with a one-click "Place" button.
 - **Center — Toolbar + Stage:** tool switch (Move / Ruler), map name button (opens map settings popover), autosave status, Save/Export/Import buttons, invite code with copy button, host-only New Code / Close Table controls, and Leave. Below it, the scrollable stage containing the grid.
 - **Players (toolbar button beside Configurations):** "N/10 players"; opens the live player list (host tagged, disconnected players tagged "away" rather than removed).
-- **Right panel — Roll log + Inspector:** the session's dice rolls, and an inspector for whatever token is currently selected (rename, HP, size, remove).
+- **Roll log (toolbar button after Dice):** this session's dice rolls, with a count of new rolls from others since it was last opened.
+- **Right panel — Inspector:** an inspector for whatever token is currently selected (rename, HP, size, remove).
 
 ---
 

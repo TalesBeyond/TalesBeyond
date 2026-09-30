@@ -1231,6 +1231,28 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .players-menu-head span { margin-left: auto; font-family: var(--font-ui); font-size: 12px; color: var(--parchment-300); }
 .players-menu-list { list-style: none; margin: 0; padding: 0; }
 .players-menu-list .player-tag { margin-left: auto; text-align: right; }
+.toolbar-menu.roll-log-menu { width: 360px; padding-bottom: 8px; }
+.roll-log-menu .roll-log { padding: 0 6px; }
+.roll-log-menu .roll-log-empty { padding: 4px 6px; }
+/* A count on a toolbar button (the Roll log's new rolls). */
+.tool-card { position: relative; }
+.tool-card-badge {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--ember);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
 
 /* ----- Toolbar densities (see TOOLBAR_DENSITIES in Toolbar.jsx) ----- */
 
@@ -1241,8 +1263,10 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 /* icons: bar-level cards drop their labels (menu items keep theirs). The
    labels are visually hidden, not removed, so each card keeps its name. */
-.toolbar[data-density~='icons'] .toolbar-group > .tool-card { min-width: 44px; width: 44px; height: 44px; }
+.toolbar[data-density~='icons'] .toolbar-group > .tool-card,
+.toolbar[data-density~='icons'] .toolbar-hint-anchor > .tool-card { min-width: 44px; width: 44px; height: 44px; }
 .toolbar[data-density~='icons'] .toolbar-group > .tool-card .tool-card-label,
+.toolbar[data-density~='icons'] .toolbar-hint-anchor > .tool-card .tool-card-label,
 .toolbar[data-density~='tight'] .toolbar-saved-text,
 .toolbar[data-density~='tight'] .toolbar-leave-label {
   position: absolute;
@@ -1490,7 +1514,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 /* Dice rolls at the table (RollFeed.jsx): the log under the players, and
    cards over the map as rolls arrive. */
-.roll-log-panel { flex: none; max-height: 34%; }
 .roll-log { list-style: none; margin: 6px 0 0; padding: 0; }
 .roll-log li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ink-800); }
 .roll-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }

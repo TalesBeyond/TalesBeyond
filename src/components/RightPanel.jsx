@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { playDiceSound } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
 import { Hint, EmptyState } from './Hints.jsx';
-import { RollLog } from './RollFeed.jsx';
 import {
   ABILITIES,
   SKILLS,
@@ -49,7 +48,6 @@ export default function RightPanel({
   collapsed,
   onToggleCollapsed,
   encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
-  rollLog = [], // this session's dice rolls at the table (RollFeed.jsx)
 }) {
   if (collapsed) {
     return (
@@ -60,11 +58,11 @@ export default function RightPanel({
           type="button"
           className={`panel-rail${selectedEntity ? ' has-selection' : ''}`}
           onClick={onToggleCollapsed}
-          title="Expand the roll log and inspector"
+          title="Expand the inspector"
         >
           <span className="panel-rail-chevron" aria-hidden="true">«</span>
           <span className="panel-rail-label">
-            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Rolls & inspector'}
+            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Inspector'}
           </span>
         </button>
       </div>
@@ -73,19 +71,15 @@ export default function RightPanel({
 
   return (
     <div className="panel right">
-      {/* Who's at the table lives on the toolbar's Players button. */}
+      {/* Who's at the table and the roll log live on the toolbar. */}
       <div className="panel-header">
-        <span>Roll log</span>
-        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse the roll log and inspector">
+        <span>Inspector</span>
+        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse the inspector">
           »
         </button>
       </div>
-      <div className="panel-scroll roll-log-panel">
-        <RollLog entries={rollLog} />
-      </div>
 
       <div className="panel-scroll inspector-scroll">
-        <div className="cap">Inspector</div>
         {!selectedEntity && !isHost && !Object.values(entities || {}).some((e) => e.kind === 'hero' && e.ownerId === meId) ? (
           <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
             Ask your DM to pick you under <b>played by</b> on a hero’s card. It shows up here the moment they do.

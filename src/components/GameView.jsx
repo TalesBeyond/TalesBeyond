@@ -2732,6 +2732,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // what lets it keep its labels on an ordinary laptop screen.
   const toolbarEl = (
       <Toolbar
+        rollLog={rollLog}
         players={state.players}
         hostId={state.session.hostPlayerId}
         allEntities={state.entities}
@@ -2835,7 +2836,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
-          rollLog={rollLog}
         />
   );
 
@@ -3133,7 +3133,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           <PanelResizer
             side="right"
             width={shownPanelWidths.right}
-            label="Resize the roll log and inspector panel"
+            label="Resize the inspector panel"
             onResize={(w) => resizePanel('right', w)}
             onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
           />

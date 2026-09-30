@@ -224,7 +224,7 @@ with the seats taken ("2/10 players"). It drops down the player list: colour
 and online dot, name ("(you)" for yourself), and the DM or the hero they play,
 "away" when they've dropped.
 
-### Right panel — roll log and inspector (`RightPanel.jsx`, `CreatureCard.jsx`)
+### Right panel — inspector (`RightPanel.jsx`, `CreatureCard.jsx`)
 
 Selecting a hero or monster shows its whole inspector as one collectible
 **card**: the name (and a hero's level) on the title bar, the token art with
@@ -367,7 +367,7 @@ they choose otherwise.
   `sendRoll`), or the guest channel's `roll` event. A local table has no one
   else to tell.
 - Everyone else sees a short card over the map as a roll lands, and every
-  roll goes into the **Roll log** (the top of the right panel on desktop; Run table or
+  roll goes into the **Roll log** (the toolbar's **Roll log** button on desktop, with a count of new rolls from others; Run table or
   Party → Roll log on a phone). The DM's hidden rolls are marked "Only you";
   revealed ones show as "The DM" with "Shown by the DM". The dice window says
   who will see the next roll.
