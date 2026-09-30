@@ -10,7 +10,7 @@
 | Area | Auth / cloud mode / Supabase RPCs |
 | Author | Blaxine |
 | Created | 2026-09-14 |
-| Last Updated | 2026-09-14 |
+| Last Updated | 2026-09-30 |
 
 ## Short Description
 
@@ -20,6 +20,7 @@ Closes three gaps a `/code-review` of REQ-006's host table-creation cap surfaced
 
 - Every child of `tables` already cascades via `on delete cascade` — `layers.table_id`, `islands.table_id`/`layer_id`, `entities.table_id`/`layer_id`/`island_id`, `entity_dm_data.entity_id`/`table_id`, `invite_codes.table_id`, `players.table_id` (confirmed across `20250101000001_schema.sql`, `20250101000005_layers.sql`, `20250101000010_islands.sql`, `20250101000015_entity_dm_data_privacy.sql`). A plain `delete from tables where id = ...` leaves no orphaned Postgres rows anywhere.
 - `uploadImage()` (`src/lib/storageUpload.js:29`) is not called from anywhere in the app yet — per `PITFALLS.md` #8, token/background images still embed as base64 data URLs even in cloud mode. In practice, no real objects exist under any table's Storage folder today; this REQ's storage cleanup is forward-compatible plumbing for when #8 lands, not a fix for a currently observable leak.
+  - **Superseded (as of 2026-09-30):** pictures never reach Storage now. `20250101000048_no_guest_uploads.sql` blocks anonymous uploads, and `20250101000055_no_stored_images.sql` stores token and island images only as built-in icon references or `img:<sha-256>` fingerprints; the bytes stay in browsers (`src/lib/imageCache.js`, `src/lib/imageExchange.js`). `token-art` and `map-backgrounds` stay in the cleanup list for older files. The cleanup now matters for audio: REQ-009 added `table-audio` to `TABLE_STORAGE_BUCKETS` (`src/lib/storageUpload.js`), so deleting a table removes its uploaded songs.
 - `storage.objects` (`supabase/migrations/20250101000004_storage.sql`) has no DELETE policy today — only public SELECT and member-scoped INSERT exist. A client-side delete call would be rejected by RLS without a new policy.
 - `tables` (`20250101000001_schema.sql:13-19`) has no index on `host_auth_id` anywhere in the schema (grep-confirmed across every migration) — `create_table`'s 20-table cap check (`20250101000026_security_hardening.sql`) is a full table scan on every call.
 - `listMyTablesRemote()` (`src/lib/remoteApi.js:80-105`) already returns `{ tableId, name, code, playerId }` per hosted table — enough for a Delete action with no shape change.
@@ -36,19 +37,19 @@ Closes three gaps a `/code-review` of REQ-006's host table-creation cap surfaced
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — Cap enforcement is race-safe.** Concurrent `create_table` calls from the same auth identity, once at the cap, never result in more than 20 total tables for that identity.
-- [ ] **AC2 — Cap check is indexed.** An index exists on `tables.host_auth_id` and is used by the cap-check query.
-- [ ] **AC3 — Host can delete their own table.** Landing's "Your tables" list shows a Delete action per table; clicking it shows a confirmation dialog stating the action is permanent and asking the host to make sure no one is still playing, before anything happens.
-- [ ] **AC4 — Deletion is complete.** Confirming removes the table and every layer/island/entity/player/invite code under it, and best-effort removes any of its uploaded images from Storage.
-- [ ] **AC5 — Deletion frees a cap slot.** A host previously blocked by the 20-table cap can successfully create a new table immediately after deleting one of their existing ones.
-- [ ] **AC6 — Only the host can delete.** A `delete_table` call for a table the caller doesn't host is rejected server-side, regardless of what the UI would normally allow.
+- [x] **AC1 — Cap enforcement is race-safe.** Concurrent `create_table` calls from the same auth identity, once at the cap, never result in more than 20 total tables for that identity.
+- [x] **AC2 — Cap check is indexed.** An index exists on `tables.host_auth_id` and is used by the cap-check query.
+- [x] **AC3 — Host can delete their own table.** Landing's "Your tables" list shows a Delete action per table; clicking it shows a confirmation dialog stating the action is permanent and asking the host to make sure no one is still playing, before anything happens.
+- [x] **AC4 — Deletion is complete.** Confirming removes the table and every layer/island/entity/player/invite code under it, and best-effort removes any of its uploaded images from Storage.
+- [x] **AC5 — Deletion frees a cap slot.** A host previously blocked by the 20-table cap can successfully create a new table immediately after deleting one of their existing ones.
+- [x] **AC6 — Only the host can delete.** A `delete_table` call for a table the caller doesn't host is rejected server-side, regardless of what the UI would normally allow.
 
 ## Technical Notes
 
 - `supabase/migrations/20250101000027_host_table_cap_hardening.sql` (new): `create index if not exists tables_host_auth_id_idx on tables (host_auth_id);` (naming matches `players_table_idx`/`entities_table_idx` in `20250101000001_schema.sql`); `create_table` (`20250101000003_functions.sql:31-67`, last redefined by `20250101000026_security_hardening.sql`) redefined again to add the advisory lock immediately after the `auth.uid() is null` check and before the cap count; new `delete_table(p_table_id uuid)` function; new `storage.objects` DELETE policy scoped to `(storage.foldername(name))[1]::uuid in (select id from tables where host_auth_id = auth.uid())`, mirroring the shape of the existing INSERT policies in `20250101000004_storage.sql`.
 - `src/lib/remoteApi.js` — new `deleteTableRemote(tableId)` calling `supabase.rpc('delete_table', { p_table_id: tableId })`, following `regenerateInviteCodeRemote`'s shape (`remoteApi.js:59-63`).
 - `src/lib/storageUpload.js` — new `deleteTableStorage(tableId)` alongside `uploadImage`: for each of `token-art`/`map-backgrounds`, `supabase.storage.from(bucket).list(tableId)` then `.remove()` the returned paths; swallow/log errors rather than throw, per the best-effort decision above.
-- `src/components/Landing.jsx`'s `HostTablesList` (currently `Landing.jsx:115-214`) — add a Delete button per row (disabled while any resume/delete is in flight, mirroring the existing `resumingId` pattern) and a confirm step before calling S004's functions; on success, remove that row from local `tables` state without refetching.
+- `src/components/Landing.jsx`'s `HostTablesList` (`Landing.jsx:115-214` when planned; `Landing.jsx:298` as of 2026-09-30, with the delete flow calling `deleteTableStorage` then `deleteTableRemote` around lines 352-360) — add a Delete button per row (disabled while any resume/delete is in flight, mirroring the existing `resumingId` pattern) and a confirm step before calling S004's functions; on success, remove that row from local `tables` state without refetching.
 - `src/styles.css` — new `.delete-confirm-backdrop`/`.delete-confirm-card`/`.delete-confirm-actions`, matching `.door-confirm-*`/`.merge-confirm-*`'s existing shape (`styles.css`, "Door confirmation dialog" / "Island merge confirmation" sections).
 - No `T`-phase steps: the repo has zero test files or runner anywhere (confirmed by search, consistent with prior REQs) — verification is the manual **Smoke Test** below. AC1's concurrency guarantee specifically is argued from the locking mechanism (Architectural decisions) rather than manually reproduced, since reliably racing two requests needs a script this repo has no harness for.
 
@@ -131,3 +132,5 @@ S001 → S003 → S004 → S005 → S006
 | 2026-09-14 | Claude | Slice 1 implemented (S001-S002): new migration `20250101000027_host_table_cap_hardening.sql` adds the advisory-lock cap fix and `tables_host_auth_id_idx`; mirrored into `00_combined_all_migrations.sql`; `SECURITY.md` finding #7 added and marked fixed. AC1/AC2 satisfied in code — migration still needs to be applied to the live project (new checklist item). |
 | 2026-09-14 | Claude | Slice 2 implemented (S003-S006): `delete_table` RPC + storage DELETE policy appended to the same migration; `deleteTableRemote`/`deleteTableStorage` client functions; a Delete action + confirm dialog on Landing's "Your tables" list; migration re-mirrored; `SECURITY.md` finding #8 added and marked fixed. AC3-AC6 satisfied in code. All of REQ-007 is now code-complete — migration `027` still needs to be applied to the live project, and the delete flow itself needs a manual pass against the live app (the agent couldn't self-verify it without creating a real host account on the live Supabase project). |
 | 2026-09-14 | Claude | Post-implementation `/code-review` of Slice 2 found and fixed three issues in the AC4 storage cleanup: `listAllTableFiles` now pages through every object instead of only the first 100; list failures are now logged (previously silent, unlike remove failures); `confirmDelete` retries `deleteTableRemote` up to 3 times to narrow the window where a transient failure could strip a table's images without actually deleting the table. |
+| 2026-09-30 | Claude | Status review against the code. Code-complete, all ACs still open: nothing records migration `027` as applied live or the delete flow as tested on the live app (`SECURITY.md`'s checklist item for `027` is still unchecked). Updated the Storage constraint: pictures no longer go to Storage at all (`048`, `055`), so AC4's cleanup now matters for REQ-009's `table-audio` bucket, which `deleteTableStorage` also covers. Refreshed `HostTablesList`'s location in Technical Notes. |
+| 2026-09-30 | Claude | AC1–AC6 ticked: done in code, only testing missing (per the host). Stays `InProgress` for one step that isn't testing: applying migration `027` to the live project (`SECURITY.md` checklist). |
