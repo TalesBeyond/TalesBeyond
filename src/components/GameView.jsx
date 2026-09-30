@@ -2738,7 +2738,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         hideDrawings={hideDrawings}
         onToggleHideDrawings={() => setHideDrawings(!hideDrawings)}
         onToolChange={setTool}
-        onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
         onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
         session={state.session}
         onRegenerateCode={regenerateCode}

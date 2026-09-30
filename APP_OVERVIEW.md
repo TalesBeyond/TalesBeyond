@@ -415,7 +415,7 @@ MOBILE_DESIGN.md is the design; REQ-011 the plan.
   (`tb.muteDevice`, `lib/sfx.js`); Party; the DM's Add sheet
   (`TokenSidebar` `layout="phone"`), Run the table and table menu.
 - The DM's `Toolbar` stays mounted out of sight on a phone; its panels
-  (bestiary, layers, islands, initiative, asset storage, clock, map settings)
+  (bestiary, layers, islands, initiative, asset storage, clock, ambience)
   open over `lib/fx.js` `{ type: 'open', panel }` events. Every modal rises
   as a bottom sheet.
 - A guest table hosted from a phone holds a Screen Wake Lock while visible.

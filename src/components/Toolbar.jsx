@@ -159,7 +159,6 @@ export default function Toolbar({
   onRevealRollsChange,
   hideDrawings = false,
   onToggleHideDrawings,
-  onLayerPatch,
   onIslandPatch,
   session,
   onRegenerateCode,
@@ -213,7 +212,6 @@ export default function Toolbar({
   const importRef = useRef(null);
   // Only one popover open at a time — clicking a card closes the others and
   // toggles its own.
-  const [showMapSettings, setShowMapSettings] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [showIslands, setShowIslands] = useState(false);
   const [showDice, setShowDice] = useState(false);
@@ -275,7 +273,6 @@ export default function Toolbar({
   useLayoutEffect(fitToolbar, [fitToolbar, collapsed, isHost, isGuestHost, Boolean(clock), dayPhase, lastSavedLabel, session.isOpen]);
 
   function closePopovers() {
-    setShowMapSettings(false);
     setShowLayers(false);
     setShowIslands(false);
     setShowDice(false);
@@ -302,7 +299,6 @@ export default function Toolbar({
 
   function togglePopover(name) {
     setOpenMenu(null);
-    setShowMapSettings((s) => (name === 'mapSettings' ? !s : false));
     setShowLayers((s) => (name === 'layers' ? !s : false));
     setShowIslands((s) => (name === 'islands' ? !s : false));
     setShowDice((s) => (name === 'dice' ? !s : false));
@@ -323,7 +319,6 @@ export default function Toolbar({
     if (event.panel === 'dice') togglePopover('dice');
     else if (event.panel === 'music') onOpenMusic?.();
     else if (!isHost) return;
-    else if (event.panel === 'map') togglePopover('mapSettings');
     else if (event.panel === 'armory') togglePopover('compendium');
     // The phone layout opens the rest of the host's panels the same way.
     else if (event.panel === 'items') togglePopover('itemCompendium');
@@ -592,8 +587,8 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="world" />}
           label="World state"
-          title="In-game time, day / night, ambience and the map's feet per square"
-          active={showDayNight || showAmbience || showMapSettings}
+          title="In-game time, day / night and the map's ambience"
+          active={showDayNight || showAmbience}
           open={openMenu === 'world'}
           onToggle={() => toggleMenu('world')}
           onClose={closeMenu}
@@ -611,9 +606,6 @@ export default function Toolbar({
                 />
               )}
               {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
-              {showMapSettings && (
-                <MapSettingsPopover layer={layer} isHost={isHost} onLayerPatch={onLayerPatch} onClose={() => setShowMapSettings(false)} />
-              )}
             </>
           }
         >
@@ -633,7 +625,6 @@ export default function Toolbar({
             onClick={() => togglePopover('ambience')}
             title="The sound that plays for players on this map"
           />
-          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title="This map's feet per square" />
         </ToolMenu>
       )}
 
@@ -981,51 +972,6 @@ function ConditionPicker({ active = [], onChange }) {
   );
 }
 
-// World state → Map: this map's own settings. An island's name, size and
-// background are in Mapping → Islands; the map's ambience and each
-// island's day / night in World state too.
-function MapSettingsPopover({ layer, isHost, onLayerPatch, onClose }) {
-  const [feet, setFeet] = useState(layer.feetPerSquare);
-
-  function commitFeet() {
-    const next = Math.max(1, parseInt(feet, 10) || 5);
-    setFeet(next);
-    if (next !== layer.feetPerSquare) onLayerPatch({ feetPerSquare: next });
-  }
-
-  return (
-    <ModalShell
-      title="Map settings"
-      icon="map"
-      closeLabel="Close map settings"
-      onClose={() => {
-        if (isHost) commitFeet();
-        onClose();
-      }}
-    >
-      <div className="section-label" style={{ marginTop: 0 }}>
-        {layer.name}
-      </div>
-      <label className="field-label">Feet per square</label>
-      <input
-        className="field"
-        type="number"
-        min="1"
-        value={feet}
-        onChange={(e) => setFeet(e.target.value)}
-        onBlur={commitFeet}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        disabled={!isHost}
-      />
-      <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-        {isHost
-          ? 'Saves when you leave the field. Island names, sizes and backgrounds are in Mapping → Islands.'
-          : 'Only the host can change map settings.'}
-      </p>
-    </ModalShell>
-  );
-}
-
 function LayerSwitcherPopover({
   layers,
   layerOrder,
@@ -1346,8 +1292,7 @@ function IslandSettings({ island, onPatch, onUploadBackground, onDownloadImage }
 }
 
 // One row per island group in IslandManagerPopover — an inline rename
-// field (local-state-then-Save, same shape as MapSettingsPopover's name
-// field) plus an Ungroup button, then the group's conditions, which stand
+// field (local-state-then-Save) plus an Ungroup button, then the group's conditions, which stand
 // for every member island. Ungrouping only dissolves the group; member
 // islands are untouched and get their own conditions back.
 function GroupRow({ group, onRename, onUngroup, onConditions }) {

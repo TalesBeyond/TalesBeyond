@@ -1009,8 +1009,8 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
             <dd>{seated.join(', ') || '—'}</dd>
           </dl>
         </section>
-        <section className="phone-menu-section" aria-label="Map settings">
-          <span className="phone-label">Map settings</span>
+        <section className="phone-menu-section" aria-label="This map">
+          <span className="phone-label">This map</span>
           <dl className="phone-facts">
             <dt>Island</dt>
             <dd>{island?.name || '—'}</dd>
@@ -1019,7 +1019,6 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
             <dt>Island conditions</dt>
             <dd>{islandConds.length ? islandConds.join(', ') : 'None'}</dd>
           </dl>
-          <span className="phone-caption phone-caption-flush">Only the host can change map settings.</span>
         </section>
         {confirming ? (
           <div className="phone-confirm" role="alertdialog" aria-label="Leave the table?">

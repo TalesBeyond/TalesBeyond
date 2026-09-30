@@ -24,7 +24,7 @@ real-device pass and on REQ-008.
 | Ships as | Mobile web on the existing site. No app store, no install. |
 | Islands first | The top bar names the island you're on over its layer; island chips *fly to* an island (fit it, centre it); a mini-map and the Atlas show the whole layer. |
 | Landscape | Same layout, reflowed: map left, a right rail with the island chips and tools. |
-| Hosting on a phone | Full parity: the DM can build (islands, layers, map settings, groups, tokens, asset storage) and run a session from a phone. |
+| Hosting on a phone | Full parity: the DM can build (islands, layers, groups, tokens, asset storage) and run a session from a phone. |
 | Permissions | Same as desktop (PITFALLS.md #1). A player edits only their own hero's attacks, spells and bag; opening/closing chests, taking items and walking through doors are the other player writes. |
 | Tap to move | Tapping a square moves your selected token. In an encounter, the acting token gets a planned move — path, feet, "Move here". Drag still works. |
 | Character sheet | Heroes: Fight · Magic · Bag · Stats (+ DM for the host). Monsters: Fight · Loot · Stats · DM for the host; a player sees the summary. |
@@ -58,7 +58,7 @@ real-device pass and on REQ-008.
 **Players** — bottom bar Play · Pan · Ruler · Dice · Party.
 
 - **Table menu**: in-game time, palette, Mute on this device, Hide drawings, Show hints and tips, effect volumes,
-  this table (map, DM, seated), read-only map settings, Leave with a confirm.
+  this table (map, DM, seated), this map's facts (island, feet per square, conditions), Leave with a confirm.
 - **Party**: seated players, their hero and online state; Show on map, or the
   map they're on, or "Not on the map"; **Roll log** (everyone's rolls this
   session).

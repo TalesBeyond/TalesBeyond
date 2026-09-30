@@ -9,7 +9,6 @@ import { emitFx } from '../lib/fx.js';
 // way in there.
 export default function BookTabs({ isHost, chronicleOpen, onToggleChronicle }) {
   const tabs = [
-    isHost && { key: 'map', label: 'Map', title: 'Map settings' },
     isHost && { key: 'bestiary', label: 'Bestiary', title: 'Monsters of the compendium' },
     isHost && { key: 'armory', label: 'Armory', title: 'Weapons and items of the compendium' },
     { key: 'dice', label: 'Dice', title: 'Roll the dice' },
