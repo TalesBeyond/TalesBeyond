@@ -546,6 +546,12 @@ input, select {
 .game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
 
+/* A player's layout: no Tokens panel, so the map starts at the left edge. */
+.game-layout.no-left { grid-template-columns: 1fr var(--right-w, 340px); }
+.game-layout.no-left.right-collapsed { grid-template-columns: 1fr 36px; }
+.game-layout.no-left > .game-center { grid-column: 1; }
+.game-layout.no-left > .panel.right { grid-column: 2; }
+
 /* Pinned to their columns so an expanded drawer (taken out of flow below)
    doesn't let the map slide into column 1. */
 .game-layout > .panel { grid-column: 1; grid-row: 1; }
@@ -562,6 +568,7 @@ input, select {
 /* Narrower windows (GameView's DRAWER_LAYOUT_BELOW): the map keeps the
    whole middle and an expanded panel slides over it from its rail. */
 .game-layout.drawers { grid-template-columns: 36px 1fr 36px; }
+.game-layout.drawers.no-left { grid-template-columns: 1fr 36px; }
 .game-layout.drawers > .panel:not(.collapsed) {
   /* Spanning every column makes the whole grid its containing block, so the
      100% below is the layout's width rather than the 36px rail column's. */
@@ -1218,6 +1225,34 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 }
 .toolbar-menu .tool-card:hover:not(:disabled) { background: var(--ink-700); }
 .toolbar-menu.align-end { left: auto; right: 0; }
+/* The Players button's list (Toolbar.jsx PlayerList). */
+.toolbar-menu.players-menu { flex-direction: column; flex-wrap: nowrap; gap: 2px; width: 300px; max-height: 60vh; overflow-y: auto; }
+.players-menu-head { display: flex; align-items: baseline; gap: 8px; padding: 4px 6px 6px; font-family: var(--font-display); font-size: 15px; color: var(--parchment-100); border-bottom: 1px solid var(--ink-700); }
+.players-menu-head span { margin-left: auto; font-family: var(--font-ui); font-size: 12px; color: var(--parchment-300); }
+.players-menu-list { list-style: none; margin: 0; padding: 0; }
+.players-menu-list .player-tag { margin-left: auto; text-align: right; }
+.toolbar-menu.roll-log-menu { width: 360px; padding-bottom: 8px; }
+.roll-log-menu .roll-log { padding: 0 6px; }
+.roll-log-menu .roll-log-empty { padding: 4px 6px; }
+/* A count on a toolbar button (the Roll log's new rolls). */
+.tool-card { position: relative; }
+.tool-card-badge {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--ember);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
 
 /* ----- Toolbar densities (see TOOLBAR_DENSITIES in Toolbar.jsx) ----- */
 
@@ -1228,8 +1263,10 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 /* icons: bar-level cards drop their labels (menu items keep theirs). The
    labels are visually hidden, not removed, so each card keeps its name. */
-.toolbar[data-density~='icons'] .toolbar-group > .tool-card { min-width: 44px; width: 44px; height: 44px; }
+.toolbar[data-density~='icons'] .toolbar-group > .tool-card,
+.toolbar[data-density~='icons'] .toolbar-hint-anchor > .tool-card { min-width: 44px; width: 44px; height: 44px; }
 .toolbar[data-density~='icons'] .toolbar-group > .tool-card .tool-card-label,
+.toolbar[data-density~='icons'] .toolbar-hint-anchor > .tool-card .tool-card-label,
 .toolbar[data-density~='tight'] .toolbar-saved-text,
 .toolbar[data-density~='tight'] .toolbar-leave-label {
   position: absolute;
@@ -1477,7 +1514,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 /* Dice rolls at the table (RollFeed.jsx): the log under the players, and
    cards over the map as rolls arrive. */
-.roll-log-panel { flex: none; max-height: 24%; border-top: 1px solid var(--ink-700); }
 .roll-log { list-style: none; margin: 6px 0 0; padding: 0; }
 .roll-log li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ink-800); }
 .roll-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }
@@ -1625,6 +1661,18 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--parchment-100);
 }
 
+/* The Islands dialog: each island (or group) row, with its conditions
+   picker underneath. */
+.island-row { padding: 2px 0 10px; border-bottom: 1px solid var(--ink-800); }
+.island-row:last-of-type { border-bottom: 0; }
+.island-settings { margin: 2px 6px 10px; padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
+.island-settings .field-row .btn { flex: 1; }
+.island-new { margin: 10px 0 8px; }
+.island-settings .island-row-note { padding: 4px 0 0; }
+.island-row-conditions { display: flex; flex-direction: column; gap: 2px; padding: 0 6px; }
+.island-row-conditions .condition-row { margin-bottom: 0; }
+.island-row-note { display: block; padding: 0 6px; font-size: 12px; color: var(--parchment-300); }
+.island-row-conditions .island-row-note { padding: 0; }
 .condition-list {
   list-style: none;
   margin: 4px 0 0;
@@ -2145,6 +2193,9 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   gap: 3px;
   z-index: 2;
 }
+/* A group's badges sit over the group's box, above its members' own
+   day/night badges. */
+.group-conditions { top: -34px; right: 0; pointer-events: auto; }
 .island-conditions img {
   width: 26px;
   height: 26px;

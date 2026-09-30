@@ -41,6 +41,9 @@ export function mapDbIsland(row) {
     y: row.y,
     conditions: row.conditions || [],
     dayNight: row.day_night ?? 'cycle',
+    // Null for islands from before each island had its own scale — they
+    // follow their layer's (utils/grid.js islandFeet).
+    feetPerSquare: row.feet_per_square ?? null,
   };
 }
 
@@ -55,6 +58,7 @@ export function mapClientIslandPatchToDb(patch) {
   if ('y' in patch) db.y = patch.y;
   if ('conditions' in patch) db.conditions = patch.conditions;
   if ('dayNight' in patch) db.day_night = patch.dayNight;
+  if ('feetPerSquare' in patch && patch.feetPerSquare != null) db.feet_per_square = patch.feetPerSquare;
   return db;
 }
 

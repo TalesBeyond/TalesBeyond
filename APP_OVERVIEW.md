@@ -217,6 +217,13 @@ rule (`src/utils/grid.js`'s `feetDistance`).
   XLarge=12 item slots) → opens a configuration modal (shared
   `ChestContentsEditor`, see below) before placing.
 
+### Players button (`Toolbar.jsx` `PlayerList`)
+
+A toolbar button beside Configurations, for everyone at the table, labelled
+with the seats taken ("2/10 players"). It drops down the player list: colour
+and online dot, name ("(you)" for yourself), and the DM or the hero they play,
+"away" when they've dropped.
+
 ### Right panel — inspector (`RightPanel.jsx`, `CreatureCard.jsx`)
 
 Selecting a hero or monster shows its whole inspector as one collectible
@@ -360,7 +367,7 @@ they choose otherwise.
   `sendRoll`), or the guest channel's `roll` event. A local table has no one
   else to tell.
 - Everyone else sees a short card over the map as a roll lands, and every
-  roll goes into the **Roll log** (under the players on desktop; Run table or
+  roll goes into the **Roll log** (the toolbar's **Roll log** button on desktop, with a count of new rolls from others; Run table or
   Party → Roll log on a phone). The DM's hidden rolls are marked "Only you";
   revealed ones show as "The DM" with "Shown by the DM". The dice window says
   who will see the next roll.
@@ -415,7 +422,7 @@ MOBILE_DESIGN.md is the design; REQ-011 the plan.
   (`tb.muteDevice`, `lib/sfx.js`); Party; the DM's Add sheet
   (`TokenSidebar` `layout="phone"`), Run the table and table menu.
 - The DM's `Toolbar` stays mounted out of sight on a phone; its panels
-  (bestiary, layers, islands, initiative, asset storage, clock, map settings)
+  (bestiary, layers, islands, initiative, asset storage, clock, ambience)
   open over `lib/fx.js` `{ type: 'open', panel }` events. Every modal rises
   as a bottom sheet.
 - A guest table hosted from a phone holds a Screen Wake Lock while visible.

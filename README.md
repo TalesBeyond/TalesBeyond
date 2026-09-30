@@ -82,7 +82,7 @@ src/
     MapBoard.jsx            Grid rendering, token drag-to-move, ruler tool
     TokenSidebar.jsx        Default hero/monster gallery + custom image upload
     RightPanel.jsx           Player roster + selected-token inspector
-    Toolbar.jsx              Tools, map settings, invite code, save/export/import
+    Toolbar.jsx              Tools, mapping, world state, invite code, save/export/import
   utils/
     grid.js                 Grid <-> pixel math, 5-10-5 diagonal distance
     inviteCode.js            Invite code / id generators

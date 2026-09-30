@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
-import { pixelToCell, feetDistance, computeCanvasBounds } from '../utils/grid.js';
+import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
@@ -815,6 +815,9 @@ export default function MapBoard({
     return { x: left + point.col * r.cellSize + r.cellSize / 2, y: top + point.row * r.cellSize + r.cellSize / 2 };
   }
 
+  // Feet per square on one island (its own, else the layer's).
+  const feetOn = (islandId) => islands[islandId]?.feetPerSquare || feetPerSquare || 5;
+
   let rulerLine = null;
   if (ruler) {
     const p1 = rulerPoint(ruler.start);
@@ -822,14 +825,19 @@ export default function MapBoard({
     if (p1 && p2) {
       let feet;
       if (ruler.start.islandId === ruler.end.islandId) {
-        feet = feetDistance(ruler.start, ruler.end, feetPerSquare);
+        feet = feetDistance(ruler.start, ruler.end, feetOn(ruler.start.islandId));
       } else {
         // Different islands: the 5-10-5 diagonal rule doesn't translate
-        // across two independent grids, so fall back to straight-line
-        // distance using the starting island's scale.
-        const cellSize = islandRects[ruler.start.islandId].cellSize;
-        const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        feet = Math.round((pixelDist / cellSize) * feetPerSquare);
+        // across independent grids, so it's a straight line — and each
+        // stretch of it counts at the scale of the island it crosses (a gap
+        // at the last island's), whichever end it started from.
+        const areas = islandOrder
+          .filter((id) => islandRects[id])
+          .map((id) => {
+            const r = islandRects[id];
+            return { left: (r.x - originX) * zoom, top: (r.y - originY) * zoom, w: r.w, h: r.h, feetPerPx: feetOn(id) / r.cellSize };
+          });
+        feet = Math.round(feetAlongLine(p1, p2, areas));
       }
       rulerLine = { p1, p2, feet };
     }
@@ -891,11 +899,12 @@ export default function MapBoard({
                 single shared title (rendered below) stands in for it. */}
             {!groupIdByIslandId.has(id) && <div className="island-label">{island.name}</div>}
             {/* Condition badges (fog, fire, ...) sit on the island's top edge for
-                everyone - a grouped island keeps its own, unlike the label. */}
-            {(phase || island.conditions?.length > 0) && (
+                everyone. A grouped island shows only its day/night badge: the
+                group's conditions sit on the group's title instead. */}
+            {(phase || (!groupIdByIslandId.has(id) && island.conditions?.length > 0)) && (
               <div className="island-conditions">
                 {phase && <img src={phase.imageUrl} alt={phase.label} title={`${phase.label} — ${phase.description}`} />}
-                {(island.conditions || []).map((key) => {
+                {(groupIdByIslandId.has(id) ? [] : island.conditions || []).map((key) => {
                   const c = getIslandCondition(key);
                   if (!c) return null;
                   return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
@@ -952,6 +961,15 @@ export default function MapBoard({
               />
             )}
             <div className="group-label">{group.name}</div>
+            {group.conditions?.length > 0 && (
+              <div className="island-conditions group-conditions">
+                {group.conditions.map((key) => {
+                  const c = getIslandCondition(key);
+                  if (!c) return null;
+                  return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                })}
+              </div>
+            )}
           </div>
         );
       })}
@@ -1059,7 +1077,7 @@ export default function MapBoard({
 
       {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
         <DrawFeetLabel
-          label={shapeFeetLabel(draft.kind, draft.geometry, feetPerSquare, drawRef.current?.snap)}
+          label={shapeFeetLabel(draft.kind, draft.geometry, feetOn(draft.islandId), drawRef.current?.snap)}
           rect={islandRects[draft.islandId]}
           left={(islandRects[draft.islandId].x - originX) * zoom}
           top={(islandRects[draft.islandId].y - originY) * zoom}
@@ -1075,7 +1093,7 @@ export default function MapBoard({
           <>
             <DrawSelection drawing={shown} rect={r} left={left} top={top} width={canvasWidth} height={canvasHeight} />
             {editPreview && shown.kind !== 'pencil' && (
-              <DrawFeetLabel label={shapeFeetLabel(shown.kind, shown.geometry, feetPerSquare, drawSettings?.snap)} rect={r} left={left} top={top} />
+              <DrawFeetLabel label={shapeFeetLabel(shown.kind, shown.geometry, feetOn(shown.islandId), drawSettings?.snap)} rect={r} left={left} top={top} />
             )}
           </>
         );

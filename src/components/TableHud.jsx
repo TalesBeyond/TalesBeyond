@@ -77,7 +77,7 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
       </div>
       <div className="layer-strip-meta">
         <StripClock clock={clock} phaseOverride={phaseOverride} />
-        <span>{feetPerSquare} ft per square</span>
+        <span title="Feet per square on the island you're looking at">{feetPerSquare} ft per square</span>
       </div>
     </div>
   );

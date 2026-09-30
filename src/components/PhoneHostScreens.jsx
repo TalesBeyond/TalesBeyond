@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import ClockReadout from './ClockReadout.jsx';
-import { DAY_PHASES } from '../data/dayPhases.js';
+import { DAY_PHASES, ISLAND_DAY_NIGHT_MODES } from '../data/dayPhases.js';
 import { emitFx } from '../lib/fx.js';
 import { PhoneSheet, PhoneLookAndSound, PhoneSwitch, PhoneGuestHostNote } from './PhoneChrome.jsx';
 import { Tip } from './Hints.jsx';
@@ -24,6 +24,9 @@ export function PhoneRunTable({
   phaseOverride,
   onSetClockRunning,
   onSetDayNight,
+  islandName,
+  islandDayNight = 'cycle',
+  onIslandDayNight,
   audioEnabled,
   onOpenMusic,
   onOpenDice,
@@ -115,14 +118,31 @@ export function PhoneRunTable({
             })}
           </div>
           {!phaseOverride && !hasCycle && <p className="phone-caption phone-caption-flush">No day/night cycle is running.</p>}
+          {onIslandDayNight && (
+            <label className="phone-owner">
+              <span>{islandName || 'This island'}</span>
+              <select value={islandDayNight} onChange={(e) => onIslandDayNight(e.target.value)}>
+                {ISLAND_DAY_NIGHT_MODES.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </section>
 
         <section className="phone-menu-section" aria-label="Table music">
           <span className="phone-label">Table music</span>
           {audioEnabled ? (
-            <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onOpenMusic)}>
-              Music and sounds
-            </button>
+            <>
+              <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onOpenMusic)}>
+                Music and sounds
+              </button>
+              <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(() => open('ambience'))}>
+                This map’s ambience
+              </button>
+            </>
           ) : (
             <p className="phone-caption phone-caption-flush">Music plays on cloud and guest tables.</p>
           )}

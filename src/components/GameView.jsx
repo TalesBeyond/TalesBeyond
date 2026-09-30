@@ -7,12 +7,13 @@ import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from 
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
+import { islandConditionKeys } from '../data/islandConditions.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
 import { RollToasts, RollLog } from './RollFeed.jsx';
 import { ModeBar, EmptyState } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
-import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
@@ -22,9 +23,7 @@ import {
   deleteSession,
   downloadSessionAsFile,
   downloadGuestSessionAsFile,
-  downloadIslandAsFile,
   downloadDataUrl,
-  readJsonFromFile,
   readEncodedJsonFromFile,
   saveIdentity,
   clearCurrentPointer,
@@ -463,9 +462,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // get mutated from a Presence callback that isn't triggered by React.
   const [hostAbsentBanner, setHostAbsentBanner] = useState(null);
   const hostAbsentTimersRef = useRef({ graceTimer: null, endTimer: null });
+  // Whether the host was in the channel at the last presence sync, so a
+  // player can tell when the host (re)appears.
+  const hostSeenRef = useRef(false);
 
   function handleHostPresenceChange(hostPresent) {
     const timers = hostAbsentTimersRef.current;
+    // The host just showed up (this player opened the table first, or the
+    // host reloaded): anything asked for before went unanswered, so ask
+    // for the table as it is now.
+    if (hostPresent && !hostSeenRef.current) guestChannelRef.current?.sendStateRequest(me.id);
+    hostSeenRef.current = hostPresent;
     if (hostPresent) {
       if (timers.graceTimer) clearTimeout(timers.graceTimer);
       if (timers.endTimer) clearTimeout(timers.endTimer);
@@ -656,11 +663,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (start && actor.layerId === currentLayerId) {
       moveRange = {
         islandId: start.islandId,
-        cells: reachableCells(currentLayer.islands[start.islandId], start, speed, currentLayer.feetPerSquare),
+        cells: reachableCells(currentLayer.islands[start.islandId], start, speed, islandFeet(currentLayer, start.islandId)),
       };
     }
     const actorLayer = state.layers[actor.layerId] || currentLayer;
-    const moved = feetMoved(encounter, actor, actorLayer.feetPerSquare);
+    const moved = feetMoved(encounter, actor, islandFeet(actorLayer, actor.islandId));
     movement = { total: speed, left: moved == null ? 0 : Math.max(0, speed - moved) };
   }
 
@@ -1001,15 +1008,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       guestChannelRef.current?.sendStateSnapshot(requesterId, toGuestSnapshot(stateRef.current));
     }
 
-    // Player-side only: a channel recovery that isn't the very first join
-    // means a real drop happened in between, so ask the host for current
-    // state rather than trusting whatever this browser still has —
-    // mirrors REQ-001's resync intent, but over broadcast/state_snapshot
-    // instead of fetchTableSnapshot, since a guest table has no Postgres
-    // row to fetch from.
-    function handleGuestStatusChange(status, isInitialJoin) {
+    // Player-side only: every time the channel connects — opening the
+    // table after a reload as much as recovering from a drop — ask the host
+    // for current state rather than trusting whatever this browser saved
+    // last, which misses anything the DM changed meanwhile. Mirrors
+    // REQ-001's resync intent, but over broadcast/state_snapshot instead of
+    // fetchTableSnapshot, since a guest table has no Postgres row to fetch
+    // from. If the host isn't there yet, handleHostPresenceChange asks again
+    // when they arrive.
+    function handleGuestStatusChange(status) {
       if (isGuestHost) return;
-      if (status === 'SUBSCRIBED' && !isInitialJoin) {
+      if (status === 'SUBSCRIBED') {
         guestChannelRef.current?.sendStateRequest(me.id);
       }
     }
@@ -1657,7 +1666,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return layer.id;
   }
 
-  // Places a freshly built island (from createIsland or importIsland) next
+  // Places a freshly built island (from createIsland) next
   // to the active island (not the rightmost edge across every island on the
   // layer) — a merge can make one island's own footprint huge, and
   // anchoring off the layer-wide edge would drop a new island far from
@@ -1691,29 +1700,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_ISLAND', layerId: currentLayerId, island });
   }
 
-  function createIsland({ name, cols, rows }) {
+  function createIsland({ name, cols, rows, feetPerSquare }) {
     if (!isHost) return;
     const island = createInitialIsland({
       name: name.trim() || 'Untitled Island',
       cols: clampGridDims(cols),
       rows: clampGridDims(rows),
+      feetPerSquare: clampFeetPerSquare(feetPerSquare),
     });
     placeAndAddIsland(island);
   }
 
-  // Downloads the active island's shell (grid + background — no
-  // id/position/entities) to a file for reuse/sharing.
-  function downloadIsland() {
-    const island = currentLayer.islands[activeIslandId];
-    if (island) downloadIslandAsFile(island);
-  }
-
-  // Downloads the active island as a standalone PNG (background + grid
-  // lines, at native pixel resolution) for editing in an external image
-  // editor — the result can be re-uploaded via "Upload island background
-  // image" to become a new custom map.
-  async function downloadIslandImage() {
-    const island = currentLayer.islands[activeIslandId];
+  // Downloads an island (the active one by default) as a standalone PNG
+  // (background + grid lines, at native pixel resolution) for editing in an
+  // external image editor — the result can be uploaded back from the
+  // island's settings (Mapping → Islands) as its background.
+  async function downloadIslandImage(islandId = activeIslandId) {
+    const island = currentLayer.islands[islandId];
     if (!island) return;
     try {
       const dataUrl = await renderIslandTemplateToDataUrl(island);
@@ -1722,29 +1725,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     } catch {
       alert("Could not export this island's image — its background image could not be loaded.");
     }
-  }
-
-  // Reads a previously exported island-shell file and adds it as a
-  // brand-new island via the same placement logic createIsland uses,
-  // without touching the currently active/selected island beforehand.
-  function importIsland(file) {
-    if (!isHost) return;
-    readJsonFromFile(file)
-      .then((raw) => {
-        if (typeof raw?.name !== 'string' || !Number.isFinite(raw.cols) || !Number.isFinite(raw.rows) || !Number.isFinite(raw.cellSize)) {
-          alert('That file does not look like a Hearthbound island export.');
-          return;
-        }
-        const island = createInitialIsland({
-          name: raw.name.trim() || 'Untitled Island',
-          cols: clampGridDims(raw.cols),
-          rows: clampGridDims(raw.rows),
-          cellSize: raw.cellSize,
-          backgroundImage: typeof raw.backgroundImage === 'string' ? raw.backgroundImage : null,
-        });
-        placeAndAddIsland(island);
-      })
-      .catch(() => alert('Could not read that file — is it a valid Hearthbound island export?'));
   }
 
   function updateIsland(islandId, patch) {
@@ -2080,7 +2060,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Merge Islands tool picks on the map (pendingGroupIslandIds).
   function confirmGroup(name, islandIds = pendingGroupIslandIds) {
     if (!isHost || islandIds.length < 2) return;
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds };
+    // The group starts with every condition its islands had; from here on
+    // the group's conditions stand for all of them.
+    const conditions = [...new Set(islandIds.flatMap((id) => currentLayer.islands[id]?.conditions || []))];
+    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds, conditions };
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -2109,8 +2092,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
 
   function renameGroup(groupId, name) {
+    updateGroup(groupId, { name: name.trim() || 'Untitled Group' });
+  }
+
+  function updateGroup(groupId, patch) {
     if (!isHost) return;
-    const patch = { name: name.trim() || 'Untitled Group' };
     dispatch({ type: 'UPDATE_ISLAND_GROUP', layerId: currentLayerId, groupId, patch });
     if (isRemote) {
       const existing = currentLayer.islandGroups?.[groupId];
@@ -2678,7 +2664,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   let plannedMoveInfo = null;
   if (plannedMove && state.entities[plannedMove.entityId]) {
     const entity = state.entities[plannedMove.entityId];
-    const fps = currentLayer.feetPerSquare;
+    const fps = islandFeet(currentLayer, plannedMove.islandId);
     const target = { col: plannedMove.col, row: plannedMove.row };
     const sameIsland = entity.islandId === plannedMove.islandId;
     const start = encounter?.turnStart?.id === entity.id ? encounter.turnStart : null;
@@ -2735,13 +2721,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!isPhone) setPhoneSheet(null);
   }, [isPhone]);
 
-  const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
+  // A player has no Tokens panel (placing tokens is the DM's), so only the
+  // right panel shares the room with the map.
+  const shownPanelWidths = isHost
+    ? fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed)
+    : { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth, false, rightCollapsed), left: 0 };
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
   // what lets it keep its labels on an ordinary laptop screen.
   const toolbarEl = (
       <Toolbar
+        rollLog={rollLog}
+        players={state.players}
+        hostId={state.session.hostPlayerId}
+        allEntities={state.entities}
+        meId={me.id}
         dice={{ ...diceApi, share: rollShare }}
         revealRolls={revealRolls}
         onRevealRollsChange={setRevealRolls}
@@ -2753,7 +2748,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         hideDrawings={hideDrawings}
         onToggleHideDrawings={() => setHideDrawings(!hideDrawings)}
         onToolChange={setTool}
-        onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
         onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
         session={state.session}
         onRegenerateCode={regenerateCode}
@@ -2785,11 +2779,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onSelectIsland={setActiveIslandId}
         onCreateIsland={createIsland}
         onRemoveIsland={removeIsland}
-        onDownloadIsland={downloadIsland}
         onDownloadIslandImage={downloadIslandImage}
-        onImportIsland={importIsland}
+        onUpdateIsland={updateIsland}
         onUngroupIslands={ungroupIslands}
         onRenameGroup={renameGroup}
+        onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}
+        onGroupConditions={(groupId, conditions) => updateGroup(groupId, { conditions })}
         heroes={heroes}
         onUpdateEntity={updateEntity}
         initiativeHeroes={initiativeHeroes}
@@ -2841,7 +2836,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
-          rollLog={rollLog}
         />
   );
 
@@ -2858,7 +2852,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             layerName={currentLayer.name}
             layerIndex={layerIndex}
             layerCount={state.layerOrder.length}
-            feetPerSquare={currentLayer.feetPerSquare}
+            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
             onAtlas={() => setPhoneSheet('atlas')}
             onLayers={() => setPhoneSheet('layers')}
             onMenu={() => setPhoneSheet('menu')}
@@ -2876,10 +2870,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       )}
 
       <div
-        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
+        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && !isHost ? ' no-left' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
         style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
       >
-        {!isPhone && tokenSidebarEl}
+        {!isPhone && isHost && tokenSidebarEl}
 
         <div className="game-center">
           {!isPhone && (
@@ -2890,7 +2884,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             layerPlayerCounts={layerPlayerCounts}
             isHost={isHost}
             onSwitchLayer={setHostViewLayerId}
-            feetPerSquare={currentLayer.feetPerSquare}
+            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
             clock={state.clock}
             phaseOverride={state.dayNightOverride}
           />
@@ -2948,12 +2942,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 activeIslandId={activeIslandId}
                 onOpen={() => setPhoneSheet('atlas')}
               />
-              <PhoneIslandConditions island={activeIsland} />
+              <PhoneIslandConditions conditions={islandConditionKeys(currentLayer, activeIslandId)} />
               {isHost && (tool === 'edit' || tool === 'group') && (
                 <PhoneEditBar
                   tool={tool}
                   islandName={activeIsland?.name}
-                  onSettings={() => emitFx({ type: 'open', panel: 'map' })}
+                  onSettings={() => emitFx({ type: 'open', panel: 'islands', islandId: activeIslandId })}
                   onGroup={() => setPhoneSheet('group')}
                   onDraw={() => setTool('draw')}
                   onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
@@ -3039,7 +3033,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
             <ModeBar id="ruler" className="map-mode-bar" label="Ruler." doneLabel="Play" onDone={() => setTool('play')}>
-              Drag from one square to another. Every second diagonal counts as {(currentLayer.feetPerSquare || 5) * 2} ft.
+              Drag from one square to another. Every second diagonal counts as {islandFeet(currentLayer, activeIslandId) * 2} ft.
             </ModeBar>
           )}
           {!isPhone && isHost && tool === 'edit' && (
@@ -3126,7 +3120,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!isPhone && !leftCollapsed && !drawerLayout && (
+        {!isPhone && isHost && !leftCollapsed && !drawerLayout && (
           <PanelResizer
             side="left"
             width={shownPanelWidths.left}
@@ -3139,7 +3133,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           <PanelResizer
             side="right"
             width={shownPanelWidths.right}
-            label="Resize players and inspector panel"
+            label="Resize the inspector panel"
             onResize={(w) => resizePanel('right', w)}
             onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
           />
@@ -3311,7 +3305,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 .filter((p) => p.id !== state.session.hostPlayerId)
                 .map((p) => (p.id === me.id ? `${p.name} (you)` : p.name))}
               island={activeIsland}
-              feetPerSquare={currentLayer.feetPerSquare}
+              islandConditions={islandConditionKeys(currentLayer, activeIslandId)}
+              feetPerSquare={islandFeet(currentLayer, activeIslandId)}
               theme={theme}
               onThemeChange={onThemeChange}
               muted={deviceMuted}
@@ -3417,6 +3412,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               phaseOverride={state.dayNightOverride}
               onSetClockRunning={setClockRunning}
               onSetDayNight={updateDayNightOverride}
+              islandName={activeIsland?.name}
+              islandDayNight={activeIsland?.dayNight || 'cycle'}
+              onIslandDayNight={(dayNight) => updateIsland(activeIslandId, { dayNight })}
               audioEnabled={audioEnabled}
               onOpenMusic={() => setShowMusicModal(true)}
               onOpenDice={() => setPhoneSheet('dice')}
@@ -3467,7 +3465,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               entities={layerEntities}
               activeIslandId={activeIslandId}
               myHeroId={myHeroOnLayer?.id}
-              layerLabel={`${state.layerOrder.length > 1 ? `Layer ${layerIndex + 1} of ${state.layerOrder.length} · ` : ''}${currentLayer.islandOrder.length} islands · ${currentLayer.feetPerSquare} ft squares`}
+              layerLabel={`${state.layerOrder.length > 1 ? `Layer ${layerIndex + 1} of ${state.layerOrder.length} · ` : ''}${currentLayer.islandOrder.length} islands · ${islandFeet(currentLayer, activeIslandId)} ft squares here`}
               onPick={(id) => {
                 setPhoneSheet(null);
                 flyToIsland(id);

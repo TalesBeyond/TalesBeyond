@@ -256,27 +256,6 @@ export function findUnclosedGuestTable() {
   return best ? best.code : null;
 }
 
-// An island's shell — grid + background, no id/position/entities — so it
-// can be re-imported as a brand-new island elsewhere.
-export function downloadIslandAsFile(island) {
-  const shell = {
-    name: island.name,
-    cols: island.cols,
-    rows: island.rows,
-    cellSize: island.cellSize,
-    backgroundImage: island.backgroundImage ?? null,
-  };
-  const blob = new Blob([JSON.stringify(shell, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(island.name || 'island').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'island'}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 // Triggers a browser download of a data: URL (e.g. a canvas.toDataURL()
 // PNG) — the same create-<a>-click-remove pattern as the Blob-based
 // downloads above, minus createObjectURL/revokeObjectURL since a data URL

@@ -3,7 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
 import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
-import { clampGridDims } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
@@ -13,6 +13,7 @@ import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
+import { RollLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import { useFx } from '../lib/fx.js';
 
@@ -28,10 +29,15 @@ function formatCountdown(totalSeconds) {
 // select, popover trigger, or one-shot command) is one of these instead of
 // a text button or a dropdown item, so the whole bar reads as a row of
 // little tiles rather than a list of menus.
-function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
+function ToolCard({ icon, image, label, active, onClick, disabled, title, badge }) {
   return (
     <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label}>
       <span className="tool-card-icon">{image ? <img className="tool-card-image" src={image} alt="" /> : icon}</span>
+      {badge ? (
+        <span className="tool-card-badge" aria-label={`${badge} new`}>
+          {badge > 9 ? '9+' : badge}
+        </span>
+      ) : null}
       <span className="tool-card-label">{label}</span>
     </button>
   );
@@ -44,7 +50,7 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
 // `align="end"` opens the menu leftward from the trigger's right edge — for
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', align }) {
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -65,8 +71,8 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
 
   return (
     <div className={`toolbar-group ${className}`} ref={ref}>
-      <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} />
-      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}`}>{children}</div>}
+      <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
+      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
       {popovers}
     </div>
   );
@@ -116,6 +122,8 @@ const ICON_PATHS = {
   unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
+  rolllog: 'M4 3h9l3 3v11H4zM7 8h6M7 11h6M7 14h4',
+  players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
 };
@@ -145,7 +153,41 @@ const TOOL_ICONS = {
 };
 const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands', draw: 'Draw' };
 
+// Seats at a table: the DM plus up to nine players.
+const MAX_SEATS = 10;
+
+// Who's at the table, for the Players button: colour and online dot, name,
+// and the DM or the hero they play (and "away" when they've dropped).
+function PlayerList({ players, hostId, entities, meId }) {
+  const list = Object.values(players || {});
+  if (!list.length) return <div className="empty-state">No one here yet.</div>;
+  return (
+    <ul className="players-menu-list">
+      {list.map((p) => {
+        const hero = Object.values(entities || {}).find((e) => e.kind === 'hero' && e.ownerId === p.id);
+        const role = p.id === hostId ? 'Dungeon Master' : hero?.name || 'No hero yet';
+        return (
+          <li key={p.id} className="player-row">
+            <span className={`player-dot${p.connected ? ' online' : ''}`} style={{ background: p.color }} />
+            <span className="player-name">
+              {p.name}
+              {p.id === meId ? ' (you)' : ''}
+            </span>
+            <span className="player-tag">{[role, p.connected ? '' : 'away'].filter(Boolean).join(', ')}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default function Toolbar({
+  // This session's dice rolls at the table, newest first (RollFeed.jsx).
+  rollLog = [],
+  players = {},
+  hostId = null,
+  allEntities = {},
+  meId = null,
   // The roll log and saved dice sets, kept in GameView so they survive
   // closing the popover and the phone dice screen shares them.
   dice,
@@ -159,7 +201,6 @@ export default function Toolbar({
   onRevealRollsChange,
   hideDrawings = false,
   onToggleHideDrawings,
-  onLayerPatch,
   onIslandPatch,
   session,
   onRegenerateCode,
@@ -190,11 +231,12 @@ export default function Toolbar({
   onSelectIsland,
   onCreateIsland,
   onRemoveIsland,
-  onDownloadIsland,
   onDownloadIslandImage,
-  onImportIsland,
+  onUpdateIsland,
   onUngroupIslands,
   onRenameGroup,
+  onIslandConditions,
+  onGroupConditions,
   heroes,
   onUpdateEntity,
   initiativeHeroes,
@@ -212,7 +254,6 @@ export default function Toolbar({
   const importRef = useRef(null);
   // Only one popover open at a time — clicking a card closes the others and
   // toggles its own.
-  const [showMapSettings, setShowMapSettings] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [showIslands, setShowIslands] = useState(false);
   const [showDice, setShowDice] = useState(false);
@@ -222,8 +263,21 @@ export default function Toolbar({
   const [showMonsterCompendium, setShowMonsterCompendium] = useState(false);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   const [showDayNight, setShowDayNight] = useState(false);
+  const [showAmbience, setShowAmbience] = useState(false);
+  // The island whose settings the Islands dialog opens on (the phone's
+  // "… settings" button in Edit mode).
+  const [islandsFocusId, setIslandsFocusId] = useState(null);
   // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
+  // The newest roll seen with the Roll log open; anything newer from someone
+  // else counts on the button's badge.
+  const [seenRollId, setSeenRollId] = useState(() => rollLog[0]?.id ?? null);
+  const rollLogOpen = openMenu === 'rolls';
+  useEffect(() => {
+    if (rollLogOpen && rollLog[0]) setSeenRollId(rollLog[0].id);
+  }, [rollLogOpen, rollLog]);
+  const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
+  const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
   const hintPrefs = useHintPrefs();
   const [showMusicHint, setShowMusicHint] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -270,7 +324,6 @@ export default function Toolbar({
   useLayoutEffect(fitToolbar, [fitToolbar, collapsed, isHost, isGuestHost, Boolean(clock), dayPhase, lastSavedLabel, session.isOpen]);
 
   function closePopovers() {
-    setShowMapSettings(false);
     setShowLayers(false);
     setShowIslands(false);
     setShowDice(false);
@@ -297,7 +350,6 @@ export default function Toolbar({
 
   function togglePopover(name) {
     setOpenMenu(null);
-    setShowMapSettings((s) => (name === 'mapSettings' ? !s : false));
     setShowLayers((s) => (name === 'layers' ? !s : false));
     setShowIslands((s) => (name === 'islands' ? !s : false));
     setShowDice((s) => (name === 'dice' ? !s : false));
@@ -306,6 +358,8 @@ export default function Toolbar({
     setShowItemCompendium((s) => (name === 'itemCompendium' ? !s : false));
     setShowAssetStorage((s) => (name === 'assetStorage' ? !s : false));
     setShowDayNight((s) => (name === 'dayNight' ? !s : false));
+    setShowAmbience((s) => (name === 'ambience' ? !s : false));
+    if (name !== 'islands') setIslandsFocusId(null);
   }
 
   // The Grimoire palette's index tabs (BookTabs.jsx) open these same
@@ -316,11 +370,13 @@ export default function Toolbar({
     if (event.panel === 'dice') togglePopover('dice');
     else if (event.panel === 'music') onOpenMusic?.();
     else if (!isHost) return;
-    else if (event.panel === 'map') togglePopover('mapSettings');
     else if (event.panel === 'armory') togglePopover('compendium');
     // The phone layout opens the rest of the host's panels the same way.
     else if (event.panel === 'items') togglePopover('itemCompendium');
-    else if (['layers', 'islands', 'initiative', 'assetStorage'].includes(event.panel)) togglePopover(event.panel);
+    else if (event.panel === 'islands') {
+      setIslandsFocusId(event.islandId || null);
+      togglePopover('islands');
+    } else if (['layers', 'initiative', 'assetStorage', 'ambience'].includes(event.panel)) togglePopover(event.panel);
     else if (event.panel === 'clock') onOpenClock?.();
     else if (event.panel === 'bestiary') {
       const open = showMonsterCompendium;
@@ -358,13 +414,12 @@ export default function Toolbar({
     });
   }
 
-  async function handleBackgroundFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
+  // An island's background image, from its settings in the Islands
+  // dialog — applied as soon as it's read, no Apply step.
+  async function uploadIslandBackground(islandId, file) {
     try {
       const backgroundImage = await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78);
-      onIslandPatch({ backgroundImage });
+      onUpdateIsland(islandId, { backgroundImage });
     } catch (err) {
       alert('Could not read that image — try a different file.');
     }
@@ -528,27 +583,13 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="mapping" />}
           label="Mapping"
-          title="Map settings, islands, and layers"
-          active={showMapSettings || showIslands || showLayers}
+          title="Islands and layers"
+          active={showIslands || showLayers}
           open={openMenu === 'mapping'}
           onToggle={() => toggleMenu('mapping')}
           onClose={closeMenu}
           popovers={
             <>
-              {showMapSettings && (
-                <MapSettingsPopover
-                  layer={layer}
-                  island={activeIsland}
-                  isHost={isHost}
-                  audio={audio}
-                  onLayerPatch={onLayerPatch}
-                  onIslandPatch={onIslandPatch}
-                  onBackgroundFile={handleBackgroundFile}
-                  onDownloadIsland={onDownloadIsland}
-                  onDownloadIslandImage={onDownloadIslandImage}
-                  onClose={() => setShowMapSettings(false)}
-                />
-              )}
               {showIslands && (
                 <IslandManagerPopover
                   islands={layer.islands}
@@ -558,9 +599,15 @@ export default function Toolbar({
                   onSelectIsland={onSelectIsland}
                   onCreateIsland={onCreateIsland}
                   onRemoveIsland={onRemoveIsland}
-                  onImportIsland={onImportIsland}
                   onUngroupIslands={onUngroupIslands}
                   onRenameGroup={onRenameGroup}
+                  onIslandConditions={onIslandConditions}
+                  onGroupConditions={onGroupConditions}
+                  onUpdateIsland={onUpdateIsland}
+                  onUploadBackground={uploadIslandBackground}
+                  onDownloadIslandImage={onDownloadIslandImage}
+                  focusIslandId={islandsFocusId}
+                  layerFeet={layer.feetPerSquare || 5}
                   onSwitchToEdit={() => {
                     onToolChange('edit');
                     setShowIslands(false);
@@ -583,7 +630,6 @@ export default function Toolbar({
             </>
           }
         >
-          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
           <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
         </ToolMenu>
@@ -593,21 +639,26 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="world" />}
           label="World state"
-          title="In-game time and day / night"
-          active={showDayNight}
+          title="In-game time, day / night and the map's ambience"
+          active={showDayNight || showAmbience}
           open={openMenu === 'world'}
           onToggle={() => toggleMenu('world')}
           onClose={closeMenu}
           popovers={
-            showDayNight && (
-              <DayNightPopover
-                override={dayNightOverride}
-                hasClock={Boolean(clock)}
-                hasCycle={Boolean(clock?.cycle?.enabled)}
-                onSelect={(phase) => onSetDayNightOverride(phase)}
-                onClose={() => setShowDayNight(false)}
-              />
-            )
+            <>
+              {showDayNight && (
+                <DayNightPopover
+                  override={dayNightOverride}
+                  hasClock={Boolean(clock)}
+                  hasCycle={Boolean(clock?.cycle?.enabled)}
+                  onSelect={(phase) => onSetDayNightOverride(phase)}
+                  island={activeIsland}
+                  onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
+                  onClose={() => setShowDayNight(false)}
+                />
+              )}
+              {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
+            </>
           }
         >
           <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
@@ -617,7 +668,14 @@ export default function Toolbar({
             label="Day / night"
             active={showDayNight}
             onClick={() => togglePopover('dayNight')}
-            title="Change the day/night phase by hand, whatever the clock says"
+            title="Change the day/night phase by hand, and whether this island follows it"
+          />
+          <ToolCard
+            icon={<Icon name="music" />}
+            label="Ambience"
+            active={showAmbience}
+            onClick={() => togglePopover('ambience')}
+            title="The sound that plays for players on this map"
           />
         </ToolMenu>
       )}
@@ -688,6 +746,24 @@ export default function Toolbar({
           />
         )}
       </div>
+
+      {/* This session's rolls — everyone's, and the DM's own (marked when
+          hidden). Open to everyone at the table. */}
+      <ToolMenu
+        icon={<Icon name="rolllog" />}
+        label="Roll log"
+        title="Every roll at the table this session"
+        open={rollLogOpen}
+        onToggle={() => toggleMenu('rolls')}
+        onClose={closeMenu}
+        menuClassName="players-menu roll-log-menu"
+        badge={rollLogOpen ? 0 : unseenRolls}
+      >
+        <div className="players-menu-head">
+          Roll log <span>{rollLog.length ? `${rollLog.length} this session` : ''}</span>
+        </div>
+        <RollLog entries={rollLog} />
+      </ToolMenu>
 
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
@@ -778,6 +854,23 @@ export default function Toolbar({
         </div>
       )}
 
+      {/* Who's at the table — everyone gets this one, not just the DM. */}
+      <ToolMenu
+        icon={<Icon name="players" />}
+        label={`${Object.keys(players).length}/${MAX_SEATS} players`}
+        title="Who's at the table"
+        open={openMenu === 'players'}
+        onToggle={() => toggleMenu('players')}
+        onClose={closeMenu}
+        menuClassName="players-menu"
+        align="end"
+      >
+        <div className="players-menu-head">
+          Players <span>{Object.keys(players).length} of {MAX_SEATS} seats</span>
+        </div>
+        <PlayerList players={players} hostId={hostId} entities={allEntities} meId={meId} />
+      </ToolMenu>
+
       {/* The very last group: save/export/import/close/leave — the
           "shutting the book" actions, tucked away since they're reached for
           far less often than anything above. */}
@@ -841,7 +934,7 @@ export default function Toolbar({
 // Set the day/night phase by hand. Picking a phase overrides the clock's own
 // cycle (which keeps running underneath) until "Follow the clock" hands it
 // back; it works with the cycle on or off, and with no clock at all.
-function DayNightPopover({ override, hasClock, hasCycle, onSelect, onClose }) {
+function DayNightPopover({ override, hasClock, hasCycle, onSelect, island, onIslandDayNight, onClose }) {
   const isManual = Boolean(override);
   return (
     <div
@@ -903,26 +996,50 @@ function DayNightPopover({ override, hasClock, hasCycle, onSelect, onClose }) {
           );
         })}
       </div>
+      {island && onIslandDayNight && (
+        <>
+          <label className="field-label" style={{ marginTop: 12 }}>
+            {island.name}
+          </label>
+          <select
+            className="field"
+            value={island.dayNight || 'cycle'}
+            onChange={(e) => onIslandDayNight(e.target.value)}
+            title="Follow the table's day / night, or stay always day / always night whatever it says"
+          >
+            {ISLAND_DAY_NIGHT_MODES.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
     </div>
   );
 }
 
-// The island's condition states - fog, darkness, fire, and so on. Toggling
-// one applies immediately (like a token's conditions), not via "Apply
-// changes", and everyone at the table sees the resulting badges on the map.
-function IslandConditionsField({ island, isHost, onPatch }) {
-  const active = island.conditions || [];
+// World state → Ambience: the sound that plays for players on this map.
+function AmbiencePopover({ layer, audio, onClose }) {
+  return (
+    <ModalShell title="Ambience" icon="music" closeLabel="Close ambience" onClose={onClose}>
+      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players on this map`} />
+    </ModalShell>
+  );
+}
 
+// An island's or a group's condition states - fog, darkness, fire, and so
+// on - in the Islands dialog. Toggling one applies immediately (like a
+// token's conditions), and everyone at the table sees the resulting badges
+// on the map.
+function ConditionPicker({ active = [], onChange }) {
   function toggle(key) {
-    if (!isHost) return;
-    onPatch({ conditions: active.includes(key) ? active.filter((k) => k !== key) : [...active, key] });
+    onChange(active.includes(key) ? active.filter((k) => k !== key) : [...active, key]);
   }
+  const labels = active.map((key) => ISLAND_CONDITIONS.find((c) => c.key === key)?.label).filter(Boolean);
 
   return (
-    <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Island conditions {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
-      </label>
+    <div className="island-row-conditions">
       <div className="condition-row">
         {ISLAND_CONDITIONS.map((c) => (
           <button
@@ -931,116 +1048,14 @@ function IslandConditionsField({ island, isHost, onPatch }) {
             className={`condition-badge${active.includes(c.key) ? ' active' : ''}`}
             style={{ backgroundImage: `url(${c.imageUrl})` }}
             title={`${c.label} — ${c.description}`}
+            aria-label={c.label}
             aria-pressed={active.includes(c.key)}
-            disabled={!isHost}
             onClick={() => toggle(c.key)}
           />
         ))}
       </div>
-      {active.length > 0 && (
-        <ul className="condition-list" style={{ marginBottom: 6 }}>
-          {active.map((key) => {
-            const c = ISLAND_CONDITIONS.find((cond) => cond.key === key);
-            if (!c) return null;
-            return (
-              <li key={key} title={c.description}>
-                <img src={c.imageUrl} alt="" width={16} height={16} />
-                {c.label}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </>
-  );
-}
-
-function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
-  const [name, setName] = useState(island.name);
-  const [cols, setCols] = useState(island.cols);
-  const [rows, setRows] = useState(island.rows);
-  const [feet, setFeet] = useState(layer.feetPerSquare);
-  const fileRef = useRef(null);
-
-  function apply() {
-    onIslandPatch({
-      name: name.trim() || 'Untitled Island',
-      cols: clampGridDims(cols),
-      rows: clampGridDims(rows),
-    });
-    onLayerPatch({ feetPerSquare: Math.max(1, parseInt(feet, 10) || 5) });
-    onClose();
-  }
-
-  return (
-    <ModalShell title="Map settings" icon="map" closeLabel="Close map settings" onClose={onClose}>
-
-      <div className="section-label" style={{ marginTop: 0 }}>
-        This island
-      </div>
-      <label className="field-label">Island name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} disabled={!isHost} />
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} disabled={!isHost} />
-        </div>
-        <div>
-          <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} disabled={!isHost} />
-        </div>
-      </div>
-
-      <IslandConditionsField island={island} isHost={isHost} onPatch={onIslandPatch} />
-
-      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label="Layer sound (plays for players on this layer)" />
-
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Day / night
-      </label>
-      <select
-        className="field"
-        value={island.dayNight || 'cycle'}
-        disabled={!isHost}
-        onChange={(e) => onIslandPatch({ dayNight: e.target.value })}
-        title="Follow the table's in-game clock, or stay always day / always night regardless of it"
-      >
-        {ISLAND_DAY_NIGHT_MODES.map((m) => (
-          <option key={m.key} value={m.key}>
-            {m.label}
-          </option>
-        ))}
-      </select>
-
-      <div className="section-label">This layer</div>
-      <label className="field-label">Feet per square</label>
-      <input className="field" type="number" value={feet} onChange={(e) => setFeet(e.target.value)} disabled={!isHost} />
-
-      {isHost && (
-        <>
-          <button className="btn btn-secondary btn-block" onClick={() => fileRef.current?.click()} style={{ marginBottom: 12 }}>
-            Upload island background image
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onBackgroundFile} />
-          <button className="btn btn-primary btn-block" onClick={apply} style={{ marginBottom: 12 }}>
-            Apply changes
-          </button>
-          <button
-            className="btn btn-primary btn-block"
-            onClick={() => onDownloadIslandImage?.()}
-            title="Download this island as a PNG (background + grid) to edit in an image editor, then re-upload as a custom background"
-            style={{ marginBottom: 12 }}
-          >
-            Download island image (.png)
-          </button>
-          <button className="btn btn-secondary btn-block" onClick={() => onDownloadIsland?.()} title="Download this island's grid + background as a .json file, for re-importing into Hearthbound">
-            Download island data (.json)
-          </button>
-        </>
-      )}
-      {!isHost && <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>Only the host can change map settings.</p>}
-    </ModalShell>
+      <span className="island-row-note">{labels.length ? labels.join(' · ') : 'No conditions'}</span>
+    </div>
   );
 }
 
@@ -1137,30 +1152,40 @@ function IslandManagerPopover({
   onSelectIsland,
   onCreateIsland,
   onRemoveIsland,
-  onImportIsland,
   onUngroupIslands,
   onRenameGroup,
+  onIslandConditions,
+  onGroupConditions,
+  onUpdateIsland,
+  onUploadBackground,
+  onDownloadIslandImage,
+  focusIslandId = null,
+  layerFeet = 5,
   onSwitchToEdit,
   onClose,
 }) {
+  // The island whose settings (name, size, background) are open.
+  const [openId, setOpenId] = useState(focusIslandId);
+  const groupOf = (islandId) => Object.values(islandGroups || {}).find((g) => g.islandIds.includes(islandId));
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
-  const importIslandRef = useRef(null);
+  const [feet, setFeet] = useState(5);
+  // The new-island form stays folded behind one button until it's wanted.
+  const [adding, setAdding] = useState(false);
 
-  function addIsland() {
-    if (!name.trim()) return;
-    onCreateIsland({ name: name.trim(), cols, rows });
+  function closeAdding() {
+    setAdding(false);
     setName('');
     setCols(20);
     setRows(15);
+    setFeet(5);
   }
 
-  function handleImportIslandFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    onImportIsland?.(file);
-    e.target.value = '';
+  function addIsland() {
+    if (!name.trim()) return;
+    onCreateIsland({ name: name.trim(), cols, rows, feetPerSquare: feet });
+    closeAdding();
   }
 
   return (
@@ -1171,8 +1196,10 @@ function IslandManagerPopover({
         const isSole = islandOrder.length === 1;
         const isBase = i === 0 && !isSole;
         const isActive = id === activeIslandId;
+        const group = groupOf(id);
         return (
-          <div key={id} className="player-row" style={{ justifyContent: 'space-between' }}>
+          <div key={id} className="island-row">
+          <div className="player-row" style={{ justifyContent: 'space-between' }}>
             <span className="player-name">{island.name}</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
@@ -1185,6 +1212,16 @@ function IslandManagerPopover({
               >
                 {isActive ? 'Active' : 'Select'}
               </button>
+              {onUpdateIsland && (
+                <button
+                  className={`btn btn-secondary btn-sm ${openId === id ? 'active' : ''}`}
+                  aria-expanded={openId === id}
+                  onClick={() => setOpenId(openId === id ? null : id)}
+                  title="Name, size and background image"
+                >
+                  Settings
+                </button>
+              )}
               <button
                 className="btn btn-danger btn-sm"
                 disabled={isBase}
@@ -1195,6 +1232,23 @@ function IslandManagerPopover({
               </button>
             </div>
           </div>
+          {openId === id && onUpdateIsland && (
+            <IslandSettings
+              island={island}
+              fallbackFeet={layerFeet}
+              onPatch={(patch) => onUpdateIsland(id, patch)}
+              onUploadBackground={(file) => onUploadBackground(id, file)}
+              onDownloadImage={() => onDownloadIslandImage?.(id)}
+            />
+          )}
+          {group ? (
+            <span className="island-row-note">
+              In <b>{group.name}</b> — its conditions are set on the group below.
+            </span>
+          ) : (
+            onIslandConditions && <ConditionPicker active={island.conditions || []} onChange={(keys) => onIslandConditions(id, keys)} />
+          )}
+          </div>
         );
       })}
 
@@ -1202,36 +1256,57 @@ function IslandManagerPopover({
         <>
           <div className="section-label">Groups on this layer</div>
           {Object.values(islandGroups).map((group) => (
-            <GroupRow key={group.id} group={group} onRename={onRenameGroup} onUngroup={onUngroupIslands} />
+            <GroupRow key={group.id} group={group} onRename={onRenameGroup} onUngroup={onUngroupIslands} onConditions={onGroupConditions} />
           ))}
         </>
       )}
 
-      <div className="divider-word">new island</div>
-
-      <label className="field-label">Name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Side Chamber" />
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+      {adding ? (
+        <div className="island-settings island-new">
+          <div className="section-label" style={{ marginTop: 0 }}>
+            New island
+          </div>
+          <label className="field-label">Name</label>
+          <input
+            className="field"
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') addIsland();
+              else if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeAdding();
+              }
+            }}
+            placeholder="e.g. Side Chamber"
+          />
+          <div className="field-row">
+            <div>
+              <label className="field-label">Width</label>
+              <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Height</label>
+              <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
+            </div>
+          </div>
+          <label className="field-label">Feet per square</label>
+          <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} />
+          <div className="field-row">
+            <button className="btn btn-secondary" onClick={closeAdding}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={addIsland} disabled={!name.trim()}>
+              Add island
+            </button>
+          </div>
         </div>
-        <div>
-          <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="field-row" style={{ marginTop: 8 }}>
-        <button className="btn btn-primary" onClick={addIsland}>
-          + Add island
+      ) : (
+        <button className="btn btn-secondary btn-block" onClick={() => setAdding(true)} style={{ marginTop: 10 }}>
+          + New island
         </button>
-        <button className="btn btn-secondary" onClick={() => importIslandRef.current?.click()} title="Import a previously downloaded island .json file">
-          Import island
-        </button>
-      </div>
-      <input ref={importIslandRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportIslandFile} />
+      )}
       <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
         Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
       </Hint>
@@ -1239,14 +1314,93 @@ function IslandManagerPopover({
   );
 }
 
+// An island's own settings, opened from its row in the Islands dialog.
+// Name and size save when the field is left (or on Enter); a background
+// image applies as soon as it's picked.
+function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground, onDownloadImage }) {
+  const [name, setName] = useState(island.name);
+  const [cols, setCols] = useState(island.cols);
+  const [rows, setRows] = useState(island.rows);
+  const [feet, setFeet] = useState(island.feetPerSquare || fallbackFeet);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  function commitName() {
+    const next = name.trim() || 'Untitled Island';
+    setName(next);
+    if (next !== island.name) onPatch({ name: next });
+  }
+  function commitSize() {
+    const c = clampGridDims(cols);
+    const r = clampGridDims(rows);
+    setCols(c);
+    setRows(r);
+    if (c !== island.cols || r !== island.rows) onPatch({ cols: c, rows: r });
+  }
+  function commitFeet() {
+    const next = clampFeetPerSquare(feet);
+    setFeet(next);
+    if (next !== island.feetPerSquare) onPatch({ feetPerSquare: next });
+  }
+  const blurOnEnter = (e) => {
+    if (e.key === 'Enter') e.currentTarget.blur();
+  };
+  async function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      await onUploadBackground(file);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="island-settings">
+      <label className="field-label">Name</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName} onKeyDown={blurOnEnter} />
+      <div className="field-row">
+        <div>
+          <label className="field-label">Width</label>
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
+        </div>
+        <div>
+          <label className="field-label">Height</label>
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
+        </div>
+      </div>
+      <label className="field-label">Feet per square</label>
+      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onBlur={commitFeet} onKeyDown={blurOnEnter} />
+      <label className="field-label">Background image</label>
+      <div className="field-row">
+        <button className="btn btn-secondary" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          {uploading ? 'Uploading…' : island.backgroundImage ? 'Replace image' : 'Upload image'}
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={onDownloadImage}
+          title="Download this island as a PNG (background + grid) to edit in an image editor, then upload it back as the background"
+        >
+          Download image (.png)
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+      <span className="island-row-note">Name, size and feet per square save when you leave the field. A new image applies straight away.</span>
+    </div>
+  );
+}
+
 // One row per island group in IslandManagerPopover — an inline rename
-// field (local-state-then-Save, same shape as MapSettingsPopover's name
-// field) plus an Ungroup button. Ungrouping only dissolves the group;
-// member islands are untouched.
-function GroupRow({ group, onRename, onUngroup }) {
+// field (local-state-then-Save) plus an Ungroup button, then the group's conditions, which stand
+// for every member island. Ungrouping only dissolves the group; member
+// islands are untouched and get their own conditions back.
+function GroupRow({ group, onRename, onUngroup, onConditions }) {
   const [name, setName] = useState(group.name);
   const dirty = name !== group.name;
   return (
+    <div className="island-row">
     <div className="player-row" style={{ justifyContent: 'space-between' }}>
       <input className="field" style={{ marginBottom: 0 }} value={name} onChange={(e) => setName(e.target.value)} />
       <div style={{ display: 'flex', gap: 6 }}>
@@ -1259,6 +1413,8 @@ function GroupRow({ group, onRename, onUngroup }) {
           Ungroup
         </button>
       </div>
+    </div>
+    {onConditions && <ConditionPicker active={group.conditions || []} onChange={(keys) => onConditions(group.id, keys)} />}
     </div>
   );
 }
