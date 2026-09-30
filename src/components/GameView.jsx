@@ -13,7 +13,7 @@ import DrawStylePanel from './DrawStyle.jsx';
 import { RollToasts, RollLog } from './RollFeed.jsx';
 import { ModeBar, EmptyState } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
-import { clampGridDims, computeCanvasBounds, feetDistance } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
@@ -663,11 +663,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (start && actor.layerId === currentLayerId) {
       moveRange = {
         islandId: start.islandId,
-        cells: reachableCells(currentLayer.islands[start.islandId], start, speed, currentLayer.feetPerSquare),
+        cells: reachableCells(currentLayer.islands[start.islandId], start, speed, islandFeet(currentLayer, start.islandId)),
       };
     }
     const actorLayer = state.layers[actor.layerId] || currentLayer;
-    const moved = feetMoved(encounter, actor, actorLayer.feetPerSquare);
+    const moved = feetMoved(encounter, actor, islandFeet(actorLayer, actor.islandId));
     movement = { total: speed, left: moved == null ? 0 : Math.max(0, speed - moved) };
   }
 
@@ -1700,12 +1700,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_ISLAND', layerId: currentLayerId, island });
   }
 
-  function createIsland({ name, cols, rows }) {
+  function createIsland({ name, cols, rows, feetPerSquare }) {
     if (!isHost) return;
     const island = createInitialIsland({
       name: name.trim() || 'Untitled Island',
       cols: clampGridDims(cols),
       rows: clampGridDims(rows),
+      feetPerSquare: clampFeetPerSquare(feetPerSquare),
     });
     placeAndAddIsland(island);
   }
@@ -2663,7 +2664,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   let plannedMoveInfo = null;
   if (plannedMove && state.entities[plannedMove.entityId]) {
     const entity = state.entities[plannedMove.entityId];
-    const fps = currentLayer.feetPerSquare;
+    const fps = islandFeet(currentLayer, plannedMove.islandId);
     const target = { col: plannedMove.col, row: plannedMove.row };
     const sameIsland = entity.islandId === plannedMove.islandId;
     const start = encounter?.turnStart?.id === entity.id ? encounter.turnStart : null;
@@ -2843,7 +2844,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             layerName={currentLayer.name}
             layerIndex={layerIndex}
             layerCount={state.layerOrder.length}
-            feetPerSquare={currentLayer.feetPerSquare}
+            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
             onAtlas={() => setPhoneSheet('atlas')}
             onLayers={() => setPhoneSheet('layers')}
             onMenu={() => setPhoneSheet('menu')}
@@ -2875,7 +2876,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             layerPlayerCounts={layerPlayerCounts}
             isHost={isHost}
             onSwitchLayer={setHostViewLayerId}
-            feetPerSquare={currentLayer.feetPerSquare}
+            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
             clock={state.clock}
             phaseOverride={state.dayNightOverride}
           />
@@ -3024,7 +3025,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
             <ModeBar id="ruler" className="map-mode-bar" label="Ruler." doneLabel="Play" onDone={() => setTool('play')}>
-              Drag from one square to another. Every second diagonal counts as {(currentLayer.feetPerSquare || 5) * 2} ft.
+              Drag from one square to another. Every second diagonal counts as {islandFeet(currentLayer, activeIslandId) * 2} ft.
             </ModeBar>
           )}
           {!isPhone && isHost && tool === 'edit' && (
@@ -3297,7 +3298,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 .map((p) => (p.id === me.id ? `${p.name} (you)` : p.name))}
               island={activeIsland}
               islandConditions={islandConditionKeys(currentLayer, activeIslandId)}
-              feetPerSquare={currentLayer.feetPerSquare}
+              feetPerSquare={islandFeet(currentLayer, activeIslandId)}
               theme={theme}
               onThemeChange={onThemeChange}
               muted={deviceMuted}
@@ -3456,7 +3457,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               entities={layerEntities}
               activeIslandId={activeIslandId}
               myHeroId={myHeroOnLayer?.id}
-              layerLabel={`${state.layerOrder.length > 1 ? `Layer ${layerIndex + 1} of ${state.layerOrder.length} · ` : ''}${currentLayer.islandOrder.length} islands · ${currentLayer.feetPerSquare} ft squares`}
+              layerLabel={`${state.layerOrder.length > 1 ? `Layer ${layerIndex + 1} of ${state.layerOrder.length} · ` : ''}${currentLayer.islandOrder.length} islands · ${islandFeet(currentLayer, activeIslandId)} ft squares here`}
               onPick={(id) => {
                 setPhoneSheet(null);
                 flyToIsland(id);

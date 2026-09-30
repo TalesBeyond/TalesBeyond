@@ -371,7 +371,7 @@ export function PhoneLayersSheet({ layers, layerOrder, currentLayerId, layerPlay
                 <b>{layer.name}</b>
                 <span>
                   {index === 0 ? 'Base layer · ' : ''}
-                  {layer.islandOrder.length} {layer.islandOrder.length === 1 ? 'island' : 'islands'} · {layer.feetPerSquare} ft squares
+                  {layer.islandOrder.length} {layer.islandOrder.length === 1 ? 'island' : 'islands'}
                 </span>
                 <span>{count ? `${count} ${count === 1 ? 'person' : 'people'} here` : 'Nobody here'}</span>
               </div>

@@ -815,6 +815,9 @@ export default function MapBoard({
     return { x: left + point.col * r.cellSize + r.cellSize / 2, y: top + point.row * r.cellSize + r.cellSize / 2 };
   }
 
+  // Feet per square on one island (its own, else the layer's).
+  const feetOn = (islandId) => islands[islandId]?.feetPerSquare || feetPerSquare || 5;
+
   let rulerLine = null;
   if (ruler) {
     const p1 = rulerPoint(ruler.start);
@@ -822,14 +825,14 @@ export default function MapBoard({
     if (p1 && p2) {
       let feet;
       if (ruler.start.islandId === ruler.end.islandId) {
-        feet = feetDistance(ruler.start, ruler.end, feetPerSquare);
+        feet = feetDistance(ruler.start, ruler.end, feetOn(ruler.start.islandId));
       } else {
         // Different islands: the 5-10-5 diagonal rule doesn't translate
         // across two independent grids, so fall back to straight-line
         // distance using the starting island's scale.
         const cellSize = islandRects[ruler.start.islandId].cellSize;
         const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        feet = Math.round((pixelDist / cellSize) * feetPerSquare);
+        feet = Math.round((pixelDist / cellSize) * feetOn(ruler.start.islandId));
       }
       rulerLine = { p1, p2, feet };
     }
@@ -1069,7 +1072,7 @@ export default function MapBoard({
 
       {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
         <DrawFeetLabel
-          label={shapeFeetLabel(draft.kind, draft.geometry, feetPerSquare, drawRef.current?.snap)}
+          label={shapeFeetLabel(draft.kind, draft.geometry, feetOn(draft.islandId), drawRef.current?.snap)}
           rect={islandRects[draft.islandId]}
           left={(islandRects[draft.islandId].x - originX) * zoom}
           top={(islandRects[draft.islandId].y - originY) * zoom}
@@ -1085,7 +1088,7 @@ export default function MapBoard({
           <>
             <DrawSelection drawing={shown} rect={r} left={left} top={top} width={canvasWidth} height={canvasHeight} />
             {editPreview && shown.kind !== 'pencil' && (
-              <DrawFeetLabel label={shapeFeetLabel(shown.kind, shown.geometry, feetPerSquare, drawSettings?.snap)} rect={r} left={left} top={top} />
+              <DrawFeetLabel label={shapeFeetLabel(shown.kind, shown.geometry, feetOn(shown.islandId), drawSettings?.snap)} rect={r} left={left} top={top} />
             )}
           </>
         );

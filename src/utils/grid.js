@@ -49,3 +49,16 @@ export function feetDistance(a, b, feetPerSquare = 5) {
   const squares = straight + diagonal + diagonalPairs; // every 2nd diagonal adds +1 square
   return squares * feetPerSquare;
 }
+
+// How many feet one square of an island stands for. Each island sets its
+// own when it's made (Mapping → Islands); islands from before that follow
+// their layer's old value, then the D&D default of 5.
+export function islandFeet(layer, islandId) {
+  return layer?.islands?.[islandId]?.feetPerSquare || layer?.feetPerSquare || 5;
+}
+
+// A typed feet-per-square value, kept to a sensible whole number.
+export function clampFeetPerSquare(value) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? Math.max(1, Math.min(100, n)) : 5;
+}

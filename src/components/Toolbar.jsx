@@ -3,7 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
 import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
-import { clampGridDims } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare } from '../utils/grid.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
@@ -556,6 +556,7 @@ export default function Toolbar({
                   onUploadBackground={uploadIslandBackground}
                   onDownloadIslandImage={onDownloadIslandImage}
                   focusIslandId={islandsFocusId}
+                  layerFeet={layer.feetPerSquare || 5}
                   onSwitchToEdit={() => {
                     onToolChange('edit');
                     setShowIslands(false);
@@ -1073,6 +1074,7 @@ function IslandManagerPopover({
   onUploadBackground,
   onDownloadIslandImage,
   focusIslandId = null,
+  layerFeet = 5,
   onSwitchToEdit,
   onClose,
 }) {
@@ -1082,6 +1084,7 @@ function IslandManagerPopover({
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
+  const [feet, setFeet] = useState(5);
   // The new-island form stays folded behind one button until it's wanted.
   const [adding, setAdding] = useState(false);
 
@@ -1090,11 +1093,12 @@ function IslandManagerPopover({
     setName('');
     setCols(20);
     setRows(15);
+    setFeet(5);
   }
 
   function addIsland() {
     if (!name.trim()) return;
-    onCreateIsland({ name: name.trim(), cols, rows });
+    onCreateIsland({ name: name.trim(), cols, rows, feetPerSquare: feet });
     closeAdding();
   }
 
@@ -1145,6 +1149,7 @@ function IslandManagerPopover({
           {openId === id && onUpdateIsland && (
             <IslandSettings
               island={island}
+              fallbackFeet={layerFeet}
               onPatch={(patch) => onUpdateIsland(id, patch)}
               onUploadBackground={(file) => onUploadBackground(id, file)}
               onDownloadImage={() => onDownloadIslandImage?.(id)}
@@ -1200,6 +1205,8 @@ function IslandManagerPopover({
               <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
             </div>
           </div>
+          <label className="field-label">Feet per square</label>
+          <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} />
           <div className="field-row">
             <button className="btn btn-secondary" onClick={closeAdding}>
               Cancel
@@ -1224,10 +1231,11 @@ function IslandManagerPopover({
 // An island's own settings, opened from its row in the Islands dialog.
 // Name and size save when the field is left (or on Enter); a background
 // image applies as soon as it's picked.
-function IslandSettings({ island, onPatch, onUploadBackground, onDownloadImage }) {
+function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground, onDownloadImage }) {
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
   const [rows, setRows] = useState(island.rows);
+  const [feet, setFeet] = useState(island.feetPerSquare || fallbackFeet);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
@@ -1242,6 +1250,11 @@ function IslandSettings({ island, onPatch, onUploadBackground, onDownloadImage }
     setCols(c);
     setRows(r);
     if (c !== island.cols || r !== island.rows) onPatch({ cols: c, rows: r });
+  }
+  function commitFeet() {
+    const next = clampFeetPerSquare(feet);
+    setFeet(next);
+    if (next !== island.feetPerSquare) onPatch({ feetPerSquare: next });
   }
   const blurOnEnter = (e) => {
     if (e.key === 'Enter') e.currentTarget.blur();
@@ -1272,6 +1285,8 @@ function IslandSettings({ island, onPatch, onUploadBackground, onDownloadImage }
           <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
         </div>
       </div>
+      <label className="field-label">Feet per square</label>
+      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onBlur={commitFeet} onKeyDown={blurOnEnter} />
       <label className="field-label">Background image</label>
       <div className="field-row">
         <button className="btn btn-secondary" disabled={uploading} onClick={() => fileRef.current?.click()}>
@@ -1286,7 +1301,7 @@ function IslandSettings({ island, onPatch, onUploadBackground, onDownloadImage }
         </button>
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
-      <span className="island-row-note">Name and size save when you leave the field. A new image applies straight away.</span>
+      <span className="island-row-note">Name, size and feet per square save when you leave the field. A new image applies straight away.</span>
     </div>
   );
 }

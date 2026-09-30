@@ -68,6 +68,7 @@ The sixteen migrations, in order:
 24. `..._temp_hp.sql` — temporary hit points on hero and mob tokens (`entities.temp_hp`), the blue layer on the life bar; damage spends them first
 25. `..._drawings.sql` — the DM's Draw tool: a `drawings` table (one row per pencil stroke, line, circle or rectangle, tied to its island and deleted with it; members read, host writes), added to the realtime publication
 26. `..._island_fill.sql` — lets a drawing be a `fill`: the Draw tool's Fill, which paints a whole island one colour
+27. `..._island_feet_per_square.sql` — each island's own feet per square (`islands.feet_per_square`; null follows the layer's)
 
 ## 3. Enable anonymous sign-in
 
