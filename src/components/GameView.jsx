@@ -2728,6 +2728,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // what lets it keep its labels on an ordinary laptop screen.
   const toolbarEl = (
       <Toolbar
+        players={state.players}
+        hostId={state.session.hostPlayerId}
+        allEntities={state.entities}
+        meId={me.id}
         dice={{ ...diceApi, share: rollShare }}
         revealRolls={revealRolls}
         onRevealRollsChange={setRevealRolls}
@@ -3125,7 +3129,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           <PanelResizer
             side="right"
             width={shownPanelWidths.right}
-            label="Resize players and inspector panel"
+            label="Resize the roll log and inspector panel"
             onResize={(w) => resizePanel('right', w)}
             onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
           />

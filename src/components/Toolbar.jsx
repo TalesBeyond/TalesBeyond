@@ -44,7 +44,7 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title }) {
 // `align="end"` opens the menu leftward from the trigger's right edge — for
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', align }) {
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -66,7 +66,7 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
   return (
     <div className={`toolbar-group ${className}`} ref={ref}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} />
-      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}`}>{children}</div>}
+      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
       {popovers}
     </div>
   );
@@ -116,6 +116,7 @@ const ICON_PATHS = {
   unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
+  players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
 };
@@ -145,7 +146,39 @@ const TOOL_ICONS = {
 };
 const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands', draw: 'Draw' };
 
+// Seats at a table: the DM plus up to nine players.
+const MAX_SEATS = 10;
+
+// Who's at the table, for the Players button: colour and online dot, name,
+// and the DM or the hero they play (and "away" when they've dropped).
+function PlayerList({ players, hostId, entities, meId }) {
+  const list = Object.values(players || {});
+  if (!list.length) return <div className="empty-state">No one here yet.</div>;
+  return (
+    <ul className="players-menu-list">
+      {list.map((p) => {
+        const hero = Object.values(entities || {}).find((e) => e.kind === 'hero' && e.ownerId === p.id);
+        const role = p.id === hostId ? 'Dungeon Master' : hero?.name || 'No hero yet';
+        return (
+          <li key={p.id} className="player-row">
+            <span className={`player-dot${p.connected ? ' online' : ''}`} style={{ background: p.color }} />
+            <span className="player-name">
+              {p.name}
+              {p.id === meId ? ' (you)' : ''}
+            </span>
+            <span className="player-tag">{[role, p.connected ? '' : 'away'].filter(Boolean).join(', ')}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default function Toolbar({
+  players = {},
+  hostId = null,
+  allEntities = {},
+  meId = null,
   // The roll log and saved dice sets, kept in GameView so they survive
   // closing the popover and the phone dice screen shares them.
   dice,
@@ -784,6 +817,23 @@ export default function Toolbar({
           </span>
         </div>
       )}
+
+      {/* Who's at the table — everyone gets this one, not just the DM. */}
+      <ToolMenu
+        icon={<Icon name="players" />}
+        label={`${Object.keys(players).length}/${MAX_SEATS} players`}
+        title="Who's at the table"
+        open={openMenu === 'players'}
+        onToggle={() => toggleMenu('players')}
+        onClose={closeMenu}
+        menuClassName="players-menu"
+        align="end"
+      >
+        <div className="players-menu-head">
+          Players <span>{Object.keys(players).length} of {MAX_SEATS} seats</span>
+        </div>
+        <PlayerList players={players} hostId={hostId} entities={allEntities} meId={meId} />
+      </ToolMenu>
 
       {/* The very last group: save/export/import/close/leave — the
           "shutting the book" actions, tucked away since they're reached for

@@ -30,9 +30,6 @@ import CreatureCard, { Editable } from './CreatureCard.jsx';
 import SoundField from './SoundField.jsx';
 import { totalToHit, totalDamageLabel, acOf, weaponStatsFor, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 
-// Seats at a table: the DM plus up to nine players.
-const MAX_SEATS = 10;
-
 export default function RightPanel({
   audio,
   players,
@@ -63,11 +60,11 @@ export default function RightPanel({
           type="button"
           className={`panel-rail${selectedEntity ? ' has-selection' : ''}`}
           onClick={onToggleCollapsed}
-          title="Expand players & inspector panel"
+          title="Expand the roll log and inspector"
         >
           <span className="panel-rail-chevron" aria-hidden="true">«</span>
           <span className="panel-rail-label">
-            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Players & inspector'}
+            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Rolls & inspector'}
           </span>
         </button>
       </div>
@@ -76,34 +73,14 @@ export default function RightPanel({
 
   return (
     <div className="panel right">
+      {/* Who's at the table lives on the toolbar's Players button. */}
       <div className="panel-header">
-        <span>Players</span>
-        <span className="panel-header-note">{Object.values(players).length} of {MAX_SEATS} seats</span>
-        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse players & inspector panel">
+        <span>Roll log</span>
+        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse the roll log and inspector">
           »
         </button>
       </div>
-      <div className="panel-scroll" style={{ flex: 'none', maxHeight: '38%' }}>
-        {Object.values(players).length === 0 ? (
-          <div className="empty-state">No one here yet.</div>
-        ) : (
-          Object.values(players).map((p) => {
-            const hero = Object.values(entities || {}).find((e) => e.kind === 'hero' && e.ownerId === p.id);
-            const role = p.id === hostId ? 'Dungeon Master' : hero?.name || '';
-            const tag = [role, p.connected ? '' : 'away'].filter(Boolean).join(', ');
-            return (
-              <div className="player-row" key={p.id}>
-                <span className={`player-dot${p.connected ? ' online' : ''}`} style={{ background: p.color }} />
-                <span className="player-name">{p.name}</span>
-                {tag && <span className="player-tag">{tag}</span>}
-              </div>
-            );
-          })
-        )}
-      </div>
-
       <div className="panel-scroll roll-log-panel">
-        <div className="cap">Roll log</div>
         <RollLog entries={rollLog} />
       </div>
 

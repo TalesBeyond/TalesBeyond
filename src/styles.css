@@ -1218,6 +1218,12 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 }
 .toolbar-menu .tool-card:hover:not(:disabled) { background: var(--ink-700); }
 .toolbar-menu.align-end { left: auto; right: 0; }
+/* The Players button's list (Toolbar.jsx PlayerList). */
+.toolbar-menu.players-menu { flex-direction: column; flex-wrap: nowrap; gap: 2px; width: 300px; max-height: 60vh; overflow-y: auto; }
+.players-menu-head { display: flex; align-items: baseline; gap: 8px; padding: 4px 6px 6px; font-family: var(--font-display); font-size: 15px; color: var(--parchment-100); border-bottom: 1px solid var(--ink-700); }
+.players-menu-head span { margin-left: auto; font-family: var(--font-ui); font-size: 12px; color: var(--parchment-300); }
+.players-menu-list { list-style: none; margin: 0; padding: 0; }
+.players-menu-list .player-tag { margin-left: auto; text-align: right; }
 
 /* ----- Toolbar densities (see TOOLBAR_DENSITIES in Toolbar.jsx) ----- */
 
@@ -1477,7 +1483,7 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 /* Dice rolls at the table (RollFeed.jsx): the log under the players, and
    cards over the map as rolls arrive. */
-.roll-log-panel { flex: none; max-height: 24%; border-top: 1px solid var(--ink-700); }
+.roll-log-panel { flex: none; max-height: 34%; }
 .roll-log { list-style: none; margin: 6px 0 0; padding: 0; }
 .roll-log li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ink-800); }
 .roll-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }
