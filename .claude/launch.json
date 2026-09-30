@@ -6,6 +6,10 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "laguerrilla-web",
+      "url": "http://localhost:3000"
     }
   ]
 }

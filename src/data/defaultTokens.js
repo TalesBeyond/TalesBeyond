@@ -55,6 +55,10 @@ const ICONS = {
   bleed: '<path d="M32 12 C40 26 46 34 46 42 C46 50 40 54 32 54 C24 54 18 50 18 42 C18 34 24 26 32 12 Z" fill="#8f1f1f" stroke="#f2e9d4" stroke-width="2"/>',
 };
 
+// Filled by makeIconDataUrl; declared before the catalogs below use it.
+const urlByRef = new Map();
+const refByUrl = new Map();
+
 export const DEFAULT_HEROES = [
   { key: 'fighter', name: 'Fighter', color: '#8f3a20', icon: 'shield' },
   { key: 'wizard', name: 'Wizard', color: '#4c7a86', icon: 'wand' },
@@ -64,7 +68,7 @@ export const DEFAULT_HEROES = [
   { key: 'barbarian', name: 'Barbarian', color: '#762f2f', icon: 'axe' },
   { key: 'cleric', name: 'Cleric', color: '#c9a13b', icon: 'sunburst' },
   { key: 'paladin', name: 'Paladin', color: '#6b6b8f', icon: 'bow' },
-].map((h) => ({ ...h, imageUrl: svgToDataUrl(ICONS[h.icon], h.color) }));
+].map((h) => ({ ...h, imageUrl: makeIconDataUrl(h.icon, h.color) }));
 
 export const DEFAULT_MOBS = [
   { key: 'goblin', name: 'Goblin', color: '#45573f', icon: 'fangs' },
@@ -73,8 +77,34 @@ export const DEFAULT_MOBS = [
   { key: 'wolf', name: 'Dire Wolf', color: '#3a3a3a', icon: 'claw' },
   { key: 'dragon', name: 'Young Dragon', color: '#8f3a20', icon: 'wing' },
   { key: 'beholder', name: 'Beholder', color: '#5c3a6b', icon: 'eye' },
-].map((m) => ({ ...m, imageUrl: svgToDataUrl(ICONS[m.icon], m.color) }));
+].map((m) => ({ ...m, imageUrl: makeIconDataUrl(m.icon, m.color) }));
 
 export function makeIconDataUrl(icon, color) {
-  return svgToDataUrl(ICONS[icon] || ICONS.shield, color);
+  const key = ICONS[icon] ? icon : 'shield';
+  const ref = `icon:${key}:${color}`;
+  let url = urlByRef.get(ref);
+  if (!url) {
+    url = svgToDataUrl(ICONS[key], color);
+    urlByRef.set(ref, url);
+    refByUrl.set(url, ref);
+  }
+  return url;
+}
+
+// Built-in icons are never stored as pictures outside this browser: a synced
+// record keeps a short `icon:<name>:<#color>` reference instead, drawn again
+// here from the project's own ICONS on the way back in (lib/storedImages.js).
+const COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+
+// The reference for a data URL this module drew, or null for anything else
+// (an uploaded picture, a blob URL).
+export function iconRefForUrl(url) {
+  return refByUrl.get(url) ?? null;
+}
+
+// The picture for a reference, or null if it isn't a valid one.
+export function iconUrlForRef(ref) {
+  const match = /^icon:([a-z-]+):(#[0-9a-fA-F]{3,8})$/.exec(ref || '');
+  if (!match || !ICONS[match[1]] || !COLOR_RE.test(match[2])) return null;
+  return makeIconDataUrl(match[1], match[2]);
 }

@@ -24,6 +24,7 @@ import {
   drawingToDb,
   mapDbPlayer,
 } from './mappers.js';
+import { customAssetDataToDb } from './storedImages.js';
 
 // dmNotes/droppables live in their own host-only-readable table (see
 // 15_entity_dm_data_privacy.sql) instead of on `entities` — split a patch
@@ -439,7 +440,7 @@ export async function hideTrapRemote(tableId, entity) {
 
 export async function addCustomAssetRemote(tableId, item) {
   must(
-    await supabase.from('custom_assets').insert({ id: item.id, table_id: tableId, asset_type: item.assetType, data: item.data }),
+    await supabase.from('custom_assets').insert({ id: item.id, table_id: tableId, asset_type: item.assetType, data: customAssetDataToDb(item.data) }),
     'addCustomAsset'
   );
 }

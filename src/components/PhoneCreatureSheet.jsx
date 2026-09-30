@@ -8,6 +8,8 @@ import { Editable, RemoveTokenButton } from './CreatureCard.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab } from './RightPanel.jsx';
 import { PhoneSheet } from './PhoneChrome.jsx';
+import { useImageCacheVersion } from '../lib/imageCache.js';
+import { entityImageSrc } from '../lib/storedImages.js';
 
 // A hero's or monster's card on a phone (MOBILE_DESIGN.md): the numbers a
 // turn needs up top — hit points, armor, initiative, speed, conditions, death
@@ -16,6 +18,7 @@ import { PhoneSheet } from './PhoneChrome.jsx';
 // everyone else looks. A player sees a monster's name, AC, HP, size and
 // conditions only.
 export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, audio, onUpdate, onRemove, onClose }) {
+  useImageCacheVersion(); // redraw when a shared picture arrives
   const isHero = entity.kind === 'hero';
   const isOwner = isHero && !!meId && entity.ownerId === meId;
   const canEdit = isHost;
@@ -89,7 +92,7 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
     <PhoneSheet title={entity.name} onClose={onClose} className="phone-sheet-creature">
       <div className="phone-creature">
         <header className="phone-creature-head">
-          <span className="phone-token-avatar phone-creature-avatar" style={{ backgroundImage: entity.imageUrl ? `url(${entity.imageUrl})` : undefined, '--token-color': entity.color || 'transparent' }} />
+          <span className="phone-token-avatar phone-creature-avatar" style={{ backgroundImage: `url(${entityImageSrc(entity)})`, '--token-color': entity.color || 'transparent' }} />
           <div className="phone-creature-id">
             {canEdit ? (
               <Editable type="text" label="Name" value={entity.name} display={entity.name} className="phone-creature-name" onCommit={(name) => name.trim() && onUpdate(entity.id, { name: name.trim() })} />

@@ -3,6 +3,8 @@
 // documented in SPEC.md §6.1. These functions are the only place that
 // translates between the two, so nothing else needs to know the DB layout.
 
+import { toStoredImage, toStoredBackground, fromStoredImage, customAssetDataFromDb } from './storedImages.js';
+
 // A layer is now just a named canvas — its grid fields (cols/rows/cellSize/
 // backgroundImage) moved to islands (see mapDbIsland below); `islands`/
 // `islandOrder` are assembled separately in remoteApi.js's
@@ -36,7 +38,7 @@ export function mapDbIsland(row) {
     cols: row.cols,
     rows: row.rows,
     cellSize: row.cell_size,
-    backgroundImage: row.background_url,
+    backgroundImage: toStoredBackground(row.background_url), // fingerprint only (lib/storedImages.js)
     x: row.x,
     y: row.y,
     conditions: row.conditions || [],
@@ -53,7 +55,7 @@ export function mapClientIslandPatchToDb(patch) {
   if ('cols' in patch) db.cols = patch.cols;
   if ('rows' in patch) db.rows = patch.rows;
   if ('cellSize' in patch) db.cell_size = patch.cellSize;
-  if ('backgroundImage' in patch) db.background_url = patch.backgroundImage;
+  if ('backgroundImage' in patch) db.background_url = toStoredBackground(patch.backgroundImage); // fingerprint only (lib/storedImages.js)
   if ('x' in patch) db.x = patch.x;
   if ('y' in patch) db.y = patch.y;
   if ('conditions' in patch) db.conditions = patch.conditions;
@@ -67,7 +69,7 @@ export function mapDbEntity(row) {
     id: row.id,
     kind: row.kind,
     name: row.name,
-    imageUrl: row.image_url,
+    imageUrl: fromStoredImage(row.image_url, row),
     color: row.color,
     col: row.col,
     row: row.row,
@@ -107,7 +109,7 @@ export function mapClientEntityToDb(entity, tableId) {
     table_id: tableId,
     kind: entity.kind,
     name: entity.name,
-    image_url: entity.imageUrl,
+    image_url: toStoredImage(entity.imageUrl),
     color: entity.color,
     col: entity.col,
     row: entity.row,
@@ -146,7 +148,7 @@ export function mapClientEntityToDb(entity, tableId) {
 export function mapClientEntityPatchToDb(patch) {
   const db = {};
   if ('name' in patch) db.name = patch.name;
-  if ('imageUrl' in patch) db.image_url = patch.imageUrl;
+  if ('imageUrl' in patch) db.image_url = toStoredImage(patch.imageUrl);
   if ('color' in patch) db.color = patch.color;
   if ('col' in patch) db.col = patch.col;
   if ('row' in patch) db.row = patch.row;
@@ -206,7 +208,7 @@ export function mapDbCustomAsset(row) {
   return {
     id: row.id,
     assetType: row.asset_type,
-    data: row.data,
+    data: customAssetDataFromDb(row.asset_type, row.data),
   };
 }
 
