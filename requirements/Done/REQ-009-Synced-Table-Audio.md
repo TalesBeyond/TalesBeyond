@@ -4,13 +4,15 @@
 | ----- | ----- |
 | ID | REQ-009 |
 | Title | Synced Table Audio |
-| Status | Todo |
+| Status | Done |
 | Phase | Table atmosphere |
 | Tier | Enhancement |
 | Area | Audio / Storage / Realtime / cloud mode |
 | Author | Blaxine |
 | Created | 2026-09-23 |
-| Last Updated | 2026-09-23 |
+| Last Updated | 2026-09-30 |
+
+> **Status (2026-09-30): Done.** Every step below is done in code; only testing is left (see Smoke Test). Two parts of the plan changed after it was built: guest audio stays on the DM's device (see the note at the end), and island audio was removed. The layer's sound is now called **Ambience**.
 
 ## Short Description
 
@@ -21,6 +23,7 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 - **Audio cannot ride the existing image path.** Images are downscaled and embedded as data URLs in state (`src/utils/image.js`, `src/state/persistence.js`) so they fit `localStorage`. A 3–10 MB MP3 cannot; audio needs Storage, so local demo mode has no audio.
 - **`tables.game_clock` is the only precedent for a synced timestamp anchor, and it has no clock-skew correction.** `src/utils/gameClock.js` derives time from `Date.now()` on each client against an anchor another client wrote. Audio position inherits that: two devices whose clocks differ by N seconds hear the same track N seconds apart.
 - **Nothing in the repo's migrations adds a table to the `supabase_realtime` publication** (no `alter publication` anywhere under `supabase/`), yet `src/lib/realtime.js` streams changes from `entities`, `layers`, `custom_assets`, and others. How existing tables are enabled is outside source control; a new audio table will not stream until enabled the same way.
+  - *Resolved 2026-09-26:* `20250101000050_realtime_publication.sql` adds every table the app listens to, `audio_tracks` and `tables` included, guarded and idempotent. A table missing from the publication makes Supabase drop the channel's whole `postgres_changes` set while still reporting SUBSCRIBED.
 - **Deleting rows from `storage.objects` with SQL does not free the backing file.** Purging expired guest audio has to go through the Storage API, which needs a service-role caller. `supabase/functions/` does not exist yet, so a scheduled purge is new infrastructure.
 - **A guest DM has no Supabase session and no `tables` row.** `ensureAnonymousSession()` (`src/lib/auth.js`) is only called from the join and resume paths (`src/App.jsx:32`, `src/components/Landing.jsx:807`), and the table-scoped storage policy (`supabase/migrations/20250101000004_storage.sql`) authorizes uploads only against a real `players` row. Guest uploads need their own bucket and policy, and a per-table quota cannot be enforced server-side for them. The bucket's own size limit and MIME allow-list are the only server-enforced bounds.
 - **`src/state/persistence.js` is the only module allowed to touch `localStorage`** (`SPEC.md` §5). Per-player local volumes go through it.
@@ -61,6 +64,7 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 - **Music button** in the toolbar, visible to everyone. Opens the **Music modal**, which lists every track in the session with a source label (World music, layer name, island name, token name), a play/pause control (DM only), a loop toggle (DM only), and volume sliders.
 - **Sliders:** the DM sees base and local sliders per track; players see only their local slider. World music is always listed first, even with no file (DM sees an upload control; players see an empty row).
 - **Upload surfaces (DM only):** World music from the Music modal; layer and island audio from `MapSettingsPopover` (`src/components/Toolbar.jsx:723`), which already receives both `layer` and `island`; token audio from the hero and mob inspectors in `src/components/RightPanel.jsx`.
+  - *As built, 2026-09-30:* every surface uses the shared `SoundField` (`src/components/SoundField.jsx`), which offers an upload, a built-in song (`DemoTrackPicker`, songs bundled in `src/assets/audio/music`) or a Default catalog song (`CatalogSongSelect`, REQ-010). The layer's sound is **World state → Ambience** (`AmbiencePopover`, `Toolbar.jsx`), or "This map's ambience" in the phone DM menu. `MapSettingsPopover` no longer exists. Token sound stays in the inspector. Island sound was removed from the UI on 2026-09-24 (`dda5e14`).
 - **Now playing** is indicated in the modal; a paused-and-resumable track shows its resume position.
 - **Autoplay block:** when the browser refuses to start audio, a small banner reads "Tap to enable sound"; one click starts the current track and dismisses it. The join click satisfies the gesture where it applies.
 - **Errors:** a wrong file type or an oversize file shows an inline message naming the limit and the table's remaining quota. A track whose file can no longer be fetched (expired guest audio) shows "File expired — re-upload" to the DM and a muted row to players; it never throws.
@@ -68,20 +72,21 @@ Lets the DM attach MP3 or WAV audio to a table and play it live for every connec
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — DM-only upload with validation.** The DM can attach an MP3 or WAV file up to 10 MB to the world, a layer, an island, or a hero/mob token; any other type or a larger file is rejected with an inline message. Players see no upload control anywhere, and the database rejects a non-host insert.
-- [ ] **AC2 — Synced play and pause.** When the DM plays a track, every connected client that is meant to hear it starts it within about one second of each other; pausing stops it for all of them.
-- [ ] **AC3 — Autoplay unlock.** A client whose browser blocks playback shows the "Tap to enable sound" banner; one click starts audio at the correct position and dismisses the banner.
-- [ ] **AC4 — Late join, reconnect, DM reload.** A player who joins, or reconnects after a drop, seeks to the current position rather than starting from 0:00 or staying silent. A DM page refresh does not interrupt playback for anyone.
-- [ ] **AC5 — Two-level volume.** The DM's base volume per track is synced to everyone; each player's local volume is stored only in their browser and survives a refresh; the audible level is the product of the two. The Music modal exposes both to the DM and only the local slider to players.
-- [ ] **AC6 — Loop.** Each track has a loop toggle, defaulting on for world, layer, and island tracks and off for token tracks; a looping track wraps at its end for every client.
-- [ ] **AC7 — Layer scoping and auto-follow.** A layer's audio is heard only by clients currently on that layer. When the DM switches to a layer that has audio, it starts; switching to a layer without audio pauses a playing layer or island sound but leaves world and token sounds alone.
-- [ ] **AC8 — Island audio is manual.** An island's audio plays only when the DM presses play, and only clients on that island's layer hear it.
-- [ ] **AC9 — Token audio.** A hero or mob token with a sound plays it for every client when the DM presses play, regardless of layer.
-- [ ] **AC10 — One sound at a time.** Starting any sound pauses the one playing, at its position, for everyone; it does not resume by itself. Pressing play on the interrupted track later continues from where it stopped.
-- [ ] **AC11 — Cleanup on delete.** Deleting a layer, island, or token removes its track record and file; deleting a table removes its audio files.
-- [ ] **AC12 — Guest tables.** A guest DM can upload audio and players hear it synced, with nothing kept beyond 6 hours. A guest table whose audio has expired shows the expired state without errors.
-- [ ] **AC13 — Local mode.** In local demo mode the Music button is disabled with an explanation and no audio code path runs.
-- [ ] **AC14 — Table quota.** A cloud table cannot exceed 50 MB of audio in total; the database rejects the insert that would cross it, and the modal shows current usage.
+- [x] **AC1 — DM-only upload with validation.** The DM can attach an MP3 or WAV file up to 10 MB to the world, a layer, an island, or a hero/mob token; any other type or a larger file is rejected with an inline message. Players see no upload control anywhere, and the database rejects a non-host insert.
+- [x] **AC2 — Synced play and pause.** When the DM plays a track, every connected client that is meant to hear it starts it within about one second of each other; pausing stops it for all of them.
+- [x] **AC3 — Autoplay unlock.** A client whose browser blocks playback shows the "Tap to enable sound" banner; one click starts audio at the correct position and dismisses the banner.
+- [x] **AC4 — Late join, reconnect, DM reload.** A player who joins, or reconnects after a drop, seeks to the current position rather than starting from 0:00 or staying silent. A DM page refresh does not interrupt playback for anyone.
+- [x] **AC5 — Two-level volume.** The DM's base volume per track is synced to everyone; each player's local volume is stored only in their browser and survives a refresh; the audible level is the product of the two. The Music modal exposes both to the DM and only the local slider to players.
+- [x] **AC6 — Loop.** Each track has a loop toggle, defaulting on for world, layer, and island tracks and off for token tracks; a looping track wraps at its end for every client.
+- [x] **AC7 — Layer scoping and auto-follow.** A layer's audio is heard only by clients currently on that layer. When the DM switches to a layer that has audio, it starts; switching to a layer without audio pauses a playing layer or island sound but leaves world and token sounds alone.
+- [ ] ~~**AC8 — Island audio is manual.** An island's audio plays only when the DM presses play, and only clients on that island's layer hear it.~~ *Dropped 2026-09-24: island audio was removed. There is no island sound control, and `audibleTrack` (`src/lib/audioEngine.js`) no longer has an island case.*
+- [x] **AC9 — Token audio.** A hero or mob token with a sound plays it for every client when the DM presses play, regardless of layer.
+- [x] **AC10 — One sound at a time.** Starting any sound pauses the one playing, at its position, for everyone; it does not resume by itself. Pressing play on the interrupted track later continues from where it stopped.
+- [x] **AC11 — Cleanup on delete.** Deleting a layer, island, or token removes its track record and file; deleting a table removes its audio files.
+- [ ] ~~**AC12 — Guest tables.** A guest DM can upload audio and players hear it synced, with nothing kept beyond 6 hours. A guest table whose audio has expired shows the expired state without errors.~~
+- [x] **AC12 (revised 2026-09-23) — Guest tables.** A guest DM can pick an audio file and play it in their own browser from a local blob URL. Nothing is uploaded, and players at a guest table hear nothing (`audioEnabled = isRemote || isGuestHost`, `GameView.jsx`). After a reload the DM re-picks the file, and a file that can't be loaded shows its expired state without errors. The server blocks anonymous uploads (`20250101000048_no_guest_uploads.sql`).
+- [x] **AC13 — Local mode.** In local demo mode the Music button is disabled with an explanation and no audio code path runs.
+- [x] **AC14 — Table quota.** A cloud table cannot exceed 50 MB of audio in total; the database rejects the insert that would cross it, and the modal shows current usage.
 
 ## Technical Notes
 
@@ -221,10 +226,10 @@ S001 → S025 → S026 → S027
 
 ## Open Questions
 
-- [ ] **Q1 — Island auto-follow.** Should an island's audio ever start by itself? Deferred until the app has a per-player "active island" signal or the DM asks for it.
+- [x] **Q1 — Island auto-follow. No longer applies:** island audio was removed on 2026-09-24.
 - [ ] **Q2 — Clock skew.** Does device clock skew push real players out of sync by an audible amount? Deferred until the first cross-device test in Slice 2; if skew exceeds about one second, add a server-time offset estimate to the engine.
-- [ ] **Q3 — Realtime enablement.** How are existing tables enabled for realtime, given no migration adds them to the publication? Resolve at S001 by checking the project's dashboard settings before assuming a new table streams.
-- [ ] **Q4 — Purge mechanism.** Is a scheduled Edge Function (pg_cron + pg_net + service role) available on the project's Supabase plan? Resolve at S023; if not, choose an external scheduler before starting the slice.
+- [x] **Q3 — Realtime enablement resolved.** Migration `20250101000050_realtime_publication.sql` puts `audio_tracks` and `tables` (with every other listened-to table) in the publication.
+- [x] **Q4 — Purge mechanism. No longer applies:** the guest bucket, purge job and 6-hour expiry were removed on 2026-09-23 (guest audio is never uploaded).
 - [x] **Q5 — Guest retention resolved.** Guest audio expires after 6 hours, purged on a schedule plus best-effort delete on leave. *(Blaxine)*
 - [x] **Q6 — Who hears what resolved.** One table-wide now-playing sound; layer and island audio is heard only on that layer; the DM's viewed layer drives auto-follow. *(Blaxine)*
 
@@ -267,5 +272,9 @@ S001 → S025 → S026 → S027
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-09-23 | Blaxine | Initial plan, following a `/grill-me` interview that resolved scope and behavior and a `/create-req` deep-dive that grounded it in the code. |
+| 2026-09-23 | Blaxine | Slices 1–6 implemented (`d8af544` … `18e27c8`), then guest audio changed to local-only (`ce55fd3`; see the note below). |
+| 2026-09-24 | Blaxine | Island sound removed from the UI and from the audibility rule (`dda5e14`). AC8 dropped. |
+| 2026-09-30 | Claude | Status review against the code. Status Todo → InProgress (all steps done, Smoke Test not run), and the file moved to `InProgress/` (then `Done/`, below). Recorded later changes: the publication migration (`050`) resolves Q3; Q1 and Q4 no longer apply; AC12 rewritten for local-only guest audio; layer audio is now World state → Ambience since the Map settings dialog was removed (`afbace1`, `e0cc996`); every sound surface can also pick a built-in or Default catalog song (`SoundField`); anonymous uploads are blocked server-side (`048`). The engine also plays an encounter theme over table music and honours "Mute on this device". Smoke Test step 5 should now check layer audio (Ambience) only, and step 7 local-only guest audio. |
+| 2026-09-30 | Claude | Every AC ticked because the code is complete and only testing is missing (per the host, 2026-09-30); the Smoke Test above is the record of what is still to try by hand. Status set to Done and moved to `Done/`. Q2 (clock skew) stays open until a cross-device test. |
 
 > **Revision (2026-09-23, Blaxine):** Slice 5 changed. A guest DM's audio is **never uploaded**: files play from a local blob URL in the DM's browser only, players hear nothing, and no guest bucket, purge function or 6-hour expiry exists. The `guest-audio` bucket, purge migration and Edge Function were removed; AC12 and Slice 5's steps S020–S024 above describe the superseded design.

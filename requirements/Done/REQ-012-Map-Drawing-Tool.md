@@ -4,13 +4,13 @@
 | ----- | ----- |
 | ID | REQ-012 |
 | Title | Map Drawing Tool |
-| Status | InProgress |
+| Status | Done |
 | Phase | Map annotation |
 | Tier | Enhancement |
 | Area | Map / Realtime / cloud, guest and local modes / phone layout |
 | Author | Blaxine |
 | Created | 2026-09-27 |
-| Last Updated | 2026-09-27 |
+| Last Updated | 2026-09-30 |
 
 ## Short Description
 
@@ -33,9 +33,10 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 - **Who writes:** the DM alone creates, changes and deletes drawings, in every mode. Players only read. Every write helper is host-gated (PITFALLS.md #1).
 - **Anchor:** every drawing belongs to exactly one island. It is stored with that island's id, moves with the island, and is deleted when the island or its layer is deleted. A drawing never moves to another island.
 - **Geometry units:** coordinates are in grid squares relative to the island's top-left corner (floats; `0,0` is the top-left corner, `1,1` is one square in). They are independent of zoom and of the island's cell size.
-- **Drawing record:** `{ id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect', geometry, style }`.
+- **Drawing record:** `{ id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect' | 'fill', geometry, style }`.
   - `geometry` by kind: pencil `{ points: [[x, y], …] }`; line `{ from: [x, y], to: [x, y] }`; circle `{ center: [x, y], radius }`; rect `{ x, y, w, h }` (normalized, `w, h > 0`).
-  - `style`: `{ color: '#rrggbb', width: <preset key>, fill: boolean }`. `fill` is only honoured for circles and rectangles.
+  - `style`: `{ color: '#rrggbb', width: <preset key or a number of squares>, fill: boolean }`. `fill` is only honoured for circles and rectangles.
+  - *Added after the plan (2026-09-28):* `kind: 'fill'` (Fill island, migration `053`) paints the whole island one colour at an opacity, over the map art and under the grid. Clicking a filled island recolours it, and clicking with the same colour clears it. The Pencil's width can be any number from 0.03 to 0.6 of a square (Thickness slider); the presets still light up when the slider lands on one.
 - **Stacking:** within an island, drawings paint in creation order, the newest on top. Moving or resizing a shape keeps its place in that order.
 - **Cloud storage:** a `drawings` table, one row per drawing: `id uuid`, `table_id` (denormalized, as on `islands`), `island_id` referencing `islands(id) on delete cascade`, `kind` (checked), `geometry jsonb`, `style jsonb`, `created_at`, `updated_at` (touch trigger). Members read; only the host inserts, updates and deletes. The table is in the `supabase_realtime` publication.
 - **State slice:** `state.drawings` (keyed by id) and `state.drawingOrder` (creation order), peers of `customAssets`/`customAssetOrder`. They are hydrated by `fetchTableSnapshot`, carried whole in guest snapshots and in the local and exported saves, and backfilled empty for older saves.
@@ -47,16 +48,17 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
   - A circle grows outward from where the press started (radius = drag distance). A line and a rectangle go from the press point to the release point.
   - With Snap to grid on, rectangle corners snap to grid corners. Line ends and circle centres snap to the nearest grid corner or square centre. A circle's radius snaps to whole squares, at least 1. The pencil never snaps.
   - A shape with zero length, radius or area is discarded.
-- **Feet read-out:** while a line, circle or rectangle is drawn or resized, a label shows its size in feet using the layer's `feetPerSquare`: line length (the ruler's 5-10-5 rule via `feetDistance` when snapped, straight distance otherwise), circle radius, rectangle width × height. It hides on release.
+- **Feet read-out:** while a line, circle or rectangle is drawn or resized, a label shows its size in feet using the island's `feetPerSquare` (the layer's until 2026-09-29, when migration `054` gave each island its own; islands from before fall back to their layer's value): line length (the ruler's 5-10-5 rule via `feetDistance` when snapped, straight distance otherwise), circle radius, rectangle width × height. It hides on release.
 - **Pencil storage:** points are simplified and rounded before the write, and a stroke is capped at a fixed point count.
 - **Per-browser preferences** (colour, recent colours, thickness, fill, Snap, Hide drawings) live under a `hearthbound:` key through `src/state/persistence.js` and are never synced.
 - **Undo/redo:** a session-only history of the DM's own drawing actions (draw, erase, move, resize, clear) in this browser. Each undo or redo is applied as an ordinary write. History is lost on reload, and an entry whose island no longer exists is skipped.
 - **Island shell:** the island `.json` download and import (`downloadIslandAsFile`, `importIsland`) stay grid and background only, without drawings. Shrinking an island keeps its drawings; the part outside the new edge is clipped, and growing the island back shows it again.
+  - *As of 2026-09-29:* the island `.json` download and import were removed (`63b1c9e`, "Remove Import island"). Islands now travel only inside the whole table's save. An island is resized from its Settings button in Mapping → Islands, since the Map settings dialog is gone (`afbace1`, `e0cc996`).
 
 ## UI / UX Notes
 
 - **Desktop entry:** a **Draw** card in the Tools menu (`Toolbar.jsx` `ToolMenu`), host only, next to Edit and Merge Islands, with its own `TOOL_ICONS`/`TOOL_LABELS` entry.
-- **Drawing bar (desktop):** floats over the map while Draw is active and holds:
+- **Drawing bar (desktop):** floats over the map while Draw is active (as built: a column at the map's left edge, `DrawingBar.jsx`, with the active tool's slider — Thickness for the Pencil, Opacity for Fill island — centred beside it) and holds:
   - the six sub-tools (Pencil, Line, Circle, Rectangle, Select, Eraser);
   - a colour button showing the current colour, thickness and fill, which opens the style popover (colour, the 4 thickness presets, and the Fill toggle for circles and rectangles);
   - a Snap to grid toggle;
@@ -82,21 +84,21 @@ Gives the DM a **Draw** tool for marking up the map: a pencil, straight lines, c
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — DM-only tool.** The DM finds Draw in the desktop Tools menu and in the phone Edit bar. Players have no Draw entry anywhere, and the database rejects a player's insert, update or delete on `drawings`.
-- [ ] **AC2 — Four drawing tools.** With Draw active, the DM can draw a pencil stroke, a straight line, a circle growing from its centre and a rectangle by dragging. Each appears when the pointer is released; a zero-size shape is not kept.
-- [ ] **AC3 — Drawings stay on their island.** A drawing belongs to the island it starts on. It is cut off at that island's edge, moves when the island (or its group) is dragged, and disappears when the island or its layer is deleted, in every mode.
-- [ ] **AC4 — Stacking and presses.** Drawings cover the map art, grid and day/night tint but never a token, door, chest or its labels. Outside Draw, clicking and dragging tokens and islands works exactly as before. In Draw, a press on a token draws.
-- [ ] **AC5 — Cloud sync and saving.** In a cloud table, every seated player sees a finished drawing, move, resize, erase or clear within about a second. A player who refreshes or joins later sees the same drawings.
-- [ ] **AC6 — Guest and local tables.** In a guest table, joined players see the DM's drawings live, and the DM's autosave, Export and resume keep them. In a local table they survive a reload and an Export/Import round-trip. A save file from before this feature opens with no drawings and no error.
-- [ ] **AC7 — Style.** The DM can pick any colour from the hue wheel and brightness slider, one of 8 swatches, or one of their last 5 colours; choose one of the thickness presets; and turn on a translucent fill, in the stroke's colour, for circles and rectangles. Every drawing keeps the style it was drawn with, and the DM's choices are remembered in their browser.
-- [ ] **AC8 — Snap to grid and feet.** A Snap to grid switch in the drawing bar makes lines, circles and rectangles snap as the geometry rules describe; switched off, they follow the pointer freely. The pencil never snaps. While drawing or resizing a line, circle or rectangle, a label shows its length, radius, or width × height in feet.
-- [ ] **AC9 — Select, move, resize.** With Select, the DM can move any drawing within its island, drag a line's ends, drag a circle's radius, and drag a rectangle's corners. Pencil strokes can be moved but not reshaped. Players see the result on release.
-- [ ] **AC10 — Whole-shape eraser.** Dragging the eraser removes every drawing it touches, each one entirely.
-- [ ] **AC11 — Undo and redo.** Undo and redo (buttons and keyboard) step through the DM's draws, erases, moves, resizes and clears in this browser session, and every step reaches the players. After a reload the history is empty.
-- [ ] **AC12 — Clears.** "Clear this island" and "Clear this map" each ask for confirmation, naming how many drawings go, then remove exactly those drawings for everyone. A clear can be undone within the session.
-- [ ] **AC13 — Hide drawings.** Any player or the DM can hide all drawings in their own browser. The setting survives a refresh and changes nothing for anyone else.
-- [ ] **AC14 — Phone parity.** On a phone, a DM enters Draw from the Edit bar and can use every tool, the style sheet, undo/redo and both clears. One finger draws; two fingers pan and pinch without leaving a stray stroke. Players on phones see the drawings and can hide them.
-- [ ] **AC15 — Island export and shrinking.** An island downloaded as `.json` carries no drawings, and importing one adds none. Shrinking an island clips its drawings at the new edge; growing it back shows them again.
+- [x] **AC1 — DM-only tool.** The DM finds Draw in the desktop Tools menu and in the phone Edit bar. Players have no Draw entry anywhere, and the database rejects a player's insert, update or delete on `drawings`.
+- [x] **AC2 — Four drawing tools.** With Draw active, the DM can draw a pencil stroke, a straight line, a circle growing from its centre and a rectangle by dragging. Each appears when the pointer is released; a zero-size shape is not kept.
+- [x] **AC3 — Drawings stay on their island.** A drawing belongs to the island it starts on. It is cut off at that island's edge, moves when the island (or its group) is dragged, and disappears when the island or its layer is deleted, in every mode.
+- [x] **AC4 — Stacking and presses.** Drawings cover the map art, grid and day/night tint but never a token, door, chest or its labels. Outside Draw, clicking and dragging tokens and islands works exactly as before. In Draw, a press on a token draws.
+- [x] **AC5 — Cloud sync and saving.** In a cloud table, every seated player sees a finished drawing, move, resize, erase or clear within about a second. A player who refreshes or joins later sees the same drawings.
+- [x] **AC6 — Guest and local tables.** In a guest table, joined players see the DM's drawings live, and the DM's autosave, Export and resume keep them. In a local table they survive a reload and an Export/Import round-trip. A save file from before this feature opens with no drawings and no error.
+- [x] **AC7 — Style.** The DM can pick any colour from the hue wheel and brightness slider, one of 8 swatches, or one of their last 5 colours; choose one of the thickness presets; and turn on a translucent fill, in the stroke's colour, for circles and rectangles. Every drawing keeps the style it was drawn with, and the DM's choices are remembered in their browser.
+- [x] **AC8 — Snap to grid and feet.** A Snap to grid switch in the drawing bar makes lines, circles and rectangles snap as the geometry rules describe; switched off, they follow the pointer freely. The pencil never snaps. While drawing or resizing a line, circle or rectangle, a label shows its length, radius, or width × height in feet.
+- [x] **AC9 — Select, move, resize.** With Select, the DM can move any drawing within its island, drag a line's ends, drag a circle's radius, and drag a rectangle's corners. Pencil strokes can be moved but not reshaped. Players see the result on release.
+- [x] **AC10 — Whole-shape eraser.** Dragging the eraser removes every drawing it touches, each one entirely.
+- [x] **AC11 — Undo and redo.** Undo and redo (buttons and keyboard) step through the DM's draws, erases, moves, resizes and clears in this browser session, and every step reaches the players. After a reload the history is empty.
+- [x] **AC12 — Clears.** "Clear this island" and "Clear this map" each ask for confirmation, naming how many drawings go, then remove exactly those drawings for everyone. A clear can be undone within the session.
+- [x] **AC13 — Hide drawings.** Any player or the DM can hide all drawings in their own browser. The setting survives a refresh and changes nothing for anyone else.
+- [x] **AC14 — Phone parity.** On a phone, a DM enters Draw from the Edit bar and can use every tool, the style sheet, undo/redo and both clears. One finger draws; two fingers pan and pinch without leaving a stray stroke. Players on phones see the drawings and can hide them.
+- [x] **AC15 — Island export and shrinking.** An island downloaded as `.json` carries no drawings, and importing one adds none. Shrinking an island clips its drawings at the new edge; growing it back shows them again. *(The `.json` half no longer applies: island `.json` export and import were removed on 2026-09-29. Only the shrink/grow half is left to verify, from the island's Settings in Mapping → Islands.)*
 
 ## Technical Notes
 
@@ -293,7 +295,8 @@ S018, S019 → S021 → S022 → S023 → S024
 5. With Select, grow a circle from its rim, move a rectangle, drag a line's end, and move a pencil stroke; with Eraser, sweep across two shapes. Confirm the player sees each result. *(AC9, AC10)*
 6. Undo and redo each of those with Ctrl+Z / Ctrl+Shift+Z and the buttons; clear the island, then the map, checking the counts in the confirms, and undo a clear. Refresh and confirm Undo has nothing to undo. *(AC11, AC12)*
 7. As the player, turn on Hide drawings, refresh, and confirm it stays hidden for them only. *(AC13)*
-8. Drag the island and its group; shrink it in map settings and grow it back; download it as `.json` and import it into another map; delete it. Confirm drawings follow, clip and return, don't travel in the file, and vanish for everyone on delete. *(AC3, AC15)*
+8. Drag the island and its group; shrink it from its Settings in Mapping → Islands and grow it back; delete it. Confirm drawings follow, clip and return, and vanish for everyone on delete. *(AC3, AC15)*
+8a. Use Fill island on an island, change its opacity, click it again with another colour, then with the same colour; draw with the Pencil at a few Thickness slider values. Confirm players see each result on release. *(post-plan additions)*
 9. Repeat steps 1, 5 and 8 on a guest table with a joined player; refresh the guest DM, then Export and resume from the file. Repeat step 1 on a local table and do an Export/Import round-trip; open an export made before this feature. *(AC6)*
 10. On a phone (or 375 × 812), as DM: Edit → Draw, draw with one finger, pan and pinch with two, restyle from the sheet, resize a circle, undo, clear, Done. As a phone player, see the drawings and hide them from the table menu. *(AC14)*
 11. Try a player's insert on `drawings` from the browser console with the Supabase client and confirm RLS rejects it. *(AC1)*
@@ -343,5 +346,8 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
+| 2026-09-30 | Claude | Every AC ticked because the code is complete and only testing is missing (per the host, 2026-09-30); the Smoke Test above is the record of what is still to try by hand. Status set to Done and moved to `Done/`. Q1 (pencil size) and Q2 (realtime DELETE filtering) stay open until measured on a real table. |
+| 2026-09-30 | Claude | Status review against the code. All 24 steps are done; every AC stays open until the Smoke Test is run. Recorded the changes made after the plan. **Additions (2026-09-28):** Fill island (`kind: 'fill'`, migration `053`) with an Opacity slider, and a Pencil Thickness slider (width as a number of squares). **Changes elsewhere (2026-09-29):** feet per square moved to each island (migration `054`), so the feet read-out uses the island's value; the Map settings dialog was removed, so islands are resized from Mapping → Islands → Settings; island `.json` export and import were removed, so AC15 keeps only its shrink/grow half. Updated Architectural decisions, AC15 and Smoke Test step 8 (plus a new 8a) to match. Q1 (pencil size) and Q2 (realtime DELETE filtering) are still unmeasured. |
+| 2026-09-27 | Claude | Slices 1–8 implemented (`ef0b9d9` … `bcb455d`): `drawings` migration `052`, state slice, cloud/guest/local sync, the drawing bar with shapes, Snap to grid, feet label, colour picker, select/resize/erase, undo/redo, clears, Hide drawings, phone Draw bar and style sheet, docs and thesaurus. |
 | 2026-09-27 | Blaxine | Slice 4: thickness and Fill moved from the bar into the colour popover, so the desktop popover and the phone style sheet are the same panel. |
 | 2026-09-27 | Blaxine | Initial plan, following a `/grill-me` interview that resolved scope and behaviour and a `/create-req` deep-dive that grounded it in the code. |

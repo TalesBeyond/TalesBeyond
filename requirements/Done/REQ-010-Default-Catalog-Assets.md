@@ -4,13 +4,15 @@
 | ----- | ----- |
 | ID | REQ-010 |
 | Title | Default Catalog Assets |
-| Status | Todo |
+| Status | Done |
 | Phase | Table atmosphere |
 | Tier | Enhancement |
 | Area | Catalog / Storage / Compendium / Audio / Dice / cloud mode |
 | Author | Blaxine |
 | Created | 2026-09-24 |
-| Last Updated | 2026-09-24 |
+| Last Updated | 2026-09-30 |
+
+> **Status (2026-09-30): Done.** All six slices are done in code; only testing is left (see Smoke Test). One direction changed after it shipped: **songs are no longer seeded to the catalog.** Since `51a86d8` (2026-09-26), the admin script's `seedAudio` is gone, and the starter music ships with the app in `src/assets/audio/music/` (`DEMO_MUSIC` in `src/data/defaultAudio.js`, picked through `SoundField`'s `DemoTrackPicker`). `catalog_audio`, the `catalog-audio` bucket and the Music modal's "Choose from catalog" (`CatalogSongSelect`) still exist and read whatever rows are there, but nothing fills them.
 
 ## Short Description
 
@@ -27,6 +29,7 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 - **`audio_tracks` already tolerates a catalog track.** `storage_path` is `not null` but may be empty; `size_bytes` has `check (size_bytes >= 0)`; the 50 MB quota trigger (`20250101000041_audio_quota.sql`) sums `size_bytes`. A track with `storage_path = ''` and `size_bytes = 0` consumes no quota. `removeAudioFiles` filters empty paths and `deleteTableStorage` lists only the table's own folder, so neither touches a catalog file.
 - **Guest tables HEAD-check every track file.** `useTableAudio({ checkFiles: isGuest })` (`src/lib/audioEngine.js`) marks a file whose fetch fails as expired, and the UI then says "File expired — re-upload". A catalog track whose file is missing needs different wording.
 - **Deleting `storage.objects` rows with SQL does not free the file.** Removing a catalog file goes through the Storage API, which the admin script calls with the service-role key.
+- **Since 2026-09-30, tokens never store a picture URL** (`20250101000055_no_stored_images.sql`, `src/lib/storedImages.js`). A token's `image_url` is a built-in icon reference, an `img:<sha-256>` fingerprint or `''`. This doesn't change catalog pictures: they only ever showed in the compendium. A monster placed from it gets its generated icon (`monsterToDraft`), or the DM's "Use my own image" override, which on cloud and guest tables now travels as a fingerprint, browser to browser.
 - **The repo has no test suite** (`package.json` has no test script), so no `T`-phase steps are included; verification is the Smoke Test. `supabase/00_combined_all_migrations.sql` is kept in sync with `supabase/migrations/` by hand.
 
 ## Architectural decisions
@@ -51,18 +54,18 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — Public read-only catalog.** With the anon key, all seven catalog tables can be read; an insert, update or delete from the browser client is rejected. Files in the three catalog buckets load by public URL; an upload or delete from the browser client is rejected.
-- [ ] **AC2 — Weapons from the catalog.** With Supabase configured and weapons seeded, the Weapons compendium, the chest and droppables editors, the Battle Equipment weapon lookup and the Asset Storage weapon lists use the catalog's weapon rows, including the +1 and +2 variants.
-- [ ] **AC3 — Weapon pictures.** A weapon row with an `image_path` shows that picture in the compendium; every +N variant of a weapon shows its base weapon's picture.
-- [ ] **AC4 — Items from the catalog.** The Items compendium, the chest and droppables editors and Asset Storage use the catalog's item rows, with pictures where a row has one.
-- [ ] **AC5 — Monsters from the catalog.** The Monster compendium shows catalog monsters with their pictures, and adding one to the map creates a token with the catalog's stats. A picture the DM set in their own browser still wins over the catalog's.
-- [ ] **AC6 — Offline fallback.** In local demo mode, with Supabase unreachable, or for any content type with no catalog rows, the app shows today's code data with no error visible to the player.
-- [ ] **AC7 — Image order.** For an entry with a catalog picture, a bundled picture and a DM override, the DM override shows; without the override the catalog picture shows; without either the bundled picture shows.
-- [ ] **AC8 — Catalog songs.** The DM can attach a catalog song to the world, a layer, an island or a token from the Music modal; it plays synced for every client like an uploaded track, uses none of the table's 50 MB quota, and is untouched when the table's uploaded audio is purged or deleted.
-- [ ] **AC9 — Missing catalog song.** A catalog track whose file cannot be fetched shows "Unavailable" and never throws or shows "File expired — re-upload".
-- [ ] **AC10 — Dice images.** Each die tile in the Dice modal shows its catalog image; a die with no catalog image keeps the current outline shape.
-- [ ] **AC11 — 3D bases.** `catalog_dice_models` and `catalog_dice_skins` exist with the `catalog-models` bucket. After the admin script uploads a sample GLB and texture, both rows are readable with the anon key and both files load by public URL. The app has no UI for them.
-- [ ] **AC12 — Admin script.** Running the script twice creates no duplicate rows or files, and a production build contains no service-role key.
+- [x] **AC1 — Public read-only catalog.** With the anon key, all seven catalog tables can be read; an insert, update or delete from the browser client is rejected. Files in the three catalog buckets load by public URL; an upload or delete from the browser client is rejected.
+- [x] **AC2 — Weapons from the catalog.** With Supabase configured and weapons seeded, the Weapons compendium, the chest and droppables editors, the Battle Equipment weapon lookup and the Asset Storage weapon lists use the catalog's weapon rows, including the +1 and +2 variants.
+- [x] **AC3 — Weapon pictures.** A weapon row with an `image_path` shows that picture in the compendium; every +N variant of a weapon shows its base weapon's picture.
+- [x] **AC4 — Items from the catalog.** The Items compendium, the chest and droppables editors and Asset Storage use the catalog's item rows, with pictures where a row has one.
+- [x] **AC5 — Monsters from the catalog.** The Monster compendium shows catalog monsters with their pictures, and adding one to the map creates a token with the catalog's stats. A picture the DM set in their own browser still wins over the catalog's.
+- [x] **AC6 — Offline fallback.** In local demo mode, with Supabase unreachable, or for any content type with no catalog rows, the app shows today's code data with no error visible to the player.
+- [x] **AC7 — Image order.** For an entry with a catalog picture, a bundled picture and a DM override, the DM override shows; without the override the catalog picture shows; without either the bundled picture shows.
+- [x] **AC8 — Catalog songs.** *(Still true for any row put in `catalog_audio` by hand, but the admin script no longer seeds songs. The built-in songs in `src/assets/audio/music/` now fill this role; see Status.)* The DM can attach a catalog song to the world, a layer, an island or a token from the Music modal; it plays synced for every client like an uploaded track, uses none of the table's 50 MB quota, and is untouched when the table's uploaded audio is purged or deleted.
+- [x] **AC9 — Missing catalog song.** A catalog track whose file cannot be fetched shows "Unavailable" and never throws or shows "File expired — re-upload".
+- [x] **AC10 — Dice images.** Each die tile in the Dice modal shows its catalog image; a die with no catalog image keeps the current outline shape.
+- [x] **AC11 — 3D bases.** `catalog_dice_models` and `catalog_dice_skins` exist with the `catalog-models` bucket. After the admin script uploads a sample GLB and texture, both rows are readable with the anon key and both files load by public URL. The app has no UI for them.
+- [x] **AC12 — Admin script.** Running the script twice creates no duplicate rows or files, and a production build contains no service-role key.
 
 ## Technical Notes
 
@@ -136,7 +139,7 @@ Moves the app's default game content into a read-only Supabase **Default catalog
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
 | ✅ | S016 | P | Audio table and bucket | Migration adding `catalog_audio` with the same RLS shape and the public `catalog-audio` bucket (MP3 and WAV, 10 MB). Mirror into the combined file. | S001 | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
-| ✅ | S017 | S | Admin script (songs) | Extend the script to upload `audio/<slug>.<ext>` files and upsert their rows with mime and size. | S002, S016 | admin script |
+| ✅ | S017 | S | Admin script (songs) | Extend the script to upload `audio/<slug>.<ext>` files and upsert their rows with mime and size. *Reverted 2026-09-26 (`51a86d8`): songs ship bundled in `src/assets/audio/music/` instead; the script no longer seeds audio.* | S002, S016 | admin script |
 | ✅ | S018 | F | Catalog audio list | Add the songs list and its fetch to the catalog module and startup fetch. | S003, S004, S016 | catalog module, `src/App.jsx`, `src/lib/remoteApi.js` |
 | ✅ | S019 | S | Attach a catalog track | DM action that creates the track record with the catalog URL, empty storage path and zero size, through the existing dispatch, remote-write and guest-broadcast sequence, replacing any track on that target. | S018 | `src/components/GameView.jsx`, `src/lib/remoteApi.js` |
 | ✅ | S020 | U | Music modal picker | "Choose from catalog" on each DM track row, listing songs by name. | S019 | `src/components/MusicModal.jsx`, `src/styles.css` |
@@ -233,7 +236,7 @@ Supersedes: nothing. The custom assets in `custom_assets` (Asset Storage) are un
 Nothing here is built. Each entry names the alternative, then why it lost.
 
 - **Admin upload screen inside the app.** It forces an answer to who counts as admin, and the app has no such identity and no login for the anonymous majority of users.
-- **Bundling defaults in the repo or the Vite public folder.** Songs bloat every deploy and any change needs a redeploy; the empty bundled compendium folder stays as the last-resort fallback.
+- **Bundling defaults in the repo or the Vite public folder.** Songs bloat every deploy and any change needs a redeploy; the empty bundled compendium folder stays as the last-resort fallback. *(Reversed for songs on 2026-09-26: the starter music is bundled, sized by the recipe in `src/assets/audio/music/README.md`.)*
 - **Rows with identity and image only, stats left in code.** It keeps the eight readers untouched, but the admin then cannot change a stat without a code change, which is not the "database is the catalog" model that was chosen.
 - **Blocking app startup until the catalog loads.** A slow or unreachable Supabase would delay or break the landing page, and local demo mode would need a special skip.
 - **Overwriting the exported `WEAPONS`, `ITEMS` and `MONSTERS` arrays in place.** Components that already rendered would not update when the data landed.
@@ -255,3 +258,6 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | ---- | ------ | ----------------- |
 | 2026-09-24 | Blaxine | Initial plan. |
 | 2026-09-24 | Blaxine | Implemented slices 1-6; resolved Q1. Toolbar.jsx needed no change (its WEAPONS/ITEMS imports were unused). |
+| 2026-09-26 | Blaxine | Songs moved out of the catalog: `seedAudio` removed from `scripts/catalog-admin.mjs`, and the starter music bundled in `src/assets/audio/music/` (`51a86d8`). |
+| 2026-09-30 | Claude | Status review against the code. Status Todo → InProgress (all steps done, Smoke Test not run), and the file moved to `InProgress/` (then `Done/`, below). Recorded the song reversal (S017, AC8, Considered And Rejected) and that tokens no longer store picture URLs (`055`), which leaves catalog pictures (compendium-only) unaffected. Q2–Q4 still open. Smoke Test steps 6–7 now need a hand-inserted `catalog_audio` row, or can be dropped if catalog songs are retired. |
+| 2026-09-30 | Claude | Every AC ticked because the code is complete and only testing is missing (per the host, 2026-09-30); the Smoke Test above is the record of what is still to try by hand. Status set to Done and moved to `Done/`. Q2–Q4 stay open as future questions. |
