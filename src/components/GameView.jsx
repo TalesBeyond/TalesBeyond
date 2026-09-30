@@ -1713,7 +1713,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Downloads an island (the active one by default) as a standalone PNG
   // (background + grid lines, at native pixel resolution) for editing in an
   // external image editor — the result can be uploaded back from the
-  // island's settings (World state → Islands) as its background.
+  // island's settings (Mapping → Islands) as its background.
   async function downloadIslandImage(islandId = activeIslandId) {
     const island = currentLayer.islands[islandId];
     if (!island) return;

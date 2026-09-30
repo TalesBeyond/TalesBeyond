@@ -69,7 +69,7 @@ real-device pass and on REQ-008.
 
 - **Add** (`TokenSidebar` `layout="phone"`): Heroes · Monsters (bestiary, asset
   storage) · Doors · Chests · Traps · Your own.
-- **Edit** mode bar: island settings (opens World state → Islands on that island's settings), Group islands, Draw, Done.
+- **Edit** mode bar: island settings (opens Mapping → Islands on that island's settings), Group islands, Draw, Done.
   While it's up, the island chips, mini-map, zoom column, turn order and
   condition banner hide and the bar takes the chips' place (pinch still zooms).
 - **Group islands** (`PhoneGroupSheet`): islands are too small to tap one by one
