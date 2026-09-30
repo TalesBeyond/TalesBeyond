@@ -2721,7 +2721,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!isPhone) setPhoneSheet(null);
   }, [isPhone]);
 
-  const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
+  // A player has no Tokens panel (placing tokens is the DM's), so only the
+  // right panel shares the room with the map.
+  const shownPanelWidths = isHost
+    ? fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed)
+    : { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth, false, rightCollapsed), left: 0 };
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
@@ -2866,10 +2870,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       )}
 
       <div
-        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
+        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && !isHost ? ' no-left' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
         style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
       >
-        {!isPhone && tokenSidebarEl}
+        {!isPhone && isHost && tokenSidebarEl}
 
         <div className="game-center">
           {!isPhone && (
@@ -3116,7 +3120,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!isPhone && !leftCollapsed && !drawerLayout && (
+        {!isPhone && isHost && !leftCollapsed && !drawerLayout && (
           <PanelResizer
             side="left"
             width={shownPanelWidths.left}

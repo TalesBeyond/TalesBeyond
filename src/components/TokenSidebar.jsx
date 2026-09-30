@@ -68,6 +68,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   // Placing tokens (heroes, monsters, doors, chests, traps) is DM-only — a player
   // only moves their own hero, opens doors, and opens chests (see
   // GameView.jsx's canMoveEntity/canUpdateEntity, and PITFALLS.md #1).
+  // GameView doesn't show this panel to players at all; this is a fallback.
   if (!isHost) {
     return (
       <div className="panel">

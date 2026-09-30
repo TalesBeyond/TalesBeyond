@@ -546,6 +546,12 @@ input, select {
 .game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
 
+/* A player's layout: no Tokens panel, so the map starts at the left edge. */
+.game-layout.no-left { grid-template-columns: 1fr var(--right-w, 340px); }
+.game-layout.no-left.right-collapsed { grid-template-columns: 1fr 36px; }
+.game-layout.no-left > .game-center { grid-column: 1; }
+.game-layout.no-left > .panel.right { grid-column: 2; }
+
 /* Pinned to their columns so an expanded drawer (taken out of flow below)
    doesn't let the map slide into column 1. */
 .game-layout > .panel { grid-column: 1; grid-row: 1; }
@@ -562,6 +568,7 @@ input, select {
 /* Narrower windows (GameView's DRAWER_LAYOUT_BELOW): the map keeps the
    whole middle and an expanded panel slides over it from its rail. */
 .game-layout.drawers { grid-template-columns: 36px 1fr 36px; }
+.game-layout.drawers.no-left { grid-template-columns: 1fr 36px; }
 .game-layout.drawers > .panel:not(.collapsed) {
   /* Spanning every column makes the whole grid its containing block, so the
      100% below is the layout's width rather than the 36px rail column's. */
