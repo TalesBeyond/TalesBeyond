@@ -4,10 +4,10 @@
 | ----- | ----- |
 | ID | REQ-006-PRD |
 | Title | Live Table Security Hardening |
-| Status | Todo |
+| Status | InProgress |
 | Author | Blaxine |
 | Created | 2026-09-13 |
-| Last Updated | 2026-09-13 |
+| Last Updated | 2026-09-30 |
 
 ## Problem Statement
 

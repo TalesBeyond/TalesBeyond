@@ -10,7 +10,7 @@
 | Area | Auth / cloud mode / Supabase RPCs |
 | Author | Blaxine |
 | Created | 2026-09-13 |
-| Last Updated | 2026-09-13 |
+| Last Updated | 2026-09-30 |
 
 > Source PRD: REQ-006-PRD-Live-Table-Security-Hardening.md
 
@@ -36,6 +36,9 @@ A security hardening pass over the live Supabase project: a written, severity-ra
 - `HostTableForm`'s existing `catch (err) { setError(err.message ...) }` (`src/components/Landing.jsx:336-338`) already renders any `create_table` error through the existing `error-note` UI verbatim — the new table-cap rejection needs no new UI code.
 - `supabase/config.toml`'s `[auth]` block (lines 180-184) currently ships `minimum_password_length = 6` and an empty `password_requirements`; `[auth.captcha]` (lines 212-216) is present but fully commented out.
 - `invite_codes.code` (`supabase/migrations/20250101000001_schema.sql:21-27`) is a plain `text` primary key with no length constraint — existing 6-character codes keep working unchanged after the generator length changes.
+- **Since this plan (as of 2026-09-30), the schema has grown past the nine tables AC2 re-verified.** New since then: traps (`028`, which narrowed `entities`' SELECT policy; `SECURITY.md` finding #9), `custom_assets` (`036`), `audio_tracks` and the `table-audio` bucket (`038`–`041`), seven `catalog_*` tables and three catalog buckets (`042`–`047`), and `drawings` (`052`). Each ships with RLS, but `SECURITY.md` finding #5's "no gap found" entry still lists only the original tables and the `token-art`/`map-backgrounds` buckets.
+- **Storage uploads have narrowed since this audit.** `20250101000048_no_guest_uploads.sql` blocks every anonymous session from writing to Storage. `20250101000055_no_stored_images.sql` stops pictures being stored in Postgres at all: token and island images are built-in icon references or `img:<sha-256>` fingerprints whose bytes travel browser to browser (`src/lib/imageExchange.js`), enforced by check constraints. `token-art` and `map-backgrounds` no longer receive uploads from the app; `table-audio` (host accounts only) is the live upload path.
+- **The realtime publication is now in source control.** `20250101000050_realtime_publication.sql` adds every table the app listens to, guarded and idempotent, so it is no longer a dashboard-only setting.
 
 ## Architectural decisions
 
@@ -48,12 +51,12 @@ A security hardening pass over the live Supabase project: a written, severity-ra
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — Findings report exists.** `SECURITY.md` contains a severity-ranked list of findings covering host-credential security, data-access/RLS isolation, and abuse/availability, plus a checklist of live-Supabase-dashboard settings the host must verify by hand (since this plan has no dashboard access).
-- [ ] **AC2 — Data isolation re-verified.** `SECURITY.md` explicitly records that RLS is enabled and correctly scoped on every table (including `user_preferences`), and that DM-only data and storage-upload paths remain properly restricted, as a "verified, no change needed" entry rather than an open item.
-- [ ] **AC3 — Weak passwords rejected.** A host sign-up or password change with a password shorter than 8 characters, or missing an uppercase letter, lowercase letter, or digit, is rejected against the local Supabase dev stack; `SECURITY.md`'s checklist tells the host how to mirror the same setting on the live project.
-- [ ] **AC4 — Invite codes are 8 characters.** Every newly generated invite code (initial table creation and regeneration) is 8 characters long; a previously issued 6-character code keeps working until regenerated.
-- [ ] **AC5 — Host table cap enforced.** `create_table` rejects a new table once the calling identity already hosts 20 tables, surfacing a clear inline error through the existing `error-note` UI with no new UI code.
-- [ ] **AC6 — Fixes ship reviewably.** Each of Slice 2 and Slice 3 lands as its own independent, reviewable migration/config change, and is not applied to the live Supabase project until the host has explicitly reviewed and approved it.
+- [x] **AC1 — Findings report exists.** `SECURITY.md` contains a severity-ranked list of findings covering host-credential security, data-access/RLS isolation, and abuse/availability, plus a checklist of live-Supabase-dashboard settings the host must verify by hand (since this plan has no dashboard access).
+- [x] **AC2 — Data isolation re-verified.** `SECURITY.md` explicitly records that RLS is enabled and correctly scoped on every table (including `user_preferences`), and that DM-only data and storage-upload paths remain properly restricted, as a "verified, no change needed" entry rather than an open item.
+- [x] **AC3 — Weak passwords rejected.** A host sign-up or password change with a password shorter than 8 characters, or missing an uppercase letter, lowercase letter, or digit, is rejected against the local Supabase dev stack; `SECURITY.md`'s checklist tells the host how to mirror the same setting on the live project.
+- [x] **AC4 — Invite codes are 8 characters.** Every newly generated invite code (initial table creation and regeneration) is 8 characters long; a previously issued 6-character code keeps working until regenerated.
+- [x] **AC5 — Host table cap enforced.** `create_table` rejects a new table once the calling identity already hosts 20 tables, surfacing a clear inline error through the existing `error-note` UI with no new UI code.
+- [x] **AC6 — Fixes ship reviewably.** Each of Slice 2 and Slice 3 lands as its own independent, reviewable migration/config change, and is not applied to the live Supabase project until the host has explicitly reviewed and approved it.
 
 ## Technical Notes
 
@@ -158,3 +161,5 @@ S001 → S005 → S006
 | 2026-09-13 | Claude | Slice 1 implemented (S001): wrote `SECURITY.md` with findings #1-6 and the live-dashboard checklist. AC1 and AC2 satisfied. |
 | 2026-09-13 | Claude | Slice 2 implemented (S002-S003): `config.toml` password policy tightened to 8+ chars with upper+lower+digit; `SECURITY.md` finding #2 marked fixed. AC3's code/local-stack half satisfied — the live-project dashboard mirror (Q2) is still open, not yet confirmed by the host. |
 | 2026-09-13 | Claude | Slice 3 implemented (S004-S006): new migration `20250101000026_security_hardening.sql` lengthens invite codes to 8 characters and caps table creation at 20 per host; mirrored into `00_combined_all_migrations.sql`; `SECURITY.md` findings #1 and #3 marked fixed in code. AC4 and AC5 satisfied at the code level — the migration itself is not yet applied to the live project (new `SECURITY.md` checklist item), consistent with AC6's "nothing auto-applies to the live project" guarantee. |
+| 2026-09-30 | Claude | Status review against the code. Ticked AC1 and AC2: `SECURITY.md` exists with ranked findings and the dashboard checklist. AC3–AC5 are done in code but stay open until migration `026` and the password policy are confirmed live. `SECURITY.md`'s checklist still shows both unchecked, and Q2 is unresolved. Added Constraints for what changed since the audit: new tables and buckets not yet in finding #5's re-check, anonymous uploads blocked (`048`), no pictures stored in the database (`055`), and the realtime publication moved into a migration (`050`). Line references in Constraints and Technical Notes (e.g. `Landing.jsx`'s `HostTableForm`) are as of 2026-09-13 and have since moved. |
+| 2026-09-30 | Claude | AC3–AC6 ticked: done in code, only testing missing (per the host). Stays `InProgress` for one step that isn't testing: applying migration `026` and mirroring the password policy on the live project (Q2, `SECURITY.md` checklist). |
