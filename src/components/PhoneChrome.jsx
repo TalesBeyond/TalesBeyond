@@ -12,6 +12,8 @@ import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
 import { Hint, useHintPrefs } from './Hints.jsx';
 import { useHudFold, HudFoldButton } from './TableHud.jsx';
+import { useImageCacheVersion } from '../lib/imageCache.js';
+import { entityImageSrc } from '../lib/storedImages.js';
 
 // The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
 // desktop chrome (toolbar, side panels, layer strip) for these pieces when the
@@ -230,6 +232,7 @@ export function PhoneIslandConditions({ conditions = [] }) {
 // ---------- the selected token, one tap from its card ----------
 
 export function PhoneTokenCard({ entity, isHost, onOpen, onHp, onTarget }) {
+  useImageCacheVersion(); // redraw when a shared picture arrives
   if (!entity) return null;
   const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
   const pct = hasHp ? Math.max(0, Math.min(1, entity.hp / entity.maxHp)) : 0;
@@ -238,7 +241,7 @@ export function PhoneTokenCard({ entity, isHost, onOpen, onHp, onTarget }) {
   return (
     <div className="phone-token-card">
       <button type="button" className="phone-token-main" onClick={onOpen} aria-label={`${entity.name}. Open its card`}>
-        <span className="phone-token-avatar" style={{ backgroundImage: entity.imageUrl ? `url(${entity.imageUrl})` : undefined, '--token-color': entity.color || 'transparent' }} />
+        <span className="phone-token-avatar" style={{ backgroundImage: `url(${entityImageSrc(entity)})`, '--token-color': entity.color || 'transparent' }} />
         <span className="phone-token-text">
           <span className="phone-token-name">
             <b>{entity.name}</b>
@@ -717,6 +720,7 @@ export function PhoneMoveCard({ info, onCancel, onConfirm }) {
 // ---------- target and attack (encounter, the actor's turn) ----------
 
 export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }) {
+  useImageCacheVersion(); // redraw when a shared picture arrives
   const attacks = (actor?.sheet?.attacks || []).filter((a) => a.weaponName);
   const [index, setIndex] = useState(0);
   const [rolling, setRolling] = useState(false);
@@ -751,7 +755,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
     <PhoneSheet title={target.name} onClose={onClose} className="phone-sheet-target">
       <div className="phone-target">
         <div className="phone-target-summary">
-          <span className="phone-token-avatar" style={{ backgroundImage: target.imageUrl ? `url(${target.imageUrl})` : undefined, '--token-color': target.color || 'transparent' }} />
+          <span className="phone-token-avatar" style={{ backgroundImage: `url(${entityImageSrc(target)})`, '--token-color': target.color || 'transparent' }} />
           <div className="phone-token-text">
             <span className="phone-token-stats">
               <span className="phone-token-bar">

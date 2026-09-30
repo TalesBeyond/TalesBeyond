@@ -6,6 +6,7 @@
 // REQ-008's Architectural decisions); this module only carries the messages.
 
 import { supabase } from './supabaseClient.js';
+import { attachImageExchange } from './imageExchange.js';
 
 function channelNameFor(code) {
   return `guest:${code.toUpperCase()}`;
@@ -36,6 +37,8 @@ export function subscribeToGuestTable(
 ) {
   const channel = supabase.channel(channelNameFor(code));
   let hasJoinedOnce = false;
+  // DM-uploaded pictures travel between browsers on this same channel.
+  const images = attachImageExchange(channel);
 
   if (onHostPresenceChange) {
     channel.on('presence', { event: 'sync' }, () => {
@@ -74,10 +77,13 @@ export function subscribeToGuestTable(
       onStatusChange?.(status, false);
     }
     if (status === 'SUBSCRIBED' && isHost) channel.track({ isHost: true });
+    if (status === 'SUBSCRIBED') images.onSubscribed();
+    else images.onDisconnected();
   });
 
   return {
     unsubscribe() {
+      images.detach();
       supabase.removeChannel(channel);
     },
     sendStateChange(action) {

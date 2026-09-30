@@ -3,6 +3,8 @@ import { playDiceSound } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
 import { rollDie } from '../utils/combat.js';
 import { useHudFold, HudFoldButton, InitiativeIcon } from './TableHud.jsx';
+import { useImageCacheVersion } from '../lib/imageCache.js';
+import { entityImageSrc } from '../lib/storedImages.js';
 
 // The encounter's HUD, shown over the map only while a fight is running
 // (state.encounter, see utils/encounter.js): the turn order along the top,
@@ -12,6 +14,7 @@ import { useHudFold, HudFoldButton, InitiativeIcon } from './TableHud.jsx';
 // Top of the map: the round, then every participant in initiative order,
 // the acting one raised and flagged.
 export function TurnOrderRibbon({ encounter, entities, meId }) {
+  useImageCacheVersion(); // redraw when a shared picture arrives
   const [folded, setFolded] = useHudFold('initiative');
   const entries = encounter.order
     .map((entry, index) => ({ ...entry, index, entity: entities[entry.id] }))
@@ -46,7 +49,7 @@ export function TurnOrderRibbon({ encounter, entities, meId }) {
             className={`turn-portrait ${entity.kind === 'mob' ? 'foe' : 'ally'}${active ? ' active' : ''}`}
             title={`${entity.name} — initiative ${roll}`}
           >
-            <span className="turn-face" style={{ backgroundImage: `url(${entity.imageUrl})` }} aria-hidden="true" />
+            <span className="turn-face" style={{ backgroundImage: `url(${entityImageSrc(entity)})` }} aria-hidden="true" />
             <span className="visually-hidden">{entity.name}, initiative {roll}</span>
             {active && <span className="turn-flag">{mine ? 'Your turn' : 'Now'}</span>}
             <span className="turn-roll" aria-hidden="true">{roll}</span>

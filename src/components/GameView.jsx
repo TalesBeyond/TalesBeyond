@@ -18,6 +18,8 @@ import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../
 import { defaultDroppablesFor } from '../data/droppables.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
 import { renderIslandTemplateToDataUrl } from '../utils/image.js';
+import { iconRefForUrl } from '../data/defaultTokens.js';
+import { resolveImage, storeImage } from '../lib/imageCache.js';
 import {
   saveSession,
   deleteSession,
@@ -453,6 +455,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Postgres row anywhere — see guestRealtime.js. Requires Supabase (for
   // Realtime) exactly like 'remote' does, but never calls remoteApi.js.
   const isGuest = mode === 'guest' && isSupabaseConfigured;
+  // Pictures are never saved to Supabase (lib/storedImages.js). On a local
+  // table an upload stays in this browser's save; on a cloud or guest table
+  // only its fingerprint is shared and the bytes go browser to browser
+  // (lib/imageCache.js, lib/imageExchange.js).
+  const isSharedTable = isRemote || isGuest;
   const isGuestHost = isGuest && isHost;
 
   // Host-absence auto-end (see HOST_ABSENCE_* above) — { endAt } once the
@@ -1186,8 +1193,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return canPlayerUpdateEntity(entity, patch, me.id);
   }
 
+  // On a cloud or guest table an uploaded picture (a data URL — not one of
+  // the built-in icons, which are data URLs too) is swapped for its
+  // fingerprint before it enters shared state.
+  function needsSharing(url) {
+    return isSharedTable && typeof url === 'string' && url.startsWith('data:') && !iconRefForUrl(url);
+  }
+
+  function shareImageFailed() {
+    alert('Could not keep that image in this browser — try a different file.');
+  }
+
   function addEntity(draft) {
     if (!isHost) return;
+    if (needsSharing(draft.imageUrl)) {
+      storeImage(draft.imageUrl)
+        .then((imageUrl) => addEntity({ ...draft, imageUrl }))
+        .catch(shareImageFailed);
+      return;
+    }
     const targetIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
     const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
     // Only a trap can be sized at placement (1 to 5 squares wide); everything
@@ -1719,7 +1743,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const island = currentLayer.islands[islandId];
     if (!island) return;
     try {
-      const dataUrl = await renderIslandTemplateToDataUrl(island);
+      const dataUrl = await renderIslandTemplateToDataUrl({ ...island, backgroundImage: resolveImage(island.backgroundImage) });
       const filename = `${(island.name || 'island').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'island'}.png`;
       downloadDataUrl(dataUrl, filename);
     } catch {
@@ -1729,6 +1753,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   function updateIsland(islandId, patch) {
     if (!isHost) return;
+    if (needsSharing(patch.backgroundImage)) {
+      storeImage(patch.backgroundImage)
+        .then((backgroundImage) => updateIsland(islandId, { ...patch, backgroundImage }))
+        .catch(shareImageFailed);
+      return;
+    }
     dispatch({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
     if (isRemote) updateIslandRemote(islandId, patch).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });

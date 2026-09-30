@@ -10,6 +10,7 @@
 // SPEC.md §9.5 for the reasoning and future refinement ideas.
 
 import { supabase } from './supabaseClient.js';
+import { attachImageExchange } from './imageExchange.js';
 import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
@@ -33,6 +34,8 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
+  // DM-uploaded pictures travel between browsers on this same channel.
+  const images = attachImageExchange(channel);
 
   if (presence?.onHostPresenceChange) {
     channel.on('presence', { event: 'sync' }, () => {
@@ -180,9 +183,12 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
         onStatusChange?.(status, false);
       }
       if (status === 'SUBSCRIBED' && presence?.isHost) channel.track({ isHost: true });
+      if (status === 'SUBSCRIBED') images.onSubscribed();
+      else images.onDisconnected();
     });
 
   const unsubscribe = () => {
+    images.detach();
     supabase.removeChannel(channel);
   };
   unsubscribe.sendRoll = (roll) => channel.send({ type: 'broadcast', event: 'roll', payload: roll });

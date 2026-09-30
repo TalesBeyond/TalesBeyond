@@ -16,6 +16,8 @@ import {
   resizedGeometry,
 } from '../utils/drawing.js';
 import IslandDrawings from './DrawingLayer.jsx';
+import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
+import { entityImageSrc } from '../lib/storedImages.js';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
 const FLOAT_MS = 1300; // how long a hit number drifts up over a token
@@ -68,6 +70,7 @@ export default function MapBoard({
   onSelectDrawing = null, // (id | null) => void
 }) {
   const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
+  useImageCacheVersion(); // redraw when a shared picture arrives
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
   // Authoritative drag data lives in refs (not state) so the *Up handlers
@@ -880,7 +883,7 @@ export default function MapBoard({
         // Fill (Draw tool): a colour laid over the map art, under the grid.
         const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
         const fillColour = fill && islandFillColour(fill.style);
-        const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, island.backgroundImage && `url(${island.backgroundImage})`].filter(Boolean);
+        const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, resolveImage(island.backgroundImage) && `url(${resolveImage(island.backgroundImage)})`].filter(Boolean);
 
         return (
           <div
@@ -1003,7 +1006,7 @@ export default function MapBoard({
                 height: size,
                 left: cx - size / 2,
                 top: cy - size / 2,
-                backgroundImage: `url(${entity.imageUrl})`,
+                backgroundImage: `url(${entityImageSrc(entity)})`,
                 '--token-color': entity.color || 'transparent',
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}

@@ -3,6 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import { generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { createEmptyGameState, MAX_PLAYERS } from '../state/store.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
+import { stripCustomImages } from '../lib/storedImages.js';
 import {
   loadSession,
   saveSession,
@@ -814,10 +815,11 @@ function GuestResumeForm({ onEnter, onBack }) {
         return;
       }
       const { hostKeyHash, ...sessionRest } = fileContents.session;
-      const restored = migrateLegacyState({
+      // Guest tables never carry uploaded pictures (lib/storedImages.js).
+      const restored = stripCustomImages(migrateLegacyState({
         ...fileContents,
         session: { ...sessionRest, hostKey: code.trim().toUpperCase() },
-      });
+      }));
       const me = restored.players[restored.session.hostPlayerId];
       if (!me) {
         setError('That file is missing its host — it may be corrupted.');
