@@ -1629,6 +1629,9 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
    picker underneath. */
 .island-row { padding: 2px 0 10px; border-bottom: 1px solid var(--ink-800); }
 .island-row:last-of-type { border-bottom: 0; }
+.island-settings { margin: 2px 6px 10px; padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
+.island-settings .field-row .btn { flex: 1; }
+.island-settings .island-row-note { padding: 4px 0 0; }
 .island-row-conditions { display: flex; flex-direction: column; gap: 2px; padding: 0 6px; }
 .island-row-conditions .condition-row { margin-bottom: 0; }
 .island-row-note { display: block; padding: 0 6px; font-size: 12px; color: var(--parchment-300); }

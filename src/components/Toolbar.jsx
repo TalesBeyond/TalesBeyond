@@ -190,8 +190,8 @@ export default function Toolbar({
   onSelectIsland,
   onCreateIsland,
   onRemoveIsland,
-  onDownloadIsland,
   onDownloadIslandImage,
+  onUpdateIsland,
   onImportIsland,
   onUngroupIslands,
   onRenameGroup,
@@ -224,6 +224,10 @@ export default function Toolbar({
   const [showMonsterCompendium, setShowMonsterCompendium] = useState(false);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   const [showDayNight, setShowDayNight] = useState(false);
+  const [showAmbience, setShowAmbience] = useState(false);
+  // The island whose settings the Islands dialog opens on (the phone's
+  // "… settings" button in Edit mode).
+  const [islandsFocusId, setIslandsFocusId] = useState(null);
   // Which grouped menu (tools / mapping / world / library) is open.
   const [openMenu, setOpenMenu] = useState(null);
   const hintPrefs = useHintPrefs();
@@ -308,6 +312,8 @@ export default function Toolbar({
     setShowItemCompendium((s) => (name === 'itemCompendium' ? !s : false));
     setShowAssetStorage((s) => (name === 'assetStorage' ? !s : false));
     setShowDayNight((s) => (name === 'dayNight' ? !s : false));
+    setShowAmbience((s) => (name === 'ambience' ? !s : false));
+    if (name !== 'islands') setIslandsFocusId(null);
   }
 
   // The Grimoire palette's index tabs (BookTabs.jsx) open these same
@@ -322,7 +328,10 @@ export default function Toolbar({
     else if (event.panel === 'armory') togglePopover('compendium');
     // The phone layout opens the rest of the host's panels the same way.
     else if (event.panel === 'items') togglePopover('itemCompendium');
-    else if (['layers', 'islands', 'initiative', 'assetStorage'].includes(event.panel)) togglePopover(event.panel);
+    else if (event.panel === 'islands') {
+      setIslandsFocusId(event.islandId || null);
+      togglePopover('islands');
+    } else if (['layers', 'initiative', 'assetStorage', 'ambience'].includes(event.panel)) togglePopover(event.panel);
     else if (event.panel === 'clock') onOpenClock?.();
     else if (event.panel === 'bestiary') {
       const open = showMonsterCompendium;
@@ -360,13 +369,12 @@ export default function Toolbar({
     });
   }
 
-  async function handleBackgroundFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
+  // An island's background image, from its settings in the Islands
+  // dialog — applied as soon as it's read, no Apply step.
+  async function uploadIslandBackground(islandId, file) {
     try {
       const backgroundImage = await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78);
-      onIslandPatch({ backgroundImage });
+      onUpdateIsland(islandId, { backgroundImage });
     } catch (err) {
       alert('Could not read that image — try a different file.');
     }
@@ -538,18 +546,7 @@ export default function Toolbar({
           popovers={
             <>
               {showMapSettings && (
-                <MapSettingsPopover
-                  layer={layer}
-                  island={activeIsland}
-                  isHost={isHost}
-                  audio={audio}
-                  onLayerPatch={onLayerPatch}
-                  onIslandPatch={onIslandPatch}
-                  onBackgroundFile={handleBackgroundFile}
-                  onDownloadIsland={onDownloadIsland}
-                  onDownloadIslandImage={onDownloadIslandImage}
-                  onClose={() => setShowMapSettings(false)}
-                />
+                <MapSettingsPopover layer={layer} isHost={isHost} onLayerPatch={onLayerPatch} onClose={() => setShowMapSettings(false)} />
               )}
               {showIslands && (
                 <IslandManagerPopover
@@ -565,6 +562,10 @@ export default function Toolbar({
                   onRenameGroup={onRenameGroup}
                   onIslandConditions={onIslandConditions}
                   onGroupConditions={onGroupConditions}
+                  onUpdateIsland={onUpdateIsland}
+                  onUploadBackground={uploadIslandBackground}
+                  onDownloadIslandImage={onDownloadIslandImage}
+                  focusIslandId={islandsFocusId}
                   onSwitchToEdit={() => {
                     onToolChange('edit');
                     setShowIslands(false);
@@ -587,7 +588,7 @@ export default function Toolbar({
             </>
           }
         >
-          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title={activeIsland.name} />
+          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title="This map's feet per square" />
           <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
         </ToolMenu>
@@ -597,21 +598,26 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="world" />}
           label="World state"
-          title="In-game time and day / night"
-          active={showDayNight}
+          title="In-game time, day / night and the map's ambience"
+          active={showDayNight || showAmbience}
           open={openMenu === 'world'}
           onToggle={() => toggleMenu('world')}
           onClose={closeMenu}
           popovers={
-            showDayNight && (
-              <DayNightPopover
-                override={dayNightOverride}
-                hasClock={Boolean(clock)}
-                hasCycle={Boolean(clock?.cycle?.enabled)}
-                onSelect={(phase) => onSetDayNightOverride(phase)}
-                onClose={() => setShowDayNight(false)}
-              />
-            )
+            <>
+              {showDayNight && (
+                <DayNightPopover
+                  override={dayNightOverride}
+                  hasClock={Boolean(clock)}
+                  hasCycle={Boolean(clock?.cycle?.enabled)}
+                  onSelect={(phase) => onSetDayNightOverride(phase)}
+                  island={activeIsland}
+                  onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
+                  onClose={() => setShowDayNight(false)}
+                />
+              )}
+              {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
+            </>
           }
         >
           <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
@@ -621,7 +627,14 @@ export default function Toolbar({
             label="Day / night"
             active={showDayNight}
             onClick={() => togglePopover('dayNight')}
-            title="Change the day/night phase by hand, whatever the clock says"
+            title="Change the day/night phase by hand, and whether this island follows it"
+          />
+          <ToolCard
+            icon={<Icon name="music" />}
+            label="Ambience"
+            active={showAmbience}
+            onClick={() => togglePopover('ambience')}
+            title="The sound that plays for players on this map"
           />
         </ToolMenu>
       )}
@@ -845,7 +858,7 @@ export default function Toolbar({
 // Set the day/night phase by hand. Picking a phase overrides the clock's own
 // cycle (which keeps running underneath) until "Follow the clock" hands it
 // back; it works with the cycle on or off, and with no clock at all.
-function DayNightPopover({ override, hasClock, hasCycle, onSelect, onClose }) {
+function DayNightPopover({ override, hasClock, hasCycle, onSelect, island, onIslandDayNight, onClose }) {
   const isManual = Boolean(override);
   return (
     <div
@@ -907,7 +920,35 @@ function DayNightPopover({ override, hasClock, hasCycle, onSelect, onClose }) {
           );
         })}
       </div>
+      {island && onIslandDayNight && (
+        <>
+          <label className="field-label" style={{ marginTop: 12 }}>
+            {island.name}
+          </label>
+          <select
+            className="field"
+            value={island.dayNight || 'cycle'}
+            onChange={(e) => onIslandDayNight(e.target.value)}
+            title="Follow the table's day / night, or stay always day / always night whatever it says"
+          >
+            {ISLAND_DAY_NIGHT_MODES.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
     </div>
+  );
+}
+
+// World state → Ambience: the sound that plays for players on this map.
+function AmbiencePopover({ layer, audio, onClose }) {
+  return (
+    <ModalShell title="Ambience" icon="music" closeLabel="Close ambience" onClose={onClose}>
+      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players on this map`} />
+    </ModalShell>
   );
 }
 
@@ -942,89 +983,47 @@ function ConditionPicker({ active = [], onChange }) {
   );
 }
 
-function MapSettingsPopover({ layer, island, isHost, audio, onLayerPatch, onIslandPatch, onBackgroundFile, onDownloadIsland, onDownloadIslandImage, onClose }) {
-  const [name, setName] = useState(island.name);
-  const [cols, setCols] = useState(island.cols);
-  const [rows, setRows] = useState(island.rows);
+// Mapping → Map: this map's own settings. An island's name, size and
+// background are in Mapping → Islands; the map's ambience and each island's
+// day / night in World state.
+function MapSettingsPopover({ layer, isHost, onLayerPatch, onClose }) {
   const [feet, setFeet] = useState(layer.feetPerSquare);
-  const fileRef = useRef(null);
 
-  function apply() {
-    onIslandPatch({
-      name: name.trim() || 'Untitled Island',
-      cols: clampGridDims(cols),
-      rows: clampGridDims(rows),
-    });
-    onLayerPatch({ feetPerSquare: Math.max(1, parseInt(feet, 10) || 5) });
-    onClose();
+  function commitFeet() {
+    const next = Math.max(1, parseInt(feet, 10) || 5);
+    setFeet(next);
+    if (next !== layer.feetPerSquare) onLayerPatch({ feetPerSquare: next });
   }
 
   return (
-    <ModalShell title="Map settings" icon="map" closeLabel="Close map settings" onClose={onClose}>
-
+    <ModalShell
+      title="Map settings"
+      icon="map"
+      closeLabel="Close map settings"
+      onClose={() => {
+        if (isHost) commitFeet();
+        onClose();
+      }}
+    >
       <div className="section-label" style={{ marginTop: 0 }}>
-        This island
+        {layer.name}
       </div>
-      <label className="field-label">Island name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} disabled={!isHost} />
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} disabled={!isHost} />
-        </div>
-        <div>
-          <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} disabled={!isHost} />
-        </div>
-      </div>
-
-      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label="Layer sound (plays for players on this layer)" />
-
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Day / night
-      </label>
-      <select
-        className="field"
-        value={island.dayNight || 'cycle'}
-        disabled={!isHost}
-        onChange={(e) => onIslandPatch({ dayNight: e.target.value })}
-        title="Follow the table's in-game clock, or stay always day / always night regardless of it"
-      >
-        {ISLAND_DAY_NIGHT_MODES.map((m) => (
-          <option key={m.key} value={m.key}>
-            {m.label}
-          </option>
-        ))}
-      </select>
-
-      <div className="section-label">This layer</div>
       <label className="field-label">Feet per square</label>
-      <input className="field" type="number" value={feet} onChange={(e) => setFeet(e.target.value)} disabled={!isHost} />
-
-      {isHost && (
-        <>
-          <button className="btn btn-secondary btn-block" onClick={() => fileRef.current?.click()} style={{ marginBottom: 12 }}>
-            Upload island background image
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onBackgroundFile} />
-          <button className="btn btn-primary btn-block" onClick={apply} style={{ marginBottom: 12 }}>
-            Apply changes
-          </button>
-          <button
-            className="btn btn-primary btn-block"
-            onClick={() => onDownloadIslandImage?.()}
-            title="Download this island as a PNG (background + grid) to edit in an image editor, then re-upload as a custom background"
-            style={{ marginBottom: 12 }}
-          >
-            Download island image (.png)
-          </button>
-          <button className="btn btn-secondary btn-block" onClick={() => onDownloadIsland?.()} title="Download this island's grid + background as a .json file, for re-importing into Hearthbound">
-            Download island data (.json)
-          </button>
-        </>
-      )}
-      {!isHost && <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>Only the host can change map settings.</p>}
+      <input
+        className="field"
+        type="number"
+        min="1"
+        value={feet}
+        onChange={(e) => setFeet(e.target.value)}
+        onBlur={commitFeet}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        disabled={!isHost}
+      />
+      <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+        {isHost
+          ? 'Saves when you leave the field. Island names, sizes and backgrounds are in Mapping → Islands; the ambience and day / night in World state.'
+          : 'Only the host can change map settings.'}
+      </p>
     </ModalShell>
   );
 }
@@ -1127,9 +1126,15 @@ function IslandManagerPopover({
   onRenameGroup,
   onIslandConditions,
   onGroupConditions,
+  onUpdateIsland,
+  onUploadBackground,
+  onDownloadIslandImage,
+  focusIslandId = null,
   onSwitchToEdit,
   onClose,
 }) {
+  // The island whose settings (name, size, background) are open.
+  const [openId, setOpenId] = useState(focusIslandId);
   const groupOf = (islandId) => Object.values(islandGroups || {}).find((g) => g.islandIds.includes(islandId));
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
@@ -1175,6 +1180,16 @@ function IslandManagerPopover({
               >
                 {isActive ? 'Active' : 'Select'}
               </button>
+              {onUpdateIsland && (
+                <button
+                  className={`btn btn-secondary btn-sm ${openId === id ? 'active' : ''}`}
+                  aria-expanded={openId === id}
+                  onClick={() => setOpenId(openId === id ? null : id)}
+                  title="Name, size and background image"
+                >
+                  Settings
+                </button>
+              )}
               <button
                 className="btn btn-danger btn-sm"
                 disabled={isBase}
@@ -1185,6 +1200,14 @@ function IslandManagerPopover({
               </button>
             </div>
           </div>
+          {openId === id && onUpdateIsland && (
+            <IslandSettings
+              island={island}
+              onPatch={(patch) => onUpdateIsland(id, patch)}
+              onUploadBackground={(file) => onUploadBackground(id, file)}
+              onDownloadImage={() => onDownloadIslandImage?.(id)}
+            />
+          )}
           {group ? (
             <span className="island-row-note">
               In <b>{group.name}</b> — its conditions are set on the group below.
@@ -1234,6 +1257,76 @@ function IslandManagerPopover({
         Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
       </Hint>
     </ModalShell>
+  );
+}
+
+// An island's own settings, opened from its row in the Islands dialog.
+// Name and size save when the field is left (or on Enter); a background
+// image applies as soon as it's picked.
+function IslandSettings({ island, onPatch, onUploadBackground, onDownloadImage }) {
+  const [name, setName] = useState(island.name);
+  const [cols, setCols] = useState(island.cols);
+  const [rows, setRows] = useState(island.rows);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  function commitName() {
+    const next = name.trim() || 'Untitled Island';
+    setName(next);
+    if (next !== island.name) onPatch({ name: next });
+  }
+  function commitSize() {
+    const c = clampGridDims(cols);
+    const r = clampGridDims(rows);
+    setCols(c);
+    setRows(r);
+    if (c !== island.cols || r !== island.rows) onPatch({ cols: c, rows: r });
+  }
+  const blurOnEnter = (e) => {
+    if (e.key === 'Enter') e.currentTarget.blur();
+  };
+  async function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      await onUploadBackground(file);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="island-settings">
+      <label className="field-label">Name</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName} onKeyDown={blurOnEnter} />
+      <div className="field-row">
+        <div>
+          <label className="field-label">Width</label>
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
+        </div>
+        <div>
+          <label className="field-label">Height</label>
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
+        </div>
+      </div>
+      <label className="field-label">Background image</label>
+      <div className="field-row">
+        <button className="btn btn-secondary" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          {uploading ? 'Uploading…' : island.backgroundImage ? 'Replace image' : 'Upload image'}
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={onDownloadImage}
+          title="Download this island as a PNG (background + grid) to edit in an image editor, then upload it back as the background"
+        >
+          Download image (.png)
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+      <span className="island-row-note">Name and size save when you leave the field. A new image applies straight away.</span>
+    </div>
   );
 }
 

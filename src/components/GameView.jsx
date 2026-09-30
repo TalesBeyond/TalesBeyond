@@ -23,7 +23,6 @@ import {
   deleteSession,
   downloadSessionAsFile,
   downloadGuestSessionAsFile,
-  downloadIslandAsFile,
   downloadDataUrl,
   readJsonFromFile,
   readEncodedJsonFromFile,
@@ -1712,19 +1711,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     placeAndAddIsland(island);
   }
 
-  // Downloads the active island's shell (grid + background — no
-  // id/position/entities) to a file for reuse/sharing.
-  function downloadIsland() {
-    const island = currentLayer.islands[activeIslandId];
-    if (island) downloadIslandAsFile(island);
-  }
-
-  // Downloads the active island as a standalone PNG (background + grid
-  // lines, at native pixel resolution) for editing in an external image
-  // editor — the result can be re-uploaded via "Upload island background
-  // image" to become a new custom map.
-  async function downloadIslandImage() {
-    const island = currentLayer.islands[activeIslandId];
+  // Downloads an island (the active one by default) as a standalone PNG
+  // (background + grid lines, at native pixel resolution) for editing in an
+  // external image editor — the result can be uploaded back from the
+  // island's settings (Mapping → Islands) as its background.
+  async function downloadIslandImage(islandId = activeIslandId) {
+    const island = currentLayer.islands[islandId];
     if (!island) return;
     try {
       const dataUrl = await renderIslandTemplateToDataUrl(island);
@@ -2802,8 +2794,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onSelectIsland={setActiveIslandId}
         onCreateIsland={createIsland}
         onRemoveIsland={removeIsland}
-        onDownloadIsland={downloadIsland}
         onDownloadIslandImage={downloadIslandImage}
+        onUpdateIsland={updateIsland}
         onImportIsland={importIsland}
         onUngroupIslands={ungroupIslands}
         onRenameGroup={renameGroup}
@@ -2972,7 +2964,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 <PhoneEditBar
                   tool={tool}
                   islandName={activeIsland?.name}
-                  onSettings={() => emitFx({ type: 'open', panel: 'map' })}
+                  onSettings={() => emitFx({ type: 'open', panel: 'islands', islandId: activeIslandId })}
                   onGroup={() => setPhoneSheet('group')}
                   onDraw={() => setTool('draw')}
                   onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
@@ -3437,6 +3429,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               phaseOverride={state.dayNightOverride}
               onSetClockRunning={setClockRunning}
               onSetDayNight={updateDayNightOverride}
+              islandName={activeIsland?.name}
+              islandDayNight={activeIsland?.dayNight || 'cycle'}
+              onIslandDayNight={(dayNight) => updateIsland(activeIslandId, { dayNight })}
               audioEnabled={audioEnabled}
               onOpenMusic={() => setShowMusicModal(true)}
               onOpenDice={() => setPhoneSheet('dice')}

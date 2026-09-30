@@ -62,7 +62,7 @@ Capacity is hard-capped at **10 occupants** (`MAX_PLAYERS = 10`, 1 host + 9 play
 - Each square has a fixed pixel `cellSize` (default 42px, independent of `cols`/`rows`); the rendered map is `cols × cellSize` by `rows × cellSize`, scrollable within the stage if larger than the viewport.
 - Host may upload a background image, stretched to fill the full grid area; grid lines render on top at ~28% ink opacity, with a heavier line every 5 squares for quick counting.
 - Host sets **feet-per-square** (default 5 ft, matching 5e) used by the ruler.
-- Map settings (name/size/feet-per-square/background) are host-only; a player opening the map settings popover sees read-only fields and a note explaining why.
+- Map settings (feet per square), island settings (name/size/background, in Mapping → Islands), the map's ambience and each island's day/night (World state) are host-only; a player opening the map settings popover sees a read-only field and a note explaining why.
 
 ### 3.2 Tokens (heroes, monsters, and — implicitly — the host's own miniature)
 - A token has: id, kind (`hero` | `mob`), name, image (URL or embedded data URL), accent color, grid position (`col`,`row`), size in squares (1–4, for Large/Huge/Gargantuan creatures), current HP, max HP, and an optional `ownerId` (the player who "owns" a hero token, reserved for the Phase 2 locking feature).
