@@ -368,7 +368,7 @@ they choose otherwise.
 ### Hints (`Hints.jsx`)
 
 Wherever someone gets stuck, the app says why something can't be used yet,
-then where to fix it — naming places the way the screen does ("Mapping →
+then where to fix it — naming places the way the screen does ("World state →
 Layers") and offering the fix when it's one step. Four patterns:
 
 - **Hint** (inline, always shown): the door on a one-map table (Create a

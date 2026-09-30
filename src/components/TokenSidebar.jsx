@@ -209,7 +209,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
                     <>Add a second map now, or later from the <b>maps</b> button at the top.</>
                   ) : (
                     <>
-                      Add a second map here, or later in <b>Mapping → Layers</b>.
+                      Add a second map here, or later in <b>World state → Layers</b>.
                     </>
                   )}
                 </Hint>

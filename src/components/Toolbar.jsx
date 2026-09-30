@@ -535,15 +535,27 @@ export default function Toolbar({
 
       {isHost && (
         <ToolMenu
-          icon={<Icon name="mapping" />}
-          label="Mapping"
-          title="Map settings, islands, and layers"
-          active={showMapSettings || showIslands || showLayers}
-          open={openMenu === 'mapping'}
-          onToggle={() => toggleMenu('mapping')}
+          icon={<Icon name="world" />}
+          label="World state"
+          title="In-game time, day / night, ambience, and the map, its islands and layers"
+          active={showDayNight || showAmbience || showMapSettings || showIslands || showLayers}
+          open={openMenu === 'world'}
+          onToggle={() => toggleMenu('world')}
           onClose={closeMenu}
           popovers={
             <>
+              {showDayNight && (
+                <DayNightPopover
+                  override={dayNightOverride}
+                  hasClock={Boolean(clock)}
+                  hasCycle={Boolean(clock?.cycle?.enabled)}
+                  onSelect={(phase) => onSetDayNightOverride(phase)}
+                  island={activeIsland}
+                  onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
+                  onClose={() => setShowDayNight(false)}
+                />
+              )}
+              {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
               {showMapSettings && (
                 <MapSettingsPopover layer={layer} isHost={isHost} onLayerPatch={onLayerPatch} onClose={() => setShowMapSettings(false)} />
               )}
@@ -586,38 +598,6 @@ export default function Toolbar({
             </>
           }
         >
-          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title="This map's feet per square" />
-          <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
-          <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
-        </ToolMenu>
-      )}
-
-      {isHost && (
-        <ToolMenu
-          icon={<Icon name="world" />}
-          label="World state"
-          title="In-game time, day / night and the map's ambience"
-          active={showDayNight || showAmbience}
-          open={openMenu === 'world'}
-          onToggle={() => toggleMenu('world')}
-          onClose={closeMenu}
-          popovers={
-            <>
-              {showDayNight && (
-                <DayNightPopover
-                  override={dayNightOverride}
-                  hasClock={Boolean(clock)}
-                  hasCycle={Boolean(clock?.cycle?.enabled)}
-                  onSelect={(phase) => onSetDayNightOverride(phase)}
-                  island={activeIsland}
-                  onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
-                  onClose={() => setShowDayNight(false)}
-                />
-              )}
-              {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
-            </>
-          }
-        >
           <ToolCard icon={<Icon name="clock" />} label="Ingame time" onClick={() => pick(onOpenClock)} title="Set the in-game time, tick speed, and day/night cycle" />
           <ToolCard
             icon={dayPhase ? '' : <Icon name="daynight" />}
@@ -634,6 +614,9 @@ export default function Toolbar({
             onClick={() => togglePopover('ambience')}
             title="The sound that plays for players on this map"
           />
+          <ToolCard icon={<Icon name="map" />} label="Map" active={showMapSettings} onClick={() => togglePopover('mapSettings')} title="This map's feet per square" />
+          <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
+          <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
         </ToolMenu>
       )}
 
@@ -981,9 +964,9 @@ function ConditionPicker({ active = [], onChange }) {
   );
 }
 
-// Mapping → Map: this map's own settings. An island's name, size and
-// background are in Mapping → Islands; the map's ambience and each island's
-// day / night in World state.
+// World state → Map: this map's own settings. An island's name, size and
+// background are in World state → Islands; the map's ambience and each
+// island's day / night in World state too.
 function MapSettingsPopover({ layer, isHost, onLayerPatch, onClose }) {
   const [feet, setFeet] = useState(layer.feetPerSquare);
 
@@ -1019,7 +1002,7 @@ function MapSettingsPopover({ layer, isHost, onLayerPatch, onClose }) {
       />
       <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
         {isHost
-          ? 'Saves when you leave the field. Island names, sizes and backgrounds are in Mapping → Islands; the ambience and day / night in World state.'
+          ? 'Saves when you leave the field. Island names, sizes and backgrounds are in World state → Islands.'
           : 'Only the host can change map settings.'}
       </p>
     </ModalShell>
