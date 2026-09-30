@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
-import { pixelToCell, feetDistance, computeCanvasBounds } from '../utils/grid.js';
+import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
@@ -828,11 +828,16 @@ export default function MapBoard({
         feet = feetDistance(ruler.start, ruler.end, feetOn(ruler.start.islandId));
       } else {
         // Different islands: the 5-10-5 diagonal rule doesn't translate
-        // across two independent grids, so fall back to straight-line
-        // distance using the starting island's scale.
-        const cellSize = islandRects[ruler.start.islandId].cellSize;
-        const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        feet = Math.round((pixelDist / cellSize) * feetOn(ruler.start.islandId));
+        // across independent grids, so it's a straight line — and each
+        // stretch of it counts at the scale of the island it crosses (a gap
+        // at the last island's), whichever end it started from.
+        const areas = islandOrder
+          .filter((id) => islandRects[id])
+          .map((id) => {
+            const r = islandRects[id];
+            return { left: (r.x - originX) * zoom, top: (r.y - originY) * zoom, w: r.w, h: r.h, feetPerPx: feetOn(id) / r.cellSize };
+          });
+        feet = Math.round(feetAlongLine(p1, p2, areas));
       }
       rulerLine = { p1, p2, feet };
     }
