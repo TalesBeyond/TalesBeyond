@@ -669,6 +669,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
       updateSheet={updateSheet}
       onUpdate={onUpdate}
       canEdit={isHost}
+      canEditLife={canEditOwnTabs}
       onRemove={isHost ? onRemove : null}
       showDeathSaves
       typeLine={`Hero · square (${entity.col}, ${entity.row})`}

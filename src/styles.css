@@ -1521,6 +1521,7 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .roll-log-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
 .roll-log-detail { font-family: var(--font-mono); font-size: 11px; color: var(--parchment-300); }
 .roll-log-empty { margin: 6px 0 0; font-size: 12px; color: var(--parchment-300); }
+.roll-log-time { flex-shrink: 0; font-family: var(--font-mono); font-size: 11px; color: var(--parchment-300); }
 .roll-total { flex-shrink: 0; font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--parchment-100); }
 .roll-chip {
   align-self: flex-start;

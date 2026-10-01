@@ -23,6 +23,8 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
   const isOwner = isHero && !!meId && entity.ownerId === meId;
   const canEdit = isHost;
   const canEditOwnTabs = isHost || isOwner;
+  // A hero's owner changes its hit points too, up to the maximum the DM set.
+  const canEditLife = isHost || isOwner;
   const sheet = (isHero ? entity.sheet : entity.mobSheet) || defaultCharacterSheet();
   const sheetKey = isHero ? 'sheet' : 'mobSheet';
   const showSheet = isHero || isHost;
@@ -142,14 +144,14 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
             <section className="phone-hp" aria-label="Hit points">
               <span className="phone-label">Hit points</span>
               <div className="phone-hp-row">
-                {canEdit && (
+                {canEditLife && (
                   <button type="button" className="phone-hp-step" aria-label="Lose 1 hit point" onClick={() => onUpdate(entity.id, { hp: Math.max(0, hp - 1) })}>
                     −
                   </button>
                 )}
                 <span className="phone-hp-value" aria-live="polite">
-                  {canEdit ? (
-                    <Editable label="Hit points" value={hp} display={hp} min={0} className="phone-hp-now" onCommit={(n) => onUpdate(entity.id, { hp: Math.max(0, n) })} />
+                  {canEditLife ? (
+                    <Editable label="Hit points" value={hp} display={hp} min={0} className="phone-hp-now" onCommit={(n) => onUpdate(entity.id, { hp: Math.max(0, !canEdit && max > 0 ? Math.min(max, n) : n) })} />
                   ) : (
                     <b className="phone-hp-now">{hp}</b>
                   )}
@@ -159,7 +161,7 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
                   </span>
                   {temp > 0 && <span className="phone-hp-temp">+{temp} temp</span>}
                 </span>
-                {canEdit && (
+                {canEditLife && (
                   <button type="button" className="phone-hp-step" aria-label="Gain 1 hit point" onClick={() => onUpdate(entity.id, { hp: Math.min(max || hp + 1, hp + 1) })}>
                     +
                   </button>
@@ -168,7 +170,8 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
               <span className="phone-token-bar phone-hp-bar">
                 <span style={{ width: `${pct * 100}%`, background: pct > 0.5 ? 'var(--moss)' : pct > 0.25 ? 'var(--gold-hi)' : 'var(--danger)' }} />
               </span>
-              {!canEdit && isHero && <span className="phone-caption phone-caption-flush">Your DM keeps track of hit points.</span>}
+              {!canEditLife && isHero && <span className="phone-caption phone-caption-flush">Your DM keeps track of hit points.</span>}
+              {canEditLife && !canEdit && <span className="phone-caption phone-caption-flush">Your DM sees each change you make and sets the maximum.</span>}
             </section>
 
             <div className="phone-plaques">

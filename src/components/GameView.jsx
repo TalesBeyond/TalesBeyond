@@ -10,7 +10,8 @@ import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import { islandConditionKeys } from '../data/islandConditions.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
-import { RollToasts, RollLog } from './RollFeed.jsx';
+import { RollToasts, RollLog, CharacterLog } from './RollFeed.jsx';
+import { diffHero, mergeActivity } from '../utils/heroActivity.js';
 import { ModeBar, EmptyState } from './Hints.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
@@ -31,6 +32,8 @@ import {
   clearCurrentPointer,
   sessionExists,
   markGuestClean,
+  markGuestActive,
+  clearGuestMeta,
   loadLocalAudioVolumes,
   saveLocalAudioVolumes,
   loadDrawPrefs,
@@ -137,6 +140,9 @@ const RESYNC_BACKOFF_MS = [2000, 4000, 8000, 16000, 30000];
 // independently off the same Presence signal, so there's no single place
 // that "ends all sessions" — they all just expire around the same time.
 const HOST_ABSENCE_GRACE_MS = 5000;
+// How long a guest DM waits after a kick before announcing the new player
+// code, so the kicked player's browser has left the channel by then.
+const KICK_CODE_REFRESH_DELAY_MS = 1500;
 const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
 
 // A host-only safety net alongside the manual Save button (Toolbar's
@@ -384,6 +390,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // marker Slice 4 adds), just enough to warn on Leave if they haven't.
   const [hasExportedGuestTable, setHasExportedGuestTable] = useState(false);
   const [pendingLeaveWarning, setPendingLeaveWarning] = useState(false);
+  const [pendingKickId, setPendingKickId] = useState(null); // the seat the DM is about to kick, awaiting confirm
   const [leftCollapsed, setLeftCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [rightCollapsed, setRightCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
@@ -462,6 +469,51 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const isSharedTable = isRemote || isGuest;
   const isGuestHost = isGuest && isHost;
 
+  // Kicked by the DM: this player's own seat disappeared from the roster
+  // without them leaving (doLeaveTable sets leavingRef first). Drop back to
+  // the landing screen at once, so nothing more of the table reaches this
+  // browser, and say why there.
+  const leavingRef = useRef(false);
+  const wasSeatedRef = useRef(false);
+  const amSeated = Boolean(state.players[me.id]);
+  useEffect(() => {
+    if (amSeated) {
+      wasSeatedRef.current = true;
+      return;
+    }
+    if (!wasSeatedRef.current || isHost || leavingRef.current) return;
+    leavingRef.current = true;
+    clearCurrentPointer();
+    onLeave('kicked');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amSeated, isHost]);
+
+  // A guest table's code changed (the DM refreshed it): move what this
+  // browser saved under the old code to the new one, for the DM and for
+  // every player alike. The guest channel effect below re-subscribes on
+  // the same change.
+  const guestCodeRef = useRef(state.session.code);
+  useEffect(() => {
+    if (!isGuest) return;
+    const prev = guestCodeRef.current;
+    const next = state.session.code;
+    if (prev === next) return;
+    guestCodeRef.current = next;
+    saveSession(next, state);
+    deleteSession(prev);
+    if (isGuestHost) {
+      markGuestActive(next);
+      clearGuestMeta(prev);
+    }
+    onCodeRotated?.(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuest, state.session.code]);
+
+  const pendingKick = pendingKickId ? state.players[pendingKickId] : null;
+  const pendingKickHero = pendingKick
+    ? Object.values(state.entities).find((e) => e.kind === 'hero' && e.ownerId === pendingKick.id)
+    : null;
+
   // Host-absence auto-end (see HOST_ABSENCE_* above) — { endAt } once the
   // countdown is actually running (for the banner), else null. The timers
   // themselves are closure-scoped refs, not state, for the same reason
@@ -531,7 +583,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // anywhere, so players hear nothing); guest players and local demo tables
   // have no audio, and there the Music button is disabled.
   const audioEnabled = isRemote || isGuestHost;
-  const audioScope = isRemote ? state.session.tableId : state.session.code;
+  const audioScope = isRemote ? state.session.tableId : state.session.audioScope || state.session.code;
   const [showMusicModal, setShowMusicModal] = useState(false);
   // This browser's volume for the encounter theme (set in the Music modal).
   const [encounterMusicVolume, setEncounterMusicVolume] = useState(() => getSfxVolume(ENCOUNTER_MUSIC.id));
@@ -820,6 +872,36 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     saveRevealRolls(next);
   }
   const [rollLog, setRollLog] = useState([]);
+  // The character log (utils/heroActivity.js): what each player changed on
+  // their own hero. Only the DM's browser keeps one. Every change to shared
+  // state reaches the DM anyway, so the log is read off those changes
+  // rather than announced by the player: a hero that differs from how it
+  // looked a moment ago, and not because the DM just edited it
+  // (ownEditRef, set in updateEntity), was changed by its owner.
+  const [activityLog, setActivityLog] = useState([]);
+  const heroesBeforeRef = useRef(null);
+  const ownEditRef = useRef(false);
+  useEffect(() => {
+    if (!isHost) return;
+    const heroes = {};
+    for (const e of Object.values(state.entities)) if (e.kind === 'hero') heroes[e.id] = e;
+    const before = heroesBeforeRef.current;
+    heroesBeforeRef.current = heroes;
+    const own = ownEditRef.current;
+    ownEditRef.current = false;
+    if (!before || own) return;
+    const found = [];
+    for (const hero of Object.values(heroes)) {
+      const was = before[hero.id];
+      if (!was || was === hero || !hero.ownerId || hero.ownerId === me.id || was.ownerId !== hero.ownerId) continue;
+      const player = state.players[hero.ownerId];
+      if (!player) continue;
+      const changes = diffHero(was, hero);
+      if (changes.length) found.push([{ playerId: player.id, name: player.name, color: player.color, heroId: hero.id, heroName: hero.name }, changes]);
+    }
+    if (found.length) setActivityLog((log) => found.reduce((acc, [who, changes]) => mergeActivity(acc, who, changes), log));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.entities, isHost]);
   const [rollToasts, setRollToasts] = useState([]);
   const tableChannelRef = useRef(null); // cloud: { sendRoll }
   function addRoll(entry) {
@@ -958,6 +1040,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // in this handler, so their `isHost` shortcuts can't be reused here
     // without also trusting whatever the player claims).
     function applyValidatedIntent(action, senderId) {
+      // Someone who was kicked (or never seated) has no say.
+      if (!stateRef.current.players[senderId]) return;
       if (action.type === 'MOVE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
         if (!entity || entity.kind !== 'hero' || entity.ownerId !== senderId) return;
@@ -1012,6 +1096,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // snapshot. Unlike handlePlayerJoin, nothing new is allocated — the
     // requester already has a playerId from before the drop.
     function handleStateRequest(requesterId) {
+      if (!stateRef.current.players[requesterId]) return; // kicked or never seated
       guestChannelRef.current?.sendStateSnapshot(requesterId, toGuestSnapshot(stateRef.current));
     }
 
@@ -1105,6 +1190,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // `equipment`/`currency`. Every other key (level, abilities, saves, ...)
   // stays DM-only.
   const HERO_OWNER_SHEET_KEYS = ['attacks', 'spellcasting', 'equipment', 'currency'];
+  // A hero's own owner may also set its hit points and temporary hit
+  // points: whole numbers, never below 0, and hit points never above the
+  // hero's maximum. Maximum HP and armor class stay the DM's. The DM sees
+  // each change in the character log. Mirrored server-side by
+  // 57_player_hero_hp.sql.
+  const HERO_OWNER_LIFE_KEYS = ['hp', 'tempHp'];
+
+  function isHeroOwnerLifePatch(entity, patch) {
+    const keys = Object.keys(patch);
+    if (!keys.length || !keys.every((key) => HERO_OWNER_LIFE_KEYS.includes(key))) return false;
+    if ('hp' in patch) {
+      if (!Number.isInteger(patch.hp) || patch.hp < 0) return false;
+      if (entity.maxHp > 0 && patch.hp > entity.maxHp) return false;
+    }
+    if ('tempHp' in patch && (!Number.isInteger(patch.tempHp) || patch.tempHp < 0)) return false;
+    return true;
+  }
 
   function canMoveEntity(entity) {
     if (!entity) return false;
@@ -1179,7 +1281,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key)) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
-      return isHeroOwnerSheetPatch(entity, patch);
+      return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
     }
     if (entity.kind === 'mob') {
       return canDamageMob(entity, patch);
@@ -1336,6 +1438,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       guestChannelRef.current?.sendIntent({ type: 'UPDATE_ENTITY', id, patch }, me.id);
       return;
     }
+    if (isHost) ownEditRef.current = true;
     dispatch({ type: 'UPDATE_ENTITY', id, patch });
     // Every text field on a hero's sheet funnels through here on each
     // keystroke today — fine at current usage, but if that ever gets slow
@@ -2217,6 +2320,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     setPendingDoor(null);
   }
 
+  // Always the latest regenerateCode, for the delayed call after a kick.
+  const regenerateCodeRef = useRef(null);
+  regenerateCodeRef.current = regenerateCode;
+
   async function regenerateCode() {
     if (isRemote) {
       try {
@@ -2230,12 +2337,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
     if (isGuestHost) {
       // The invite code doubles as the guest broadcast channel's name
-      // (guestRealtime.js) — rotating it moves the DM to a brand-new
-      // channel that already-connected players have no way to learn about,
-      // silently stranding them. Unlike cloud mode (whose channel is keyed
-      // by the permanent tableId, not the invite code), there's no
-      // regeneration path here that doesn't do that.
-      alert("Regenerating the invite code isn't supported for a guest table — it would disconnect anyone already playing. Share the current code instead.");
+      // (guestRealtime.js), so a new code means a new channel. Everyone
+      // seated hears the new code on the old channel first; each client,
+      // this one included, then moves when its session.code changes (the
+      // guest channel effect re-subscribes, and the effect on
+      // guestCodeRef re-keys what this browser saved). A player who is
+      // offline at that moment misses it and needs the new code from the DM.
+      let nextGuestCode = generateInviteCode();
+      while (sessionExists(nextGuestCode)) nextGuestCode = generateInviteCode();
+      const action = { type: 'REGENERATE_INVITE_CODE', code: nextGuestCode };
+      broadcastGuestChange(action);
+      dispatch(action);
       return;
     }
     const oldCode = state.session.code;
@@ -2335,6 +2447,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       }
       const parsed = migrateLegacyState(raw);
       saveSession(parsed.session.code, parsed);
+      ownEditRef.current = true; // an imported table is not something a player did
       dispatch({ type: 'HYDRATE', state: parsed });
       const importedName = parsed.layers[parsed.layerOrder[0]]?.name;
       alert(`Imported "${importedName}". This table now reflects the imported file.`);
@@ -2357,6 +2470,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
 
   function doLeaveTable() {
+    leavingRef.current = true;
     // REQ-008: a guest player has no roster row of their own to just drop
     // locally — tell the DM they're leaving via intent so the DM's roster
     // (the shared source of truth) actually loses them too.
@@ -2419,6 +2533,36 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         doLeaveTable();
       })
       .catch(() => alert('Could not export this table — try again.'));
+  }
+
+  // DM only: removes someone else's seat, freeing its slot. The kicked
+  // player's own client notices its seat is gone and leaves (see the
+  // effect on state.players above). The player code is refreshed right
+  // after, so the code they joined with no longer opens the table;
+  // everyone still seated carries on.
+  function kickPlayer(id) {
+    if (!isHost || id === me.id || !state.players[id]) return;
+    if (!isRemote) {
+      // Cloud mode un-assigns their heroes in the database (entities.owner_id
+      // is `on delete set null`); do the same by hand everywhere else.
+      Object.values(state.entities)
+        .filter((e) => e.kind === 'hero' && e.ownerId === id)
+        .forEach((e) => updateEntity(e.id, { ownerId: null }));
+    }
+    dispatch({ type: 'REMOVE_PLAYER', id });
+    if (isRemote) removePlayerRemote(id).catch(reportError);
+    else broadcastGuestChange({ type: 'REMOVE_PLAYER', id });
+    // A guest table announces its new code on the channel the kicked
+    // player is still leaving, so give their browser a moment to go first.
+    // Cloud mode needs no wait: the new code is only readable by members.
+    if (isGuestHost) setTimeout(() => regenerateCodeRef.current(), KICK_CODE_REFRESH_DELAY_MS);
+    else regenerateCode();
+  }
+
+  function confirmKick() {
+    const id = pendingKickId;
+    setPendingKickId(null);
+    if (id) kickPlayer(id);
   }
 
   // Island positions are stored in world-space and scaled by zoom when
@@ -2763,6 +2907,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const toolbarEl = (
       <Toolbar
         rollLog={rollLog}
+        activityLog={isHost ? activityLog : null}
         players={state.players}
         hostId={state.session.hostPlayerId}
         allEntities={state.entities}
@@ -2797,6 +2942,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onExport={exportTable}
         onImport={importTable}
         onLeave={leaveTable}
+        onKickPlayer={isHost ? setPendingKickId : null}
         lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
@@ -3008,6 +3154,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 <PhoneTokenCard
                   entity={selectedEntity}
                   isHost={isHost}
+                  canEditLife={isHost || (selectedEntity?.kind === 'hero' && selectedEntity.ownerId === me.id)}
                   onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'inspect')}
                   onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
                   onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
@@ -3190,6 +3337,27 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         )}
 
         {tool === 'group' && !isPhone && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+
+        {pendingKick && (
+          <div className="door-confirm-backdrop" onClick={() => setPendingKickId(null)}>
+            <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
+              <h4><ModalIcon name="exit" />Kick {pendingKick.name}?</h4>
+              <p>
+                {pendingKick.name} leaves the table right away and their seat is freed.
+                {pendingKickHero ? ` ${pendingKickHero.name} stays on the map with no one playing it.` : ''}{' '}
+                The player code changes too, so the one they joined with stops working. Everyone else stays seated.
+              </p>
+              <div className="door-confirm-actions">
+                <button className="btn btn-secondary" onClick={() => setPendingKickId(null)}>
+                  Cancel
+                </button>
+                <button className="btn btn-danger" onClick={confirmKick}>
+                  Kick
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {pendingLeaveWarning && (
           <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
@@ -3395,6 +3563,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               }}
               onShowRolls={() => setPhoneSheet('rolls')}
               rollCount={rollLog.length}
+              onKick={isHost ? setPendingKickId : null}
               onClose={() => setPhoneSheet(null)}
             />
           )}
@@ -3438,6 +3607,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onShowLog={() => setPhoneSheet('log')}
               onShowRolls={() => setPhoneSheet('rolls')}
               rollCount={rollLog.length}
+              onShowActivity={() => setPhoneSheet('activity')}
+              activityCount={activityLog.length}
               clock={state.clock}
               phaseOverride={state.dayNightOverride}
               onSetClockRunning={setClockRunning}
@@ -3463,6 +3634,14 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                     : 'Everyone’s rolls this session, and the DM’s when they show them.'}
                 </p>
                 <RollLog entries={rollLog} />
+              </div>
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'activity' && isHost && (
+            <PhoneSheet title="Character log" onClose={() => setPhoneSheet(null)} className="phone-sheet-rolls">
+              <div className="phone-sheet-pad">
+                <p className="phone-caption phone-caption-flush">What each player changed on their own hero this session. Only you see this.</p>
+                <CharacterLog entries={activityLog} />
               </div>
             </PhoneSheet>
           )}

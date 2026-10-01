@@ -13,7 +13,7 @@ import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
-import { RollLog } from './RollFeed.jsx';
+import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import { useFx } from '../lib/fx.js';
 
@@ -123,6 +123,7 @@ const ICON_PATHS = {
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
   rolllog: 'M4 3h9l3 3v11H4zM7 8h6M7 11h6M7 14h4',
+  charlog: 'M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 17v-1a6 6 0 0 1 8.5-5.5M12.5 17l.5-2.5 3.5-3.5 2 2-3.5 3.5z',
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
@@ -158,7 +159,7 @@ const MAX_SEATS = 10;
 
 // Who's at the table, for the Players button: colour and online dot, name,
 // and the DM or the hero they play (and "away" when they've dropped).
-function PlayerList({ players, hostId, entities, meId }) {
+function PlayerList({ players, hostId, entities, meId, onKick }) {
   const list = Object.values(players || {});
   if (!list.length) return <div className="empty-state">No one here yet.</div>;
   return (
@@ -174,6 +175,11 @@ function PlayerList({ players, hostId, entities, meId }) {
               {p.id === meId ? ' (you)' : ''}
             </span>
             <span className="player-tag">{[role, p.connected ? '' : 'away'].filter(Boolean).join(', ')}</span>
+            {onKick && p.id !== hostId && (
+              <button type="button" className="btn btn-danger btn-sm" title={`Remove ${p.name} from the table`} onClick={() => onKick(p.id)}>
+                Kick
+              </button>
+            )}
           </li>
         );
       })}
@@ -184,10 +190,12 @@ function PlayerList({ players, hostId, entities, meId }) {
 export default function Toolbar({
   // This session's dice rolls at the table, newest first (RollFeed.jsx).
   rollLog = [],
+  activityLog = null, // the DM's character log; null for players
   players = {},
   hostId = null,
   allEntities = {},
   meId = null,
+  onKickPlayer = null,
   // The roll log and saved dice sets, kept in GameView so they survive
   // closing the popover and the phone dice screen shares them.
   dice,
@@ -276,6 +284,16 @@ export default function Toolbar({
   useEffect(() => {
     if (rollLogOpen && rollLog[0]) setSeenRollId(rollLog[0].id);
   }, [rollLogOpen, rollLog]);
+  // The same "new since you last looked" count for the character log.
+  const activity = activityLog || [];
+  const [seenActivityId, setSeenActivityId] = useState(() => activity[0]?.id ?? null);
+  const activityOpen = openMenu === 'activity';
+  useEffect(() => {
+    if (activityOpen && activity[0]) setSeenActivityId(activity[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityOpen, activity[0]?.id]);
+  const activitySeenAt = activity.findIndex((e) => e.id === seenActivityId);
+  const unseenActivity = activitySeenAt < 0 ? activity.length : activitySeenAt;
   const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
   const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
   const hintPrefs = useHintPrefs();
@@ -470,14 +488,12 @@ export default function Toolbar({
           }
         />
       )}
-      {/* Regenerating isn't supported for a guest table (GameView.jsx's
-          regenerateCode just alerts and bails — the invite code doubles
-          as the peer broadcast channel's name, so rotating it would
-          strand anyone already connected) — hide the button rather than
-          offer a dead end. */}
-      {!isGuestHost && (
-        <ToolCard icon={<Icon name="refresh" />} label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
-      )}
+      <ToolCard
+        icon={<Icon name="refresh" />}
+        label="New code"
+        onClick={onRegenerateCode}
+        title="Stop the old player code working and issue a new one. Players already at the table stay seated."
+      />
     </>
   );
 
@@ -765,6 +781,26 @@ export default function Toolbar({
         <RollLog entries={rollLog} />
       </ToolMenu>
 
+      {/* What each player changed on their own hero (hit points, bag,
+          coins, weapons, spells). The DM's alone. */}
+      {activityLog && (
+        <ToolMenu
+          icon={<Icon name="charlog" />}
+          label="Character log"
+          title="What each player changed on their own hero this session"
+          open={activityOpen}
+          onToggle={() => toggleMenu('activity')}
+          onClose={closeMenu}
+          menuClassName="players-menu roll-log-menu"
+          badge={activityOpen ? 0 : unseenActivity}
+        >
+          <div className="players-menu-head">
+            Character log <span>{activity.length ? `${activity.length} this session` : 'only you see this'}</span>
+          </div>
+          <CharacterLog entries={activity} />
+        </ToolMenu>
+      )}
+
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
           are always rendered — CSS shows one. */}
@@ -868,7 +904,20 @@ export default function Toolbar({
         <div className="players-menu-head">
           Players <span>{Object.keys(players).length} of {MAX_SEATS} seats</span>
         </div>
-        <PlayerList players={players} hostId={hostId} entities={allEntities} meId={meId} />
+        <PlayerList
+          players={players}
+          hostId={hostId}
+          entities={allEntities}
+          meId={meId}
+          onKick={
+            onKickPlayer
+              ? (id) => {
+                  closeMenu();
+                  onKickPlayer(id);
+                }
+              : null
+          }
+        />
       </ToolMenu>
 
       {/* The very last group: save/export/import/close/leave — the

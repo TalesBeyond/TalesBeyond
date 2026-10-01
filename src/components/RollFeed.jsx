@@ -1,4 +1,5 @@
 import React from 'react';
+import { activityText } from '../utils/heroActivity.js';
 
 // Dice rolls at the table: players' rolls are open to everyone; the DM's own
 // stay on the DM's screen unless "Reveal rolls to players" is on. Each roll
@@ -88,6 +89,30 @@ export function RollLog({ entries, emptyText = 'No rolls yet this session.' }) {
             {!r.mine && r.isDm && <RollChip>Shown by the DM</RollChip>}
           </span>
           <span className="roll-total">{r.total}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// The character log (utils/heroActivity.js): what each player changed on
+// their own hero this session. The DM's alone.
+export function CharacterLog({ entries, emptyText = 'No changes yet this session.' }) {
+  if (!entries.length) return <p className="roll-log-empty">{emptyText}</p>;
+  return (
+    <ul className="roll-log">
+      {entries.map((e) => (
+        <li key={e.id}>
+          <span className="roll-dot" style={{ background: e.color || 'var(--ember)' }} aria-hidden="true" />
+          <span className="roll-log-text">
+            <span>
+              <b>{e.name}</b> · {e.heroName}
+            </span>
+            <span className="roll-log-detail">{activityText(e)}</span>
+          </span>
+          <time className="roll-log-time" dateTime={new Date(e.at).toISOString()}>
+            {new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </time>
         </li>
       ))}
     </ul>

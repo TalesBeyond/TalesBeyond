@@ -35,7 +35,7 @@ const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#
 // only offers a guest table (start new or resume) until this flips back on.
 const SHOW_HOST_LOGIN = false;
 
-export default function Landing({ onEnter }) {
+export default function Landing({ onEnter, notice = null }) {
   const [mode, setMode] = useState('host');
 
   const cardCopy =
@@ -49,6 +49,11 @@ export default function Landing({ onEnter }) {
         <LandingHero />
 
         <div className="lobby-card">
+          {notice && (
+            <div className="error-note" role="status">
+              {notice}
+            </div>
+          )}
           {mode === 'hostkey' ? (
             <>
               <RejoinHostForm onEnter={onEnter} />

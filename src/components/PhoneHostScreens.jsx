@@ -20,6 +20,8 @@ export function PhoneRunTable({
   onShowLog,
   onShowRolls,
   rollCount = 0,
+  onShowActivity,
+  activityCount = 0,
   clock,
   phaseOverride,
   onSetClockRunning,
@@ -73,6 +75,11 @@ export function PhoneRunTable({
           {onShowRolls && (
             <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onShowRolls)}>
               Roll log{rollCount ? ` · ${rollCount}` : ''}
+            </button>
+          )}
+          {onShowActivity && (
+            <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onShowActivity)}>
+              Character log{activityCount ? ` · ${activityCount}` : ''}
             </button>
           )}
         </section>
@@ -232,13 +239,12 @@ export function PhoneHostMenu({
               </button>
             </div>
           )}
-          {isGuestHost ? (
+          {isGuestHost && (
             <p className="phone-caption phone-caption-flush">Keep your DM code with an exported .bmp to resume this table later.</p>
-          ) : (
-            <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onRegenerateCode}>
-              New player code
-            </button>
           )}
+          <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onRegenerateCode}>
+            New player code
+          </button>
         </section>
 
         {onRevealRollsChange && (

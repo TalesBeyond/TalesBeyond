@@ -14,6 +14,7 @@ import { loadCatalog } from './lib/catalog.js';
 export default function App() {
   const [entry, setEntry] = useState(null); // { state, me, mode }
   const [checkedResume, setCheckedResume] = useState(false);
+  const [notice, setNotice] = useState(null); // shown on Landing after being kicked
   const [theme, setTheme] = useTheme();
 
   // The Default catalog loads once per page load, in the background.
@@ -72,10 +73,12 @@ export default function App() {
       tableId: state.session.tableId,
       playerId: me.id,
     });
+    setNotice(null);
     setEntry({ state, me, mode });
   }
 
-  function handleLeave() {
+  function handleLeave(reason) {
+    setNotice(reason === 'kicked' ? 'The Dungeon Master removed you from the table.' : null);
     setEntry(null);
   }
 
@@ -112,7 +115,7 @@ export default function App() {
       </header>
 
       {!entry ? (
-        <Landing onEnter={handleEnter} />
+        <Landing onEnter={handleEnter} notice={notice} />
       ) : (
         <GameProvider initialState={entry.state} persistLocally={entry.mode === 'local' || entry.mode === 'guest'}>
           <GameView

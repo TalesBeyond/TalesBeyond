@@ -101,8 +101,9 @@ export function Editable({ value, display, onCommit, type = 'number', label, dis
 }
 
 // The heart gem: click to edit current, maximum and temporary hit points
-// together.
-function HpGem({ hp, max, temp, disabled, onCommit }) {
+// together. lockMax: a hero's owner sets current and temporary hit points
+// only; the maximum is the DM's, and caps what they can enter.
+function HpGem({ hp, max, temp, disabled, lockMax = false, onCommit }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ hp: '', max: '', temp: '' });
   const boxRef = useRef(null);
@@ -122,8 +123,9 @@ function HpGem({ hp, max, temp, disabled, onCommit }) {
     const nextHp = parseInt(draft.hp, 10);
     const nextTemp = draft.temp.trim() === '' ? 0 : parseInt(draft.temp, 10);
     const patch = {};
-    if (!Number.isNaN(nextMax) && nextMax !== max) patch.maxHp = Math.max(0, nextMax);
-    if (!Number.isNaN(nextHp) && nextHp !== hp) patch.hp = Math.max(0, nextHp);
+    if (!lockMax && !Number.isNaN(nextMax) && nextMax !== max) patch.maxHp = Math.max(0, nextMax);
+    const cappedHp = lockMax && max > 0 ? Math.min(max, nextHp) : nextHp;
+    if (!Number.isNaN(nextHp) && cappedHp !== hp) patch.hp = Math.max(0, cappedHp);
     if (!Number.isNaN(nextTemp) && nextTemp !== temp) patch.tempHp = Math.max(0, nextTemp);
     if (Object.keys(patch).length) onCommit(patch);
   }
@@ -175,6 +177,8 @@ function HpGem({ hp, max, temp, disabled, onCommit }) {
             type="number"
             aria-label="Maximum hit points"
             value={draft.max}
+            disabled={lockMax}
+            title={lockMax ? 'Your DM sets maximum hit points' : undefined}
             onFocus={(e) => e.target.select()}
             onChange={(e) => setDraft((d) => ({ ...d, max: e.target.value }))}
             onKeyDown={onKeyDown}
@@ -246,7 +250,8 @@ export function RemoveTokenButton({ name, onRemove, className = '' }) {
 
 // canEdit: this viewer may edit the card's own fields (the DM). The tab
 // contents handle their own permissions (a hero's owner edits Battle,
-// Spells and Bag). showStats: false hides a monster's initiative, speed and
+// Spells and Bag). canEditLife: this viewer may change hit points and
+// temporary hit points (the DM, and a hero's own owner up to its maximum). showStats: false hides a monster's initiative, speed and
 // ability scores from players, who never receive a monster's sheet.
 export default function CreatureCard({
   entity,
@@ -254,6 +259,7 @@ export default function CreatureCard({
   updateSheet,
   onUpdate,
   canEdit,
+  canEditLife = canEdit,
   showStats = true,
   showDeathSaves = false,
   typeLine,
@@ -296,7 +302,9 @@ export default function CreatureCard({
     else updateSheet({ armorClass: n });
   }
   function stepHp(delta) {
-    onUpdate(entity.id, { hp: Math.max(0, (entity.hp || 0) + delta) });
+    const next = Math.max(0, (entity.hp || 0) + delta);
+    // Only the DM may push a hero past its maximum.
+    onUpdate(entity.id, { hp: !canEdit && max > 0 ? Math.min(max, next) : next });
   }
   function toggleCondition(key) {
     if (!canEdit) return;
@@ -417,7 +425,7 @@ export default function CreatureCard({
             )}
           </span>
           <span className="card-gem-slot right">
-            <HpGem hp={hp} max={max} temp={temp} disabled={!canEdit} onCommit={(patch) => onUpdate(entity.id, patch)} />
+            <HpGem hp={hp} max={max} temp={temp} disabled={!canEditLife} lockMax={!canEdit} onCommit={(patch) => onUpdate(entity.id, patch)} />
           </span>
         </div>
 
@@ -428,7 +436,7 @@ export default function CreatureCard({
         {notice && <div className="card-notice">{notice}</div>}
 
         <div className="card-life">
-          {canEdit && (
+          {canEditLife && (
             <button type="button" className="card-step" aria-label="Lose 1 hit point" onClick={() => stepHp(-1)}>
               −
             </button>
@@ -455,7 +463,7 @@ export default function CreatureCard({
             </div>
           </div>
           {temp > 0 && <span className="card-temp-chip" title="Temporary hit points — spent before real ones">+{temp}</span>}
-          {canEdit && (
+          {canEditLife && (
             <button type="button" className="card-step" aria-label="Gain 1 hit point" onClick={() => stepHp(1)}>
               +
             </button>
