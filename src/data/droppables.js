@@ -47,10 +47,6 @@ export const DEFAULT_MOB_DROPPABLES = {
     { name: 'Gold Hoard', cost: 250, dropChance: 70 },
     { name: 'Uncut Gemstone', cost: 100, dropChance: 40 },
   ],
-  beholder: [
-    { name: 'Preserved Eyestalk', cost: 150, dropChance: 30 },
-    { name: 'Spellbook', cost: 50, dropChance: 20 },
-  ],
 };
 
 export function defaultDroppablesFor(mobKey) {

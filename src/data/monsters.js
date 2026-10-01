@@ -1,7 +1,7 @@
 import { makeIconDataUrl } from './defaultTokens.js';
 import { defaultCharacterSheet } from './characterSheet.js';
 
-// The Monsters chapter of the compendium: twenty of the creatures a table
+// The Monsters chapter of the compendium: nineteen of the creatures a table
 // meets most often, lowest challenge rating first. Stat numbers follow the
 // published 5e SRD stat blocks; the descriptions are our own wording.
 // `size` is the token's width in squares (Large creatures are 2x2), `attack`
@@ -43,7 +43,6 @@ export const MONSTERS = [
   M('owlbear', 'Owlbear', 'Large monstrosity', '3', 59, 13, 40, [20, 12, 17, 3, 12, 7], 2, 'claw', '#6b5a3e', 'Multiattack: Beak +7, 1d10+5 piercing and Claws +7, 2d8+5 slashing. Keen Sight and Smell.', 'A bear with an owl\'s beak and a foul temper, fiercely territorial and more than willing to charge anything that wanders into its woods.'),
   M('troll', 'Troll', 'Large giant', '5', 84, 15, 30, [18, 13, 20, 7, 9, 7], 2, 'fist', '#4a5d33', 'Multiattack: Bite +7, 1d6+4 and two Claws +7, 2d6+4 slashing. Regeneration: regains 10 HP each turn unless it took fire or acid damage.', 'A tall, rubbery-skinned bruiser whose wounds close almost as fast as they open. Fire and acid are the only sure cure.'),
   M('young-green-dragon', 'Young Green Dragon', 'Large dragon', '8', 136, 18, 40, [19, 12, 17, 16, 13, 15], 2, 'wing', '#3f6a3a', 'Multiattack: Bite +7, 2d10+4 piercing plus 2d6 poison, and two Claws +7, 2d6+4. Poison Breath (Recharge 5-6): 40 ft cone, DC 14 Constitution, 12d6 poison.', 'A scheming forest dragon that lures adventurers deep into the woods with lies and flattery before it attacks.'),
-  M('beholder', 'Beholder', 'Large aberration', '13', 180, 18, 20, [10, 14, 18, 17, 15, 17], 2, 'eye', '#5c3a6b', 'Bite +5, 4d6 piercing. Eye Rays: three random rays each turn (charm, paralyze, fear, slow, disintegrate, death and more). Antimagic Cone.', 'A floating sphere of teeth and eyestalks that hates every rival, its gaze deadly and its paranoia complete.'),
 ].map((m) => ({ ...m, imageUrl: makeIconDataUrl(m.icon, m.color) }));
 
 // The draft addEntity (GameView.jsx) turns into a placed monster token: hit

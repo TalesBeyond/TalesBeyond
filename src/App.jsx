@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import Landing from './components/Landing.jsx';
 import GameView from './components/GameView.jsx';
 import PalettesMenu from './components/PalettesMenu.jsx';
+import LegalPage from './components/LegalPage.jsx';
+import { legalDocFromHash } from './data/legal.js';
 import { GameProvider } from './state/store.jsx';
 import { loadSession, loadCurrentPointer, saveCurrentPointer, clearCurrentPointer } from './state/persistence.js';
 import { migrateLegacyState } from './state/migrate.js';
@@ -14,7 +16,20 @@ import { loadCatalog } from './lib/catalog.js';
 export default function App() {
   const [entry, setEntry] = useState(null); // { state, me, mode }
   const [checkedResume, setCheckedResume] = useState(false);
+  const [notice, setNotice] = useState(null); // shown on Landing after being kicked
   const [theme, setTheme] = useTheme();
+
+  // The legal pages live at #/legal/<doc>, linked from the landing screen.
+  const [legalDoc, setLegalDoc] = useState(() => legalDocFromHash(window.location.hash));
+  useEffect(() => {
+    const onHashChange = () => setLegalDoc(legalDocFromHash(window.location.hash));
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  function closeLegal() {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setLegalDoc(null);
+  }
 
   // The Default catalog loads once per page load, in the background.
   useEffect(() => {
@@ -72,10 +87,12 @@ export default function App() {
       tableId: state.session.tableId,
       playerId: me.id,
     });
+    setNotice(null);
     setEntry({ state, me, mode });
   }
 
-  function handleLeave() {
+  function handleLeave(reason) {
+    setNotice(reason === 'kicked' ? 'The Dungeon Master removed you from the table.' : null);
     setEntry(null);
   }
 
@@ -111,8 +128,10 @@ export default function App() {
         </div>
       </header>
 
-      {!entry ? (
-        <Landing onEnter={handleEnter} />
+      {legalDoc && !entry ? (
+        <LegalPage doc={legalDoc} onClose={closeLegal} />
+      ) : !entry ? (
+        <Landing onEnter={handleEnter} notice={notice} />
       ) : (
         <GameProvider initialState={entry.state} persistLocally={entry.mode === 'local' || entry.mode === 'guest'}>
           <GameView

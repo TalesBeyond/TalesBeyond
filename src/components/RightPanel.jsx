@@ -70,7 +70,7 @@ export default function RightPanel({
   }
 
   return (
-    <div className="panel right">
+    <div className="panel right" data-tour="inspector">
       {/* Who's at the table and the roll log live on the toolbar. */}
       <div className="panel-header">
         <span>Inspector</span>
@@ -669,6 +669,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
       updateSheet={updateSheet}
       onUpdate={onUpdate}
       canEdit={isHost}
+      canEditLife={canEditOwnTabs}
       onRemove={isHost ? onRemove : null}
       showDeathSaves
       typeLine={`Hero · square (${entity.col}, ${entity.row})`}

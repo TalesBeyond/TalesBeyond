@@ -13,7 +13,7 @@ import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
-import { RollLog } from './RollFeed.jsx';
+import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import { useFx } from '../lib/fx.js';
 
@@ -29,9 +29,9 @@ function formatCountdown(totalSeconds) {
 // select, popover trigger, or one-shot command) is one of these instead of
 // a text button or a dropdown item, so the whole bar reads as a row of
 // little tiles rather than a list of menus.
-function ToolCard({ icon, image, label, active, onClick, disabled, title, badge }) {
+function ToolCard({ icon, image, label, active, onClick, disabled, title, badge, tour }) {
   return (
-    <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label}>
+    <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label} data-tour={tour}>
       <span className="tool-card-icon">{image ? <img className="tool-card-image" src={image} alt="" /> : icon}</span>
       {badge ? (
         <span className="tool-card-badge" aria-label={`${badge} new`}>
@@ -50,7 +50,8 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title, badge 
 // `align="end"` opens the menu leftward from the trigger's right edge — for
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge }) {
+// tour: the name the tutorial (Tour.jsx) finds this button by.
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge, tour }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -70,7 +71,7 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
   }, [open, onClose]);
 
   return (
-    <div className={`toolbar-group ${className}`} ref={ref}>
+    <div className={`toolbar-group ${className}`} ref={ref} data-tour={tour}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
       {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
       {popovers}
@@ -123,6 +124,7 @@ const ICON_PATHS = {
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
   rolllog: 'M4 3h9l3 3v11H4zM7 8h6M7 11h6M7 14h4',
+  charlog: 'M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 17v-1a6 6 0 0 1 8.5-5.5M12.5 17l.5-2.5 3.5-3.5 2 2-3.5 3.5z',
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
@@ -151,14 +153,14 @@ const TOOL_ICONS = {
   group: <Icon name="group" />,
   draw: <Icon name="draw" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands', draw: 'Draw' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Group Islands', draw: 'Draw' };
 
 // Seats at a table: the DM plus up to nine players.
 const MAX_SEATS = 10;
 
 // Who's at the table, for the Players button: colour and online dot, name,
 // and the DM or the hero they play (and "away" when they've dropped).
-function PlayerList({ players, hostId, entities, meId }) {
+function PlayerList({ players, hostId, entities, meId, onKick }) {
   const list = Object.values(players || {});
   if (!list.length) return <div className="empty-state">No one here yet.</div>;
   return (
@@ -174,6 +176,11 @@ function PlayerList({ players, hostId, entities, meId }) {
               {p.id === meId ? ' (you)' : ''}
             </span>
             <span className="player-tag">{[role, p.connected ? '' : 'away'].filter(Boolean).join(', ')}</span>
+            {onKick && p.id !== hostId && (
+              <button type="button" className="btn btn-danger btn-sm" title={`Remove ${p.name} from the table`} onClick={() => onKick(p.id)}>
+                Kick
+              </button>
+            )}
           </li>
         );
       })}
@@ -184,10 +191,13 @@ function PlayerList({ players, hostId, entities, meId }) {
 export default function Toolbar({
   // This session's dice rolls at the table, newest first (RollFeed.jsx).
   rollLog = [],
+  activityLog = null, // the DM's character log; null for players
   players = {},
   hostId = null,
   allEntities = {},
   meId = null,
+  onKickPlayer = null,
+  onStartTour = null, // the DM's tutorial replay (desktop only)
   // The roll log and saved dice sets, kept in GameView so they survive
   // closing the popover and the phone dice screen shares them.
   dice,
@@ -276,6 +286,16 @@ export default function Toolbar({
   useEffect(() => {
     if (rollLogOpen && rollLog[0]) setSeenRollId(rollLog[0].id);
   }, [rollLogOpen, rollLog]);
+  // The same "new since you last looked" count for the character log.
+  const activity = activityLog || [];
+  const [seenActivityId, setSeenActivityId] = useState(() => activity[0]?.id ?? null);
+  const activityOpen = openMenu === 'activity';
+  useEffect(() => {
+    if (activityOpen && activity[0]) setSeenActivityId(activity[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityOpen, activity[0]?.id]);
+  const activitySeenAt = activity.findIndex((e) => e.id === seenActivityId);
+  const unseenActivity = activitySeenAt < 0 ? activity.length : activitySeenAt;
   const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
   const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
   const hintPrefs = useHintPrefs();
@@ -470,14 +490,12 @@ export default function Toolbar({
           }
         />
       )}
-      {/* Regenerating isn't supported for a guest table (GameView.jsx's
-          regenerateCode just alerts and bails — the invite code doubles
-          as the peer broadcast channel's name, so rotating it would
-          strand anyone already connected) — hide the button rather than
-          offer a dead end. */}
-      {!isGuestHost && (
-        <ToolCard icon={<Icon name="refresh" />} label="New code" onClick={onRegenerateCode} title="Invalidate the old code and issue a new one" />
-      )}
+      <ToolCard
+        icon={<Icon name="refresh" />}
+        label="New code"
+        onClick={onRegenerateCode}
+        title="Stop the old player code working and issue a new one. Players already at the table stay seated."
+      />
     </>
   );
 
@@ -511,8 +529,8 @@ export default function Toolbar({
       <ToolMenu
         icon={TOOL_ICONS[tool] || <Icon name="tools" />}
         label="Tools"
+        tour="tools"
         title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
-        active={showAssetStorage}
         open={openMenu === 'tools'}
         onToggle={() => toggleMenu('tools')}
         onClose={closeMenu}
@@ -524,26 +542,16 @@ export default function Toolbar({
           onClick={() => pick(() => onToolChange('play'))}
           title="Select and drag tokens"
         />
-        <ToolCard
-          icon={TOOL_ICONS.pan}
-          label="Pan"
-          active={tool === 'pan'}
-          onClick={() => pick(() => onToolChange('pan'))}
-          title="Click and drag to pan around the map"
-        />
+        {/* Pan and "Hide drawings" are off the desktop bar for now: right-drag
+            already moves the map in every tool, and GameView ignores a saved
+            "hide drawings" on desktop so nobody is left with drawings hidden
+            and no switch to bring them back. Both remain on phones. */}
         <ToolCard
           icon={TOOL_ICONS.ruler}
           label="Ruler"
           active={tool === 'ruler'}
           onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
-        />
-        <ToolCard
-          icon={<Icon name="hidedraw" />}
-          label={hideDrawings ? 'Show drawings' : 'Hide drawings'}
-          active={hideDrawings}
-          onClick={() => pick(() => onToggleHideDrawings?.())}
-          title={hideDrawings ? 'Drawings are hidden in this browser — show them again' : 'Hide the DM\'s drawings in this browser only'}
         />
         {isHost && (
           <>
@@ -561,20 +569,6 @@ export default function Toolbar({
               onClick={() => pick(() => onToolChange('edit'))}
               title="Drag islands around to reposition them"
             />
-            <ToolCard
-              icon={TOOL_ICONS.group}
-              label="Merge Islands"
-              active={tool === 'group'}
-              onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
-              title="Select 2+ islands to bundle into a group that moves and titles as one"
-            />
-            <ToolCard
-              icon={<Icon name="storage" />}
-              label="Storage"
-              active={showAssetStorage}
-              onClick={() => togglePopover('assetStorage')}
-              title="Asset Storage — create custom monsters, weapons, and items for this table"
-            />
           </>
         )}
       </ToolMenu>
@@ -583,8 +577,9 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="mapping" />}
           label="Mapping"
+          tour="mapping"
           title="Islands and layers"
-          active={showIslands || showLayers}
+          active={showIslands || showLayers || tool === 'group'}
           open={openMenu === 'mapping'}
           onToggle={() => toggleMenu('mapping')}
           onClose={closeMenu}
@@ -632,6 +627,13 @@ export default function Toolbar({
         >
           <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
+          <ToolCard
+            icon={TOOL_ICONS.group}
+            label="Group Islands"
+            active={tool === 'group'}
+            onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
+            title="Select 2+ islands to bundle into a group that moves and titles as one"
+          />
         </ToolMenu>
       )}
 
@@ -639,6 +641,7 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="world" />}
           label="World state"
+          tour="world"
           title="In-game time, day / night and the map's ambience"
           active={showDayNight || showAmbience}
           open={openMenu === 'world'}
@@ -693,22 +696,43 @@ export default function Toolbar({
         </div>
       )}
 
+      {/* The book of weapons, items and monsters, and Storage, where the DM
+          makes this table's own. */}
       {isHost && (
-        <div className="toolbar-group">
+        <ToolMenu
+          icon={<Icon name="library" />}
+          label="Compendium"
+          tour="compendium"
+          title="The compendium, and your own monsters, weapons and items"
+          active={showCompendium || showItemCompendium || showMonsterCompendium || showAssetStorage}
+          open={openMenu === 'compendium'}
+          onToggle={() => toggleMenu('compendium')}
+          onClose={closeMenu}
+        >
           <ToolCard
             icon={<Icon name="library" />}
-            label="Compendium"
+            label="Book"
             active={showCompendium || showItemCompendium || showMonsterCompendium}
             onClick={() => {
               const open = showCompendium || showItemCompendium || showMonsterCompendium;
-              setOpenMenu(null);
+              togglePopover(null);
               setShowCompendium(!open);
               setShowItemCompendium(false);
               setShowMonsterCompendium(false);
             }}
             title="Open the compendium of weapons, items, and monsters"
           />
-        </div>
+          <ToolCard
+            icon={<Icon name="storage" />}
+            label="Storage"
+            active={showAssetStorage}
+            onClick={() => {
+              setShowMonsterCompendium(false);
+              togglePopover('assetStorage');
+            }}
+            title="Asset Storage — create custom monsters, weapons, and items for this table"
+          />
+        </ToolMenu>
       )}
 
       {/* Initiative and dice stay one click away — no menu to open first.
@@ -719,6 +743,7 @@ export default function Toolbar({
           <ToolCard
             icon={<Icon name="initiative" />}
             label="Initiative"
+            tour="initiative"
             active={showInitiative}
             onClick={() => togglePopover('initiative')}
             title="Roll for Initiative"
@@ -728,6 +753,7 @@ export default function Toolbar({
           <ToolCard
             icon={<Icon name="music" />}
             label="Music"
+            tour="music"
             active={Boolean(audio?.playback?.nowPlaying) || showMusicHint}
             onClick={audio?.enabled ? onOpenMusic : () => setShowMusicHint((s) => !s)}
             title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
@@ -738,7 +764,7 @@ export default function Toolbar({
             </div>
           )}
         </span>
-        <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
+        <ToolCard icon={<Icon name="dice" />} label="Dice" tour="dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceModal
             {...dice}
@@ -752,6 +778,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="rolllog" />}
         label="Roll log"
+        tour="rolls"
         title="Every roll at the table this session"
         open={rollLogOpen}
         onToggle={() => toggleMenu('rolls')}
@@ -765,11 +792,32 @@ export default function Toolbar({
         <RollLog entries={rollLog} />
       </ToolMenu>
 
+      {/* What each player changed on their own hero (hit points, bag,
+          coins, weapons, spells). The DM's alone. */}
+      {activityLog && (
+        <ToolMenu
+          icon={<Icon name="charlog" />}
+          label="Character log"
+          tour="charlog"
+          title="What each player changed on their own hero this session"
+          open={activityOpen}
+          onToggle={() => toggleMenu('activity')}
+          onClose={closeMenu}
+          menuClassName="players-menu roll-log-menu"
+          badge={activityOpen ? 0 : unseenActivity}
+        >
+          <div className="players-menu-head">
+            Character log <span>{activity.length ? `${activity.length} this session` : 'only you see this'}</span>
+          </div>
+          <CharacterLog entries={activity} />
+        </ToolMenu>
+      )}
+
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
           are always rendered — CSS shows one. */}
       {isHost && (
-        <div className="toolbar-group toolbar-codes-inline">
+        <div className="toolbar-group toolbar-codes-inline" data-tour="codes">
           {codeChips}
           {codesTip}
         </div>
@@ -779,6 +827,7 @@ export default function Toolbar({
           className="toolbar-codes-menu"
           icon={<Icon name="invite" />}
           label="Invite"
+          tour="codes"
           title="Player code and DM code — click a code to copy it"
           open={openMenu === 'codes'}
           onToggle={() => toggleMenu('codes')}
@@ -858,6 +907,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="players" />}
         label={`${Object.keys(players).length}/${MAX_SEATS} players`}
+        tour="players"
         title="Who's at the table"
         open={openMenu === 'players'}
         onToggle={() => toggleMenu('players')}
@@ -868,7 +918,20 @@ export default function Toolbar({
         <div className="players-menu-head">
           Players <span>{Object.keys(players).length} of {MAX_SEATS} seats</span>
         </div>
-        <PlayerList players={players} hostId={hostId} entities={allEntities} meId={meId} />
+        <PlayerList
+          players={players}
+          hostId={hostId}
+          entities={allEntities}
+          meId={meId}
+          onKick={
+            onKickPlayer
+              ? (id) => {
+                  closeMenu();
+                  onKickPlayer(id);
+                }
+              : null
+          }
+        />
       </ToolMenu>
 
       {/* The very last group: save/export/import/close/leave — the
@@ -877,6 +940,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="config" />}
         label="Configurations"
+        tour="config"
         title="Save, export, import, close, hints, and leave"
         open={openMenu === 'configurations'}
         onToggle={() => toggleMenu('configurations')}
@@ -918,6 +982,7 @@ export default function Toolbar({
             </span>
           </label>
         )}
+        {onStartTour && <ToolCard icon={<Icon name="hints" />} label="Tutorial" onClick={() => pick(onStartTour)} title="A short tour of what each part of the screen does" />}
         {hintPrefs.show && hintPrefs.anyDismissed && (
           <ToolCard icon={<Icon name="refresh" />} label="Tips again" onClick={() => pick(hintPrefs.resetDismissed)} title="Show every tip and mode bar you've hidden again" />
         )}

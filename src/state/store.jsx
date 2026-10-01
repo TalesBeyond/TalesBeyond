@@ -376,7 +376,12 @@ function baseReducer(state, action) {
     }
 
     case 'REGENERATE_INVITE_CODE':
-      return { ...state, session: { ...state.session, code: action.code } };
+      // Outside cloud mode the table's music is keyed by its code (GameView's
+      // audioScope), so remember the first code for that when it changes.
+      return {
+        ...state,
+        session: { ...state.session, code: action.code, audioScope: state.session.audioScope || state.session.code },
+      };
 
     case 'SET_SESSION_OPEN':
       return { ...state, session: { ...state.session, isOpen: action.isOpen } };

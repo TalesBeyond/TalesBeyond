@@ -231,7 +231,8 @@ export function PhoneIslandConditions({ conditions = [] }) {
 
 // ---------- the selected token, one tap from its card ----------
 
-export function PhoneTokenCard({ entity, isHost, onOpen, onHp, onTarget }) {
+// canEditLife: the +/- hit point buttons show (the DM, or a hero's own player).
+export function PhoneTokenCard({ entity, isHost, canEditLife = isHost, onOpen, onHp, onTarget }) {
   useImageCacheVersion(); // redraw when a shared picture arrives
   if (!entity) return null;
   const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
@@ -261,14 +262,14 @@ export function PhoneTokenCard({ entity, isHost, onOpen, onHp, onTarget }) {
             <span className="phone-token-hint">Tap for details</span>
           )}
         </span>
-        {!(isHost && hasHp) && !onTarget && <PhoneIcon name="chev" size={18} strokeWidth={2.4} />}
+        {!(canEditLife && hasHp) && !onTarget && <PhoneIcon name="chev" size={18} strokeWidth={2.4} />}
       </button>
       {onTarget && (
         <button type="button" className="phone-btn-primary phone-token-target" onClick={onTarget}>
           Target
         </button>
       )}
-      {isHost && hasHp && (
+      {canEditLife && hasHp && (
         <div className="phone-token-steppers" role="group" aria-label={`${entity.name} hit points`}>
           <button type="button" aria-label={`${entity.name} gains 1 hit point`} onClick={() => onHp(Math.min(entity.maxHp, entity.hp + 1))}>
             <PhoneIcon name="plus" size={16} strokeWidth={2.4} />
@@ -1048,7 +1049,7 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
 
 // ---------- party ----------
 
-export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onShowRolls, rollCount = 0, onClose }) {
+export function PhonePartySheet({ players, hostId, meId, entities, layers, currentLayerId, onShow, onShowRolls, rollCount = 0, onKick, onClose }) {
   const heroes = Object.values(entities || {}).filter((e) => e.kind === 'hero');
   const seated = Object.values(players || {}).filter((p) => p.id !== hostId);
   const dm = players?.[hostId];
@@ -1078,6 +1079,11 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
                 <span className="phone-party-where">On {layers?.[hero.layerId]?.name || 'another map'}</span>
               ) : (
                 <span className="phone-party-where">Not on the map</span>
+              )}
+              {onKick && (
+                <button type="button" className="phone-btn-ghost phone-btn-danger" onClick={() => onKick(p.id)} aria-label={`Kick ${p.name} from the table`}>
+                  Kick
+                </button>
               )}
             </li>
           );

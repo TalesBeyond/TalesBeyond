@@ -15,9 +15,9 @@ const TOKEN_IMAGE_MAX_DIM = 256; // tokens render small; no need to keep a multi
 // One captioned block of the sidebar (Default heroes / Default monsters /
 // Placeable / Add your own image). Always open — the palette is short enough
 // to read at a glance, so there is nothing to fold away.
-function SidebarSection({ title, children }) {
+function SidebarSection({ title, tour, children }) {
   return (
-    <section className="sidebar-block">
+    <section className="sidebar-block" data-tour={tour}>
       <div className="cap">{title}</div>
       {children}
     </section>
@@ -494,11 +494,11 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         </button>
       </div>
       <div className="panel-scroll sidebar-blocks">
-        <SidebarSection title="Default heroes">
+        <SidebarSection title="Default heroes" tour="side-heroes">
           {heroesBody}
         </SidebarSection>
 
-        <SidebarSection title="Placeable">
+        <SidebarSection title="Placeable" tour="side-placeable">
           <div className="side-btn-row">
             <button className={`side-btn${placeableKind === 'door' ? ' active' : ''}`} aria-pressed={placeableKind === 'door'} onClick={() => setPlaceableKind('door')}>
               Door
@@ -513,7 +513,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
           {placeableBody}
         </SidebarSection>
 
-        <SidebarSection title="Add your own image">
+        <SidebarSection title="Add your own image" tour="side-own">
           {ownImageBody}
         </SidebarSection>
       </div>

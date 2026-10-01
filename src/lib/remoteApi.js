@@ -455,6 +455,8 @@ export async function removeCustomAssetRemote(id) {
 // 14_entity_ordering_and_player_leave.sql) so the table's capacity count —
 // which counts every player row regardless of `connected` — actually goes
 // back down when someone leaves, matching local mode's full row removal.
+// The DM kicking a player deletes that player's seat through this same call
+// (the host policy added in 56_host_kick_player.sql).
 export async function removePlayerRemote(playerId) {
   must(await supabase.from('players').delete().eq('id', playerId), 'removePlayer');
 }
