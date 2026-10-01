@@ -4,7 +4,7 @@
 | ----- | ----- |
 | ID | REQ-006 |
 | Title | Live Table Security Hardening |
-| Status | InProgress |
+| Status | Done |
 | Phase | Security hardening |
 | Tier | Core |
 | Area | Auth / cloud mode / Supabase RPCs |
@@ -29,14 +29,14 @@ A security hardening pass over the live Supabase project: a written, severity-ra
 ## Constraints
 
 - Every table in the current schema already has row-level security enabled (`grep`-confirmed across `supabase/migrations/*.sql`: `tables`, `invite_codes`, `players`, `maps`, `entities`, `layers`, `islands`, `entity_dm_data`, `user_preferences`) — there is no missing-RLS gap to close. US2's audit is a re-verification, not expected to require a code fix.
-- No `service_role` key appears anywhere in the client bundle or repo (`grep`-confirmed) — `src/lib/supabaseClient.js:10-13` only ever uses `VITE_SUPABASE_PUBLISHABLE_KEY`, the anon-equivalent key that's safe to ship client-side.
+- No `service_role` key appears anywhere in the client bundle or repo (`grep`-confirmed) — `src/lib/supabaseClient.js:11,22` only ever uses `VITE_SUPABASE_PUBLISHABLE_KEY`, the anon-equivalent key that's safe to ship client-side.
 - `create_table` and `join_table` (`supabase/migrations/20250101000003_functions.sql:31-113`) are `SECURITY DEFINER` functions with **zero app-level throttling** today. Supabase's `[auth.rate_limit]` block (`supabase/config.toml:196-210`) only governs its own auth endpoints (sign-in, sign-up, anonymous sign-ins, token refresh, OTP) — it does not apply to arbitrary RPC calls like these two, so it provides no protection here at all.
 - Per `requirements/Done/REQ-003-Host-Account-Sign-In.md`'s own Constraints, `config.toml` values are **not guaranteed to auto-apply to the already-live hosted project** — several settings there had to be toggled by hand in the Supabase dashboard despite `config.toml` already having the intended value. The password-policy change in this plan carries the identical risk.
 - No client code assumes a 6-character invite code (`grep`-confirmed in `src/components/Landing.jsx` — no `maxLength`, no length-specific regex/validation). Lengthening the code needs no client-side validation change, only the two generator functions.
-- `HostTableForm`'s existing `catch (err) { setError(err.message ...) }` (`src/components/Landing.jsx:336-338`) already renders any `create_table` error through the existing `error-note` UI verbatim — the new table-cap rejection needs no new UI code.
-- `supabase/config.toml`'s `[auth]` block (lines 180-184) currently ships `minimum_password_length = 6` and an empty `password_requirements`; `[auth.captcha]` (lines 212-216) is present but fully commented out.
+- `HostTableForm`'s existing `catch (err) { setError(err.message ...) }` (`src/components/Landing.jsx:610-611`) already renders any `create_table` error through the existing `error-note` UI verbatim — the new table-cap rejection needs no new UI code.
+- `supabase/config.toml`'s `[auth]` block (lines 180-184) currently ships `minimum_password_length = 6` and an empty `password_requirements`; `[auth.captcha]` (lines 213-216) is present but fully commented out.
 - `invite_codes.code` (`supabase/migrations/20250101000001_schema.sql:21-27`) is a plain `text` primary key with no length constraint — existing 6-character codes keep working unchanged after the generator length changes.
-- **Since this plan (as of 2026-09-30), the schema has grown past the nine tables AC2 re-verified.** New since then: traps (`028`, which narrowed `entities`' SELECT policy; `SECURITY.md` finding #9), `custom_assets` (`036`), `audio_tracks` and the `table-audio` bucket (`038`–`041`), seven `catalog_*` tables and three catalog buckets (`042`–`047`), and `drawings` (`052`). Each ships with RLS, but `SECURITY.md` finding #5's "no gap found" entry still lists only the original tables and the `token-art`/`map-backgrounds` buckets.
+- **Since this plan (as of 2026-09-30), the schema has grown past the nine tables AC2 re-verified.** New since then: traps (`028`, which narrowed `entities`' SELECT policy; `SECURITY.md` finding #9), `custom_assets` (`036`), `audio_tracks` and the `table-audio` bucket (`038`–`041`), seven `catalog_*` tables and three catalog buckets (`042`–`047`), and `drawings` (`052`). Each ships with RLS; `SECURITY.md` finding #5 was re-verified through `055` on 2026-09-30 and now covers all 19 tables and six buckets, still no gap found.
 - **Storage uploads have narrowed since this audit.** `20250101000048_no_guest_uploads.sql` blocks every anonymous session from writing to Storage. `20250101000055_no_stored_images.sql` stops pictures being stored in Postgres at all: token and island images are built-in icon references or `img:<sha-256>` fingerprints whose bytes travel browser to browser (`src/lib/imageExchange.js`), enforced by check constraints. `token-art` and `map-backgrounds` no longer receive uploads from the app; `table-audio` (host accounts only) is the live upload path.
 - **The realtime publication is now in source control.** `20250101000050_realtime_publication.sql` adds every table the app listens to, guarded and idempotent, so it is no longer a dashboard-only setting.
 
@@ -64,7 +64,7 @@ A security hardening pass over the live Supabase project: a written, severity-ra
 - `supabase/migrations/20250101000003_functions.sql:31-67` — `create_table(...)`: add a capacity check (`select count(*) from tables where host_auth_id = auth.uid()`) before the `insert into tables`, raising a clear exception once at 20. Both changes ship as `CREATE OR REPLACE FUNCTION`, so they land as one new migration file, `supabase/migrations/20250101000026_security_hardening.sql`, mirrored into `supabase/00_combined_all_migrations.sql` (per the pattern already established for `20250101000025_user_preferences.sql`).
 - `src/utils/inviteCode.js:5` — `generateInviteCode(length = 6)` default becomes `8`. This function is only used by local demo mode and as a client-side fallback; cloud mode always gets its code from `generate_unique_code()` server-side.
 - `supabase/config.toml:180-184` — `minimum_password_length = 6` → `8`; `password_requirements = ""` → `"lower_upper_letters_digits"`.
-- `src/components/Landing.jsx:290-340` (`HostTableForm`) — no code change; its existing `catch`/`error-note` path already surfaces the new cap's exception message.
+- `src/components/Landing.jsx:563-620` (`HostTableForm`) — no code change; its existing `catch`/`error-note` path already surfaces the new cap's exception message.
 - No new Supabase tables, columns, or RLS policy changes anywhere in this plan.
 - No `T`-phase steps: the repo has zero test files or runner anywhere (confirmed by search, consistent with REQ-001/REQ-003) — verification is the manual **Smoke Test** below.
 
@@ -127,7 +127,7 @@ S001 → S005 → S006
 ## Open Questions
 
 - [ ] **Q1 — CAPTCHA provider.** Deferred until the host creates a Cloudflare Turnstile (or hCaptcha) account and supplies a site key + secret; `SECURITY.md` carries this as a standing recommendation until then.
-- [ ] **Q2 — Live-project config mirroring.** `config.toml`'s password-policy change (S002) is not guaranteed to auto-apply to the already-live hosted project (see Constraints). Deferred until the host confirms, via `SECURITY.md`'s checklist, that the equivalent setting was changed by hand in the Supabase dashboard's Authentication settings.
+- [x] **Q2 — Live-project config mirroring.** *(Resolved 2026-09-30: the host set the password policy by hand in the live dashboard and tested it.)* `config.toml`'s password-policy change (S002) is not guaranteed to auto-apply to the already-live hosted project (see Constraints). Deferred until the host confirms, via `SECURITY.md`'s checklist, that the equivalent setting was changed by hand in the Supabase dashboard's Authentication settings.
 
 ## Smoke Test
 
@@ -163,3 +163,5 @@ S001 → S005 → S006
 | 2026-09-13 | Claude | Slice 3 implemented (S004-S006): new migration `20250101000026_security_hardening.sql` lengthens invite codes to 8 characters and caps table creation at 20 per host; mirrored into `00_combined_all_migrations.sql`; `SECURITY.md` findings #1 and #3 marked fixed in code. AC4 and AC5 satisfied at the code level — the migration itself is not yet applied to the live project (new `SECURITY.md` checklist item), consistent with AC6's "nothing auto-applies to the live project" guarantee. |
 | 2026-09-30 | Claude | Status review against the code. Ticked AC1 and AC2: `SECURITY.md` exists with ranked findings and the dashboard checklist. AC3–AC5 are done in code but stay open until migration `026` and the password policy are confirmed live. `SECURITY.md`'s checklist still shows both unchecked, and Q2 is unresolved. Added Constraints for what changed since the audit: new tables and buckets not yet in finding #5's re-check, anonymous uploads blocked (`048`), no pictures stored in the database (`055`), and the realtime publication moved into a migration (`050`). Line references in Constraints and Technical Notes (e.g. `Landing.jsx`'s `HostTableForm`) are as of 2026-09-13 and have since moved. |
 | 2026-09-30 | Claude | AC3–AC6 ticked: done in code, only testing missing (per the host). Stays `InProgress` for one step that isn't testing: applying migration `026` and mirroring the password policy on the live project (Q2, `SECURITY.md` checklist). |
+| 2026-09-30 | Claude | Loose ends tied: `SECURITY.md` finding #5 re-verified through migration `055` (all 19 tables have RLS, all six buckets checked, no gap), so AC2 holds again. Line references in Constraints and Technical Notes updated to the current code (`supabaseClient.js`, `Landing.jsx`'s `HostTableForm`, `config.toml`'s captcha block); migration and `inviteCode.js` references were already current. |
+| 2026-09-30 | Claude | Done. The host applied migration `026` to the live project, mirrored the password policy (8+ characters, upper, lower and digit) in the dashboard, and tested both. Q2 resolved; `SECURITY.md` checklist items ticked. Moved to `requirements/Done/` with its PRD. Q1 (CAPTCHA) stays open as a deferred follow-up, out of scope here. |

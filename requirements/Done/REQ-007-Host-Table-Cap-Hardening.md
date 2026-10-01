@@ -4,7 +4,7 @@
 | ----- | ----- |
 | ID | REQ-007 |
 | Title | Host Table Cap Hardening |
-| Status | InProgress |
+| Status | Done |
 | Phase | Security hardening |
 | Tier | Core |
 | Area | Auth / cloud mode / Supabase RPCs |
@@ -134,3 +134,4 @@ S001 → S003 → S004 → S005 → S006
 | 2026-09-14 | Claude | Post-implementation `/code-review` of Slice 2 found and fixed three issues in the AC4 storage cleanup: `listAllTableFiles` now pages through every object instead of only the first 100; list failures are now logged (previously silent, unlike remove failures); `confirmDelete` retries `deleteTableRemote` up to 3 times to narrow the window where a transient failure could strip a table's images without actually deleting the table. |
 | 2026-09-30 | Claude | Status review against the code. Code-complete, all ACs still open: nothing records migration `027` as applied live or the delete flow as tested on the live app (`SECURITY.md`'s checklist item for `027` is still unchecked). Updated the Storage constraint: pictures no longer go to Storage at all (`048`, `055`), so AC4's cleanup now matters for REQ-009's `table-audio` bucket, which `deleteTableStorage` also covers. Refreshed `HostTablesList`'s location in Technical Notes. |
 | 2026-09-30 | Claude | AC1–AC6 ticked: done in code, only testing missing (per the host). Stays `InProgress` for one step that isn't testing: applying migration `027` to the live project (`SECURITY.md` checklist). |
+| 2026-09-30 | Claude | Done. The host confirmed migration `027` is live (advisory lock, `tables_host_auth_id_idx`, `delete_table`, and the storage DELETE policy all present) and ran the smoke test on the live app: the Delete action and confirm dialog work, deletion removes the table, the table count drops, and `delete_table` is rejected for a non-host. Also checked that the tables added since the plan (`custom_assets`, `audio_tracks`, `drawings`) cascade on delete. `SECURITY.md` checklist item ticked; moved to `requirements/Done/`. |
