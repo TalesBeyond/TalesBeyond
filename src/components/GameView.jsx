@@ -12,7 +12,8 @@ import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
 import { RollToasts, RollLog, CharacterLog } from './RollFeed.jsx';
 import { diffHero, mergeActivity } from '../utils/heroActivity.js';
-import { ModeBar, EmptyState } from './Hints.jsx';
+import { ModeBar, EmptyState, useTourState } from './Hints.jsx';
+import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
@@ -2190,7 +2191,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // are new state. Requires at least 2 islands (a group of one is
   // meaningless).
   // `islandIds`: the phone's group sheet picks from a list; the desktop
-  // Merge Islands tool picks on the map (pendingGroupIslandIds).
+  // Group Islands tool picks on the map (pendingGroupIslandIds).
   function confirmGroup(name, islandIds = pendingGroupIslandIds) {
     if (!isHost || islandIds.length < 2) return;
     // The group starts with every condition its islands had; from here on
@@ -2636,6 +2637,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // camera from island to island (fitting each to the screen), and a pinch
   // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
   const isPhone = usePhoneLayout();
+  // The first-table tutorial (Tour.jsx): opens by itself the first time a
+  // DM is at a table on this device, and again from Configurations →
+  // Tutorial. Desktop only: the phone layout has its own, different chrome.
+  const hostTour = useTourState('host');
+  const [tourOpen, setTourOpen] = useState(() => isHost && hostTour.pending);
+  function closeTour() {
+    hostTour.finish();
+    setTourOpen(false);
+  }
   const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
   // A hint's "Open Tokens": the Tokens panel on desktop, the Add sheet on a
   // phone.
@@ -2943,6 +2953,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onImport={importTable}
         onLeave={leaveTable}
         onKickPlayer={isHost ? setPendingKickId : null}
+        onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
         lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
@@ -3096,7 +3107,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onTapCell={isPhone ? handleTapCell : null}
               plannedMove={isPhone ? plannedMoveForMap : null}
               drawings={state.drawings}
-              hideDrawings={hideDrawings}
+              // The desktop bar has no "Hide drawings" switch for now, so a saved
+              // choice only applies on phones, where the switch still is.
+              hideDrawings={isPhone && hideDrawings}
               drawingOrder={state.drawingOrder}
               drawSettings={isHost ? drawSettings : null}
               onAddDrawing={isHost ? addDrawing : null}
@@ -3219,7 +3232,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </ModeBar>
           )}
           {!isPhone && isHost && tool === 'group' && (
-            <ModeBar id="group" className="map-mode-bar" label="Merge islands." doneLabel="Cancel" onDone={cancelGroup}>
+            <ModeBar id="group" className="map-mode-bar" label="Group islands." doneLabel="Cancel" onDone={cancelGroup}>
               Click islands to add them to a group. A group moves together and shares one name.
             </ModeBar>
           )}
@@ -3337,6 +3350,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         )}
 
         {tool === 'group' && !isPhone && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+
+        {tourOpen && isHost && !isPhone && <Tour onFinish={closeTour} />}
 
         {pendingKick && (
           <div className="door-confirm-backdrop" onClick={() => setPendingKickId(null)}>
@@ -3712,7 +3727,7 @@ function GroupConfirmPanel({ count, onConfirm, onCancel }) {
   const [name, setName] = useState('');
   return (
     <div className="group-confirm-panel">
-      <h4>Merge islands</h4>
+      <h4>Group islands</h4>
       <p>Click islands on the map to select them — {count} selected.</p>
       <input
         className="field"
@@ -3726,7 +3741,7 @@ function GroupConfirmPanel({ count, onConfirm, onCancel }) {
           Cancel
         </button>
         <button className="btn btn-primary" onClick={() => onConfirm(name)} disabled={count < 2}>
-          Merge ({count})
+          Group ({count})
         </button>
       </div>
     </div>

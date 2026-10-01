@@ -28,6 +28,7 @@ import {
 } from '../lib/remoteApi.js';
 import { deleteTableStorage } from '../lib/storageUpload.js';
 import { requestGuestJoin } from '../lib/guestRealtime.js';
+import { LegalFooter } from './LegalPage.jsx';
 
 const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#b23a3a', '#3a6ea5', '#c98a3b'];
 
@@ -79,6 +80,11 @@ export default function Landing({ onEnter, notice = null }) {
 
               {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
 
+              <p className="legal-consent">
+                By hosting or joining a table you agree to the <a href="#/legal/terms">Terms of Use</a> and{' '}
+                <a href="#/legal/privacy">Privacy Policy</a>.
+              </p>
+
               {!isSupabaseConfigured && (
                 <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
                   Testing only —{' '}
@@ -92,6 +98,7 @@ export default function Landing({ onEnter, notice = null }) {
           )}
         </div>
       </div>
+      <LegalFooter />
     </div>
   );
 }

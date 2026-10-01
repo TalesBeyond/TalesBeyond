@@ -56,6 +56,18 @@ function useDismissable(id) {
   };
 }
 
+// The first-table tutorial (Tour.jsx): `pending` until it has been finished
+// or skipped once on this device. It follows the hints switch, and "Tips
+// again" brings it back along with every other dismissed tip.
+export function useTourState(id) {
+  const p = useSyncExternalStore(subscribe, current, current);
+  const key = `tour:${id}`;
+  return {
+    pending: p.show && !p.dismissed.includes(key),
+    finish: () => update({ ...current(), dismissed: [...current().dismissed.filter((d) => d !== key), key] }),
+  };
+}
+
 function Bulb() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

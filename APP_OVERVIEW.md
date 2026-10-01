@@ -207,8 +207,8 @@ rule (`src/utils/grid.js`'s `feetDistance`).
 - **Add your own image**: upload any image as a Hero or Monster token
   (client-resized to 256px before embedding as a data URL).
 - **Default heroes** (8: Fighter, Wizard, Rogue, Ranger, Bard, Barbarian,
-  Cleric, Paladin) and **default monsters** (6: Goblin, Skeleton, Orc,
-  Dire Wolf, Young Dragon, Beholder) — hand-drawn inline-SVG icons
+  Cleric, Paladin) and **default monsters** (5: Goblin, Skeleton, Orc,
+  Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
   (`src/data/defaultTokens.js`), one click to place. Placing a default
   monster auto-seeds its **Droppables** loot list (see below).
 - **Placeable → Door**: name + target layer (disabled until a second
@@ -387,7 +387,7 @@ Layers") and offering the fix when it's one step. Four patterns:
   storage with nothing saved, and Music where it can't play.
 - **Empty state**: the DM's empty map (Open Tokens / the Add sheet), and a
   player without a hero (inspector, phone card).
-- **Mode bar** across the top of the map while Ruler, Edit, Merge islands
+- **Mode bar** across the top of the map while Ruler, Edit, Group islands
   or Draw changes what a press does, with a way out; each has an × that
   hides it on this device.
 - **Tip**, once per device: which code to share on first hosting.

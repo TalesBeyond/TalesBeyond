@@ -29,9 +29,9 @@ function formatCountdown(totalSeconds) {
 // select, popover trigger, or one-shot command) is one of these instead of
 // a text button or a dropdown item, so the whole bar reads as a row of
 // little tiles rather than a list of menus.
-function ToolCard({ icon, image, label, active, onClick, disabled, title, badge }) {
+function ToolCard({ icon, image, label, active, onClick, disabled, title, badge, tour }) {
   return (
-    <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label}>
+    <button type="button" className={`tool-card ${active ? 'active' : ''}`} onClick={onClick} disabled={disabled} title={title || label} data-tour={tour}>
       <span className="tool-card-icon">{image ? <img className="tool-card-image" src={image} alt="" /> : icon}</span>
       {badge ? (
         <span className="tool-card-badge" aria-label={`${badge} new`}>
@@ -50,7 +50,8 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title, badge 
 // `align="end"` opens the menu leftward from the trigger's right edge — for
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge }) {
+// tour: the name the tutorial (Tour.jsx) finds this button by.
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge, tour }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -70,7 +71,7 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
   }, [open, onClose]);
 
   return (
-    <div className={`toolbar-group ${className}`} ref={ref}>
+    <div className={`toolbar-group ${className}`} ref={ref} data-tour={tour}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
       {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
       {popovers}
@@ -152,7 +153,7 @@ const TOOL_ICONS = {
   group: <Icon name="group" />,
   draw: <Icon name="draw" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Merge Islands', draw: 'Draw' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Group Islands', draw: 'Draw' };
 
 // Seats at a table: the DM plus up to nine players.
 const MAX_SEATS = 10;
@@ -196,6 +197,7 @@ export default function Toolbar({
   allEntities = {},
   meId = null,
   onKickPlayer = null,
+  onStartTour = null, // the DM's tutorial replay (desktop only)
   // The roll log and saved dice sets, kept in GameView so they survive
   // closing the popover and the phone dice screen shares them.
   dice,
@@ -527,8 +529,8 @@ export default function Toolbar({
       <ToolMenu
         icon={TOOL_ICONS[tool] || <Icon name="tools" />}
         label="Tools"
+        tour="tools"
         title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
-        active={showAssetStorage}
         open={openMenu === 'tools'}
         onToggle={() => toggleMenu('tools')}
         onClose={closeMenu}
@@ -540,26 +542,16 @@ export default function Toolbar({
           onClick={() => pick(() => onToolChange('play'))}
           title="Select and drag tokens"
         />
-        <ToolCard
-          icon={TOOL_ICONS.pan}
-          label="Pan"
-          active={tool === 'pan'}
-          onClick={() => pick(() => onToolChange('pan'))}
-          title="Click and drag to pan around the map"
-        />
+        {/* Pan and "Hide drawings" are off the desktop bar for now: right-drag
+            already moves the map in every tool, and GameView ignores a saved
+            "hide drawings" on desktop so nobody is left with drawings hidden
+            and no switch to bring them back. Both remain on phones. */}
         <ToolCard
           icon={TOOL_ICONS.ruler}
           label="Ruler"
           active={tool === 'ruler'}
           onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
-        />
-        <ToolCard
-          icon={<Icon name="hidedraw" />}
-          label={hideDrawings ? 'Show drawings' : 'Hide drawings'}
-          active={hideDrawings}
-          onClick={() => pick(() => onToggleHideDrawings?.())}
-          title={hideDrawings ? 'Drawings are hidden in this browser — show them again' : 'Hide the DM\'s drawings in this browser only'}
         />
         {isHost && (
           <>
@@ -577,20 +569,6 @@ export default function Toolbar({
               onClick={() => pick(() => onToolChange('edit'))}
               title="Drag islands around to reposition them"
             />
-            <ToolCard
-              icon={TOOL_ICONS.group}
-              label="Merge Islands"
-              active={tool === 'group'}
-              onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
-              title="Select 2+ islands to bundle into a group that moves and titles as one"
-            />
-            <ToolCard
-              icon={<Icon name="storage" />}
-              label="Storage"
-              active={showAssetStorage}
-              onClick={() => togglePopover('assetStorage')}
-              title="Asset Storage — create custom monsters, weapons, and items for this table"
-            />
           </>
         )}
       </ToolMenu>
@@ -599,8 +577,9 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="mapping" />}
           label="Mapping"
+          tour="mapping"
           title="Islands and layers"
-          active={showIslands || showLayers}
+          active={showIslands || showLayers || tool === 'group'}
           open={openMenu === 'mapping'}
           onToggle={() => toggleMenu('mapping')}
           onClose={closeMenu}
@@ -648,6 +627,13 @@ export default function Toolbar({
         >
           <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
+          <ToolCard
+            icon={TOOL_ICONS.group}
+            label="Group Islands"
+            active={tool === 'group'}
+            onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
+            title="Select 2+ islands to bundle into a group that moves and titles as one"
+          />
         </ToolMenu>
       )}
 
@@ -655,6 +641,7 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="world" />}
           label="World state"
+          tour="world"
           title="In-game time, day / night and the map's ambience"
           active={showDayNight || showAmbience}
           open={openMenu === 'world'}
@@ -709,22 +696,43 @@ export default function Toolbar({
         </div>
       )}
 
+      {/* The book of weapons, items and monsters, and Storage, where the DM
+          makes this table's own. */}
       {isHost && (
-        <div className="toolbar-group">
+        <ToolMenu
+          icon={<Icon name="library" />}
+          label="Compendium"
+          tour="compendium"
+          title="The compendium, and your own monsters, weapons and items"
+          active={showCompendium || showItemCompendium || showMonsterCompendium || showAssetStorage}
+          open={openMenu === 'compendium'}
+          onToggle={() => toggleMenu('compendium')}
+          onClose={closeMenu}
+        >
           <ToolCard
             icon={<Icon name="library" />}
-            label="Compendium"
+            label="Book"
             active={showCompendium || showItemCompendium || showMonsterCompendium}
             onClick={() => {
               const open = showCompendium || showItemCompendium || showMonsterCompendium;
-              setOpenMenu(null);
+              togglePopover(null);
               setShowCompendium(!open);
               setShowItemCompendium(false);
               setShowMonsterCompendium(false);
             }}
             title="Open the compendium of weapons, items, and monsters"
           />
-        </div>
+          <ToolCard
+            icon={<Icon name="storage" />}
+            label="Storage"
+            active={showAssetStorage}
+            onClick={() => {
+              setShowMonsterCompendium(false);
+              togglePopover('assetStorage');
+            }}
+            title="Asset Storage — create custom monsters, weapons, and items for this table"
+          />
+        </ToolMenu>
       )}
 
       {/* Initiative and dice stay one click away — no menu to open first.
@@ -735,6 +743,7 @@ export default function Toolbar({
           <ToolCard
             icon={<Icon name="initiative" />}
             label="Initiative"
+            tour="initiative"
             active={showInitiative}
             onClick={() => togglePopover('initiative')}
             title="Roll for Initiative"
@@ -744,6 +753,7 @@ export default function Toolbar({
           <ToolCard
             icon={<Icon name="music" />}
             label="Music"
+            tour="music"
             active={Boolean(audio?.playback?.nowPlaying) || showMusicHint}
             onClick={audio?.enabled ? onOpenMusic : () => setShowMusicHint((s) => !s)}
             title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
@@ -754,7 +764,7 @@ export default function Toolbar({
             </div>
           )}
         </span>
-        <ToolCard icon={<Icon name="dice" />} label="Dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
+        <ToolCard icon={<Icon name="dice" />} label="Dice" tour="dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
         {showDice && (
           <DiceModal
             {...dice}
@@ -768,6 +778,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="rolllog" />}
         label="Roll log"
+        tour="rolls"
         title="Every roll at the table this session"
         open={rollLogOpen}
         onToggle={() => toggleMenu('rolls')}
@@ -787,6 +798,7 @@ export default function Toolbar({
         <ToolMenu
           icon={<Icon name="charlog" />}
           label="Character log"
+          tour="charlog"
           title="What each player changed on their own hero this session"
           open={activityOpen}
           onToggle={() => toggleMenu('activity')}
@@ -805,7 +817,7 @@ export default function Toolbar({
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both
           are always rendered — CSS shows one. */}
       {isHost && (
-        <div className="toolbar-group toolbar-codes-inline">
+        <div className="toolbar-group toolbar-codes-inline" data-tour="codes">
           {codeChips}
           {codesTip}
         </div>
@@ -815,6 +827,7 @@ export default function Toolbar({
           className="toolbar-codes-menu"
           icon={<Icon name="invite" />}
           label="Invite"
+          tour="codes"
           title="Player code and DM code — click a code to copy it"
           open={openMenu === 'codes'}
           onToggle={() => toggleMenu('codes')}
@@ -894,6 +907,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="players" />}
         label={`${Object.keys(players).length}/${MAX_SEATS} players`}
+        tour="players"
         title="Who's at the table"
         open={openMenu === 'players'}
         onToggle={() => toggleMenu('players')}
@@ -926,6 +940,7 @@ export default function Toolbar({
       <ToolMenu
         icon={<Icon name="config" />}
         label="Configurations"
+        tour="config"
         title="Save, export, import, close, hints, and leave"
         open={openMenu === 'configurations'}
         onToggle={() => toggleMenu('configurations')}
@@ -967,6 +982,7 @@ export default function Toolbar({
             </span>
           </label>
         )}
+        {onStartTour && <ToolCard icon={<Icon name="hints" />} label="Tutorial" onClick={() => pick(onStartTour)} title="A short tour of what each part of the screen does" />}
         {hintPrefs.show && hintPrefs.anyDismissed && (
           <ToolCard icon={<Icon name="refresh" />} label="Tips again" onClick={() => pick(hintPrefs.resetDismissed)} title="Show every tip and mode bar you've hidden again" />
         )}

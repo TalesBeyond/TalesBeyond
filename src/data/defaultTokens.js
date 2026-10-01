@@ -76,7 +76,6 @@ export const DEFAULT_MOBS = [
   { key: 'orc', name: 'Orc', color: '#4a5d33', icon: 'claw' },
   { key: 'wolf', name: 'Dire Wolf', color: '#3a3a3a', icon: 'claw' },
   { key: 'dragon', name: 'Young Dragon', color: '#8f3a20', icon: 'wing' },
-  { key: 'beholder', name: 'Beholder', color: '#5c3a6b', icon: 'eye' },
 ].map((m) => ({ ...m, imageUrl: makeIconDataUrl(m.icon, m.color) }));
 
 export function makeIconDataUrl(icon, color) {

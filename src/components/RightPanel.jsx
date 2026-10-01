@@ -70,7 +70,7 @@ export default function RightPanel({
   }
 
   return (
-    <div className="panel right">
+    <div className="panel right" data-tour="inspector">
       {/* Who's at the table and the roll log live on the toolbar. */}
       <div className="panel-header">
         <span>Inspector</span>
