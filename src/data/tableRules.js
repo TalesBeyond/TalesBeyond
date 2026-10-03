@@ -81,7 +81,6 @@ export const TABLE_RULES = {
       items: [
         ['World maps', 'the rooms and areas of this world.'],
         ['Layers', 'separate worlds in the same table.'],
-        ['Group Maps', 'bundle maps so they move together.'],
       ],
     },
     {
@@ -90,7 +89,7 @@ export const TABLE_RULES = {
       sub: 'The rooms and areas of a world',
       where: 'Mapping menu',
       dm: true,
-      text: 'Lists the maps on the layer you are viewing. Add one, or open one to change its name, width, height, feet per square and background image. Download map saves it as a PNG with its grid, so you can paint over it in an image editor and upload it back as the background. Nothing in a map’s Settings is applied until you press Save changes. + Sub map adds a new map that belongs to the one you clicked: it lands beside it and is grouped with it, so the two move together and share the parent’s name.',
+      text: 'Lists the maps on the layer you are viewing. Beside each name are four icon buttons: Recenter brings that map (or its whole group) to the middle of the view and makes it the active one, Download map saves it as an image, Settings opens its name, width, height, feet per square and background image, and Delete removes it. Download map saves the map as a PNG with its grid, so you can paint over it in an image editor and upload it back in Settings. For a map in a group it saves the whole group as one picture, and an image uploaded to any map in the group is spread across all of them the same way. Nothing in a map’s Settings is applied until you press Save changes. + Sub map adds a new map that belongs to the one you clicked: it lands beside it and is grouped with it, so the two move together and share the parent’s name and conditions. A map with sub maps shows how many it has; click its name to unfold them. Detach turns a sub map back into a map of its own.',
     },
     {
       key: 'layers',
@@ -99,14 +98,6 @@ export const TABLE_RULES = {
       where: 'Mapping menu',
       dm: true,
       text: 'A layer is its own world: another floor, another town. Add, rename and remove layers here. The strip under the top bar switches the layer you are looking at, and the number on each tab is how many players are on it. A player only ever sees the layer they are on.',
-    },
-    {
-      key: 'group',
-      name: 'Group Maps',
-      sub: 'Maps that move as one',
-      where: 'Mapping menu',
-      dm: true,
-      text: 'Click two or more maps, then confirm. A group moves together and shares one name. Ungroup or rename it from the World maps list.',
     },
     {
       key: 'world',

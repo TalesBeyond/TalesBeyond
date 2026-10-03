@@ -10,7 +10,7 @@ import { GiveChestItemButton, TakeChestItemButton } from './RightPanel.jsx';
 import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
-import { Hint, useHintPrefs } from './Hints.jsx';
+import { useHintPrefs } from './Hints.jsx';
 import { useHudFold, HudFoldButton } from './TableHud.jsx';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
@@ -410,129 +410,6 @@ function LayerThumb({ layer }) {
         return i ? <rect key={id} x={i.x} y={i.y} width={i.cols * i.cellSize} height={i.rows * i.cellSize} /> : null;
       })}
     </svg>
-  );
-}
-
-// ---------- grouping islands (DM) ----------
-// On a phone the islands are too small to tap one by one on the map, so a
-// group is picked here instead: a map of the layer where a tap toggles an
-// island, the same islands as a list, then a name. An island already in a
-// group is shown but can't be picked; existing groups can be renamed or
-// ungrouped below.
-
-export function PhoneGroupSheet({ layer, tokenCounts, activeIslandId, onGroup, onRename, onUngroup, onClose }) {
-  const [picked, setPicked] = useState([]);
-  const [name, setName] = useState('');
-  const groups = Object.values(layer.islandGroups || {});
-  const groupOf = new Map();
-  for (const g of groups) for (const id of g.islandIds) groupOf.set(id, g);
-  const toggle = (id) => {
-    if (groupOf.has(id)) return;
-    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-  const free = layer.islandOrder.filter((id) => layer.islands[id] && !groupOf.has(id));
-  const b = islandBounds(layer);
-  const pad = Math.max(b.w, b.h) * 0.03;
-
-  return (
-    <PhoneSheet title="Group maps" onClose={onClose} className="phone-sheet-group">
-      <div className="phone-sheet-pad">
-        <p className="phone-caption phone-caption-flush">
-          A group moves together and shares one name. Each map keeps its own grid and background.
-        </p>
-        {free.length < 2 ? (
-          <Hint>
-            Grouping needs two maps that aren’t in a group yet. Add another with <b>+ Map</b> at the top.
-          </Hint>
-        ) : (
-          <>
-            <svg
-              className="phone-group-map"
-              viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`}
-              preserveAspectRatio="xMidYMid meet"
-              role="group"
-              aria-label="Maps in this world — tap to pick"
-            >
-              {layer.islandOrder.map((id) => {
-                const i = layer.islands[id];
-                if (!i) return null;
-                const state = groupOf.has(id) ? 'grouped' : picked.includes(id) ? 'picked' : 'free';
-                return (
-                  <rect
-                    key={id}
-                    className={`phone-group-island ${state}${id === activeIslandId ? ' active' : ''}`}
-                    x={i.x}
-                    y={i.y}
-                    width={i.cols * i.cellSize}
-                    height={i.rows * i.cellSize}
-                    onClick={() => toggle(id)}
-                  />
-                );
-              })}
-            </svg>
-            <ul className="phone-group-list">
-              {layer.islandOrder.map((id) => {
-                const i = layer.islands[id];
-                if (!i) return null;
-                const group = groupOf.get(id);
-                const count = tokenCounts?.[id] || 0;
-                return (
-                  <li key={id}>
-                    <label className={`phone-group-row${group ? ' grouped' : ''}${picked.includes(id) ? ' picked' : ''}`}>
-                      <input type="checkbox" checked={picked.includes(id)} disabled={Boolean(group)} onChange={() => toggle(id)} />
-                      <span className="phone-group-text">
-                        <b>{i.name}</b>
-                        <span>
-                          {group ? `In ${group.name}` : `${i.cols} × ${i.rows}${count ? ` · ${count} ${count === 1 ? 'token' : 'tokens'}` : ''}`}
-                        </span>
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-            <label className="phone-group-name">
-              <span className="phone-label">Group name</span>
-              <input className="field" value={name} placeholder="e.g. East Wing" onChange={(e) => setName(e.target.value)} />
-            </label>
-            <button
-              type="button"
-              className="phone-btn-primary phone-btn-block-primary"
-              disabled={picked.length < 2}
-              onClick={() => {
-                onGroup(picked, name);
-                setPicked([]);
-                setName('');
-              }}
-            >
-              {picked.length < 2 ? 'Pick at least two maps' : `Group ${picked.length} maps`}
-            </button>
-          </>
-        )}
-        {groups.length > 0 && (
-          <section className="phone-menu-section" aria-label="Groups in this world">
-            <span className="phone-label">Groups in this world</span>
-            {groups.map((g) => (
-              <PhoneGroupRow key={g.id} group={g} layer={layer} onRename={onRename} onUngroup={onUngroup} />
-            ))}
-          </section>
-        )}
-      </div>
-    </PhoneSheet>
-  );
-}
-
-function PhoneGroupRow({ group, layer, onRename, onUngroup }) {
-  const [draft, setDraft] = useState(group.name);
-  const members = group.islandIds.map((id) => layer.islands[id]?.name).filter(Boolean).join(', ');
-  return (
-    <div className="phone-group-existing">
-      <input className="field" aria-label="Group name" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => draft.trim() && draft !== group.name && onRename(group.id, draft)} />
-      <span className="phone-caption phone-caption-flush">{members}</span>
-      <button type="button" className="phone-btn-ghost" onClick={() => onUngroup(group.id)}>
-        Ungroup
-      </button>
-    </div>
   );
 }
 
@@ -1104,34 +981,25 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
   );
 }
 
-// ---------- the DM's Edit / Group mode bar (phone) ----------
+// ---------- the DM's Edit mode bar (phone) ----------
 
-export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDraw, onDone }) {
-  const grouping = tool === 'group';
+export function PhoneEditBar({ islandName, onSettings, onDraw, onDone }) {
   return (
     <div className="phone-edit-bar" role="status">
       <span className="phone-edit-text">
-        <b>{grouping ? 'Group maps.' : 'Edit mode.'}</b>{' '}
-        {grouping ? 'Tap maps to add them, then name the group below.' : 'Drag a map to move it; edges snap together where they touch.'}
+        <b>Edit mode.</b> Drag a map to move it; edges snap together where they touch.
       </span>
       <div className="phone-edit-actions">
-        {!grouping && (
-          <button type="button" className="phone-btn-ghost" onClick={onSettings}>
-            {islandName ? `${islandName} settings` : 'Map settings'}
-          </button>
-        )}
-        {!grouping && (
-          <button type="button" className="phone-btn-ghost" onClick={onGroup}>
-            Group maps
-          </button>
-        )}
-        {!grouping && onDraw && (
+        <button type="button" className="phone-btn-ghost" onClick={onSettings}>
+          {islandName ? `${islandName} settings` : 'Map settings'}
+        </button>
+        {onDraw && (
           <button type="button" className="phone-btn-ghost" onClick={onDraw}>
             Draw
           </button>
         )}
         <button type="button" className="phone-btn-primary" onClick={onDone}>
-          {grouping ? 'Back to Edit' : 'Done'}
+          Done
         </button>
       </div>
     </div>

@@ -4,7 +4,7 @@ import ModalShell from './ModalShell.jsx';
 import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims, clampFeetPerSquare } from '../utils/grid.js';
-import { resizeImageToDataUrl } from '../utils/image.js';
+import { resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
@@ -129,6 +129,8 @@ const ICON_PATHS = {
   charlog: 'M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 17v-1a6 6 0 0 1 8.5-5.5M12.5 17l.5-2.5 3.5-3.5 2 2-3.5 3.5z',
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
+  trash: 'M4 6h12M8 6V4h4v2M5.5 6l.8 11h7.4l.8-11M8.5 9.5v4.5M11.5 9.5v4.5',
+  mapdownload: 'M3 2.5h14v9H3zM3 9.5l3.5-3 3 2.5 2.5-2 5 3.5M10 13.5v5M7.5 16l2.5 2.5 2.5-2.5',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
   rules: 'M10 5C8 3.5 5 3.5 3 4.5v11c2-1 5-1 7 .5 2-1.5 5-1.5 7-.5v-11c-2-1-5-1-7 .5zM10 5v11',
 };
@@ -153,10 +155,9 @@ const TOOL_ICONS = {
   edit: <Icon name="edit" />,
   pan: <Icon name="pan" />,
   ruler: <Icon name="ruler" />,
-  group: <Icon name="group" />,
   draw: <Icon name="draw" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Group Maps', draw: 'Draw' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', draw: 'Draw' };
 
 // Seats at a table: the DM plus up to nine players.
 const MAX_SEATS = 10;
@@ -244,12 +245,12 @@ export default function Toolbar({
   onCreateLayer,
   onRemoveLayer,
   activeIslandId,
-  onSelectIsland,
+  onRecenterIsland,
   onCreateIsland,
   onRemoveIsland,
   onDownloadIslandImage,
   onUpdateIsland,
-  onUngroupIslands,
+  onDetachIsland,
   onRenameGroup,
   onIslandConditions,
   onGroupConditions,
@@ -443,8 +444,18 @@ export default function Toolbar({
 
   // An island's background image, picked in its settings (World maps
   // dialog) and sent here when Save changes is pressed.
+  // For an island in a group the picture belongs to the whole group: it is
+  // laid over all of them together and each gets its own part — the shape
+  // Download map exports (GameView's downloadIslandImage).
   async function uploadIslandBackground(islandId, file) {
     try {
+      const group = Object.values(layer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+      const members = group ? group.islandIds.map((id) => layer.islands[id]).filter(Boolean) : [];
+      if (members.length > 1) {
+        const slices = await sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78);
+        for (const member of members) onUpdateIsland(member.id, { backgroundImage: slices[member.id] });
+        return;
+      }
       const backgroundImage = await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78);
       onUpdateIsland(islandId, { backgroundImage });
     } catch (err) {
@@ -586,7 +597,7 @@ export default function Toolbar({
           label="Mapping"
           tour="mapping"
           title="World maps and layers"
-          active={showIslands || showLayers || tool === 'group'}
+          active={showIslands || showLayers}
           open={openMenu === 'mapping'}
           onToggle={() => toggleMenu('mapping')}
           onClose={closeMenu}
@@ -598,10 +609,10 @@ export default function Toolbar({
                   islandOrder={layer.islandOrder}
                   islandGroups={layer.islandGroups || {}}
                   activeIslandId={activeIslandId}
-                  onSelectIsland={onSelectIsland}
+                  onRecenterIsland={onRecenterIsland}
                   onCreateIsland={onCreateIsland}
                   onRemoveIsland={onRemoveIsland}
-                  onUngroupIslands={onUngroupIslands}
+                  onDetachIsland={onDetachIsland}
                   onRenameGroup={onRenameGroup}
                   onIslandConditions={onIslandConditions}
                   onGroupConditions={onGroupConditions}
@@ -634,13 +645,6 @@ export default function Toolbar({
         >
           <ToolCard icon={<Icon name="islands" />} label="World maps" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} map(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
-          <ToolCard
-            icon={TOOL_ICONS.group}
-            label="Group Maps"
-            active={tool === 'group'}
-            onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
-            title="Select 2+ maps to bundle into a group that moves and titles as one"
-          />
         </ToolMenu>
       )}
 
@@ -1141,7 +1145,8 @@ function ConditionPicker({ active = [], onChange }) {
   const labels = active.map((key) => ISLAND_CONDITIONS.find((c) => c.key === key)?.label).filter(Boolean);
 
   return (
-    <div className="island-row-conditions">
+    <div className="island-row-conditions" role="group" aria-label="Map status">
+      <span className="field-label island-status-label">Map status</span>
       <div className="condition-row">
         {ISLAND_CONDITIONS.map((c) => (
           <button
@@ -1251,10 +1256,10 @@ function IslandManagerPopover({
   islandOrder,
   islandGroups,
   activeIslandId,
-  onSelectIsland,
+  onRecenterIsland,
   onCreateIsland,
   onRemoveIsland,
-  onUngroupIslands,
+  onDetachIsland,
   onRenameGroup,
   onIslandConditions,
   onGroupConditions,
@@ -1283,9 +1288,12 @@ function IslandManagerPopover({
     const first = groupOf(islandId)?.islandIds[0];
     return first && first !== islandId && islands?.[first] ? first : null;
   };
-  const mapRows = (islandOrder || [])
-    .filter((id) => islands?.[id] && !parentIdOf(id))
-    .flatMap((id) => [{ id, parentId: null }, ...(islandOrder || []).filter((sub) => islands?.[sub] && parentIdOf(sub) === id).map((sub) => ({ id: sub, parentId: id }))]);
+  const parentIds = (islandOrder || []).filter((id) => islands?.[id] && !parentIdOf(id));
+  const subMapsOf = (id) => (islandOrder || []).filter((sub) => islands?.[sub] && parentIdOf(sub) === id);
+  // Parents whose sub maps are showing. They start folded, except the one
+  // holding the map the dialog was opened on.
+  const [expanded, setExpanded] = useState(() => [focusIslandId && parentIdOf(focusIslandId)].filter(Boolean));
+  const toggleExpanded = (id) => setExpanded((open) => (open.includes(id) ? open.filter((x) => x !== id) : [...open, id]));
 
   function closeAdding() {
     setAddingTo(null);
@@ -1297,7 +1305,9 @@ function IslandManagerPopover({
 
   function addIsland() {
     if (!name.trim()) return;
-    onCreateIsland({ name: name.trim(), cols, rows, feetPerSquare: feet, parentId: addingTo === 'new' ? null : addingTo });
+    const parentId = addingTo === 'new' ? null : addingTo;
+    onCreateIsland({ name: name.trim(), cols, rows, feetPerSquare: feet, parentId });
+    if (parentId) setExpanded((open) => (open.includes(parentId) ? open : [...open, parentId]));
     closeAdding();
   }
 
@@ -1345,22 +1355,95 @@ function IslandManagerPopover({
     </div>
   );
 
-  return (
-    <ModalShell title="World maps" icon="islands" closeLabel="Close world maps panel" onClose={onClose}>
-      {mapRows.map(({ id, parentId }) => {
+  // One map's row. A parent's row is also the header its sub maps fold
+  // under: its name is the button that shows and hides them.
+  const mapRow = (id, parentId = null) => {
         const island = islands[id];
         const isSole = islandOrder.length === 1;
         const isBase = id === islandOrder[0] && !isSole;
         const isActive = id === activeIslandId;
         const group = groupOf(id);
+        const subs = parentId ? [] : subMapsOf(id);
+        const open = expanded.includes(id);
         return (
           <div key={id} className={`island-row${parentId ? ' sub' : ''}`}>
-          <div className="player-row" style={{ justifyContent: 'space-between' }}>
-            <span className="player-name">
-              {island.name}
-              {parentId && <span className="player-tag"> · sub map</span>}
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
+          {/* The map's header: its name and icon buttons, and under the name
+              its sub map button and its status. Settings, the new sub map
+              form and the sub maps themselves open below it. */}
+          <div className="island-header">
+          <div className="player-row island-row-head">
+            {subs.length > 0 ? (
+              <button
+                type="button"
+                className="player-name island-expand"
+                aria-expanded={open}
+                title={open ? 'Hide its sub maps' : 'Show its sub maps'}
+                onClick={() => toggleExpanded(id)}
+              >
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M7 4l6 6-6 6" />
+                </svg>
+                {island.name}
+                <span className="player-tag">
+                  {subs.length} sub {subs.length === 1 ? 'map' : 'maps'}
+                </span>
+              </button>
+            ) : (
+              <span className="player-name">
+                {island.name}
+                {parentId && <span className="player-tag"> · sub map</span>}
+              </span>
+            )}
+            {/* On the name's own line, far right: find it, download it, change it, remove it. */}
+            <div className="island-row-icons">
+              <button
+                className={`btn btn-secondary btn-sm btn-icon ${isActive ? 'active' : ''}`}
+                aria-label={group ? `Recenter on the ${group.name} group` : `Recenter on ${island.name}`}
+                title={`${group ? 'Recenter the view on this group of maps' : 'Recenter the view on this map'}${isActive ? ' (the active map)' : ' and make it the active map'}`}
+                onClick={() => {
+                  onRecenterIsland(id);
+                  onClose();
+                }}
+              >
+                <Icon name="recenter" />
+              </button>
+              {onDownloadIslandImage && (
+                <button
+                  className="btn btn-secondary btn-sm btn-icon"
+                  aria-label={group ? `Download the ${group.name} group as an image` : `Download ${island.name} as an image`}
+                  onClick={() => onDownloadIslandImage(id)}
+                  title={
+                    group
+                      ? `Download map: the whole ${group.name} group as one PNG (backgrounds + grid) to edit in an image editor, then upload it back in Settings`
+                      : 'Download map: a PNG (background + grid) to edit in an image editor, then upload it back in Settings'
+                  }
+                >
+                  <Icon name="mapdownload" />
+                </button>
+              )}
+              {onUpdateIsland && (
+                <button
+                  className={`btn btn-secondary btn-sm btn-icon ${openId === id ? 'active' : ''}`}
+                  aria-expanded={openId === id}
+                  aria-label={`Settings for ${island.name}`}
+                  onClick={() => setOpenId(openId === id ? null : id)}
+                  title="Settings: name, size and background image"
+                >
+                  <Icon name="config" />
+                </button>
+              )}
+              <button
+                className="btn btn-danger btn-sm btn-icon"
+                disabled={isBase}
+                aria-label={`Delete ${island.name}`}
+                title={isBase ? 'The base map cannot be removed while other maps exist' : isSole ? 'Clear this map and start it fresh — a layer always needs at least one' : 'Delete this map'}
+                onClick={() => onRemoveIsland(id)}
+              >
+                <Icon name="trash" />
+              </button>
+            </div>
+          </div>
+          <div className="island-row-actions">
               {!parentId && onCreateIsland && (
                 <button
                   className={`btn btn-secondary btn-sm ${addingTo === id ? 'active' : ''}`}
@@ -1371,70 +1454,52 @@ function IslandManagerPopover({
                   + Sub map
                 </button>
               )}
-              <button
-                className={`btn btn-secondary btn-sm ${isActive ? 'active' : ''}`}
-                disabled={isActive}
-                onClick={() => {
-                  onSelectIsland(id);
-                  onClose();
-                }}
-              >
-                {isActive ? 'Active' : 'Select'}
-              </button>
-              {onUpdateIsland && (
-                <button
-                  className={`btn btn-secondary btn-sm ${openId === id ? 'active' : ''}`}
-                  aria-expanded={openId === id}
-                  onClick={() => setOpenId(openId === id ? null : id)}
-                  title="Name, size and background image"
-                >
-                  Settings
+              {parentId && onDetachIsland && (
+                <button className="btn btn-secondary btn-sm" onClick={() => onDetachIsland(id)} title="Make this a map of its own again. It stays where it is.">
+                  Detach
                 </button>
               )}
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={isBase}
-                title={isBase ? 'The base map cannot be removed while other maps exist' : isSole ? 'Clear this map and start it fresh — a layer always needs at least one' : 'Delete this map'}
-                onClick={() => onRemoveIsland(id)}
-              >
-                Delete
-              </button>
-            </div>
+          </div>
+          {parentId ? (
+            <span className="island-row-note">
+              Sub map of <b>{islands[parentId].name}</b>. It moves with it and shares its conditions.
+            </span>
+          ) : group ? (
+            // A parent's conditions stand for its sub maps too.
+            onGroupConditions && (
+              <>
+                <ConditionPicker active={group.conditions || []} onChange={(keys) => onGroupConditions(group.id, keys)} />
+                <span className="island-row-note">Conditions apply to this map and its sub maps.</span>
+              </>
+            )
+          ) : (
+            onIslandConditions && <ConditionPicker active={island.conditions || []} onChange={(keys) => onIslandConditions(id, keys)} />
+          )}
           </div>
           {openId === id && onUpdateIsland && (
             <IslandSettings
               island={island}
               fallbackFeet={layerFeet}
-              onPatch={(patch) => onUpdateIsland(id, patch)}
+              onPatch={(patch) => {
+                onUpdateIsland(id, patch);
+                // The group takes its parent's name.
+                if (patch.name && group && !parentId) onRenameGroup?.(group.id, patch.name);
+              }}
               onUploadBackground={(file) => onUploadBackground(id, file)}
-              onDownloadImage={() => onDownloadIslandImage?.(id)}
+              groupName={group?.name || null}
+              onSaved={() => setOpenId(null)}
             />
-          )}
-          {parentId ? (
-            <span className="island-row-note">
-              Sub map of <b>{islands[parentId].name}</b> — it moves with it. Conditions are set on the group below.
-            </span>
-          ) : group ? (
-            <span className="island-row-note">
-              In <b>{group.name}</b> — its conditions are set on the group below.
-            </span>
-          ) : (
-            onIslandConditions && <ConditionPicker active={island.conditions || []} onChange={(keys) => onIslandConditions(id, keys)} />
           )}
           {addingTo === id &&
             newMapForm(`New sub map of ${island.name}`, 'Add sub map', 'It lands beside its parent and is grouped with it, so the two move together.')}
+          {open && subs.length > 0 && <div className="island-subs">{subs.map((sub) => mapRow(sub, id))}</div>}
           </div>
         );
-      })}
+  };
 
-      {Object.values(islandGroups || {}).length > 0 && (
-        <>
-          <div className="section-label">Groups on this layer</div>
-          {Object.values(islandGroups).map((group) => (
-            <GroupRow key={group.id} group={group} onRename={onRenameGroup} onUngroup={onUngroupIslands} onConditions={onGroupConditions} />
-          ))}
-        </>
-      )}
+  return (
+    <ModalShell title="World maps" icon="islands" closeLabel="Close world maps panel" maxWidth={560} onClose={onClose}>
+      {parentIds.map((id) => mapRow(id))}
 
       {addingTo === 'new' ? (
         newMapForm('New map', 'Add map')
@@ -1461,7 +1526,11 @@ function IslandManagerPopover({
 // Nothing here applies by itself: the fields and a newly picked background
 // image are held until Save changes is pressed, and Discard puts the form
 // back to the map as it is.
-function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground, onDownloadImage }) {
+// `groupName`: the island is in a group, so a background image is spread
+// over the whole group (uploadIslandBackground above).
+// `onSaved`: called once Save changes has applied everything, so the dialog
+// can fold the form away again.
+function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground, groupName = null, onSaved }) {
   const savedFeet = island.feetPerSquare || fallbackFeet;
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
@@ -1510,6 +1579,7 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground,
         setPendingFile(null);
       }
     }
+    onSaved?.();
   }
 
   const saveOnEnter = (e) => {
@@ -1542,15 +1612,13 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground,
         <button className="btn btn-secondary" disabled={saving} onClick={() => fileRef.current?.click()}>
           {pendingFile ? 'Choose another image' : island.backgroundImage ? 'Replace image' : 'Upload image'}
         </button>
-        <button
-          className="btn btn-secondary"
-          onClick={onDownloadImage}
-          title="Download this map as a PNG (background + grid) to edit in an image editor, then upload it back as the background"
-        >
-          Download map
-        </button>
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+      {groupName && (
+        <span className="island-row-note">
+          This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
+        </span>
+      )}
       {pendingFile && (
         <span className="island-row-note">
           New background: <b>{pendingFile.name}</b>. It is used once you save.
@@ -1568,33 +1636,6 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground,
       ) : (
         <span className="island-row-note">Change anything above, then press Save changes. Nothing is applied until you do.</span>
       )}
-    </div>
-  );
-}
-
-// One row per island group in IslandManagerPopover — an inline rename
-// field (local-state-then-Save) plus an Ungroup button, then the group's conditions, which stand
-// for every member island. Ungrouping only dissolves the group; member
-// islands are untouched and get their own conditions back.
-function GroupRow({ group, onRename, onUngroup, onConditions }) {
-  const [name, setName] = useState(group.name);
-  const dirty = name !== group.name;
-  return (
-    <div className="island-row">
-    <div className="player-row" style={{ justifyContent: 'space-between' }}>
-      <input className="field" style={{ marginBottom: 0 }} value={name} onChange={(e) => setName(e.target.value)} />
-      <div style={{ display: 'flex', gap: 6 }}>
-        {dirty && (
-          <button className="btn btn-secondary btn-sm" onClick={() => onRename?.(group.id, name)}>
-            Save
-          </button>
-        )}
-        <button className="btn btn-danger btn-sm" onClick={() => onUngroup?.(group.id)}>
-          Ungroup
-        </button>
-      </div>
-    </div>
-    {onConditions && <ConditionPicker active={group.conditions || []} onChange={(keys) => onConditions(group.id, keys)} />}
     </div>
   );
 }

@@ -40,7 +40,6 @@ export const HOST_TOUR = [
     items: [
       ['World maps', 'the rooms and areas of this world. Add one, give it sub maps, resize it, give it a background.'],
       ['Layers', 'separate worlds in the same table: another floor, another town.'],
-      ['Group Maps', 'bundle maps so they move together and share a name.'],
     ],
   },
   {

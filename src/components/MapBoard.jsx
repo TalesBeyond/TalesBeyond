@@ -35,9 +35,7 @@ export default function MapBoard({
   islands,
   islandOrder,
   islandGroups = {},
-  pendingGroupIslandIds = [],
   dayPhase = null,
-  onToggleGroupCandidate,
   onMoveIslandGroup,
   feetPerSquare,
   activeIslandId,
@@ -51,7 +49,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'group' | 'draw'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw'
   zoom = 1,
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
@@ -413,14 +411,6 @@ export default function MapBoard({
     const p = getRelativePoint(e.clientX, e.clientY);
     const moved = Math.hypot(p.x - current.downX, p.y - current.downY);
     const isClick = moved < CLICK_MOVE_THRESHOLD_PX;
-
-    // While the 'group' tool is active, a click toggles the island into the
-    // pending group selection instead of selecting/repositioning it —
-    // dragging is ignored entirely in this mode.
-    if (tool === 'group') {
-      if (isClick) onToggleGroupCandidate?.(current.id);
-      return;
-    }
 
     // A tap on a square with a movable token selected moves it (or plans the
     // move, mid-encounter) instead of selecting the island.
@@ -877,7 +867,6 @@ export default function MapBoard({
         const w = island.cols * island.cellSize * zoom;
         const h = island.rows * island.cellSize * zoom;
         const cellPx = island.cellSize * zoom;
-        const isPendingGroupMember = pendingGroupIslandIds.includes(id);
         // This island's own day/night setting, else the table clock's phase.
         const phase = DAY_PHASES[islandPhase(island, dayPhase)];
         // Fill (Draw tool): a colour laid over the map art, under the grid.
@@ -888,7 +877,7 @@ export default function MapBoard({
         return (
           <div
             key={id}
-            className={`grid-wrap${activeIslandId === id ? ' active' : ''}${isPendingGroupMember ? ' pending-group-member' : ''}`}
+            className={`grid-wrap${activeIslandId === id ? ' active' : ''}`}
             style={{
               left,
               top,
