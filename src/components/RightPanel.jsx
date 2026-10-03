@@ -941,7 +941,7 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
               type="button"
               className="btn btn-primary btn-block"
               disabled={targets.length === 0 || rollingIndex !== null}
-              title={targets.length === 0 ? 'No creatures on this map to attack' : 'Pick a creature and roll this attack'}
+              title={targets.length === 0 ? 'No creatures in this world to attack' : 'Pick a creature and roll this attack'}
               onClick={() => openTargetPicker(i)}
             >
               {rollingIndex === i ? 'Rolling…' : 'Roll attack'}
@@ -991,7 +991,7 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
           Equipment comes from the bag. Add a weapon under the <b>Bag</b> tab, then equip it here.
         </Hint>
       )}
-      {items.length > 0 && targets.length === 0 && <Hint className="hint-tight">There’s nothing to attack on this map yet.</Hint>}
+      {items.length > 0 && targets.length === 0 && <Hint className="hint-tight">There’s nothing to attack in this world yet.</Hint>}
     </div>
   );
 }

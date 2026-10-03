@@ -1774,7 +1774,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   function createLayer({ name, cols, rows }) {
     if (!isHost) return;
-    const layerName = name.trim() || 'Untitled Map';
+    const layerName = name.trim() || 'Untitled World';
     const layer = createInitialLayer({
       name: layerName,
       islandOverrides: { name: layerName, cols: clampGridDims(cols), rows: clampGridDims(rows) },
@@ -1803,8 +1803,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // on reload), so nudge past anything the candidate spot would actually
   // collide with rather than trusting it's clear. Mutates `island.x`/`y`,
   // then dispatches it exactly like every other island-adding path.
-  function placeAndAddIsland(island) {
-    const reference = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+  // `beside`: a sub map goes next to its parent instead of the active island.
+  function placeAndAddIsland(island, beside = null) {
+    const reference = beside || currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
     island.x = reference ? reference.x + reference.cols * reference.cellSize + 60 : 0;
     island.y = reference ? reference.y : 0;
     const w = island.cols * island.cellSize;
@@ -1828,15 +1829,27 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_ISLAND', layerId: currentLayerId, island });
   }
 
-  function createIsland({ name, cols, rows, feetPerSquare }) {
+  // `parentId`: the new island is a sub map of that one — placed beside it
+  // and grouped with it, so the two move together and share the parent's
+  // name. A sub map is nothing more than that group membership (the parent
+  // is the group's first island), so it needs no state of its own.
+  function createIsland({ name, cols, rows, feetPerSquare, parentId = null }) {
     if (!isHost) return;
     const island = createInitialIsland({
-      name: name.trim() || 'Untitled Island',
+      name: name.trim() || 'Untitled Map',
       cols: clampGridDims(cols),
       rows: clampGridDims(rows),
       feetPerSquare: clampFeetPerSquare(feetPerSquare),
     });
-    placeAndAddIsland(island);
+    const parent = parentId ? currentLayer.islands[parentId] : null;
+    placeAndAddIsland(island, parent);
+    if (!parent) return;
+    const parentGroup = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(parent.id));
+    if (parentGroup) {
+      updateGroup(parentGroup.id, { islandIds: [...parentGroup.islandIds, island.id] });
+    } else {
+      addIslandGroup({ id: generateEntityId(), name: parent.name, islandIds: [parent.id, island.id], conditions: [...(parent.conditions || [])] });
+    }
   }
 
   // Downloads an island (the active one by default) as a standalone PNG
@@ -1848,10 +1861,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!island) return;
     try {
       const dataUrl = await renderIslandTemplateToDataUrl({ ...island, backgroundImage: resolveImage(island.backgroundImage) });
-      const filename = `${(island.name || 'island').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'island'}.png`;
+      const filename = `${(island.name || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}.png`;
       downloadDataUrl(dataUrl, filename);
     } catch {
-      alert("Could not export this island's image — its background image could not be loaded.");
+      alert("Could not export this map's image — its background image could not be loaded.");
     }
   }
 
@@ -2197,7 +2210,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // The group starts with every condition its islands had; from here on
     // the group's conditions stand for all of them.
     const conditions = [...new Set(islandIds.flatMap((id) => currentLayer.islands[id]?.conditions || []))];
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds, conditions };
+    addIslandGroup({ id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds, conditions });
+    setPendingGroupIslandIds([]);
+    setTool('edit');
+  }
+
+  function addIslandGroup(group) {
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -2205,8 +2223,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     } else if (isGuestHost) {
       broadcastGuestChange({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     }
-    setPendingGroupIslandIds([]);
-    setTool('edit');
   }
 
   function cancelGroup() {
@@ -2860,7 +2876,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       feet: sameIsland ? feetDistance(entity, target, fps) : null,
       leftAfter,
       total: speedOf(entity),
-      islandName: sameIsland ? null : island?.name || 'another island',
+      islandName: sameIsland ? null : island?.name || 'another map',
     };
   }
   // On the acting hero's turn, a creature they could attack gets a Target button.
@@ -2954,6 +2970,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onLeave={leaveTable}
         onKickPlayer={isHost ? setPendingKickId : null}
         onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
+        theme={theme}
+        onThemeChange={onThemeChange}
         lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
@@ -3201,24 +3219,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
           <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
-          {isHost && tool === 'play' && Object.keys(layerEntities).length === 0 && (
-            <div className="map-empty">
-              <EmptyState
-                icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>}
-                title="This map is empty"
-                action={isPhone ? 'Add to the map' : 'Open Tokens'}
-                onAction={() => emitFx({ type: 'open', panel: 'tokens' })}
-              >
-                {isPhone ? (
-                  <>Add heroes, monsters, doors and chests with the <b>Add</b> button below.</>
-                ) : (
-                  <>
-                    Add heroes, monsters, doors and chests from the <b>Tokens</b> panel on the left.
-                  </>
-                )}
-              </EmptyState>
-            </div>
-          )}
           {/* While a tool changes what a press does, say so across the top of
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
@@ -3228,17 +3228,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
           {!isPhone && isHost && tool === 'edit' && (
             <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
-              Drag an island to move it. Where edges touch, tokens walk across.
+              Drag a map to move it. Where edges touch, tokens walk across.
             </ModeBar>
           )}
           {!isPhone && isHost && tool === 'group' && (
-            <ModeBar id="group" className="map-mode-bar" label="Group islands." doneLabel="Cancel" onDone={cancelGroup}>
-              Click islands to add them to a group. A group moves together and shares one name.
+            <ModeBar id="group" className="map-mode-bar" label="Group maps." doneLabel="Cancel" onDone={cancelGroup}>
+              Click maps to add them to a group. A group moves together and shares one name.
             </ModeBar>
           )}
           {!isPhone && isHost && tool === 'draw' && (
             <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
-              Everyone at the table sees what you draw. Right-drag moves the map.
+              Everyone at the table sees what you draw. Right-drag moves the view.
             </ModeBar>
           )}
           {isHost && !isPhone && tool === 'draw' && (
@@ -3250,7 +3250,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               canRedo={canRedoDrawing}
               onUndo={undoDrawing}
               onRedo={redoDrawing}
-              islandName={currentLayer.islands[activeIslandId]?.name || 'this island'}
+              islandName={currentLayer.islands[activeIslandId]?.name || 'this map'}
               mapName={currentLayer.name}
               islandCount={drawingIdsOnIsland(activeIslandId).length}
               mapCount={drawingIdsOnMap().length}
@@ -3554,7 +3554,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 onChange={(snap) => setDrawSettings({ ...drawSettings, snap })}
               />
               <DrawClearMenu
-                islandName={currentLayer.islands[activeIslandId]?.name || 'this island'}
+                islandName={currentLayer.islands[activeIslandId]?.name || 'this map'}
                 mapName={currentLayer.name}
                 islandCount={drawingIdsOnIsland(activeIslandId).length}
                 mapCount={drawingIdsOnMap().length}
@@ -3727,8 +3727,8 @@ function GroupConfirmPanel({ count, onConfirm, onCancel }) {
   const [name, setName] = useState('');
   return (
     <div className="group-confirm-panel">
-      <h4>Group islands</h4>
-      <p>Click islands on the map to select them — {count} selected.</p>
+      <h4>Group maps</h4>
+      <p>Click maps to select them — {count} selected.</p>
       <input
         className="field"
         placeholder="Group name"

@@ -30,7 +30,7 @@ export const HOST_TOUR = [
       ['Play', 'select tokens and drag them around. The everyday tool.'],
       ['Ruler', 'drag across the map to measure a distance.'],
       ['Draw', 'sketch on the map. Everyone at the table sees it.'],
-      ['Edit', 'drag whole islands to rearrange the map.'],
+      ['Edit', 'drag whole maps to rearrange the world.'],
     ],
   },
   {
@@ -38,9 +38,9 @@ export const HOST_TOUR = [
     title: 'Mapping',
     text: 'Where you build the world your players walk through.',
     items: [
-      ['Islands', 'the rooms and areas of this map. Add one, resize it, give it a background.'],
-      ['Layers', 'separate maps in the same table: another floor, another town.'],
-      ['Group Islands', 'bundle islands so they move together and share a name.'],
+      ['World maps', 'the rooms and areas of this world. Add one, give it sub maps, resize it, give it a background.'],
+      ['Layers', 'separate worlds in the same table: another floor, another town.'],
+      ['Group Maps', 'bundle maps so they move together and share a name.'],
     ],
   },
   {
@@ -50,7 +50,7 @@ export const HOST_TOUR = [
     items: [
       ['Ingame time', 'the table’s clock, and how fast it runs.'],
       ['Day / night', 'set dawn, day, dusk or night by hand.'],
-      ['Ambience', 'the sound players hear on this map.'],
+      ['Ambience', 'the sound players hear in this world.'],
     ],
   },
   {
@@ -70,7 +70,7 @@ export const HOST_TOUR = [
   {
     target: 'music',
     title: 'Music',
-    text: 'Songs for the whole table, for one map, or for a single token. Each player sets their own volume.',
+    text: 'Songs for the whole table, for one world, or for a single token. Each player sets their own volume.',
   },
   {
     target: 'dice',
@@ -107,13 +107,15 @@ export const HOST_TOUR = [
       ['Export / Import', 'keep a copy of the table as a file, or load one back.'],
       ['Close', 'stop new players from joining.'],
       ['Hints', 'turn the small tips on or off.'],
+      ['Palette', 'change the colours of the whole app.'],
       ['Tutorial', 'run this tour again.'],
+      ['Game table rules', 'read what every button and tool does, any time.'],
     ],
   },
   {
     target: 'side-heroes',
     title: 'Default heroes',
-    text: 'Ready-made characters. Click one to place it on the island you are viewing, then choose who plays it.',
+    text: 'Ready-made characters. Click one to place it on the map you are viewing, then choose who plays it.',
     side: 'right',
   },
   {
@@ -121,7 +123,7 @@ export const HOST_TOUR = [
     title: 'Placeable',
     text: 'Things to put on the map.',
     items: [
-      ['Door', 'lets tokens walk through to another map.'],
+      ['Door', 'lets tokens walk through to another world.'],
       ['Chest', 'holds loot for players to open and take.'],
       ['Trap', 'hidden from players until you reveal it.'],
     ],

@@ -92,7 +92,7 @@ function groupNameOf(layer, islandId) {
 export function PhoneTopBar({ islandName, layerName, layerIndex, layerCount, feetPerSquare, onAtlas, onLayers, onMenu }) {
   return (
     <header className="phone-topbar">
-      <button type="button" className="phone-topbar-title" onClick={onAtlas} aria-label={`${islandName}, open the island overview`}>
+      <button type="button" className="phone-topbar-title" onClick={onAtlas} aria-label={`${islandName}, open the map overview`}>
         <span className="phone-topbar-island">
           {islandName}
           <PhoneIcon name="down" size={13} strokeWidth={3} />
@@ -102,7 +102,7 @@ export function PhoneTopBar({ islandName, layerName, layerIndex, layerCount, fee
           {feetPerSquare} ft squares
         </span>
       </button>
-      <button type="button" className="phone-icon-btn" onClick={onLayers} aria-label="Maps and layers">
+      <button type="button" className="phone-icon-btn" onClick={onLayers} aria-label="Worlds">
         <PhoneIcon name="layers" />
       </button>
       <button type="button" className="phone-icon-btn" onClick={onMenu} aria-label="Table menu">
@@ -120,7 +120,7 @@ export function PhoneTopBar({ islandName, layerName, layerIndex, layerCount, fee
 
 export function PhoneIslandStrip({ layer, entities, activeIslandId, onPick, onAddIsland }) {
   return (
-    <nav className="phone-strip" aria-label="Islands on this layer">
+    <nav className="phone-strip" aria-label="Maps in this world">
       {layer.islandOrder.map((id) => {
         const island = layer.islands[id];
         if (!island) return null;
@@ -140,7 +140,7 @@ export function PhoneIslandStrip({ layer, entities, activeIslandId, onPick, onAd
       {onAddIsland && (
         <button type="button" className="phone-chip phone-chip-add" onClick={onAddIsland}>
           <PhoneIcon name="plus" size={16} strokeWidth={2.2} />
-          Island
+          Map
         </button>
       )}
     </nav>
@@ -191,7 +191,7 @@ export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePad
   return (
     <>
     <HudFoldButton label="Hide the mini-map" className="phone-minimap-fold" onClick={() => setFolded(true)} />
-    <button type="button" className="phone-minimap" onClick={onOpen} aria-label="Island overview">
+    <button type="button" className="phone-minimap" onClick={onOpen} aria-label="Map overview">
       <svg viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         {layer.islandOrder.map((id) => {
           const i = layer.islands[id];
@@ -222,7 +222,7 @@ export function PhoneIslandConditions({ conditions = [] }) {
   const labels = conditions.map((key) => getIslandCondition(key)?.label).filter(Boolean);
   if (!labels.length) return null;
   return (
-    <div className="phone-conditions" role="status" aria-label={`Island conditions: ${labels.join(', ')}`}>
+    <div className="phone-conditions" role="status" aria-label={`Map conditions: ${labels.join(', ')}`}>
       <PhoneIcon name="fog" size={16} strokeWidth={2} />
       {labels.join(' · ')}
     </div>
@@ -361,7 +361,7 @@ export function PhoneSheet({ title, onClose, children, className = '' }) {
 
 export function PhoneLayersSheet({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitch, onManage, onClose }) {
   return (
-    <PhoneSheet title="Maps" onClose={onClose}>
+    <PhoneSheet title="Worlds" onClose={onClose}>
       <ul className="phone-layer-list">
         {layerOrder.map((id, index) => {
           const layer = layers[id];
@@ -375,7 +375,7 @@ export function PhoneLayersSheet({ layers, layerOrder, currentLayerId, layerPlay
                 <b>{layer.name}</b>
                 <span>
                   {index === 0 ? 'Base layer · ' : ''}
-                  {layer.islandOrder.length} {layer.islandOrder.length === 1 ? 'island' : 'islands'}
+                  {layer.islandOrder.length} {layer.islandOrder.length === 1 ? 'map' : 'maps'}
                 </span>
                 <span>{count ? `${count} ${count === 1 ? 'person' : 'people'} here` : 'Nobody here'}</span>
               </div>
@@ -392,10 +392,10 @@ export function PhoneLayersSheet({ layers, layerOrder, currentLayerId, layerPlay
       </ul>
       {isHost ? (
         <button type="button" className="phone-btn-ghost phone-btn-block" onClick={onManage}>
-          Add, rename or remove maps
+          Add, rename or remove worlds
         </button>
       ) : (
-        <p className="phone-caption">Walk through a door to take your hero to another map. Only the DM can add, rename or remove maps.</p>
+        <p className="phone-caption">Walk through a door to take your hero to another world. Only the DM can add, rename or remove worlds.</p>
       )}
     </PhoneSheet>
   );
@@ -435,14 +435,14 @@ export function PhoneGroupSheet({ layer, tokenCounts, activeIslandId, onGroup, o
   const pad = Math.max(b.w, b.h) * 0.03;
 
   return (
-    <PhoneSheet title="Group islands" onClose={onClose} className="phone-sheet-group">
+    <PhoneSheet title="Group maps" onClose={onClose} className="phone-sheet-group">
       <div className="phone-sheet-pad">
         <p className="phone-caption phone-caption-flush">
-          A group moves together and shares one name. Each island keeps its own grid and background.
+          A group moves together and shares one name. Each map keeps its own grid and background.
         </p>
         {free.length < 2 ? (
           <Hint>
-            Grouping needs two islands that aren’t in a group yet. Add another with <b>+ Island</b> at the top.
+            Grouping needs two maps that aren’t in a group yet. Add another with <b>+ Map</b> at the top.
           </Hint>
         ) : (
           <>
@@ -451,7 +451,7 @@ export function PhoneGroupSheet({ layer, tokenCounts, activeIslandId, onGroup, o
               viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`}
               preserveAspectRatio="xMidYMid meet"
               role="group"
-              aria-label="Islands on this map — tap to pick"
+              aria-label="Maps in this world — tap to pick"
             >
               {layer.islandOrder.map((id) => {
                 const i = layer.islands[id];
@@ -505,13 +505,13 @@ export function PhoneGroupSheet({ layer, tokenCounts, activeIslandId, onGroup, o
                 setName('');
               }}
             >
-              {picked.length < 2 ? 'Pick at least two islands' : `Group ${picked.length} islands`}
+              {picked.length < 2 ? 'Pick at least two maps' : `Group ${picked.length} maps`}
             </button>
           </>
         )}
         {groups.length > 0 && (
-          <section className="phone-menu-section" aria-label="Groups on this map">
-            <span className="phone-label">Groups on this map</span>
+          <section className="phone-menu-section" aria-label="Groups in this world">
+            <span className="phone-label">Groups in this world</span>
             {groups.map((g) => (
               <PhoneGroupRow key={g.id} group={g} layer={layer} onRename={onRename} onUngroup={onUngroup} />
             ))}
@@ -561,9 +561,9 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
   const place = (x, y) => ({ left: offX + (x - b.minX) * scale, top: offY + (y - b.minY) * scale });
 
   return (
-    <div className="phone-atlas" role="dialog" aria-modal="true" aria-label="Island overview">
+    <div className="phone-atlas" role="dialog" aria-modal="true" aria-label="Map overview">
       <header className="phone-atlas-header">
-        <button type="button" className="phone-icon-btn" onClick={onClose} aria-label="Back to the island">
+        <button type="button" className="phone-icon-btn" onClick={onClose} aria-label="Back to the map">
           <PhoneIcon name="back" strokeWidth={2.2} />
         </button>
         <div>
@@ -609,7 +609,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
         })}
       </div>
       <div className="phone-atlas-list">
-        <h3>Islands</h3>
+        <h3>Maps</h3>
         <ul>
           {layer.islandOrder.map((id, index) => {
             const i = layer.islands[id];
@@ -625,7 +625,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
                     <b>{i.name}</b>
                     <span>
                       {i.cols} × {i.rows}
-                      {index === 0 ? ' · base island' : ''}
+                      {index === 0 ? ' · base map' : ''}
                       {group ? ` · ${group}` : ''}
                       {who.length ? ` · ${who.length} here` : ''}
                     </span>
@@ -637,17 +637,17 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
             );
           })}
         </ul>
-        <p className="phone-caption">Tokens walk straight across where two islands touch. Doors lead to other maps.</p>
+        <p className="phone-caption">Tokens walk straight across where two maps touch. Doors lead to other worlds.</p>
         {(onManageIslands || onManageLayers) && (
           <div className="phone-atlas-manage">
             {onManageIslands && (
               <button type="button" className="phone-btn-ghost" onClick={onManageIslands}>
-                Manage islands
+                Manage maps
               </button>
             )}
             {onManageLayers && (
               <button type="button" className="phone-btn-ghost" onClick={onManageLayers}>
-                Manage maps
+                Manage worlds
               </button>
             )}
           </div>
@@ -657,7 +657,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
   );
 }
 
-// ---------- palette choice (the desktop header's PalettesMenu, as a row) ----------
+// ---------- palette choice (the desktop toolbar's Configurations → Palette, as a row) ----------
 
 export function PhonePaletteRow({ theme, onChange }) {
   if (!onChange) return null;
@@ -701,7 +701,7 @@ export function PhoneMoveCard({ info, onCancel, onConfirm }) {
       </div>
       <p className="phone-move-sub">
         {crossing
-          ? 'Distance isn’t measured across islands.'
+          ? 'Distance isn’t measured across maps.'
           : info.leftAfter != null
             ? `${info.leftAfter} of ${info.total} ft left after.`
             : 'Tap another square to change it.'}
@@ -1006,7 +1006,7 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
         <section className="phone-menu-section" aria-label="This table">
           <span className="phone-label">This table</span>
           <dl className="phone-facts">
-            <dt>Map</dt>
+            <dt>World</dt>
             <dd>{layerName}</dd>
             <dt>DM</dt>
             <dd>{dmName || '—'}</dd>
@@ -1014,14 +1014,14 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
             <dd>{seated.join(', ') || '—'}</dd>
           </dl>
         </section>
-        <section className="phone-menu-section" aria-label="This map">
-          <span className="phone-label">This map</span>
+        <section className="phone-menu-section" aria-label="This world">
+          <span className="phone-label">This world</span>
           <dl className="phone-facts">
-            <dt>Island</dt>
+            <dt>Map</dt>
             <dd>{island?.name || '—'}</dd>
             <dt>Feet per square</dt>
             <dd>{feetPerSquare}</dd>
-            <dt>Island conditions</dt>
+            <dt>Map conditions</dt>
             <dd>{islandConds.length ? islandConds.join(', ') : 'None'}</dd>
           </dl>
         </section>
@@ -1076,7 +1076,7 @@ export function PhonePartySheet({ players, hostId, meId, entities, layers, curre
                   Show on map
                 </button>
               ) : hero ? (
-                <span className="phone-party-where">On {layers?.[hero.layerId]?.name || 'another map'}</span>
+                <span className="phone-party-where">On {layers?.[hero.layerId]?.name || 'another world'}</span>
               ) : (
                 <span className="phone-party-where">Not on the map</span>
               )}
@@ -1111,18 +1111,18 @@ export function PhoneEditBar({ tool, islandName, onSettings, onGroup, onDraw, on
   return (
     <div className="phone-edit-bar" role="status">
       <span className="phone-edit-text">
-        <b>{grouping ? 'Group islands.' : 'Edit mode.'}</b>{' '}
-        {grouping ? 'Tap islands to add them, then name the group below.' : 'Drag an island to move it; edges snap together where they touch.'}
+        <b>{grouping ? 'Group maps.' : 'Edit mode.'}</b>{' '}
+        {grouping ? 'Tap maps to add them, then name the group below.' : 'Drag a map to move it; edges snap together where they touch.'}
       </span>
       <div className="phone-edit-actions">
         {!grouping && (
           <button type="button" className="phone-btn-ghost" onClick={onSettings}>
-            {islandName ? `${islandName} settings` : 'Island settings'}
+            {islandName ? `${islandName} settings` : 'Map settings'}
           </button>
         )}
         {!grouping && (
           <button type="button" className="phone-btn-ghost" onClick={onGroup}>
-            Group islands
+            Group maps
           </button>
         )}
         {!grouping && onDraw && (

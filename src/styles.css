@@ -149,75 +149,29 @@ input, select {
   overflow: hidden;
 }
 
-.top-bar {
+/* The palette choices in the toolbar's Configurations menu (Toolbar.jsx). */
+.toolbar-menu-palettes {
+  flex-basis: 100%;
+  order: 11;
+  box-sizing: border-box;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--ink-700);
-  background: var(--ink-900);
-  flex-shrink: 0;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink-700);
 }
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.brand-mark {
-  font-family: var(--font-display-caps);
-  font-size: 20px;
-  letter-spacing: 0.04em;
-  color: var(--parchment-100);
-}
-
-.brand-sub {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--parchment-300);
-  opacity: 0.6;
-}
-
-/* Everything in the bar stays on one line; on a narrow window the session
-   chip gives way (ellipsis) and the brand's subtitle drops out. */
-.top-bar { gap: 16px; }
-.brand { flex-shrink: 0; white-space: nowrap; }
-.top-bar-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.top-bar-actions .btn { white-space: nowrap; }
-@media (max-width: 1023px) {
-  .brand-sub { display: none; }
-}
-
-.session-chip {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  background: var(--ink-800);
-  border: 1px solid var(--gold-line);
-  color: var(--parchment-100);
-  padding: 6px 12px;
-  border-radius: 3px;
+.toolbar-menu:has(> .toolbar-menu-palettes) { width: 480px; }
+.toolbar-menu-caption {
+  flex-basis: 100%;
+  padding: 0 4px 2px;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment-300);
 }
-
-.palette-btn-wrap { position: relative; }
-
-.palette-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  background: var(--ink-800);
-  border: 1px solid var(--gold-line);
-  border-radius: 6px;
-  padding: 8px;
-  width: 220px;
-  z-index: 300;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-}
+.toolbar-menu-palettes .palette-option { width: auto; min-height: 40px; }
 
 .palette-option {
   display: flex;
@@ -372,7 +326,7 @@ input, select {
   .landing-shell { flex-direction: column; align-items: stretch; gap: 20px; }
   /* Let the hero's pieces interleave with the card: pitch, then form, then map. */
   .landing-hero { display: contents; }
-  .landing-hero .brand, .landing-hero .landing-status, .landing-hero .landing-eyebrow,
+  .landing-hero .landing-status, .landing-hero .landing-eyebrow,
   .landing-hero h1, .landing-hero p.landing-lede { order: 0; }
   .landing-hero p.landing-lede { font-size: 16px; }
   .lobby-card { order: 1; max-width: none; padding: 20px; }
@@ -1666,8 +1620,11 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
    picker underneath. */
 .island-row { padding: 2px 0 10px; border-bottom: 1px solid var(--ink-800); }
 .island-row:last-of-type { border-bottom: 0; }
+/* A sub map, listed under the map it belongs to (World maps dialog). */
+.island-row.sub { margin-left: 16px; padding-left: 8px; border-left: 2px solid var(--gold-line); }
 .island-settings { margin: 2px 6px 10px; padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
 .island-settings .field-row .btn { flex: 1; }
+.island-settings-confirm { margin-top: 10px; }
 .island-new { margin: 10px 0 8px; }
 .island-settings .island-row-note { padding: 4px 0 0; }
 .island-row-conditions { display: flex; flex-direction: column; gap: 2px; padding: 0 6px; }
@@ -3079,6 +3036,11 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .cbook-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0; font-family: var(--font-mono); font-size: 12px; color: var(--parchment-200); }
 .cbook-attack { font-size: 13px; line-height: 1.4; color: var(--gold-hi); }
 .cbook-selection-line { font-size: 13px; line-height: 1.4; color: var(--parchment-300); }
+/* The Game table rules (RulesBook.jsx): an entry's explanation on the tray. */
+.cbook-rule-text { margin: 6px 0 0; font-size: 15px; line-height: 1.55; color: var(--parchment-200); }
+.rules-list { padding-left: 18px; }
+.rules-list li + li { margin-top: 4px; }
+.rules-list b { color: var(--parchment-100); }
 
 .cbook-give { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cbook-give label { font-size: 13px; font-weight: 600; color: var(--parchment-200); }
@@ -4480,7 +4442,6 @@ button.card-notes { border-style: solid; }
    when (max-width: 767px), (max-height: 499px) matches. Islands first: the
    top bar names the island, chips fly between islands, a mini-map shows the
    whole layer. Built on the palette variables so every palette still works. */
-.app-shell:has(.game-screen.phone) > .top-bar { display: none; }
 .game-layout.phone-layout { grid-template-columns: minmax(0, 1fr); }
 .game-layout.phone-layout > .game-center { grid-column: 1; }
 .game-screen.phone .stage { touch-action: none; }
@@ -5463,18 +5424,6 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .toolbar-codes-tip { position: absolute; top: calc(100% + 12px); left: 0; z-index: 130; }
 .phone-tip { width: auto; margin: 4px 0 8px; }
 .phone-tip .tip-arrow { display: none; }
-/* The DM's empty map: centred over the grid, clicks elsewhere still reach it. */
-.map-empty {
-  position: absolute;
-  inset: 0;
-  z-index: 18;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  pointer-events: none;
-}
-.map-empty .hint-empty { pointer-events: auto; max-width: 320px; background: var(--ink-900); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45); }
 .phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 24; }
 .phone-no-hero .hint-empty { background: var(--ink-900); border-style: solid; border-color: var(--gold-line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55); }
 .inspector-scroll .hint-empty { margin: 12px 4px; }

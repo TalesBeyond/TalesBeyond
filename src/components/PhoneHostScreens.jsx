@@ -127,7 +127,7 @@ export function PhoneRunTable({
           {!phaseOverride && !hasCycle && <p className="phone-caption phone-caption-flush">No day/night cycle is running.</p>}
           {onIslandDayNight && (
             <label className="phone-owner">
-              <span>{islandName || 'This island'}</span>
+              <span>{islandName || 'This map'}</span>
               <select value={islandDayNight} onChange={(e) => onIslandDayNight(e.target.value)}>
                 {ISLAND_DAY_NIGHT_MODES.map((m) => (
                   <option key={m.key} value={m.key}>
@@ -147,7 +147,7 @@ export function PhoneRunTable({
                 Music and sounds
               </button>
               <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(() => open('ambience'))}>
-                This map’s ambience
+                This world’s ambience
               </button>
             </>
           ) : (
@@ -295,14 +295,14 @@ export function PhoneHostMenu({
           />
         </section>
 
-        <section className="phone-menu-section" aria-label="Maps">
-          <span className="phone-label">Islands &amp; maps</span>
+        <section className="phone-menu-section" aria-label="Maps and worlds">
+          <span className="phone-label">Maps &amp; worlds</span>
           <div className="phone-move-actions phone-two">
             <button type="button" className="phone-btn-ghost" onClick={onManageIslands}>
-              Islands
+              Maps
             </button>
             <button type="button" className="phone-btn-ghost" onClick={onManageLayers}>
-              Maps
+              Worlds
             </button>
           </div>
         </section>

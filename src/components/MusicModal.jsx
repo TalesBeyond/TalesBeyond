@@ -85,7 +85,7 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
                 {isGuest
                   ? 'Guest table: your files stay on this device and only you hear them — nothing is uploaded, and they are gone when you close the page.'
                   : audio.isHost
-                  ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to maps and tokens from World state → Ambience and the token inspector.'
+                  ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to worlds and tokens from World state → Ambience and the token inspector.'
                   : 'The DM controls the music. Your volume slider only changes what you hear.'}
               </p>
             </>

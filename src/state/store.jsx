@@ -10,7 +10,7 @@ export const MAX_PLAYERS = 10; // 1 host + 9 players
 export function createInitialIsland(overrides = {}) {
   return {
     id: generateEntityId(),
-    name: 'Untitled Island',
+    name: 'Untitled Map',
     cols: 20,
     rows: 15,
     cellSize: 42,
@@ -26,7 +26,7 @@ export function createInitialLayer(overrides = {}) {
   const baseIsland = createInitialIsland({ name: 'Untitled Map', ...islandOverrides });
   return {
     id: generateEntityId(),
-    name: 'Untitled Map',
+    name: 'Untitled World',
     feetPerSquare: 5,
     islands: { [baseIsland.id]: baseIsland },
     islandOrder: [baseIsland.id],

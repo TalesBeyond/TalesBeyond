@@ -127,7 +127,7 @@ export default function ClockModal({ clock, onSave, onRemove, onClose }) {
             </div>
           </div>
           <p className="footer-note" style={{ border: 'none', padding: '6px 0 0' }}>
-            Islands can follow this cycle or stay always day / always night — set that per island in World state → Day / night. You can also
+            Maps can follow this cycle or stay always day / always night — set that per map in World state → Day / night. You can also
             override the phase by hand at any time from the toolbar's Day / night button, and pause or resume the clock from the
             readout.
           </p>

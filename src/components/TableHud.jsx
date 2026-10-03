@@ -77,7 +77,7 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
       </div>
       <div className="layer-strip-meta">
         <StripClock clock={clock} phaseOverride={phaseOverride} />
-        <span title="Feet per square on the island you're looking at">{feetPerSquare} ft per square</span>
+        <span title="Feet per square on the map you're looking at">{feetPerSquare} ft per square</span>
       </div>
     </div>
   );
@@ -195,7 +195,7 @@ export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter
       <button type="button" aria-label="Zoom in" onClick={onZoomIn}>
         +
       </button>
-      <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current island" title="Scroll back to the currently selected island" onClick={onRecenter}>
+      <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current map" title="Scroll back to the currently selected map" onClick={onRecenter}>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3" />
         </svg>

@@ -15,7 +15,9 @@ import ClockReadout from './ClockReadout.jsx';
 import SoundField from './SoundField.jsx';
 import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
+import RulesBook from './RulesBook.jsx';
 import { useFx } from '../lib/fx.js';
+import { PALETTES } from '../state/theme.js';
 
 const BACKGROUND_IMAGE_MAX_DIM = 1600; // fills the whole map, so keep more detail than a token
 
@@ -128,6 +130,7 @@ const ICON_PATHS = {
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
+  rules: 'M10 5C8 3.5 5 3.5 3 4.5v11c2-1 5-1 7 .5 2-1.5 5-1.5 7-.5v-11c-2-1-5-1-7 .5zM10 5v11',
 };
 
 // How the bar sheds width when it can't fit on one row, cheapest first. Each
@@ -153,7 +156,7 @@ const TOOL_ICONS = {
   group: <Icon name="group" />,
   draw: <Icon name="draw" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Group Islands', draw: 'Draw' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', group: 'Group Maps', draw: 'Draw' };
 
 // Seats at a table: the DM plus up to nine players.
 const MAX_SEATS = 10;
@@ -198,6 +201,9 @@ export default function Toolbar({
   meId = null,
   onKickPlayer = null,
   onStartTour = null, // the DM's tutorial replay (desktop only)
+  // The app-wide colour palette, picked in Configurations.
+  theme,
+  onThemeChange = null,
   // The roll log and saved dice sets, kept in GameView so they survive
   // closing the popover and the phone dice screen shares them.
   dice,
@@ -274,6 +280,7 @@ export default function Toolbar({
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   const [showDayNight, setShowDayNight] = useState(false);
   const [showAmbience, setShowAmbience] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   // The island whose settings the Islands dialog opens on (the phone's
   // "… settings" button in Edit mode).
   const [islandsFocusId, setIslandsFocusId] = useState(null);
@@ -434,8 +441,8 @@ export default function Toolbar({
     });
   }
 
-  // An island's background image, from its settings in the Islands
-  // dialog — applied as soon as it's read, no Apply step.
+  // An island's background image, picked in its settings (World maps
+  // dialog) and sent here when Save changes is pressed.
   async function uploadIslandBackground(islandId, file) {
     try {
       const backgroundImage = await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78);
@@ -567,7 +574,7 @@ export default function Toolbar({
               label="Edit"
               active={tool === 'edit'}
               onClick={() => pick(() => onToolChange('edit'))}
-              title="Drag islands around to reposition them"
+              title="Drag maps around to reposition them"
             />
           </>
         )}
@@ -578,7 +585,7 @@ export default function Toolbar({
           icon={<Icon name="mapping" />}
           label="Mapping"
           tour="mapping"
-          title="Islands and layers"
+          title="World maps and layers"
           active={showIslands || showLayers || tool === 'group'}
           open={openMenu === 'mapping'}
           onToggle={() => toggleMenu('mapping')}
@@ -625,14 +632,14 @@ export default function Toolbar({
             </>
           }
         >
-          <ToolCard icon={<Icon name="islands" />} label="Islands" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} island(s) on this layer`} />
+          <ToolCard icon={<Icon name="islands" />} label="World maps" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} map(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
           <ToolCard
             icon={TOOL_ICONS.group}
-            label="Group Islands"
+            label="Group Maps"
             active={tool === 'group'}
             onClick={() => pick(() => onToolChange(tool === 'group' ? 'edit' : 'group'))}
-            title="Select 2+ islands to bundle into a group that moves and titles as one"
+            title="Select 2+ maps to bundle into a group that moves and titles as one"
           />
         </ToolMenu>
       )}
@@ -642,7 +649,7 @@ export default function Toolbar({
           icon={<Icon name="world" />}
           label="World state"
           tour="world"
-          title="In-game time, day / night and the map's ambience"
+          title="In-game time, day / night and the world's ambience"
           active={showDayNight || showAmbience}
           open={openMenu === 'world'}
           onToggle={() => toggleMenu('world')}
@@ -671,14 +678,14 @@ export default function Toolbar({
             label="Day / night"
             active={showDayNight}
             onClick={() => togglePopover('dayNight')}
-            title="Change the day/night phase by hand, and whether this island follows it"
+            title="Change the day/night phase by hand, and whether this map follows it"
           />
           <ToolCard
             icon={<Icon name="music" />}
             label="Ambience"
             active={showAmbience}
             onClick={() => togglePopover('ambience')}
-            title="The sound that plays for players on this map"
+            title="The sound that plays for players in this world"
           />
         </ToolMenu>
       )}
@@ -986,7 +993,37 @@ export default function Toolbar({
         {hintPrefs.show && hintPrefs.anyDismissed && (
           <ToolCard icon={<Icon name="refresh" />} label="Tips again" onClick={() => pick(hintPrefs.resetDismissed)} title="Show every tip and mode bar you've hidden again" />
         )}
+        {/* The app-wide palette (state/theme.js). The menu stays open so a
+            few can be tried in a row. */}
+        {onThemeChange && (
+          <div className="toolbar-menu-palettes" role="group" aria-label="Color palette">
+            <span className="toolbar-menu-caption">Palette</span>
+            {PALETTES.map((p) => (
+              <button key={p.id} type="button" className={`palette-option${theme === p.id ? ' active' : ''}`} aria-pressed={theme === p.id} onClick={() => onThemeChange(p.id)}>
+                <span className="palette-swatch" aria-hidden="true">
+                  {p.swatch.map((c, i) => (
+                    <span key={i} style={{ background: c }} />
+                  ))}
+                </span>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* What the tips and the tutorial said, kept to read at any time. */}
+        <ToolCard
+          icon={<Icon name="rules" />}
+          label="Game table rules"
+          onClick={() =>
+            pick(() => {
+              closePopovers();
+              setShowRules(true);
+            })
+          }
+          title="What every button and tool does"
+        />
       </ToolMenu>
+      {showRules && <RulesBook isHost={isHost} onClose={() => setShowRules(false)} />}
 
       <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
         <Icon name="leave" />
@@ -1088,7 +1125,7 @@ function DayNightPopover({ override, hasClock, hasCycle, onSelect, island, onIsl
 function AmbiencePopover({ layer, audio, onClose }) {
   return (
     <ModalShell title="Ambience" icon="music" closeLabel="Close ambience" onClose={onClose}>
-      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players on this map`} />
+      <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players in this world`} />
     </ModalShell>
   );
 }
@@ -1183,7 +1220,7 @@ function LayerSwitcherPopover({
       })}
 
       {(layerOrder || []).length > 1 && (
-        <Hint className="hint-tight">The first map is the base — new players land there, so it can’t be deleted.</Hint>
+        <Hint className="hint-tight">The first world is the base — new players land there, so it can’t be deleted.</Hint>
       )}
 
       <div className="divider-word">new layer</div>
@@ -1236,11 +1273,22 @@ function IslandManagerPopover({
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
   const [feet, setFeet] = useState(5);
-  // The new-island form stays folded behind one button until it's wanted.
-  const [adding, setAdding] = useState(false);
+  // The new-map form stays folded behind a button until it's wanted:
+  // 'new' for a map of its own, or the id of the map getting a sub map.
+  const [addingTo, setAddingTo] = useState(null);
+
+  // A sub map is a map grouped under another: the group's first map is the
+  // parent, the rest are its sub maps (GameView's createIsland).
+  const parentIdOf = (islandId) => {
+    const first = groupOf(islandId)?.islandIds[0];
+    return first && first !== islandId && islands?.[first] ? first : null;
+  };
+  const mapRows = (islandOrder || [])
+    .filter((id) => islands?.[id] && !parentIdOf(id))
+    .flatMap((id) => [{ id, parentId: null }, ...(islandOrder || []).filter((sub) => islands?.[sub] && parentIdOf(sub) === id).map((sub) => ({ id: sub, parentId: id }))]);
 
   function closeAdding() {
-    setAdding(false);
+    setAddingTo(null);
     setName('');
     setCols(20);
     setRows(15);
@@ -1249,24 +1297,80 @@ function IslandManagerPopover({
 
   function addIsland() {
     if (!name.trim()) return;
-    onCreateIsland({ name: name.trim(), cols, rows, feetPerSquare: feet });
+    onCreateIsland({ name: name.trim(), cols, rows, feetPerSquare: feet, parentId: addingTo === 'new' ? null : addingTo });
     closeAdding();
   }
 
+  const newMapForm = (title, submitLabel, note) => (
+    <div className="island-settings island-new">
+      <div className="section-label" style={{ marginTop: 0 }}>
+        {title}
+      </div>
+      <label className="field-label">Name</label>
+      <input
+        className="field"
+        value={name}
+        autoFocus
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') addIsland();
+          else if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeAdding();
+          }
+        }}
+        placeholder="e.g. Side Chamber"
+      />
+      <div className="field-row">
+        <div>
+          <label className="field-label">Width</label>
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+        </div>
+        <div>
+          <label className="field-label">Height</label>
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
+        </div>
+      </div>
+      <label className="field-label">Feet per square</label>
+      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} />
+      <div className="field-row">
+        <button className="btn btn-secondary" onClick={closeAdding}>
+          Cancel
+        </button>
+        <button className="btn btn-primary" onClick={addIsland} disabled={!name.trim()}>
+          {submitLabel}
+        </button>
+      </div>
+      {note && <span className="island-row-note">{note}</span>}
+    </div>
+  );
+
   return (
-    <ModalShell title="Islands on this layer" icon="islands" closeLabel="Close islands panel" onClose={onClose}>
-      {(islandOrder || []).map((id, i) => {
-        const island = islands?.[id];
-        if (!island) return null;
+    <ModalShell title="World maps" icon="islands" closeLabel="Close world maps panel" onClose={onClose}>
+      {mapRows.map(({ id, parentId }) => {
+        const island = islands[id];
         const isSole = islandOrder.length === 1;
-        const isBase = i === 0 && !isSole;
+        const isBase = id === islandOrder[0] && !isSole;
         const isActive = id === activeIslandId;
         const group = groupOf(id);
         return (
-          <div key={id} className="island-row">
+          <div key={id} className={`island-row${parentId ? ' sub' : ''}`}>
           <div className="player-row" style={{ justifyContent: 'space-between' }}>
-            <span className="player-name">{island.name}</span>
+            <span className="player-name">
+              {island.name}
+              {parentId && <span className="player-tag"> · sub map</span>}
+            </span>
             <div style={{ display: 'flex', gap: 6 }}>
+              {!parentId && onCreateIsland && (
+                <button
+                  className={`btn btn-secondary btn-sm ${addingTo === id ? 'active' : ''}`}
+                  aria-expanded={addingTo === id}
+                  onClick={() => (addingTo === id ? closeAdding() : setAddingTo(id))}
+                  title="Add a map that belongs to this one and moves with it"
+                >
+                  + Sub map
+                </button>
+              )}
               <button
                 className={`btn btn-secondary btn-sm ${isActive ? 'active' : ''}`}
                 disabled={isActive}
@@ -1290,7 +1394,7 @@ function IslandManagerPopover({
               <button
                 className="btn btn-danger btn-sm"
                 disabled={isBase}
-                title={isBase ? 'The base island cannot be removed while other islands exist' : isSole ? 'Clear this island and start it fresh — a layer always needs at least one' : 'Delete this island'}
+                title={isBase ? 'The base map cannot be removed while other maps exist' : isSole ? 'Clear this map and start it fresh — a layer always needs at least one' : 'Delete this map'}
                 onClick={() => onRemoveIsland(id)}
               >
                 Delete
@@ -1306,13 +1410,19 @@ function IslandManagerPopover({
               onDownloadImage={() => onDownloadIslandImage?.(id)}
             />
           )}
-          {group ? (
+          {parentId ? (
+            <span className="island-row-note">
+              Sub map of <b>{islands[parentId].name}</b> — it moves with it. Conditions are set on the group below.
+            </span>
+          ) : group ? (
             <span className="island-row-note">
               In <b>{group.name}</b> — its conditions are set on the group below.
             </span>
           ) : (
             onIslandConditions && <ConditionPicker active={island.conditions || []} onChange={(keys) => onIslandConditions(id, keys)} />
           )}
+          {addingTo === id &&
+            newMapForm(`New sub map of ${island.name}`, 'Add sub map', 'It lands beside its parent and is grouped with it, so the two move together.')}
           </div>
         );
       })}
@@ -1326,133 +1436,138 @@ function IslandManagerPopover({
         </>
       )}
 
-      {adding ? (
-        <div className="island-settings island-new">
-          <div className="section-label" style={{ marginTop: 0 }}>
-            New island
-          </div>
-          <label className="field-label">Name</label>
-          <input
-            className="field"
-            value={name}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addIsland();
-              else if (e.key === 'Escape') {
-                e.stopPropagation();
-                closeAdding();
-              }
-            }}
-            placeholder="e.g. Side Chamber"
-          />
-          <div className="field-row">
-            <div>
-              <label className="field-label">Width</label>
-              <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">Height</label>
-              <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
-            </div>
-          </div>
-          <label className="field-label">Feet per square</label>
-          <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} />
-          <div className="field-row">
-            <button className="btn btn-secondary" onClick={closeAdding}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={addIsland} disabled={!name.trim()}>
-              Add island
-            </button>
-          </div>
-        </div>
+      {addingTo === 'new' ? (
+        newMapForm('New map', 'Add map')
       ) : (
-        <button className="btn btn-secondary btn-block" onClick={() => setAdding(true)} style={{ marginTop: 10 }}>
-          + New island
+        <button
+          className="btn btn-secondary btn-block"
+          onClick={() => {
+            closeAdding();
+            setAddingTo('new');
+          }}
+          style={{ marginTop: 10 }}
+        >
+          + New map
         </button>
       )}
       <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
-        Switch to <b>Tools → Edit</b>, then drag an island by its background. Where edges touch, tokens walk across.
+        Switch to <b>Tools → Edit</b>, then drag a map by its background. Where edges touch, tokens walk across.
       </Hint>
     </ModalShell>
   );
 }
 
 // An island's own settings, opened from its row in the Islands dialog.
-// Name and size save when the field is left (or on Enter); a background
-// image applies as soon as it's picked.
+// Nothing here applies by itself: the fields and a newly picked background
+// image are held until Save changes is pressed, and Discard puts the form
+// back to the map as it is.
 function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground, onDownloadImage }) {
+  const savedFeet = island.feetPerSquare || fallbackFeet;
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
   const [rows, setRows] = useState(island.rows);
-  const [feet, setFeet] = useState(island.feetPerSquare || fallbackFeet);
-  const [uploading, setUploading] = useState(false);
+  const [feet, setFeet] = useState(savedFeet);
+  const [pendingFile, setPendingFile] = useState(null); // a background image picked but not saved yet
+  const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
 
-  function commitName() {
-    const next = name.trim() || 'Untitled Island';
-    setName(next);
-    if (next !== island.name) onPatch({ name: next });
+  const dirty =
+    name !== island.name ||
+    String(cols) !== String(island.cols) ||
+    String(rows) !== String(island.rows) ||
+    String(feet) !== String(savedFeet) ||
+    Boolean(pendingFile);
+
+  function discard() {
+    setName(island.name);
+    setCols(island.cols);
+    setRows(island.rows);
+    setFeet(savedFeet);
+    setPendingFile(null);
   }
-  function commitSize() {
+
+  async function save() {
+    if (!dirty || saving) return;
+    const nextName = name.trim() || 'Untitled Map';
     const c = clampGridDims(cols);
     const r = clampGridDims(rows);
+    const f = clampFeetPerSquare(feet);
+    setName(nextName);
     setCols(c);
     setRows(r);
-    if (c !== island.cols || r !== island.rows) onPatch({ cols: c, rows: r });
+    setFeet(f);
+    const patch = {};
+    if (nextName !== island.name) patch.name = nextName;
+    if (c !== island.cols || r !== island.rows) Object.assign(patch, { cols: c, rows: r });
+    if (f !== island.feetPerSquare) patch.feetPerSquare = f;
+    if (Object.keys(patch).length) onPatch(patch);
+    if (pendingFile) {
+      setSaving(true);
+      try {
+        await onUploadBackground(pendingFile);
+      } finally {
+        setSaving(false);
+        setPendingFile(null);
+      }
+    }
   }
-  function commitFeet() {
-    const next = clampFeetPerSquare(feet);
-    setFeet(next);
-    if (next !== island.feetPerSquare) onPatch({ feetPerSquare: next });
-  }
-  const blurOnEnter = (e) => {
-    if (e.key === 'Enter') e.currentTarget.blur();
+
+  const saveOnEnter = (e) => {
+    if (e.key === 'Enter') save();
   };
-  async function pickFile(e) {
+  function pickFile(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
-    setUploading(true);
-    try {
-      await onUploadBackground(file);
-    } finally {
-      setUploading(false);
-    }
+    if (file) setPendingFile(file);
   }
 
   return (
     <div className="island-settings">
       <label className="field-label">Name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName} onKeyDown={blurOnEnter} />
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={saveOnEnter} />
       <div className="field-row">
         <div>
           <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} onKeyDown={saveOnEnter} />
         </div>
         <div>
           <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onBlur={commitSize} onKeyDown={blurOnEnter} />
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onKeyDown={saveOnEnter} />
         </div>
       </div>
       <label className="field-label">Feet per square</label>
-      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onBlur={commitFeet} onKeyDown={blurOnEnter} />
+      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onKeyDown={saveOnEnter} />
       <label className="field-label">Background image</label>
       <div className="field-row">
-        <button className="btn btn-secondary" disabled={uploading} onClick={() => fileRef.current?.click()}>
-          {uploading ? 'Uploading…' : island.backgroundImage ? 'Replace image' : 'Upload image'}
+        <button className="btn btn-secondary" disabled={saving} onClick={() => fileRef.current?.click()}>
+          {pendingFile ? 'Choose another image' : island.backgroundImage ? 'Replace image' : 'Upload image'}
         </button>
         <button
           className="btn btn-secondary"
           onClick={onDownloadImage}
-          title="Download this island as a PNG (background + grid) to edit in an image editor, then upload it back as the background"
+          title="Download this map as a PNG (background + grid) to edit in an image editor, then upload it back as the background"
         >
-          Download image (.png)
+          Download map
         </button>
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
-      <span className="island-row-note">Name, size and feet per square save when you leave the field. A new image applies straight away.</span>
+      {pendingFile && (
+        <span className="island-row-note">
+          New background: <b>{pendingFile.name}</b>. It is used once you save.
+        </span>
+      )}
+      {dirty ? (
+        <div className="field-row island-settings-confirm">
+          <button className="btn btn-secondary" disabled={saving} onClick={discard}>
+            Discard
+          </button>
+          <button className="btn btn-primary" disabled={saving} onClick={save}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      ) : (
+        <span className="island-row-note">Change anything above, then press Save changes. Nothing is applied until you do.</span>
+      )}
     </div>
   );
 }
@@ -1568,7 +1683,7 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
           {participantIds.length === 0 && (
             <Hint className="hint-tight">
               {heroes.length + mobs.length === 0
-                ? 'Nobody to roll for yet. Place heroes and monsters on this map first.'
+                ? 'Nobody to roll for yet. Place heroes and monsters in this world first.'
                 : 'Pick who joins from the two lists above, then roll.'}
             </Hint>
           )}
