@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CONDITIONS } from '../data/conditions.js';
-import { playDiceSound, playSfx } from '../lib/sfx.js';
+import { playDiceSound } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
+import { Hint, EmptyState } from './Hints.jsx';
 import {
   ABILITIES,
   SKILLS,
@@ -16,7 +17,7 @@ import {
   CURRENCIES,
   normalizeCurrency,
 } from '../data/characterSheet.js';
-import { useCatalog, getCatalog } from '../lib/catalog.js';
+import { useCatalog } from '../lib/catalog.js';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
 import { parseTrapNumber, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
@@ -24,10 +25,9 @@ import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
+import CreatureCard, { Editable } from './CreatureCard.jsx';
 import SoundField from './SoundField.jsx';
-
-// Seats at a table: the DM plus up to nine players.
-const MAX_SEATS = 10;
+import { totalToHit, totalDamageLabel, acOf, weaponStatsFor, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 
 export default function RightPanel({
   audio,
@@ -47,6 +47,7 @@ export default function RightPanel({
   onTakeChestItem,
   collapsed,
   onToggleCollapsed,
+  encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
 }) {
   if (collapsed) {
     return (
@@ -57,11 +58,11 @@ export default function RightPanel({
           type="button"
           className={`panel-rail${selectedEntity ? ' has-selection' : ''}`}
           onClick={onToggleCollapsed}
-          title="Expand players & inspector panel"
+          title="Expand the inspector"
         >
           <span className="panel-rail-chevron" aria-hidden="true">«</span>
           <span className="panel-rail-label">
-            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Players & inspector'}
+            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Inspector'}
           </span>
         </button>
       </div>
@@ -69,36 +70,21 @@ export default function RightPanel({
   }
 
   return (
-    <div className="panel right">
+    <div className="panel right" data-tour="inspector">
+      {/* Who's at the table and the roll log live on the toolbar. */}
       <div className="panel-header">
-        <span>Players</span>
-        <span className="panel-header-note">{Object.values(players).length} of {MAX_SEATS} seats</span>
-        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse players & inspector panel">
+        <span>Inspector</span>
+        <button className="panel-collapse-btn" onClick={onToggleCollapsed} title="Collapse the inspector">
           »
         </button>
       </div>
-      <div className="panel-scroll" style={{ flex: 'none', maxHeight: '38%' }}>
-        {Object.values(players).length === 0 ? (
-          <div className="empty-state">No one here yet.</div>
-        ) : (
-          Object.values(players).map((p) => {
-            const hero = Object.values(entities || {}).find((e) => e.kind === 'hero' && e.ownerId === p.id);
-            const role = p.id === hostId ? 'Dungeon Master' : hero?.name || '';
-            const tag = [role, p.connected ? '' : 'away'].filter(Boolean).join(', ');
-            return (
-              <div className="player-row" key={p.id}>
-                <span className={`player-dot${p.connected ? ' online' : ''}`} style={{ background: p.color }} />
-                <span className="player-name">{p.name}</span>
-                {tag && <span className="player-tag">{tag}</span>}
-              </div>
-            );
-          })
-        )}
-      </div>
 
       <div className="panel-scroll inspector-scroll">
-        <div className="cap">Inspector</div>
-        {!selectedEntity ? (
+        {!selectedEntity && !isHost && !Object.values(entities || {}).some((e) => e.kind === 'hero' && e.ownerId === meId) ? (
+          <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
+            Ask your DM to pick you under <b>played by</b> on a hero’s card. It shows up here the moment they do.
+          </EmptyState>
+        ) : !selectedEntity ? (
           <div className="empty-state">Select a token on the map to see its details here.</div>
         ) : selectedEntity.kind === 'hero' ? (
           <HeroInspector
@@ -111,6 +97,7 @@ export default function RightPanel({
             onRemove={onRemoveEntity}
             entities={entities}
             players={players}
+            encounterActor={encounterActor}
           />
         ) : selectedEntity.kind === 'door' ? (
           <DoorInspector
@@ -144,6 +131,7 @@ export default function RightPanel({
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             entities={entities}
+            encounterActor={encounterActor}
           />
         )}
       </div>
@@ -167,118 +155,11 @@ function NameField({ entity, onUpdate, disabled }) {
   );
 }
 
-function CollapsibleField({ title, defaultOpen = false, children }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div style={{ marginTop: 14 }}>
-      <button type="button" className="sidebar-section-header" onClick={() => setOpen((o) => !o)}>
-        <span className="field-label" style={{ margin: 0 }}>
-          {title}
-        </span>
-        <span className="sidebar-section-chevron">{open ? '▾' : '▸'}</span>
-      </button>
-      {open && children}
-    </div>
-  );
-}
-
-function DmNotesField({ entity, onUpdate, placeholder }) {
-  return (
-    <>
-      <label className="field-label" style={{ marginTop: 14 }}>
-        DM notes <span style={{ opacity: 0.6 }}>(only visible to you)</span>
-      </label>
-      <textarea
-        className="field"
-        rows={4}
-        style={{ resize: 'vertical' }}
-        placeholder={placeholder}
-        value={entity.dmNotes || ''}
-        onChange={(e) => onUpdate(entity.id, { dmNotes: e.target.value })}
-      />
-    </>
-  );
-}
-
-// Lets the DM link a hero token to whichever seated player controls it —
-// needed since placing tokens is host-only now (see PITFALLS.md #1), so a
-// hero would otherwise never end up owned by anyone but the DM. Only once
-// `ownerId` matches a player does GameView.jsx's canMoveEntity let them
-// drag that hero around.
-function OwnerField({ entity, players, isHost, onUpdate }) {
-  return (
-    <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Owner {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
-      </label>
-      <select
-        className="field"
-        value={entity.ownerId || ''}
-        disabled={!isHost}
-        onChange={(e) => onUpdate(entity.id, { ownerId: e.target.value || null })}
-      >
-        <option value="">— unassigned (DM controls) —</option>
-        {Object.values(players || {}).map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-            {p.isHost ? ' (DM)' : ''}
-          </option>
-        ))}
-      </select>
-    </>
-  );
-}
-
 function RemoveButton({ entity, onRemove }) {
   return (
     <button className="btn btn-danger btn-block" style={{ marginTop: 14 }} onClick={() => onRemove(entity.id)}>
       Remove from map
     </button>
-  );
-}
-
-function ConditionsField({ entity, isHost, onUpdate }) {
-  const activeConditions = entity.conditions || [];
-  const [adding, setAdding] = useState(false);
-
-  function toggleCondition(key) {
-    if (!isHost) return;
-    const next = activeConditions.includes(key) ? activeConditions.filter((c) => c !== key) : [...activeConditions, key];
-    onUpdate(entity.id, { conditions: next });
-  }
-
-  const chip = (c, active) => (
-    <button
-      key={c.key}
-      type="button"
-      className={`condition-chip${active ? ' active' : ''}`}
-      title={`${c.label} — ${c.description}`}
-      disabled={!isHost}
-      aria-pressed={active}
-      onClick={() => toggleCondition(c.key)}
-    >
-      <span className="condition-chip-icon" style={{ backgroundImage: `url(${c.imageUrl})` }} aria-hidden="true" />
-      {c.label}
-      {active && isHost && <span aria-hidden="true">×</span>}
-    </button>
-  );
-
-  return (
-    <>
-      <div className="cap inspector-cap">Conditions {!isHost && <span className="cap-note">(host only can edit)</span>}</div>
-      <div className="condition-chips" aria-label="Active conditions">
-        {activeConditions.length === 0 && !isHost && <span className="condition-none">None applied</span>}
-        {CONDITIONS.filter((c) => activeConditions.includes(c.key)).map((c) => chip(c, true))}
-        {isHost && (
-          <button type="button" className="condition-chip add" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
-            {adding ? 'Done' : '+ Condition'}
-          </button>
-        )}
-      </div>
-      {isHost && adding && (
-        <div className="condition-chips condition-picker">{CONDITIONS.filter((c) => !activeConditions.includes(c.key)).map((c) => chip(c, false))}</div>
-      )}
-    </>
   );
 }
 
@@ -304,93 +185,9 @@ function SizeField({ entity, onUpdate, disabled, maxSize }) {
   );
 }
 
-// The inspector's top block: the token's own face, its name, and one line of
-// context ("Hero, level 3 · square (4, 2)").
-function InspectorHeader({ entity, sub, onUpdate, disabled }) {
-  return (
-    <div className="inspector-head">
-      <span
-        className={`inspector-disc${entity.kind === 'hero' ? ' round' : ''}`}
-        style={{ backgroundImage: `url(${entity.imageUrl})`, '--token-color': entity.color || 'transparent' }}
-        aria-hidden="true"
-      />
-      <div className="inspector-head-text">
-        <input
-          className="inspector-name"
-          aria-label="Name"
-          value={entity.name}
-          disabled={disabled}
-          onChange={(e) => onUpdate(entity.id, { name: e.target.value })}
-        />
-        <span className="inspector-sub">{sub}</span>
-      </div>
-    </div>
-  );
-}
-
-// Hit points and armor class in one card, above the sheet tabs. A hero's AC
-// lives on its sheet; a monster's on the entity (players see it, and hero
-// attacks roll against it).
-function VitalsCard({ entity, sheet, onUpdate, updateSheet, disabled }) {
-  const isMob = entity.kind === 'mob';
-  const hpPct = entity.maxHp ? Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100)) : 0;
-  const ac = isMob ? entity.armorClass ?? 10 : sheet.armorClass;
-  // A monster's sheet is DM-only, so players only see its HP and armor.
-  const showSheetStats = !(isMob && disabled);
-  function setAc(value) {
-    const n = parseInt(value, 10) || 0;
-    if (isMob) onUpdate(entity.id, { armorClass: n });
-    else updateSheet({ armorClass: n });
-  }
-  function stepHp(delta) {
-    onUpdate(entity.id, { hp: Math.max(0, (entity.hp || 0) + delta) });
-  }
-  return (
-    <div className="vitals-card">
-      <div className="vitals-hp-row">
-        <button type="button" className="vitals-step" aria-label="Lose 1 hit point" disabled={disabled} onClick={() => stepHp(-1)}>
-          −
-        </button>
-        <div className="vitals-hp-main">
-          <span className="vitals-hp">
-            <input type="number" aria-label="Current hit points" value={entity.hp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { hp: parseInt(e.target.value, 10) || 0 })} />
-            <span className="vitals-sep">/</span>
-            <input type="number" aria-label="Maximum hit points" value={entity.maxHp} disabled={disabled} onChange={(e) => onUpdate(entity.id, { maxHp: parseInt(e.target.value, 10) || 0 })} />
-          </span>
-          <span className="cap">Hit points</span>
-        </div>
-        <button type="button" className="vitals-step" aria-label="Gain 1 hit point" disabled={disabled} onClick={() => stepHp(1)}>
-          +
-        </button>
-      </div>
-      <div className="hp-bar-track">
-        <div className="hp-bar-fill" style={{ width: `${hpPct}%`, background: hpPct < 40 ? 'var(--danger)' : 'var(--moss)' }} />
-      </div>
-      <div className="vitals-tiles">
-        <label className="vitals-tile">
-          <input type="number" className="vitals-ac" aria-label="Armor class" value={ac} disabled={disabled} onChange={(e) => setAc(e.target.value)} />
-          <span>Armor</span>
-        </label>
-        {showSheetStats && (
-          <>
-            <label className="vitals-tile">
-              <input type="number" aria-label="Initiative" value={sheet.initiative} disabled={disabled} onChange={(e) => updateSheet({ initiative: parseInt(e.target.value, 10) || 0 })} />
-              <span>Initiative</span>
-            </label>
-            <label className="vitals-tile">
-              <input type="number" aria-label="Speed in feet" value={sheet.speed} disabled={disabled} onChange={(e) => updateSheet({ speed: parseInt(e.target.value, 10) || 0 })} />
-              <span>Speed ft</span>
-            </label>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ---------- door ----------
 
-function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
+export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
   return (
     <div className="inspector-card">
       <h4>{entity.name}</h4>
@@ -426,7 +223,7 @@ function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove 
 // A player only ever gets here once the DM has revealed the trap (an
 // unrevealed one never reaches their client - see GameView's
 // entitiesVisibleOnLayer), and sees the same fields read-only.
-function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
+export function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
   const revealed = Boolean(entity.trapRevealed);
 
   return (
@@ -537,7 +334,7 @@ function chestCostLabel(gp) {
 // gear list, once the chest has been opened — mirrors the compendium
 // Give buttons (Toolbar.jsx's GiveButtons), just without a "Buy" side
 // since chest loot doesn't cost anything.
-function GiveChestItemButton({ item, heroes, onGive }) {
+export function GiveChestItemButton({ item, heroes, onGive }) {
   const [picking, setPicking] = useState(false);
   const [heroId, setHeroId] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -594,7 +391,7 @@ function GiveChestItemButton({ item, heroes, onGive }) {
 // GiveChestItemButton but has nowhere to pick a hero: it always loots into
 // whichever hero the DM has assigned this viewer (RightPanel's `meId`), so
 // it's just a button, disabled with an explanatory title until one exists.
-function TakeChestItemButton({ disabled, onTake }) {
+export function TakeChestItemButton({ disabled, onTake }) {
   const [feedback, setFeedback] = useState('');
 
   function handleClick() {
@@ -650,6 +447,11 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
           <label className="field-label" style={{ marginTop: 14 }}>
             Give to a player
           </label>
+          {items.length > 0 && (heroes || []).length === 0 && (
+            <Hint className="hint-tight" action="Open Tokens" onAction={() => emitFx({ type: 'open', panel: 'tokens' })}>
+              Loot goes to a hero. Place one from <b>Tokens → Default heroes</b> first.
+            </Hint>
+          )}
           {items.length === 0 ? (
             <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
               Nothing left to give.
@@ -714,6 +516,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
             </ul>
           ) : (
             <div className="chest-item-list">
+              {!myHero && <Hint className="hint-tight">You need a hero to carry loot. Ask your DM to link one to you.</Hint>}
               {items.map((item) => (
                 <div className="chest-item-row" key={item.id} style={{ gridTemplateColumns: '1fr auto' }}>
                   <div className="chest-item-info">
@@ -738,11 +541,12 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
 // ---------- monster ----------
 
 // A player only ever sees a monster's public face: name, AC, HP, size, and
-// conditions. The DM gets the same six sheet tabs a hero has, kept in
-// `mobSheet` - which lives in entity_dm_data's host-only RLS in cloud mode
-// and is stripped from a guest table's broadcasts, so it never reaches a
-// player's client.
-function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
+// conditions. The DM gets the rest of the card — initiative, speed, ability
+// scores and the Battle / Loot / Skills / DM tabs — all kept in `mobSheet`,
+// `droppables` and `dmNotes`, which live in entity_dm_data's host-only RLS in
+// cloud mode and are stripped from a guest table's broadcasts, so they never
+// reach a player's client.
+function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, encounterActor }) {
   const droppables = entity.droppables || [];
   const sheet = entity.mobSheet || defaultCharacterSheet();
   // A monster's Battle Equipment attacks heroes, mirroring how a hero's
@@ -753,268 +557,165 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities }) {
     onUpdate(entity.id, { mobSheet: { ...sheet, ...patch } });
   }
 
-  return (
-    <div className="inspector-card">
-      <InspectorHeader entity={entity} sub={`Monster · square (${entity.col}, ${entity.row})`} onUpdate={onUpdate} disabled={!isHost} />
-      <VitalsCard entity={entity} sheet={sheet} onUpdate={onUpdate} updateSheet={updateSheet} disabled={!isHost} />
-      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
-      {isHost ? (
-        <SheetTabs entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} targets={heroTargets} />
-      ) : (
-        <SizeField entity={entity} onUpdate={onUpdate} disabled />
-      )}
-      {isHost && (
-        <CollapsibleField title="Droppables">
-          <DroppablesEditor
-            items={droppables}
-            onAddItem={(item) => onUpdate(entity.id, { droppables: [...droppables, item] })}
-            onRemoveItem={(id) => onUpdate(entity.id, { droppables: droppables.filter((it) => it.id !== id) })}
-            onUpdateItem={(id, patch) =>
-              onUpdate(entity.id, { droppables: droppables.map((it) => (it.id === id ? { ...it, ...patch } : it)) })
-            }
-          />
-        </CollapsibleField>
-      )}
-      {isHost && (
-        <CollapsibleField title="DM tools">
-          <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />
-          <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this monster…" />
-          <RemoveButton entity={entity} onRemove={onRemove} />
-        </CollapsibleField>
-      )}
-    </div>
-  );
-}
-
-// ---------- hero (full 5e-flavored sheet, tabbed) ----------
-
-const TABS = [
-  { key: 'overview', label: 'Overview', title: 'Overview' },
-  { key: 'abilities', label: 'Abilities', title: 'Abilities' },
-  { key: 'saves', label: 'Skills', title: 'Saves & Skills' },
-  { key: 'attacks', label: 'Battle', title: 'Battle Equipment' },
-  { key: 'spells', label: 'Spells', title: 'Spells' },
-  { key: 'bag', label: 'Bag', title: 'Bag' },
-];
-
-const TAB_ICONS = {
-  overview: (
-    <>
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21c1-4 4-6 8-6s7 2 8 6" />
-    </>
-  ),
-  abilities: (
-    <>
-      <path d="M12 2l9 5v10l-9 5-9-5V7z" />
-      <path d="M12 8v8M8 10l8 4M16 10l-8 4" />
-    </>
-  ),
-  saves: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M8 12.5l3 3 5-6" />
-    </>
-  ),
-  attacks: (
-    <>
-      <path d="M14 4l6-1-1 6-9 9-3-3z" />
-      <path d="M6 15l-3 3 3 3 3-3" />
-    </>
-  ),
-  spells: (
-    <>
-      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
-      <path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z" />
-    </>
-  ),
-  bag: (
-    <>
-      <path d="M7 8a5 5 0 0 1 10 0" />
-      <rect x="4" y="8" width="16" height="13" rx="3" />
-      <path d="M9 14h6" />
-    </>
-  ),
-};
-
-// The six-tab character sheet shared by heroes and monsters. `targets` is
-// who this creature's Battle Equipment can attack: monsters for a hero,
-// heroes for a monster. `isOwner` (a hero's own player, never true for a
-// monster) unlocks just the Battle Equipment, Spells, and Bag tabs — see
-// PITFALLS.md #1.
-// The tab row scrolls sideways when the panel is narrower than the tabs. Arrow
-// buttons appear on whichever side still has tabs hidden, and scroll a
-// page at a time.
-function SheetTabs({ entity, sheet, isHost, isOwner, onUpdate, updateSheet, targets }) {
-  const [tab, setTab] = useState('overview');
-  const canEditOwnTabs = isHost || isOwner;
-  const isOwnedTab = tab === 'attacks' || tab === 'spells' || tab === 'bag';
-
-  return (
-    <>
-      <div className="sheet-tabs" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.key}
-            title={t.title}
-            className={`sheet-tab${tab === t.key ? ' active' : ''}`}
-            onClick={() => setTab(t.key)}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              {TAB_ICONS[t.key]}
-            </svg>
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {!isHost && (
-        <p className="footer-note" style={{ padding: '8px 2px', border: 'none' }}>
-          {canEditOwnTabs
-            ? 'Only the DM can edit the rest of a character sheet — Battle Equipment, Spells, and Bag are yours to manage.'
-            : 'Only the DM can edit a character sheet — you can still look through every tab.'}
-        </p>
-      )}
-      {isOwnedTab ? (
-        <fieldset disabled={!canEditOwnTabs} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
-          {tab === 'attacks' && (
-            <BattleEquipmentTab
-              sheet={sheet}
-              updateSheet={updateSheet}
-              targets={targets}
-              onAttackTarget={onUpdate}
-              playSoundOnHit={entity.kind === 'hero'}
+  const tabs = isHost
+    ? [
+        {
+          key: 'battle',
+          label: 'Battle',
+          content: <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={heroTargets} onAttackTarget={onUpdate} attackerName={entity.name} />,
+        },
+        {
+          key: 'loot',
+          label: 'Loot',
+          content: (
+            <DroppablesEditor
+              items={droppables}
+              onAddItem={(item) => onUpdate(entity.id, { droppables: [...droppables, item] })}
+              onRemoveItem={(id) => onUpdate(entity.id, { droppables: droppables.filter((it) => it.id !== id) })}
+              onUpdateItem={(id, patch) =>
+                onUpdate(entity.id, { droppables: droppables.map((it) => (it.id === id ? { ...it, ...patch } : it)) })
+              }
             />
-          )}
-          {tab === 'spells' && <SpellsTab sheet={sheet} updateSheet={updateSheet} />}
-          {tab === 'bag' && <BagTab sheet={sheet} updateSheet={updateSheet} />}
-        </fieldset>
-      ) : (
-        <fieldset disabled={!isHost} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
-          {tab === 'overview' && <OverviewTab entity={entity} sheet={sheet} isHost={isHost} onUpdate={onUpdate} updateSheet={updateSheet} />}
-          {tab === 'abilities' && <AbilitiesTab sheet={sheet} updateSheet={updateSheet} />}
-          {tab === 'saves' && <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />}
-        </fieldset>
-      )}
-    </>
+          ),
+        },
+        { key: 'skills', label: 'Skills', content: <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} /> },
+        {
+          key: 'dm',
+          label: 'DM',
+          content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this monster…" />,
+        },
+      ]
+    : [];
+
+  return (
+    <CreatureCard
+      entity={entity}
+      sheet={sheet}
+      updateSheet={updateSheet}
+      onUpdate={onUpdate}
+      canEdit={isHost}
+      onRemove={isHost ? onRemove : null}
+      showStats={isHost}
+      typeLine={`Monster · square (${entity.col}, ${entity.row})`}
+      actor={encounterActor}
+      tabs={tabs}
+    />
   );
 }
 
-function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entities, players }) {
+// ---------- hero ----------
+
+// The DM edits the whole card. A hero's own player edits just the Battle,
+// Spells and Bag tabs (see PITFALLS.md #1); everyone else can look through
+// every tab but change nothing.
+function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entities, players, encounterActor }) {
   const sheet = entity.sheet || defaultCharacterSheet();
   const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
   const isOwner = !!meId && entity.ownerId === meId;
+  const canEditOwnTabs = isHost || isOwner;
 
   function updateSheet(patch) {
     onUpdate(entity.id, { sheet: { ...sheet, ...patch } });
   }
 
-  return (
-    <div className="inspector-card">
-      <InspectorHeader
-        entity={entity}
-        sub={`Hero · Level ${sheet.level}${players?.[entity.ownerId] ? ` · played by ${players[entity.ownerId].name}` : ''}`}
-        onUpdate={onUpdate}
-        disabled={!isHost}
-      />
-      <OwnerField entity={entity} players={players} isHost={isHost} onUpdate={onUpdate} />
-      <VitalsCard entity={entity} sheet={sheet} onUpdate={onUpdate} updateSheet={updateSheet} disabled={!isHost} />
-      <ConditionsField entity={entity} isHost={isHost} onUpdate={onUpdate} />
-
-      <SheetTabs entity={entity} sheet={sheet} isHost={isHost} isOwner={isOwner} onUpdate={onUpdate} updateSheet={updateSheet} targets={mobs} />
-
-      {isHost && (
-        <CollapsibleField title="DM tools">
-          <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by the DM, heard by everyone)" />
-          <DmNotesField entity={entity} onUpdate={onUpdate} placeholder="Private notes about this player…" />
-          <RemoveButton entity={entity} onRemove={onRemove} />
-        </CollapsibleField>
-      )}
-    </div>
+  const locked = (editable, node) => (
+    <fieldset disabled={!editable} className="card-fieldset">
+      {node}
+    </fieldset>
   );
-}
 
-function OverviewTab({ entity, sheet, isHost, onUpdate, updateSheet }) {
-  function setDeathSave(kind, count) {
-    updateSheet({ deathSaves: { ...sheet.deathSaves, [kind]: count } });
-  }
+  const tabs = [
+    {
+      key: 'battle',
+      label: 'Battle',
+      content: locked(
+        canEditOwnTabs,
+        <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={mobs} onAttackTarget={onUpdate} playSoundOnHit attackerName={entity.name} />
+      ),
+    },
+    { key: 'spells', label: 'Spells', content: locked(canEditOwnTabs, <SpellsTab sheet={sheet} updateSheet={updateSheet} />) },
+    { key: 'bag', label: 'Bag', content: locked(canEditOwnTabs, <BagTab sheet={sheet} updateSheet={updateSheet} />) },
+    { key: 'skills', label: 'Skills', content: locked(isHost, <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />) },
+    ...(isHost
+      ? [{ key: 'dm', label: 'DM', content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this player…" /> }]
+      : []),
+  ];
 
-  return (
-    <>
-      <div className="field-row" style={{ marginTop: 10 }}>
-        <div>
-          <label className="field-label">Level</label>
-          <input type="number" className="field" min={1} max={20} value={sheet.level} onChange={(e) => updateSheet({ level: parseInt(e.target.value, 10) || 1 })} />
-        </div>
-      </div>
-
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Death saves
-      </label>
-      <div className="death-save-row">
-        <DeathSaveDots label="Successes" count={sheet.deathSaves.successes} colorClass="success" onSet={(n) => setDeathSave('successes', n)} />
-        <DeathSaveDots label="Failures" count={sheet.deathSaves.failures} colorClass="failure" onSet={(n) => setDeathSave('failures', n)} />
-      </div>
-
-      <SizeField entity={entity} onUpdate={onUpdate} />
-    </>
-  );
-}
-
-function DeathSaveDots({ label, count, colorClass, onSet }) {
-  return (
-    <div className="death-save-group">
-      <span className="death-save-label">{label}</span>
-      <div className="death-save-dots">
-        {[1, 2, 3].map((i) => (
-          <button
-            key={i}
-            type="button"
-            className={`death-dot ${colorClass}${count >= i ? ' filled' : ''}`}
-            aria-label={`${label} ${i}`}
-            onClick={() => onSet(count >= i ? i - 1 : i)}
-          />
+  // Linking a hero to the seated player who controls it — placing tokens is
+  // host-only (PITFALLS.md #1), so without this a hero would never be owned
+  // by anyone but the DM. GameView's canMoveEntity keys off `ownerId`.
+  const ownerName = players?.[entity.ownerId]?.name;
+  const owner = isHost ? (
+    <label className="card-owner">
+      <span>played by</span>
+      <select value={entity.ownerId || ''} aria-label="Played by" onChange={(e) => onUpdate(entity.id, { ownerId: e.target.value || null })}>
+        <option value="">nobody (DM)</option>
+        {Object.values(players || {}).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+            {p.isHost ? ' (DM)' : ''}
+          </option>
         ))}
+      </select>
+    </label>
+  ) : (
+    <span>{ownerName ? ` · played by ${ownerName}` : ''}</span>
+  );
+
+  return (
+    <CreatureCard
+      entity={entity}
+      sheet={sheet}
+      updateSheet={updateSheet}
+      onUpdate={onUpdate}
+      canEdit={isHost}
+      canEditLife={canEditOwnTabs}
+      onRemove={isHost ? onRemove : null}
+      showDeathSaves
+      typeLine={`Hero · square (${entity.col}, ${entity.row})`}
+      owner={owner}
+      notice={
+        isHost && !entity.ownerId ? <Hint>Pick a player under <b>played by</b> so they can move this hero. Until then, only you can.</Hint> : null
+      }
+      actor={encounterActor}
+      tabs={tabs}
+      tabNote={
+        isHost
+          ? null
+          : canEditOwnTabs
+            ? 'Battle, Spells and Bag are yours to manage — the DM edits the rest.'
+            : 'Only the DM can edit this sheet — you can still look through every tab.'
+      }
+    />
+  );
+}
+
+// The DM-only tab on a hero's or monster's card: its sound and private notes
+// (click-to-edit, like the rest of the card). Removing the token is the trash
+// icon at the top of the card.
+export function DmTab({ entity, audio, onUpdate, placeholder }) {
+  return (
+    <div className="card-dm">
+      <span className="card-dm-badge">Only you see this</span>
+      <SoundField audio={audio} targetKind="entity" targetId={entity.id} label="Token sound (played by you, heard by everyone)" />
+      <div className="card-dm-notes">
+        <span className="card-mini-label">DM notes</span>
+        <Editable
+          type="textarea"
+          label="DM notes"
+          value={entity.dmNotes || ''}
+          display={entity.dmNotes ? `“${entity.dmNotes}”` : <span className="card-none">{placeholder}</span>}
+          placeholder={placeholder}
+          className="card-notes"
+          inputClassName="card-notes-input"
+          onCommit={(dmNotes) => onUpdate(entity.id, { dmNotes })}
+        />
       </div>
     </div>
   );
 }
 
-function AbilitiesTab({ sheet, updateSheet }) {
-  function setAbility(key, value) {
-    updateSheet({ abilities: { ...sheet.abilities, [key]: value } });
-  }
-
-  return (
-    <div className="ability-grid" style={{ marginTop: 10 }}>
-      {ABILITIES.map((a) => {
-        const score = sheet.abilities[a.key] ?? 10;
-        return (
-          <div className="ability-cell" key={a.key}>
-            <label className="field-label" title={a.label} htmlFor={`ability-${a.key}`}>
-              {a.label.slice(0, 3)}
-            </label>
-            <span className="ability-mod">{formatModifier(abilityModifier(score))}</span>
-            <div className="stepper">
-              <button type="button" aria-label={`Lower ${a.label}`} onClick={() => setAbility(a.key, score - 1)}>
-                −
-              </button>
-              <input id={`ability-${a.key}`} type="number" value={score} onChange={(e) => setAbility(a.key, parseInt(e.target.value, 10) || 0)} />
-              <button type="button" aria-label={`Raise ${a.label}`} onClick={() => setAbility(a.key, score + 1)}>
-                +
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function SavesSkillsTab({ sheet, updateSheet }) {
+export function SavesSkillsTab({ sheet, updateSheet }) {
   const profBonus = sheet.proficiencyBonus ?? 2;
 
   function computedBonus(abilityKey, proficient) {
@@ -1105,39 +806,8 @@ function SavesSkillsTab({ sheet, updateSheet }) {
   );
 }
 
-function totalToHit(weapon, additionalModifier) {
-  return (weapon.modifier || 0) + (additionalModifier || 0);
-}
 
-function totalDamageLabel(weapon, additionalDamage) {
-  const flat = (weapon.modifier || 0) + (additionalDamage || 0);
-  const mod = flat !== 0 ? (flat > 0 ? `+${flat}` : `${flat}`) : '';
-  return `${weapon.numberOfDice}${weapon.diceType}${mod}`;
-}
-
-function rollDie(sides) {
-  return 1 + Math.floor(Math.random() * sides);
-}
-
-// A hero's AC lives on its sheet; a monster's on the entity itself.
-function acOf(target) {
-  return target.kind === 'hero' ? target.sheet?.armorClass ?? 10 : target.armorClass ?? 10;
-}
-
-// Battle Equipment only offers weapons the hero already carries (Bag's
-// "Weapons & gear" list), never a fixed catalog — see PITFALLS.md #1. A
-// bag item's name is matched against the weapon catalog for real combat
-// dice; a homebrew name with no catalog match still equips, just with a
-// plain 1d4/no-modifier baseline the player can tune via Mod/Dmg.
-function weaponStatsFor(name) {
-  const match = getCatalog().weapons.find((w) => w.name.toLowerCase() === (name || '').trim().toLowerCase());
-  if (match) return match;
-  return { name, numberOfDice: 1, diceType: 'd4', modifier: 0 };
-}
-
-const ATTACK_BEAT_MS = 700;
-
-function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit }) {
+export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
@@ -1199,30 +869,7 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
     const target = targets.find((t) => t.id === targetId);
     const it = items[index];
     if (!target || !it) return;
-    const weapon = weaponStatsFor(it.weaponName);
-    const toHitMod = totalToHit(weapon, it.additionalModifier);
-    const d20 = rollDie(20);
-    const attackTotal = d20 + toHitMod;
-    const targetAC = acOf(target);
-    const hit = attackTotal >= targetAC;
-    let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
-
-    if (playSoundOnHit) {
-      if (hit) playSfx('hit');
-      else playSfx('miss');
-    }
-
-    if (hit) {
-      const sides = parseInt(weapon.diceType.slice(1), 10);
-      let diceTotal = 0;
-      for (let n = 0; n < weapon.numberOfDice; n++) diceTotal += rollDie(sides);
-      const flatDamage = (weapon.modifier || 0) + (it.additionalDamage || 0);
-      const damageTotal = Math.max(0, diceTotal + flatDamage);
-      const newHp = Math.max(0, (target.hp ?? target.maxHp ?? 0) - damageTotal);
-      onAttackTarget(target.id, { hp: newHp });
-      result = { ...result, damageTotal, newHp, maxHp: target.maxHp };
-    }
-
+    const result = resolveAttackRoll(it, target, { attackerName, playSounds: playSoundOnHit, applyDamage: onAttackTarget });
     setResults((prev) => ({ ...prev, [index]: result }));
   }
 
@@ -1339,11 +986,17 @@ function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playS
       >
         + Add battle equipment
       </button>
+      {bagWeapons.length === 0 && (
+        <Hint className="hint-tight" action="Open the Bag" onAction={() => emitFx({ type: 'cardTab', key: 'bag' })}>
+          Equipment comes from the bag. Add a weapon under the <b>Bag</b> tab, then equip it here.
+        </Hint>
+      )}
+      {items.length > 0 && targets.length === 0 && <Hint className="hint-tight">There’s nothing to attack on this map yet.</Hint>}
     </div>
   );
 }
 
-function SpellsTab({ sheet, updateSheet }) {
+export function SpellsTab({ sheet, updateSheet }) {
   const spellcasting = normalizeSpellcasting(sheet.spellcasting);
   const [activeLevel, setActiveLevel] = useState(0);
   const level = spellcasting.levels[activeLevel];
@@ -1500,7 +1153,7 @@ const EQUIPMENT_CATEGORIES = [
   { key: 'other', label: 'Other items', hint: 'Rations, rope, potions, trinkets…' },
 ];
 
-function BagTab({ sheet, updateSheet }) {
+export function BagTab({ sheet, updateSheet }) {
   const equipment = normalizeEquipment(sheet.equipment);
   const currency = normalizeCurrency(sheet);
   const [activeCategory, setActiveCategory] = useState('gear');

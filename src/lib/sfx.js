@@ -25,6 +25,30 @@ export function getSfxVolume(id) {
   }
 }
 
+// "Mute on this device": nothing plays while it is on, and whatever is
+// playing goes quiet — the per-effect levels stay stored untouched.
+const MUTE_KEY = 'tb.muteDevice';
+
+export function isDeviceMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setDeviceMuted(muted) {
+  try {
+    if (muted) localStorage.setItem(MUTE_KEY, '1');
+    else localStorage.removeItem(MUTE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  if (!muted) return;
+  for (const id of Object.keys(playing)) playing[id].gain.gain.value = 0;
+  for (const id of Object.keys(fallbackPlayers)) fallbackPlayers[id].pause();
+}
+
 export function setSfxVolume(id, value) {
   const v = clamp01(value);
   try {
@@ -97,23 +121,53 @@ async function playBuffered(c, effect) {
     if (playing[effect.id] === entry) delete playing[effect.id];
     gain.disconnect();
   };
-  source.start();
+  const start = c.currentTime;
+  source.start(start);
+  // An effect cut short (defaultAudio.js's maxSeconds) fades to silence over
+  // its last fadeSeconds instead of stopping dead.
+  if (effect.maxSeconds) {
+    const end = start + effect.maxSeconds;
+    if (effect.fadeSeconds) {
+      gain.gain.setValueAtTime(gain.gain.value, end - effect.fadeSeconds);
+      gain.gain.linearRampToValueAtTime(0, end);
+    }
+    source.stop(end);
+  }
 }
 
 const fallbackPlayers = {};
+const fallbackFades = {}; // id -> interval stepping a cut-short effect's fade
 function playFallback(effect) {
   try {
     if (!fallbackPlayers[effect.id]) fallbackPlayers[effect.id] = new Audio(effect.url);
     const audio = fallbackPlayers[effect.id];
-    audio.volume = getSfxVolume(effect.id);
+    const volume = getSfxVolume(effect.id);
+    audio.volume = volume;
     audio.currentTime = 0;
     audio.play().catch(() => {});
+    clearInterval(fallbackFades[effect.id]);
+    if (effect.maxSeconds) {
+      // Same cut-and-fade as the Web Audio path, stepped by hand.
+      const fadeMs = (effect.fadeSeconds || 0) * 1000;
+      const startedAt = Date.now();
+      fallbackFades[effect.id] = setInterval(() => {
+        const left = effect.maxSeconds * 1000 - (Date.now() - startedAt);
+        if (left <= 0) {
+          clearInterval(fallbackFades[effect.id]);
+          audio.pause();
+          audio.volume = volume;
+        } else if (fadeMs && left < fadeMs) {
+          audio.volume = volume * (left / fadeMs);
+        }
+      }, 40);
+    }
   } catch {
     /* audio unavailable */
   }
 }
 
 export function playSfx(id) {
+  if (isDeviceMuted()) return;
   const effect = SOUND_EFFECTS.find((s) => s.id === id);
   if (!effect) return;
   const c = context();

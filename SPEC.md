@@ -62,11 +62,11 @@ Capacity is hard-capped at **10 occupants** (`MAX_PLAYERS = 10`, 1 host + 9 play
 - Each square has a fixed pixel `cellSize` (default 42px, independent of `cols`/`rows`); the rendered map is `cols × cellSize` by `rows × cellSize`, scrollable within the stage if larger than the viewport.
 - Host may upload a background image, stretched to fill the full grid area; grid lines render on top at ~28% ink opacity, with a heavier line every 5 squares for quick counting.
 - Host sets **feet-per-square** (default 5 ft, matching 5e) used by the ruler.
-- Map settings (name/size/feet-per-square/background) are host-only; a player opening the map settings popover sees read-only fields and a note explaining why.
+- Island settings (name/size/feet per square/background, in Mapping → Islands), the map's ambience and each island's day/night (World state) are host-only. Feet per square belongs to each island: set when it's made (default 5), changeable in its settings; the ruler, movement and drawing labels use the island they're on.
 
 ### 3.2 Tokens (heroes, monsters, and — implicitly — the host's own miniature)
 - A token has: id, kind (`hero` | `mob`), name, image (URL or embedded data URL), accent color, grid position (`col`,`row`), size in squares (1–4, for Large/Huge/Gargantuan creatures), current HP, max HP, and an optional `ownerId` (the player who "owns" a hero token, reserved for the Phase 2 locking feature).
-- **Default art:** the app ships 8 default hero archetypes (Fighter, Wizard, Rogue, Ranger, Bard, Barbarian, Cleric, Paladin) and 6 default monsters (Goblin, Skeleton, Orc, Dire Wolf, Young Dragon, Beholder), each an original, simple vector icon generated at build time — no third-party or copyrighted art, so there are no licensing concerns shipping it by default.
+- **Default art:** the app ships 8 default hero archetypes (Fighter, Wizard, Rogue, Ranger, Bard, Barbarian, Cleric, Paladin) and 5 default monsters (Goblin, Skeleton, Orc, Dire Wolf, Young Dragon), each an original, simple vector icon generated at build time — no third-party or copyrighted art, so there are no licensing concerns shipping it by default.
 - **Custom art:** any user can upload an image (PNG/JPG/WebP/SVG) which becomes a token's portrait. Phase 1 embeds it as a base64 data URL directly in the saved state (simple, no backend needed, but bloats save size — see §12 for the Phase 2 Storage-backed replacement). Phase 2 must cap upload size (suggested: 3 MB, downscaled client-side to ≤512×512 before upload).
 - **Add "on the fly":** placing a token from the sidebar (default or freshly uploaded) drops it on the first free square scanning from the top-left; it can then be dragged anywhere.
 - **Move:** click-drag a token; on release it snaps to the nearest square. Multi-square tokens (2×2+) are anchored by their top-left square.
@@ -124,7 +124,9 @@ Mode toggle between **Host a table** and **Join a table**. Host form collects DM
 ### 4.2 Game view (three-column layout)
 - **Left panel — Tokens:** upload-and-place your own image (as Hero or Monster), plus scrollable galleries of default heroes and monsters, each with a one-click "Place" button.
 - **Center — Toolbar + Stage:** tool switch (Move / Ruler), map name button (opens map settings popover), autosave status, Save/Export/Import buttons, invite code with copy button, host-only New Code / Close Table controls, and Leave. Below it, the scrollable stage containing the grid.
-- **Right panel — Roster + Inspector:** live player list (host tagged, disconnected players tagged "AWAY" rather than removed), and an inspector for whatever token is currently selected (rename, HP, size, remove).
+- **Players (toolbar button beside Configurations):** "N/10 players"; opens the live player list (host tagged, disconnected players tagged "away" rather than removed).
+- **Roll log (toolbar button after Dice):** this session's dice rolls, with a count of new rolls from others since it was last opened.
+- **Right panel — Inspector:** an inspector for whatever token is currently selected (rename, HP, size, remove).
 
 ---
 
@@ -168,6 +170,18 @@ interface TableState {
   entities: Record<string, Entity>;
   entityOrder: string[];         // render/z-order
   players: Record<string, Player>;
+  // The DM's Draw tool (52_drawings.sql): one entry per shape, tied to an
+  // island; geometry in grid squares from the island's top-left corner.
+  drawings: Record<string, Drawing>;
+  drawingOrder: string[];        // creation order, later on top
+}
+
+interface Drawing {
+  id: string;
+  islandId: string;
+  kind: 'pencil' | 'line' | 'circle' | 'rect';
+  geometry: object;              // pencil {points}, line {from,to}, circle {center,radius}, rect {x,y,w,h}
+  style: { color: string; width: 'fine' | 'medium' | 'bold' | 'heavy'; fill: boolean };
 }
 
 interface Entity {

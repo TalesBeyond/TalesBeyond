@@ -6,6 +6,7 @@
 // REQ-008's Architectural decisions); this module only carries the messages.
 
 import { supabase } from './supabaseClient.js';
+import { attachImageExchange } from './imageExchange.js';
 
 function channelNameFor(code) {
   return `guest:${code.toUpperCase()}`;
@@ -32,10 +33,12 @@ function channelNameFor(code) {
 //   ever signal the host leaving.
 export function subscribeToGuestTable(
   code,
-  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange } = {}
+  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange, onRoll } = {}
 ) {
   const channel = supabase.channel(channelNameFor(code));
   let hasJoinedOnce = false;
+  // DM-uploaded pictures travel between browsers on this same channel.
+  const images = attachImageExchange(channel);
 
   if (onHostPresenceChange) {
     channel.on('presence', { event: 'sync' }, () => {
@@ -57,6 +60,11 @@ export function subscribeToGuestTable(
   if (onStateRequest) {
     channel.on('broadcast', { event: 'state_request' }, ({ payload }) => onStateRequest(payload.requesterId));
   }
+  // Dice rolls anyone at the table announces (GameView.jsx's announceRoll) —
+  // not state, so every client just shows them.
+  if (onRoll) {
+    channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
+  }
   if (onStateSnapshot) {
     channel.on('broadcast', { event: 'state_snapshot' }, ({ payload }) => onStateSnapshot(payload.state, payload.forId));
   }
@@ -69,10 +77,13 @@ export function subscribeToGuestTable(
       onStatusChange?.(status, false);
     }
     if (status === 'SUBSCRIBED' && isHost) channel.track({ isHost: true });
+    if (status === 'SUBSCRIBED') images.onSubscribed();
+    else images.onDisconnected();
   });
 
   return {
     unsubscribe() {
+      images.detach();
       supabase.removeChannel(channel);
     },
     sendStateChange(action) {
@@ -89,6 +100,9 @@ export function subscribeToGuestTable(
     },
     sendStateSnapshot(forId, state) {
       channel.send({ type: 'broadcast', event: 'state_snapshot', payload: { forId, state } });
+    },
+    sendRoll(roll) {
+      channel.send({ type: 'broadcast', event: 'roll', payload: roll });
     },
   };
 }

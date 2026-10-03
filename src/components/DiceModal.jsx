@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import ModalShell from './ModalShell.jsx';
 import { useCatalog, dieImage } from '../lib/catalog.js';
 import { playDiceSound } from '../lib/sfx.js';
+import { emitFx } from '../lib/fx.js';
+import { RollChip } from './RollFeed.jsx';
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const MAX_PER_TYPE = 20;
@@ -31,10 +33,17 @@ function describePool(pool, modifier) {
 // Rolls the pool. With advantage/disadvantage, every set of dice is thrown
 // twice and the set with the higher/lower total is kept (the first throw wins
 // a tie). Both throws are shown in the detail line.
+//
+// Also returns `moment`: what the big die over the table shows (FxLayer.jsx).
+// One kind of die rolled → that die's shape, showing its face (or the sum of
+// several). Mixed kinds → the d20: its face when exactly one d20 is in the
+// pool, otherwise the dice total. min/max are that value's possible range.
 function rollPool(pool, modifier, mode, name) {
   let total = modifier;
   const groups = [];
   let flag = null;
+  let d20 = null; // the kept face when the pool holds exactly one d20
+  const kept = {}; // sides -> sum of that kind's kept dice
   const sum = (arr) => arr.reduce((a, b) => a + b, 0);
   for (const sides of SIDES) {
     const count = pool[sides] || 0;
@@ -51,11 +60,30 @@ function rollPool(pool, modifier, mode, name) {
       text = `${count}d${sides} (${results.join(', ')})`;
     }
     if (sides === 20 && count === 1) {
+      d20 = results[0];
       if (results[0] === 20) flag = 'Natural 20';
       else if (results[0] === 1) flag = 'Natural 1';
     }
     total += sum(results);
+    kept[sides] = sum(results);
     groups.push(text);
+  }
+  const kinds = SIDES.filter((s) => pool[s] > 0);
+  let moment = null;
+  if (kinds.length === 1) {
+    const sides = kinds[0];
+    const count = pool[sides];
+    moment = { sides, value: kept[sides], min: count, max: count * sides };
+  } else if (kinds.length > 1) {
+    moment =
+      d20 != null
+        ? { sides: 20, value: d20, min: 1, max: 20 }
+        : {
+            sides: 20,
+            value: total - modifier,
+            min: kinds.reduce((n, s) => n + pool[s], 0),
+            max: kinds.reduce((n, s) => n + pool[s] * s, 0),
+          };
   }
   const detail = groups.join(' + ') + (modifier ? ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}` : '');
   return {
@@ -64,12 +92,16 @@ function rollPool(pool, modifier, mode, name) {
     detail,
     total,
     flag,
+    moment,
   };
 }
 
 // The "Roll the dice" modal: tap dice into a pool, add a modifier and
 // advantage/disadvantage, roll once. Saved rolls reload a pool in one tap.
-export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose }) {
+// share: who sees a roll made here — 'table' (a player: everyone), 'hidden'
+// or 'revealed' (the DM, per "Reveal rolls to players"), 'local' (a local
+// demo table: nobody else is connected).
+export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose, share = 'local' }) {
   useCatalog(); // re-render when the catalog's dice pictures arrive
   const [pool, setPool] = useState({ 20: 1 });
   const [modifier, setModifier] = useState(0);
@@ -92,7 +124,13 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
   function roll() {
     if (!canRoll) return;
     playDiceSound();
-    onRoll(rollPool(pool, modifier, mode, name));
+    const { moment, ...result } = rollPool(pool, modifier, mode, name);
+    onRoll(result);
+    emitFx({ type: 'log', tone: 'roll', text: `You rolled ${result.title}: ${result.total}${result.flag ? ` (${result.flag})` : ''}` });
+    const dice = describePool(pool, modifier) + (mode === 'advantage' ? ' (advantage)' : mode === 'disadvantage' ? ' (disadvantage)' : '');
+    emitFx({ type: 'rolled', what: name.trim() || null, dice, detail: result.detail, total: result.total, flag: result.flag });
+    // The big die over the table (FxLayer.jsx) — see rollPool's `moment`.
+    if (moment) emitFx({ type: 'die', ...moment, detail: `${result.title} · total ${result.total}` });
   }
 
   function loadSaved(s) {
@@ -221,6 +259,8 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
                 <div className="dm-total">{latest.total}</div>
                 {latest.flag && <span className={`dm-flag${latest.flag === 'Natural 1' ? ' bad' : ''}`}>{latest.flag}</span>}
                 <div className="dm-sub">{latest.detail}</div>
+                {share === 'hidden' && <RollChip hidden>Only you see this roll</RollChip>}
+                {share === 'revealed' && <RollChip>Shown to the players</RollChip>}
               </>
             ) : (
               <div className="dm-sub" style={{ padding: '36px 0' }}>Your roll will show up here.</div>
@@ -239,7 +279,15 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
             ))}
           </div>
           <div className="dm-foot">
-            <span className="dm-hint">Rolls stay on your screen.</span>
+            <span className="dm-hint">
+              {share === 'table'
+                ? 'Everyone at the table sees your rolls.'
+                : share === 'hidden'
+                  ? 'Your rolls stay hidden. Turn on Reveal rolls to players in Configurations to show them.'
+                  : share === 'revealed'
+                    ? 'Reveal is on: players see every roll you make.'
+                    : 'Rolls stay on your screen.'}
+            </span>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClearRolls} disabled={rolls.length === 0}>
               Clear history
             </button>

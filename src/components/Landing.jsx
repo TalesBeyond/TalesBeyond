@@ -3,6 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import { generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { createEmptyGameState, MAX_PLAYERS } from '../state/store.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
+import { stripCustomImages } from '../lib/storedImages.js';
 import {
   loadSession,
   saveSession,
@@ -27,6 +28,7 @@ import {
 } from '../lib/remoteApi.js';
 import { deleteTableStorage } from '../lib/storageUpload.js';
 import { requestGuestJoin } from '../lib/guestRealtime.js';
+import { LegalFooter } from './LegalPage.jsx';
 
 const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#b23a3a', '#3a6ea5', '#c98a3b'];
 
@@ -34,7 +36,7 @@ const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#
 // only offers a guest table (start new or resume) until this flips back on.
 const SHOW_HOST_LOGIN = false;
 
-export default function Landing({ onEnter }) {
+export default function Landing({ onEnter, notice = null }) {
   const [mode, setMode] = useState('host');
 
   const cardCopy =
@@ -48,6 +50,11 @@ export default function Landing({ onEnter }) {
         <LandingHero />
 
         <div className="lobby-card">
+          {notice && (
+            <div className="error-note" role="status">
+              {notice}
+            </div>
+          )}
           {mode === 'hostkey' ? (
             <>
               <RejoinHostForm onEnter={onEnter} />
@@ -73,6 +80,11 @@ export default function Landing({ onEnter }) {
 
               {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
 
+              <p className="legal-consent">
+                By hosting or joining a table you agree to the <a href="#/legal/terms">Terms of Use</a> and{' '}
+                <a href="#/legal/privacy">Privacy Policy</a>.
+              </p>
+
               {!isSupabaseConfigured && (
                 <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
                   Testing only —{' '}
@@ -86,6 +98,7 @@ export default function Landing({ onEnter }) {
           )}
         </div>
       </div>
+      <LegalFooter />
     </div>
   );
 }
@@ -814,10 +827,11 @@ function GuestResumeForm({ onEnter, onBack }) {
         return;
       }
       const { hostKeyHash, ...sessionRest } = fileContents.session;
-      const restored = migrateLegacyState({
+      // Guest tables never carry uploaded pictures (lib/storedImages.js).
+      const restored = stripCustomImages(migrateLegacyState({
         ...fileContents,
         session: { ...sessionRest, hostKey: code.trim().toUpperCase() },
-      });
+      }));
       const me = restored.players[restored.session.hostPlayerId];
       if (!me) {
         setError('That file is missing its host — it may be corrupted.');
@@ -1090,22 +1104,29 @@ function tryReuseIdentity(code, existingState) {
 
 function ColorPicker({ value, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+    <div className="color-picker" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
       {PLAYER_COLORS.map((c) => (
         <button
           key={c}
           type="button"
+          className="color-picker-swatch"
           onClick={() => onChange(c)}
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: '50%',
-            background: c,
-            border: value === c ? '2px solid #f2e9d4' : '2px solid transparent',
-            boxShadow: value === c ? '0 0 0 2px ' + c : 'none',
-          }}
+          aria-pressed={value === c}
           aria-label={`Choose color ${c}`}
-        />
+        >
+          <span
+            style={{
+              display: 'block',
+              width: 26,
+              height: 26,
+              boxSizing: 'border-box',
+              borderRadius: '50%',
+              background: c,
+              border: value === c ? '2px solid #f2e9d4' : '2px solid transparent',
+              boxShadow: value === c ? '0 0 0 2px ' + c : 'none',
+            }}
+          />
+        </button>
       ))}
     </div>
   );

@@ -10,6 +10,7 @@ export const PALETTES = [
   { id: 'dark', label: 'Dark Mode', swatch: ['#0d0f12', '#5b8def', '#e8eaed'] },
   { id: 'eddies', label: "Eddie's Palette", swatch: ['#050308', '#b46bff', '#39e6a5'] },
   { id: 'syfy', label: 'Syfy', swatch: ['#05080a', '#2ee6d6', '#3fa9f5'] },
+  { id: 'grimoire', label: 'Grimoire', swatch: ['#efe3c6', '#9b2d20', '#2a2018'] },
 ];
 
 function loadTheme() {
