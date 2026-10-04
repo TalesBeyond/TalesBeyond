@@ -22,7 +22,9 @@ const isDefaultTrack = (track) => isCatalogTrack(track);
 // the app's default music + sound effects. Each sound is a collapsible row:
 // the header shows its title and play/pause; opening it shows the volume
 // sliders (and, for the DM, loop / replace / remove).
-export default function MusicModal({ audio, worldTrack, worldTargetId, layers, layerOrder, entities, isGuest, encounterVolume, onEncounterVolume, onClose }) {
+// `side`: on the desktop rail it stands beside the rail as a side panel
+// (styles.css .side-panel) instead of a centred dialog over a backdrop.
+export default function MusicModal({ audio, worldTrack, worldTargetId, layers, layerOrder, entities, isGuest, encounterVolume, onEncounterVolume, onClose, side = false }) {
   const [tab, setTab] = useState('user');
   const rows = [{ key: 'world', source: 'World music', kind: 'world', track: worldTrack }];
   for (const track of Object.values(audio.tracks)) {
@@ -43,10 +45,12 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
   const pct = Math.min(100, (used / AUDIO_TABLE_QUOTA_BYTES) * 100);
 
   return (
-    <div className="book-backdrop" onClick={onClose}>
+    <div className={side ? 'side-panel-host' : 'book-backdrop'} onClick={side ? undefined : onClose}>
       <div
-        className="book-card"
-        style={{ maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
+        className={side ? 'side-panel' : 'book-card'}
+        role="dialog"
+        aria-label="Music"
+        style={side ? { '--side-w': '420px' } : { maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">
@@ -85,7 +89,7 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
                 {isGuest
                   ? 'Guest table: your files stay on this device and only you hear them — nothing is uploaded, and they are gone when you close the page.'
                   : audio.isHost
-                  ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to maps and tokens from World state → Ambience and the token inspector.'
+                  ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to worlds and tokens from World state → Ambience and the token inspector.'
                   : 'The DM controls the music. Your volume slider only changes what you hear.'}
               </p>
             </>

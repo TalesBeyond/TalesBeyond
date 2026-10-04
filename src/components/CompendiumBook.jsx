@@ -1,10 +1,9 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CLASSES } from '../data/weapons.js';
 import { ITEM_CATEGORIES } from '../data/items.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
-import { playSfx } from '../lib/sfx.js';
 import { emitFx } from '../lib/fx.js';
 import { Hint } from './Hints.jsx';
 import { usePhoneLayout } from './PhoneChrome.jsx';
@@ -32,14 +31,12 @@ function saveMonsterImages(images) {
 }
 
 // The weapon, item, and monster compendiums, drawn as one open book. Weapons,
-// Items, and Monsters are its tabs; entries are laid out six-or-so to a page, and the arrows in
-// the page footers turn the page (a real 3D flip, see the leaf slots below).
-// Picking an entry puts it on the desk tray, where the DM can Buy or Give it
-// to a hero — the same onGive(hero, item, isBuy) contract the old modals used.
-// A monster is picked the same way, but the tray's button places it on the map.
-
-const ROW_H = 86;
-const FLIP_MS = 750;
+// Items, and Monsters are the tabs on its fore edge. The left page is the
+// index: the search, the filters and every entry, in a list that scrolls. The
+// right page is the chosen entry, with what the DM can do with it at its
+// foot: Buy or Give it to a hero — the same onGive(hero, item, isBuy) contract
+// the old modals used — or, for a monster, place it on the map. Nothing sits
+// beside the book. (A phone gets one scrolling page instead, see below.)
 
 const WEAPON_TYPE_FILTERS = [
   { key: 'all', label: 'All' },
@@ -105,12 +102,9 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const [monsterImages, setMonsterImages] = useState(loadMonsterImages);
   const imageInputRef = useRef(null);
   const [selectedKey, setSelectedKey] = useState(null);
-  const [spread, setSpread] = useState(0);
-  const [flip, setFlip] = useState({ phase: 'idle', dir: 'fwd' }); // phase: idle | prep | go
-  const [perPage, setPerPage] = useState(6);
   const [heroId, setHeroId] = useState('');
   const [feedback, setFeedback] = useState('');
-  const pagesRef = useRef(null);
+  const rowsRef = useRef(null);
   const timers = useRef([]);
   const isPhone = usePhoneLayout();
 
@@ -131,6 +125,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         big: `HP ${m.maxHp || 15}`,
         small: '',
         detail: 'A monster from this table\'s Asset Storage.',
+        facts: [['Hit points', m.maxHp || 15]],
         image: m.imageUrl || null,
         draft: customMonsterToDraft(m),
         custom: true,
@@ -142,6 +137,12 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         big: `AC ${m.ac}`,
         small: `HP ${m.hp}`,
         detail: m.description,
+        facts: [
+          ['Hit points', m.hp],
+          ['Armor class', m.ac],
+          ['Speed', `${m.speed} ft`],
+          ['Challenge', m.cr],
+        ],
         monster: m,
         draft: { ...monsterToDraft(m), ...(monsterImages[m.key] ? { imageUrl: monsterImages[m.key] } : {}) },
         ownImage: Boolean(monsterImages[m.key]),
@@ -163,6 +164,12 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
           detail: `${cap(w.type)} weapon, ${weaponDiceLabel(w)} damage, ${formatCost(w.cost)}. ${
             w.equipableClass.length >= CLASSES.length ? 'Any class.' : cap(w.equipableClass.join(', '))
           }`,
+          facts: [
+            ['Damage', weaponDiceLabel(w)],
+            ['Type', cap(w.type)],
+            ['Cost', formatCost(w.cost)],
+          ],
+          text: w.equipableClass.length >= CLASSES.length ? 'Any class can use it.' : `Classes that can use it: ${w.equipableClass.join(', ')}.`,
           item: w,
           image: w.id ? null : entryImage('weapons', w.name, baseWeaponName(w.name)),
         }));
@@ -178,6 +185,11 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         big: formatCost(it.cost),
         small: formatWeight(it.weight),
         detail: it.description,
+        facts: [
+          ['Category', cap(it.category)],
+          ['Cost', formatCost(it.cost)],
+          ['Weight', formatWeight(it.weight)],
+        ],
         item: it,
         image: it.id ? null : entryImage('items', it.name),
       }));
@@ -188,30 +200,20 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     : isMonsters
       ? monsters.length + (customMonsters || []).length
       : items.length + (customItems || []).length;
-  const pageCount = Math.max(2, Math.ceil(entries.length / perPage));
-  const spreads = Math.ceil(pageCount / 2);
-  const shownSpread = Math.min(spread, spreads - 1);
-  const selected = entries.find((e) => e.key === selectedKey) || null;
-  const idle = flip.phase === 'idle';
+  const picked = entries.find((e) => e.key === selectedKey) || null;
+  // The book opens ready to read: until an entry is picked, the first one in
+  // the index is on the right page. (A phone's detail panel stays shut.)
+  const selected = picked || (isPhone ? null : entries[0]) || null;
+  const selectedAt = selected ? entries.indexOf(selected) : -1;
 
-  // Rows that fit on a page depend on how tall the book is on this screen.
-  useLayoutEffect(() => {
-    const el = pagesRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const measure = () => {
-      const fit = Math.floor((el.clientHeight - 120) / ROW_H);
-      setPerPage(Math.max(3, Math.min(8, fit)));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  // A new search or filter starts the index from the top.
+  useEffect(() => {
+    if (rowsRef.current) rowsRef.current.scrollTop = 0;
+  }, [kind, search, typeFilter, categoryFilter, crFilter]);
 
   useEffect(() => {
-    setSpread(0);
-    setFlip({ phase: 'idle', dir: 'fwd' });
-  }, [kind, search, typeFilter, categoryFilter, crFilter, perPage]);
+    rowsRef.current?.querySelector('.cbook-row.selected')?.scrollIntoView({ block: 'nearest' });
+  }, [selected?.key]);
 
   useEffect(() => {
     setHeroId((prev) => (heroes.some((h) => h.id === prev) ? prev : (heroes[0] && heroes[0].id) || ''));
@@ -224,31 +226,24 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     []
   );
 
-  function turn(dir) {
-    if (flip.phase !== 'idle') return;
-    if (dir === 'fwd' ? shownSpread >= spreads - 1 : shownSpread <= 0) return;
-    playSfx('page');
-    setFlip({ phase: 'prep', dir });
-    timers.current.push(setTimeout(() => setFlip({ phase: 'go', dir }), 40));
-    timers.current.push(
-      setTimeout(() => {
-        setSpread(shownSpread + (dir === 'fwd' ? 1 : -1));
-        setFlip({ phase: 'idle', dir });
-      }, FLIP_MS + 60)
-    );
-  }
-
-  const turnRef = useRef(turn);
-  turnRef.current = turn;
+  // Up and Down walk the index, from the search box too.
+  const stepRef = useRef(null);
+  stepRef.current = (by) => {
+    if (entries.length === 0) return;
+    setSelectedKey(entries[Math.max(0, Math.min(entries.length - 1, selectedAt + by))].key);
+  };
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowRight') turnRef.current('fwd');
-      else if (e.key === 'ArrowLeft') turnRef.current('back');
+      else if (isPhone || e.target?.tagName === 'SELECT') return;
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        stepRef.current(e.key === 'ArrowDown' ? 1 : -1);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, isPhone]);
 
   function give(isBuy) {
     const hero = heroes.find((h) => h.id === heroId);
@@ -285,67 +280,6 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     onAddMonster(selected.draft);
     setFeedback(`Placed ${selected.name} on the map`);
     timers.current.push(setTimeout(() => setFeedback(''), 2000));
-  }
-
-  function renderPage(p, role, extraClass, style, interactive) {
-    const slice = entries.slice(p * perPage, p * perPage + perPage);
-    const range = slice.length
-      ? slice.length === 1
-        ? shortName(slice[0].name)
-        : `${shortName(slice[0].name)} to ${shortName(slice[slice.length - 1].name)}`
-      : '';
-    const left = role === 'L';
-    return (
-      <div
-        key={`${extraClass}-${p}`}
-        className={`cbook-page ${left ? 'left' : 'right'} ${extraClass}`}
-        style={style}
-        aria-hidden={interactive ? undefined : true}
-      >
-        <div className="cbook-page-head">
-          <span className="cbook-chapter">{chapter}</span>
-          <span className="cbook-range">{range}</span>
-        </div>
-        <div className="cbook-rows">
-          {slice.map((e) => (
-            <button
-              key={e.key}
-              type="button"
-              className={`cbook-row${e.key === selectedKey ? ' selected' : ''}`}
-              aria-pressed={e.key === selectedKey}
-              tabIndex={interactive ? 0 : -1}
-              onClick={() => setSelectedKey(e.key)}
-            >
-              <span className="cbook-row-lead">
-                {e.image && <img className="cbook-row-img" src={e.image} alt="" loading="lazy" />}
-                <span className="cbook-row-main">
-                  <span className="cbook-row-name">{e.name}</span>
-                  <span className="cbook-row-sub">{e.sub}</span>
-                </span>
-              </span>
-              <span className="cbook-row-side">
-                <span className="cbook-row-big">{e.big}</span>
-                <span className="cbook-row-small">{e.small}</span>
-              </span>
-            </button>
-          ))}
-          {slice.length === 0 && p === 0 && <p className="cbook-empty">Nothing in the book matches that search.</p>}
-        </div>
-        <div className={`cbook-page-foot ${left ? 'left' : 'right'}`}>
-          {interactive && left && idle && shownSpread > 0 && (
-            <button type="button" className="cbook-turn" aria-label="Previous page" onClick={() => turn('back')}>
-              &#8249;
-            </button>
-          )}
-          <span className="cbook-num">{p + 1}</span>
-          {interactive && !left && idle && shownSpread < spreads - 1 && (
-            <button type="button" className="cbook-turn" aria-label="Next page" onClick={() => turn('fwd')}>
-              &#8250;
-            </button>
-          )}
-        </div>
-      </div>
-    );
   }
 
   // On a phone the open book doesn't fit: one scrolling page instead, the
@@ -539,40 +473,185 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     );
   }
 
-  const L = shownSpread * 2;
-  const go = flip.phase === 'go';
-  const trans = go ? `transform ${FLIP_MS}ms cubic-bezier(0.45, 0.05, 0.25, 1)` : 'none';
-  let slots;
-  if (idle) {
-    slots = [renderPage(L, 'L', 'base', { left: 0 }, true), renderPage(L + 1, 'R', 'base', { left: '50%' }, true)];
-  } else if (flip.dir === 'fwd') {
-    const ang = go ? -180 : 0;
-    slots = [
-      renderPage(L, 'L', 'base', { left: 0 }, false),
-      renderPage(L + 3, 'R', 'base', { left: '50%' }, false),
-      renderPage(L + 1, 'R', 'leaf', { left: '50%', transformOrigin: 'left center', transition: trans, transform: `rotateY(${ang}deg)` }, false),
-      renderPage(L + 2, 'L', 'leaf', { left: '50%', transformOrigin: 'left center', transition: trans, transform: `rotateY(${ang}deg) translateX(100%) rotateY(180deg)` }, false),
-    ];
-  } else {
-    const ang = go ? 180 : 0;
-    slots = [
-      renderPage(L - 2, 'L', 'base', { left: 0 }, false),
-      renderPage(L + 1, 'R', 'base', { left: '50%' }, false),
-      renderPage(L, 'L', 'leaf', { left: 0, transformOrigin: 'right center', transition: trans, transform: `rotateY(${ang}deg)` }, false),
-      renderPage(L - 1, 'R', 'leaf', { left: 0, transformOrigin: 'right center', transition: trans, transform: `rotateY(${ang}deg) translateX(-100%) rotateY(180deg)` }, false),
-    ];
-  }
+  const filters = isMonsters ? MONSTER_CR_FILTERS : isWeapons ? WEAPON_TYPE_FILTERS : null;
+  const picture = selected ? selected.draft?.imageUrl || selected.image : null;
 
   return (
     <div className="cbook-backdrop" onClick={onClose}>
       <div className="cbook-stage" role="dialog" aria-modal="true" aria-label={chapter} onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="cbook-close" aria-label="Close compendium" title="Close" onClick={onClose}>
+          &times;
+        </button>
         <div className="cbook-cover">
           <div className="cbook-cover-line" />
           <div className="cbook-stack left" />
           <div className="cbook-stack right" />
           <div className="cbook-ribbon" />
-          <div className="cbook-pages" ref={pagesRef}>
-            {slots}
+          <div className="cbook-pages">
+            <div className="cbook-page left">
+              <div className="cbook-page-head">
+                <span className="cbook-chapter">{chapter}</span>
+                <span className="cbook-range">
+                  {entries.length} of {totalCount}
+                </span>
+              </div>
+              <div className="cbook-controls">
+                <input
+                  className="cbook-search"
+                  type="search"
+                  aria-label={`Search ${noun}`}
+                  placeholder={`Search ${noun}…`}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {filters ? (
+                  <div className="cbook-filter">
+                    {filters.map((t) => {
+                      const on = (isMonsters ? crFilter : typeFilter) === t.key;
+                      return (
+                        <button key={t.key} type="button" aria-pressed={on} className={on ? 'active' : ''} onClick={() => (isMonsters ? setCrFilter(t.key) : setTypeFilter(t.key))}>
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <select className="cbook-select" aria-label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                    <option value="all">All categories</option>
+                    {ITEM_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {cap(c)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="cbook-rows" ref={rowsRef}>
+                {entries.map((e) => {
+                  const on = Boolean(selected && e.key === selected.key);
+                  return (
+                    <button key={e.key} type="button" className={`cbook-row${on ? ' selected' : ''}`} aria-pressed={on} onClick={() => setSelectedKey(e.key)}>
+                      <span className="cbook-row-lead">
+                        {e.image && <img className="cbook-row-img" src={e.image} alt="" loading="lazy" />}
+                        <span className="cbook-row-main">
+                          <span className="cbook-row-name">{e.name}</span>
+                          <span className="cbook-row-sub">{e.sub}</span>
+                        </span>
+                      </span>
+                      <span className="cbook-row-side">
+                        <span className="cbook-row-big">{e.big}</span>
+                        <span className="cbook-row-small">{e.small}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+                {entries.length === 0 && <p className="cbook-empty">Nothing in the book matches that search.</p>}
+              </div>
+            </div>
+
+            <div className="cbook-page right">
+              <div className="cbook-page-head">
+                <span className="cbook-chapter">{isWeapons ? 'Weapon' : isMonsters ? 'Monster' : 'Item'}</span>
+                <span className="cbook-range">{selected ? `${selectedAt + 1} of ${entries.length}` : ''}</span>
+              </div>
+              {!selected ? (
+                <p className="cbook-empty">Nothing to show. Try another search, or clear the filter.</p>
+              ) : (
+                <>
+                  <div className="cbook-entry">
+                    <div className="cbook-entry-top">
+                      {picture && <img className={`cbook-entry-img${isMonsters ? ' round' : ''}`} src={picture} alt="" />}
+                      <div className="cbook-entry-title">
+                        <h3 className="cbook-entry-name">{selected.name}</h3>
+                        <span className="cbook-entry-sub">{selected.sub}</span>
+                      </div>
+                    </div>
+                    <dl className="cbook-facts">
+                      {selected.facts.map(([label, value]) => (
+                        <div key={label}>
+                          <dt>{label}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {selected.monster && (
+                      <dl className="cbook-facts abilities" aria-label="Ability scores">
+                        {Object.entries(selected.monster.abilities).map(([k, v]) => (
+                          <div key={k}>
+                            <dt>{k.toUpperCase()}</dt>
+                            <dd>
+                              {v} <small>{abilityMod(v)}</small>
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {/* A weapon's own line only repeats the boxes above, so it
+                        prints who can use it instead. */}
+                    {(selected.text || selected.detail) && <p className="cbook-entry-text">{selected.text || selected.detail}</p>}
+                    {selected.monster && <p className="cbook-entry-text cbook-attack">{selected.monster.attack}</p>}
+                  </div>
+
+                  {isMonsters ? (
+                    <div className="cbook-entry-actions">
+                      {selected.monster && (
+                        <>
+                          <button type="button" className="cbook-btn" onClick={() => imageInputRef.current?.click()}>
+                            Use my own image
+                          </button>
+                          {selected.ownImage && (
+                            <button type="button" className="cbook-btn" onClick={resetMonsterImage}>
+                              Reset image
+                            </button>
+                          )}
+                          <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleMonsterImage} />
+                        </>
+                      )}
+                      <button type="button" className="cbook-btn primary" disabled={!onAddMonster} onClick={addToMap}>
+                        Add to the map
+                      </button>
+                      <span className="cbook-feedback" role="status">
+                        {feedback}
+                      </span>
+                    </div>
+                  ) : heroes.length === 0 ? (
+                    <div className="cbook-entry-actions">
+                      <Hint
+                        className="cbook-hint"
+                        action="Open Tokens"
+                        onAction={() => {
+                          emitFx({ type: 'open', panel: 'tokens' });
+                          onClose?.();
+                        }}
+                      >
+                        Loot goes to a hero. Place one from <b>Tokens → Default heroes</b> first.
+                      </Hint>
+                    </div>
+                  ) : (
+                    <div className="cbook-entry-actions">
+                      <label htmlFor="cbook-hero">Give to</label>
+                      <select id="cbook-hero" className="cbook-select" value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+                        {heroes.map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                            {h.ownerName ? ` (${h.ownerName})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" className="cbook-btn primary" disabled={!heroId} onClick={() => give(false)}>
+                        Give
+                      </button>
+                      <button type="button" className="cbook-btn" disabled={!heroId} onClick={() => give(true)}>
+                        Buy ({formatCost(selected.item.cost)})
+                      </button>
+                      <span className="cbook-feedback" role="status">
+                        {feedback}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
             <div className="cbook-gutter" />
           </div>
         </div>
@@ -587,130 +666,6 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
               {label}
             </button>
           ))}
-        </div>
-
-        <div className="cbook-tray">
-          <button type="button" className="cbook-close" aria-label="Close compendium" onClick={onClose}>
-            &times;
-          </button>
-          <div className="cbook-tray-controls">
-            <input
-              className="cbook-search"
-              type="search"
-              aria-label={`Search ${noun}`}
-              placeholder={`Search ${noun}…`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {isMonsters ? (
-              <div className="cbook-filter">
-                {MONSTER_CR_FILTERS.map((t) => (
-                  <button key={t.key} type="button" aria-pressed={crFilter === t.key} className={crFilter === t.key ? 'active' : ''} onClick={() => setCrFilter(t.key)}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            ) : isWeapons ? (
-              <div className="cbook-filter">
-                {WEAPON_TYPE_FILTERS.map((t) => (
-                  <button key={t.key} type="button" aria-pressed={typeFilter === t.key} className={typeFilter === t.key ? 'active' : ''} onClick={() => setTypeFilter(t.key)}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <select className="cbook-select" aria-label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="all">All categories</option>
-                {ITEM_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {cap(c)}
-                  </option>
-                ))}
-              </select>
-            )}
-            <span className="cbook-count">
-              {entries.length} of {totalCount}
-            </span>
-          </div>
-
-          <div className="cbook-selection">
-            <span className="cbook-selection-name">{selected ? selected.name : 'Nothing chosen yet'}</span>
-            {selected && selected.monster && (
-              <span className="cbook-stats" aria-label="Stat block">
-                <span>HP {selected.monster.hp}</span>
-                <span>AC {selected.monster.ac}</span>
-                <span>Speed {selected.monster.speed} ft</span>
-                {Object.entries(selected.monster.abilities).map(([k, v]) => (
-                  <span key={k}>
-                    {k.toUpperCase()} {v} ({abilityMod(v)})
-                  </span>
-                ))}
-              </span>
-            )}
-            <span className="cbook-selection-line" title={selected ? selected.detail : undefined}>
-              {selected ? selected.detail : 'Tap an entry in the book to pick it.'}
-            </span>
-            {selected && selected.monster && <span className="cbook-attack">{selected.monster.attack}</span>}
-          </div>
-
-          {isMonsters ? (
-            <div className="cbook-give">
-              {selected && selected.draft && <img className="cbook-token-preview" src={selected.draft.imageUrl} alt="" />}
-              {selected && selected.monster && (
-                <>
-                  <button type="button" className="cbook-btn" onClick={() => imageInputRef.current?.click()}>
-                    Use my own image
-                  </button>
-                  {selected.ownImage && (
-                    <button type="button" className="cbook-btn" onClick={resetMonsterImage}>
-                      Reset image
-                    </button>
-                  )}
-                  <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleMonsterImage} />
-                </>
-              )}
-              <button type="button" className="cbook-btn primary" disabled={!selected || !onAddMonster} onClick={addToMap}>
-                {selected ? `Add ${selected.name} to the map` : 'Add to the map'}
-              </button>
-              <span className="cbook-feedback" role="status">
-                {feedback}
-              </span>
-            </div>
-          ) : (
-          <div className="cbook-give">
-            <label htmlFor="cbook-hero">Give to</label>
-            <select id="cbook-hero" className="cbook-select" value={heroId} onChange={(e) => setHeroId(e.target.value)} disabled={heroes.length === 0}>
-              {heroes.length === 0 && <option value="">No heroes on the map</option>}
-              {heroes.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                  {h.ownerName ? ` (${h.ownerName})` : ''}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="cbook-btn primary" disabled={!selected || !heroId} onClick={() => give(false)}>
-              Give
-            </button>
-            <button type="button" className="cbook-btn" disabled={!selected || !heroId} onClick={() => give(true)} title={selected ? `Buy for ${formatCost(selected.item.cost)}` : undefined}>
-              {selected ? `Buy (${formatCost(selected.item.cost)})` : 'Buy'}
-            </button>
-            <span className="cbook-feedback" role="status">
-              {feedback}
-            </span>
-            {heroes.length === 0 && (
-              <Hint
-                className="cbook-hint"
-                action="Open Tokens"
-                onAction={() => {
-                  emitFx({ type: 'open', panel: 'tokens' });
-                  onClose?.();
-                }}
-              >
-                Loot goes to a hero. Place one from <b>Tokens → Default heroes</b> first.
-              </Hint>
-            )}
-          </div>
-          )}
         </div>
       </div>
     </div>

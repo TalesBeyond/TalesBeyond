@@ -5,7 +5,9 @@ import { defaultCharacterSheet } from './characterSheet.js';
 // meets most often, lowest challenge rating first. Stat numbers follow the
 // published 5e SRD stat blocks; the descriptions are our own wording.
 // `size` is the token's width in squares (Large creatures are 2x2), `attack`
-// is the short action line the DM gets as a starting note on the token.
+// is the short action line the DM gets as a starting note on the token — and
+// what the monster's Battle Equipment is read from (parseMonsterAttacks
+// below), so write each attack as "Name +to hit, dice+bonus".
 
 const M = (key, name, kind, cr, hp, ac, speed, abilities, size, icon, color, attack, description) => ({
   key,
@@ -47,7 +49,7 @@ export const MONSTERS = [
 
 // The draft addEntity (GameView.jsx) turns into a placed monster token: hit
 // points, armor class, size and starting DM notes all come from the entry, and
-// the ability scores and speed land on the monster's character sheet.
+// the ability scores, speed and attacks land on the monster's character sheet.
 export function monsterToDraft(m) {
   return {
     kind: 'mob',
@@ -59,7 +61,7 @@ export function monsterToDraft(m) {
     size: m.size,
     mobKey: m.key,
     dmNotes: m.attack,
-    mobSheet: { ...defaultCharacterSheet(), armorClass: m.ac, speed: m.speed, abilities: { ...m.abilities } },
+    mobSheet: { ...defaultCharacterSheet(), armorClass: m.ac, speed: m.speed, abilities: { ...m.abilities }, attacks: parseMonsterAttacks(m.attack) },
   };
 }
 
@@ -67,4 +69,24 @@ export function monsterToDraft(m) {
 // name, picture, color and hit points), so it gets the plain defaults.
 export function customMonsterToDraft(m) {
   return { kind: 'mob', name: m.name, imageUrl: m.imageUrl, color: m.color, maxHp: m.maxHp || 15 };
+}
+
+// A monster's attacks, read out of its action line: every "Name +N, XdY+Z"
+// in it ("Bite +4, 1d4+2 piercing", "two Claws +7, 2d6+4") becomes one entry
+// of the sheet's Battle Equipment. Unlike a hero's, which names a weapon in
+// the bag and takes its dice from the weapon catalog, a monster's attack
+// carries its own dice — a bite is in no catalog, and a bugbear's morningstar
+// hits harder than a hero's. Riders (poison, saves, Multiattack) stay in the
+// DM notes. Works on the built-in entries and the catalog's alike, since both
+// have the line.
+const ATTACK_PATTERN = /([A-Z][A-Za-z' -]*?)\s*\+(\d+),\s*(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/g;
+
+export function parseMonsterAttacks(text) {
+  return [...String(text || '').matchAll(ATTACK_PATTERN)].map((m) => ({
+    weaponName: m[1].trim(),
+    numberOfDice: Number(m[3]),
+    diceType: `d${m[4]}`,
+    additionalModifier: Number(m[2]),
+    additionalDamage: m[6] ? Number(m[6]) * (m[5] === '-' ? -1 : 1) : 0,
+  }));
 }

@@ -190,7 +190,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
                   }}
                 >
                   <label className="field-label" style={{ marginTop: 0 }}>
-                    New map name
+                    New world name
                     <input className="field" autoFocus value={newMapName} placeholder="e.g. The Undercroft" onChange={(e) => setNewMapName(e.target.value)} />
                   </label>
                   <div className="hint-form-actions">
@@ -198,19 +198,19 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
                       Cancel
                     </button>
                     <button type="submit" className="btn btn-primary">
-                      Create map
+                      Create world
                     </button>
                   </div>
-                  <p className="hint-form-note">It starts with one 20 × 15 island. You stay on this map.</p>
+                  <p className="hint-form-note">It starts with one 20 × 15 map. You stay in this world.</p>
                 </form>
               ) : (
-                <Hint action={onCreateLayer ? (layout === 'phone' ? 'Create a map' : 'Create a layer') : null} onAction={() => setNewMapOpen(true)}>
-                  Doors connect two maps. This table has only <b>{layers?.[currentLayerId]?.name || 'this map'}</b> so far.{' '}
+                <Hint action={onCreateLayer ? (layout === 'phone' ? 'Create a world' : 'Create a layer') : null} onAction={() => setNewMapOpen(true)}>
+                  Doors connect two worlds. This table has only <b>{layers?.[currentLayerId]?.name || 'this world'}</b> so far.{' '}
                   {layout === 'phone' ? (
-                    <>Add a second map now, or later from the <b>maps</b> button at the top.</>
+                    <>Add a second world now, or later from the <b>worlds</b> button at the top.</>
                   ) : (
                     <>
-                      Add a second map here, or later in <b>Mapping → Layers</b>.
+                      Add a second world here, or later in <b>Mapping → Layers</b>.
                     </>
                   )}
                 </Hint>
@@ -235,13 +235,13 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
                   ))}
                 </select>
 
-                {!doorTarget && <Hint className="hint-tight">Pick the map this door opens onto. Its partner door appears there.</Hint>}
+                {!doorTarget && <Hint className="hint-tight">Pick the world this door opens onto. Its partner door appears there.</Hint>}
                 <button className="btn btn-secondary btn-block" style={{ marginTop: 8 }} disabled={!doorTarget} onClick={placeDoor}>
                   Place door
                 </button>
                 {madeLayerId && doorTarget === madeLayerId && (
                   <p className="hint-form-note">
-                    The door lands on the island you’re viewing. Its partner appears on {layers?.[madeLayerId]?.name} — drag both where you want them.
+                    The door lands on the map you’re viewing. Its partner appears on {layers?.[madeLayerId]?.name} — drag both where you want them.
                   </p>
                 )}
               </>
@@ -461,7 +461,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         <div className="phone-add-body sidebar-blocks">
           {phoneTab === 'heroes' && (
             <>
-              <p className="phone-caption phone-caption-flush">Tap a hero to place it on the island you’re viewing.</p>
+              <p className="phone-caption phone-caption-flush">Tap a hero to place it on the map you’re viewing.</p>
               {heroesBody}
             </>
           )}

@@ -12,7 +12,7 @@ export const DRAW_SUB_TOOLS = [
   { id: 'line', label: 'Line', hint: 'Drag a straight line', path: 'M4 16L16 4' },
   { id: 'circle', label: 'Circle', hint: 'Drag out from the centre', path: 'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14z' },
   { id: 'rect', label: 'Rectangle', hint: 'Drag from corner to corner', path: 'M4 5h12v10H4z' },
-  { id: 'fill', label: 'Fill island', hint: 'Click an island to paint it one colour; the same colour again clears it', path: 'M9 3l7 7-6 6-7-7zM3 9h13M17 12.5c1 1.4 1.5 2.3 1.5 3a1.5 1.5 0 0 1-3 0c0-.7.5-1.6 1.5-3z' },
+  { id: 'fill', label: 'Fill map', hint: 'Click a map to paint it one colour; the same colour again clears it', path: 'M9 3l7 7-6 6-7-7zM3 9h13M17 12.5c1 1.4 1.5 2.3 1.5 3a1.5 1.5 0 0 1-3 0c0-.7.5-1.6 1.5-3z' },
   { id: 'select', label: 'Select', hint: 'Pick a drawing to move it or drag its handles', path: 'M5 3l10 7-5 1-2 5z' },
   { id: 'eraser', label: 'Eraser', hint: 'Drag across drawings to remove them', path: 'M3 13l7-7 6 6-4 4H6zM9 17h8' },
 ];
@@ -57,10 +57,10 @@ export function DrawClearMenu({ islandName, mapName, islandCount, mapCount, onCl
   return (
     <div className="draw-clear">
       <button type="button" className="draw-clear-option" disabled={!islandCount} onClick={() => setAsking('island')}>
-        Clear this island <small>{islandName} · {islandCount}</small>
+        Clear this map <small>{islandName} · {islandCount}</small>
       </button>
       <button type="button" className="draw-clear-option" disabled={!mapCount} onClick={() => setAsking('map')}>
-        Clear this map <small>{mapName} · {mapCount}</small>
+        Clear this world <small>{mapName} · {mapCount}</small>
       </button>
     </div>
   );

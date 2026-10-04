@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Landing from './components/Landing.jsx';
 import GameView from './components/GameView.jsx';
-import PalettesMenu from './components/PalettesMenu.jsx';
 import LegalPage from './components/LegalPage.jsx';
 import { legalDocFromHash } from './data/legal.js';
 import { GameProvider } from './state/store.jsx';
@@ -110,24 +109,6 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="top-bar">
-        <div className="brand">
-          <span className="brand-mark">Hearthbound</span>
-          <span className="brand-sub">
-            virtual table · {isSupabaseConfigured ? 'cloud mode' : 'local demo mode'}
-          </span>
-        </div>
-        <div className="top-bar-actions">
-          {entry && (
-            <span className="session-chip">
-              {entry.state.layers?.[entry.state.layerOrder?.[0]]?.name} · {entry.me.name}
-              {entry.me.isHost ? ' (Host)' : ''}
-            </span>
-          )}
-          <PalettesMenu theme={theme} onChange={setTheme} />
-        </div>
-      </header>
-
       {legalDoc && !entry ? (
         <LegalPage doc={legalDoc} onClose={closeLegal} />
       ) : !entry ? (

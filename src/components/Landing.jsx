@@ -592,7 +592,7 @@ function HostTableForm({ onEnter }) {
     try {
       if (isSupabaseConfigured) {
         const { tableId, code, hostPlayerId } = await createTableRemote({
-          name: mapName.trim() || 'Untitled Map',
+          name: mapName.trim() || 'Untitled World',
           cols: parseInt(cols, 10) || 20,
           rows: parseInt(rows, 10) || 15,
           displayName: name.trim(),
@@ -611,7 +611,7 @@ function HostTableForm({ onEnter }) {
       const state = createEmptyGameState({ code, hostPlayerId: hostId, hostName: name.trim(), hostColor: color });
       const baseLayer = state.layers[state.layerOrder[0]];
       const baseIsland = baseLayer.islands[baseLayer.islandOrder[0]];
-      baseLayer.name = mapName.trim() || 'Untitled Map';
+      baseLayer.name = mapName.trim() || 'Untitled World';
       baseIsland.name = baseLayer.name;
       baseIsland.cols = Math.min(60, Math.max(4, parseInt(cols, 10) || 20));
       baseIsland.rows = Math.min(60, Math.max(4, parseInt(rows, 10) || 15));
@@ -636,9 +636,9 @@ function HostTableForm({ onEnter }) {
       <label className="field-label">Your color</label>
       <ColorPicker value={color} onChange={setColor} />
 
-      <div className="divider-word">new map</div>
+      <div className="divider-word">new world</div>
 
-      <label className="field-label">Map name</label>
+      <label className="field-label">World name</label>
       <input className="field" value={mapName} onChange={(e) => setMapName(e.target.value)} />
 
       <div className="field-row">
@@ -709,7 +709,7 @@ function GuestHostForm({ onEnter, onBack }) {
       const state = createEmptyGameState({ code, hostPlayerId: hostId, hostName: name.trim(), hostColor: color });
       const baseLayer = state.layers[state.layerOrder[0]];
       const baseIsland = baseLayer.islands[baseLayer.islandOrder[0]];
-      baseLayer.name = mapName.trim() || 'Untitled Map';
+      baseLayer.name = mapName.trim() || 'Untitled World';
       baseIsland.name = baseLayer.name;
       baseIsland.cols = Math.min(60, Math.max(4, parseInt(cols, 10) || 20));
       baseIsland.rows = Math.min(60, Math.max(4, parseInt(rows, 10) || 15));
@@ -733,9 +733,9 @@ function GuestHostForm({ onEnter, onBack }) {
       <label className="field-label">Your color</label>
       <ColorPicker value={color} onChange={setColor} />
 
-      <div className="divider-word">new map</div>
+      <div className="divider-word">new world</div>
 
-      <label className="field-label">Map name</label>
+      <label className="field-label">World name</label>
       <input className="field" value={mapName} onChange={(e) => setMapName(e.target.value)} />
 
       <div className="field-row">

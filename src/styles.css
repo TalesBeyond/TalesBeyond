@@ -149,75 +149,29 @@ input, select {
   overflow: hidden;
 }
 
-.top-bar {
+/* The palette choices in the toolbar's Configurations menu (Toolbar.jsx). */
+.toolbar-menu-palettes {
+  flex-basis: 100%;
+  order: 11;
+  box-sizing: border-box;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--ink-700);
-  background: var(--ink-900);
-  flex-shrink: 0;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink-700);
 }
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.brand-mark {
-  font-family: var(--font-display-caps);
-  font-size: 20px;
-  letter-spacing: 0.04em;
-  color: var(--parchment-100);
-}
-
-.brand-sub {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--parchment-300);
-  opacity: 0.6;
-}
-
-/* Everything in the bar stays on one line; on a narrow window the session
-   chip gives way (ellipsis) and the brand's subtitle drops out. */
-.top-bar { gap: 16px; }
-.brand { flex-shrink: 0; white-space: nowrap; }
-.top-bar-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.top-bar-actions .btn { white-space: nowrap; }
-@media (max-width: 1023px) {
-  .brand-sub { display: none; }
-}
-
-.session-chip {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  background: var(--ink-800);
-  border: 1px solid var(--gold-line);
-  color: var(--parchment-100);
-  padding: 6px 12px;
-  border-radius: 3px;
+.toolbar-menu:has(> .toolbar-menu-palettes) { width: 480px; }
+.toolbar-menu-caption {
+  flex-basis: 100%;
+  padding: 0 4px 2px;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment-300);
 }
-
-.palette-btn-wrap { position: relative; }
-
-.palette-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  background: var(--ink-800);
-  border: 1px solid var(--gold-line);
-  border-radius: 6px;
-  padding: 8px;
-  width: 220px;
-  z-index: 300;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-}
+.toolbar-menu-palettes .palette-option { width: auto; min-height: 40px; }
 
 .palette-option {
   display: flex;
@@ -372,7 +326,7 @@ input, select {
   .landing-shell { flex-direction: column; align-items: stretch; gap: 20px; }
   /* Let the hero's pieces interleave with the card: pitch, then form, then map. */
   .landing-hero { display: contents; }
-  .landing-hero .brand, .landing-hero .landing-status, .landing-hero .landing-eyebrow,
+  .landing-hero .landing-status, .landing-hero .landing-eyebrow,
   .landing-hero h1, .landing-hero p.landing-lede { order: 0; }
   .landing-hero p.landing-lede { font-size: 16px; }
   .lobby-card { order: 1; max-width: none; padding: 20px; }
@@ -456,6 +410,9 @@ input, select {
   color: #e5a3a3;
 }
 .btn-danger:hover { background: rgba(178, 58, 58, 0.15); }
+/* On the Grimoire's parchment the pale pink label washes out: red instead. */
+:root[data-theme='grimoire'] .btn-danger { color: var(--danger); }
+:root[data-theme='grimoire'] .btn-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 .btn-block { width: 100%; min-height: 50px; font-size: 16px; }
 .btn-sm { padding: 7px 12px; font-size: 12.5px; min-height: 0; }
@@ -1664,14 +1621,72 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 
 /* The Islands dialog: each island (or group) row, with its conditions
    picker underneath. */
-.island-row { padding: 2px 0 10px; border-bottom: 1px solid var(--ink-800); }
-.island-row:last-of-type { border-bottom: 0; }
+.island-row { padding: 0 0 10px; }
+/* A map's header: its name and icon buttons, then its sub map button and status. */
+.island-header { padding: 6px 6px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
+.island-header .island-row-head:hover { background: none; }
+.island-header + .island-settings { margin: 8px 0 0; }
+/* A sub map, listed under the map it belongs to (World maps dialog). */
+/* A map's row: its name with the three icon buttons at the far right, then
+   its other actions on a line below. */
+.island-row-head { justify-content: space-between; }
+.island-row-head .player-name { flex: 1 1 auto; min-width: 0; }
+.island-row-icons { display: flex; flex-shrink: 0; gap: 6px; }
+.island-row-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 6px 6px; }
+.btn-icon { width: 34px; height: 34px; padding: 0; }
+.btn-icon.active { background: var(--ink-700); border-color: var(--gold-hi); color: var(--gold-hi); }
+.btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Delete, as an icon: red in every palette, and not faded to pink when it
+   can't be pressed (the base map) — the cursor and its tooltip say why. */
+.btn-danger.btn-icon { color: var(--danger); }
+.btn-danger.btn-icon:disabled { opacity: 1; }
+/* A parent map's name: the button that folds its sub maps in and out. */
+.island-expand { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0; background: none; border: 0; font-family: inherit; text-align: left; cursor: pointer; }
+.island-expand svg { flex-shrink: 0; color: var(--gold-hi); transition: transform 0.15s; }
+.island-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+.island-expand:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; border-radius: 4px; }
+.island-expand .player-tag { font-weight: 400; }
+.island-subs { margin: 8px 0 0; }
+.island-row.sub { margin-left: 16px; padding-left: 8px; border-left: 2px solid var(--gold-line); }
 .island-settings { margin: 2px 6px 10px; padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
 .island-settings .field-row .btn { flex: 1; }
+.island-settings-confirm { margin-top: 10px; }
+/* Grid lines: how heavy, which colour, and a strip showing the result. */
+.grid-lines-label { margin-top: 12px; }
+.grid-lines-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.grid-lines-strength { flex: 1 1 200px; margin-bottom: 0; }
+.grid-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.grid-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--ink-900);
+  border-radius: 50%;
+  background: var(--swatch, #17140f);
+  box-shadow: 0 0 0 1px var(--ink-600, var(--ink-700));
+  cursor: pointer;
+}
+.grid-swatch:hover { box-shadow: 0 0 0 1px var(--gold-line); }
+.grid-swatch.active { box-shadow: 0 0 0 2px var(--gold-hi); }
+.grid-swatch:focus-visible, .grid-swatch:focus-within { outline: 2px solid var(--parchment-300); outline-offset: 3px; }
+.grid-swatch.custom { background: var(--swatch, conic-gradient(#e03131, #f2c14e, #51cf66, #3fa7ff, #b46bff, #e03131)); overflow: hidden; }
+.grid-swatch.custom input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.grid-preview {
+  height: 78px;
+  margin-top: 10px;
+  border: 1px solid var(--gold-line);
+  border-radius: 8px;
+  background: var(--parchment-100) center / cover;
+  overflow: hidden;
+}
+.grid-preview svg { display: block; }
 .island-new { margin: 10px 0 8px; }
 .island-settings .island-row-note { padding: 4px 0 0; }
 .island-row-conditions { display: flex; flex-direction: column; gap: 2px; padding: 0 6px; }
-.island-row-conditions .condition-row { margin-bottom: 0; }
+.island-row-conditions .condition-row { margin-bottom: 0; gap: 10px; }
+.island-status-label { margin: 6px 0 10px; }
 .island-row-note { display: block; padding: 0 6px; font-size: 12px; color: var(--parchment-300); }
 .island-row-conditions .island-row-note { padding: 0; }
 .condition-list {
@@ -2170,7 +2185,6 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .draw-selection-box { fill: none; stroke: var(--ember, #d9822b); stroke-width: 1.5; stroke-dasharray: 5 4; }
 .draw-handle { fill: #fff; stroke: #17140f; stroke-width: 1.5; }
 .island-canvas.tool-edit .grid-wrap { cursor: move; }
-.island-canvas.tool-group .grid-wrap { cursor: pointer; }
 .island-canvas:not(.tool-play) .token { cursor: inherit; }
 
 .grid-wrap {
@@ -2277,10 +2291,6 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   border-radius: 3px;
   white-space: nowrap;
   pointer-events: none;
-}
-
-.grid-wrap.pending-group-member {
-  box-shadow: 0 0 0 2px var(--ember), 0 4px 14px -6px rgba(0,0,0,0.6);
 }
 
 .grid-svg {
@@ -2509,32 +2519,6 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-}
-
-.group-confirm-panel {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 360px;
-  background: linear-gradient(180deg, var(--ink-900), var(--ink-800));
-  border: 1px solid var(--gold-line);
-  border-radius: 6px;
-  padding: 20px;
-  box-shadow: 0 30px 60px -20px rgba(0,0,0,0.7);
-  z-index: 200;
-}
-
-.group-confirm-panel h4 {
-  margin: 0 0 10px;
-  font-family: var(--font-display);
-}
-
-.group-confirm-panel p {
-  margin: 0 0 12px;
-  color: var(--parchment-300);
-  line-height: 1.5;
 }
 
 /* ---------- Connection recovery (REQ-001) ---------- */
@@ -2854,32 +2838,45 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   background: rgba(10, 8, 6, 0.78);
 }
 
-/* Fixed-size stage: book, tabs and the info panel sit side by side and never
-   grow past the window — long entries scroll inside the panel instead. */
+/* The book (CompendiumBook.jsx, RulesBook.jsx): the index on the left page,
+   the chosen entry on the right one, and the chapters as tabs on the fore
+   edge. Nothing sits beside it, and it never grows past the window — a long
+   index or entry scrolls inside its page. The pages are parchment under
+   every palette, so what is printed on them takes its colours from here and
+   not from the palette. */
 .cbook-stage {
+  --pg-ink: #2b241c;
+  --pg-soft: #6b5a3e;
+  --pg-line: #b9a87e;
+  --pg-accent: #9a3d1f;
+  --pg-leather: #4a2c1d;
+  --pg-fill: #f8f0da;
   position: relative;
-  width: min(1480px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 64px));
-  height: min(720px, calc(100dvh - 64px));
+  width: min(1240px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 48px));
+  height: min(760px, calc(100dvh - 48px));
   display: flex;
   flex-direction: row;
   align-items: stretch;
 }
 
+/* Over the tabs, at the book's top corner. */
 .cbook-close {
   position: absolute;
-  right: 10px;
-  top: 10px;
+  right: 34px;
+  top: 6px;
   z-index: 10;
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--ink-950);
-  border: 1px solid var(--gold-line);
-  color: var(--parchment-100);
+  background: var(--pg-leather);
+  border: 1px solid rgba(201, 160, 84, 0.55);
+  color: #f2e9d4;
   font-size: 24px;
   line-height: 1;
 }
+.cbook-close:hover { background: #7a3b26; }
+.cbook-close:focus-visible { outline: 2px solid #f2e9d4; outline-offset: 2px; }
 
 .cbook-cover {
   position: relative;
@@ -2889,7 +2886,7 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   box-sizing: border-box;
   padding: 18px;
   border-radius: 12px;
-  background: #4a2c1d;
+  background: var(--pg-leather);
   box-shadow: 0 40px 80px rgba(0, 0, 0, 0.65);
 }
 .cbook-cover-line {
@@ -2918,32 +2915,20 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%);
 }
 
-.cbook-pages {
-  position: relative;
-  height: 100%;
-  perspective: 2600px;
-}
+.cbook-pages { position: relative; height: 100%; }
 .cbook-page {
   position: absolute;
   top: 0;
   width: 50%;
   height: 100%;
   box-sizing: border-box;
-  padding: 20px 32px 12px;
   display: flex;
   flex-direction: column;
-  color: #2b241c;
+  color: var(--pg-ink);
 }
-.cbook-page.left { background: linear-gradient(90deg, #f3e8cd 0%, #ecdfc0 86%, #d6c49b 100%); border-radius: 6px 0 0 6px; }
-.cbook-page.right { background: linear-gradient(270deg, #f3e8cd 0%, #ecdfc0 86%, #d6c49b 100%); border-radius: 0 6px 6px 0; }
-.cbook-page.base { z-index: 1; }
-.cbook-page.leaf {
-  z-index: 5;
-  pointer-events: none;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
-}
+/* The inner margins are wider: the gutter's shadow falls across them. */
+.cbook-page.left { left: 0; padding: 18px 42px 18px 28px; background: linear-gradient(90deg, #f3e8cd 0%, #ecdfc0 86%, #d6c49b 100%); border-radius: 6px 0 0 6px; }
+.cbook-page.right { left: 50%; padding: 18px 28px 18px 46px; background: linear-gradient(270deg, #f3e8cd 0%, #ecdfc0 86%, #d6c49b 100%); border-radius: 0 6px 6px 0; }
 .cbook-gutter {
   position: absolute;
   left: calc(50% - 30px);
@@ -2955,62 +2940,173 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   z-index: 3;
 }
 
-.cbook-page-head { display: flex; align-items: baseline; justify-content: space-between; height: 44px; flex-shrink: 0; }
+.cbook-page-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--pg-line);
+}
 .cbook-chapter { font-family: var(--font-display-caps); font-weight: 600; font-size: 15px; letter-spacing: 0.06em; color: #6b3a22; }
-.cbook-range { font-family: var(--font-display); font-style: italic; font-size: 14px; color: #6b5a3e; }
-.cbook-rows { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.cbook-empty { margin: 24px 0 0; font-family: var(--font-display); font-style: italic; color: #6b5a3e; }
+.cbook-range { font-family: var(--font-display); font-style: italic; font-size: 14px; color: var(--pg-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cbook-empty { margin: 24px 0 0; font-family: var(--font-display); font-style: italic; color: var(--pg-soft); }
 
+/* Left page: the search and filters, then the index. */
+.cbook-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 8px; }
+.cbook-search, .cbook-select {
+  height: 40px;
+  padding: 0 12px;
+  background: var(--pg-fill);
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+  color: var(--pg-ink);
+  font-size: 15px;
+}
+.cbook-search { flex: 1 1 180px; min-width: 0; box-sizing: border-box; }
+.cbook-search::placeholder { color: var(--pg-soft); }
+.cbook-select { max-width: 100%; }
+.cbook-search:focus, .cbook-select:focus { outline: 2px solid var(--pg-accent); outline-offset: 1px; }
+.cbook-filter { display: flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: rgba(107, 90, 62, 0.12); border: 1px solid var(--pg-line); border-radius: 10px; }
+.cbook-filter button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  color: var(--pg-soft);
+}
+.cbook-filter button:hover { color: var(--pg-ink); }
+.cbook-filter button.active { background: var(--pg-leather); color: #f2e9d4; }
+.cbook-filter button:focus-visible { outline: 2px solid var(--pg-accent); outline-offset: 1px; }
+
+.cbook-rows, .cbook-entry { scrollbar-width: thin; scrollbar-color: var(--pg-line) transparent; }
+.cbook-rows {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  margin-right: -12px;
+  padding-right: 12px;
+}
 .cbook-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   box-sizing: border-box;
-  height: 86px;
+  min-height: 62px;
   flex-shrink: 0;
-  padding: 0 12px;
+  padding: 6px 10px;
   text-align: left;
   background: transparent;
   color: inherit;
   border: 0;
-  border-bottom: 1px dotted #b9a87e;
+  border-bottom: 1px dotted var(--pg-line);
 }
 .cbook-row:hover { background: rgba(184, 74, 42, 0.07); }
-.cbook-row.selected { background: rgba(184, 74, 42, 0.13); box-shadow: inset 0 -2px 0 #b84a2a; }
-.cbook-row:focus-visible { outline: 2px solid #9a3d1f; outline-offset: -2px; }
+.cbook-row.selected { background: rgba(184, 74, 42, 0.14); box-shadow: inset 3px 0 0 #b84a2a; }
+.cbook-row:focus-visible { outline: 2px solid var(--pg-accent); outline-offset: -2px; }
 .cbook-row-lead { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .cbook-row-img {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   object-fit: cover;
   border-radius: 6px;
-  border: 1px solid #b9a87e;
+  border: 1px solid var(--pg-line);
   background: #e3d5b0;
 }
-.cbook-row-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.cbook-row-name { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.1; color: #2b241c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cbook-row-sub { font-size: 13px; color: #6b5a3e; }
-.cbook-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
-.cbook-row-big { font-family: var(--font-display); font-weight: 700; font-size: 24px; color: #9a3d1f; }
-.cbook-row-small { font-size: 13px; color: #6b5a3e; }
+.cbook-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cbook-row-name { font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.15; color: var(--pg-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbook-row-sub { font-size: 12.5px; color: var(--pg-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbook-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.cbook-row-big { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: var(--pg-accent); }
+.cbook-row-small { font-size: 12.5px; color: var(--pg-soft); }
 
-.cbook-page-foot { display: flex; align-items: center; gap: 6px; height: 44px; flex-shrink: 0; }
-.cbook-page-foot.left { justify-content: flex-start; }
-.cbook-page-foot.right { justify-content: flex-end; }
-.cbook-num { font-family: var(--font-display); font-style: italic; font-size: 16px; color: #6b5a3e; }
-.cbook-turn {
-  width: 44px;
-  height: 44px;
-  background: transparent;
-  border: 0;
-  color: #6b3a22;
-  font-family: var(--font-display);
-  font-size: 28px;
+/* Right page: the chosen entry, and what can be done with it at the foot. */
+.cbook-entry {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  margin-right: -12px;
+  padding-right: 12px;
 }
-.cbook-turn:hover { color: #b84a2a; }
-.cbook-turn:focus-visible { outline: 2px solid #9a3d1f; outline-offset: -2px; }
+.cbook-entry-top { display: flex; align-items: center; gap: 18px; }
+.cbook-entry-img {
+  width: 116px;
+  height: 116px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--pg-line);
+  background: #e3d5b0;
+  box-shadow: 0 3px 0 rgba(107, 90, 62, 0.22);
+}
+/* A monster's picture is the token it will be on the map. */
+.cbook-entry-img.round { border-radius: 50%; border: 3px solid var(--pg-leather); }
+.cbook-entry-title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cbook-entry-name { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 32px; line-height: 1.05; color: var(--pg-ink); text-wrap: balance; }
+.cbook-entry-sub { font-family: var(--font-display); font-style: italic; font-size: 17px; color: var(--pg-soft); }
+.cbook-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin: 0; }
+.cbook-facts > div { min-width: 0; padding: 8px 10px; border: 1px solid var(--pg-line); border-radius: 8px; background: rgba(248, 240, 218, 0.55); }
+.cbook-facts dt { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pg-soft); }
+.cbook-facts dd { margin: 3px 0 0; font-family: var(--font-display); font-weight: 700; font-size: 19px; line-height: 1.15; color: var(--pg-accent); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cbook-facts.abilities { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.cbook-facts.abilities > div { padding: 6px 2px; text-align: center; }
+.cbook-facts.abilities dd { font-size: 17px; }
+.cbook-facts.abilities small { font-family: var(--font-ui); font-size: 11px; font-weight: 600; color: var(--pg-soft); }
+.cbook-entry-text { margin: 0; max-width: 62ch; font-size: 15px; line-height: 1.6; color: var(--pg-ink); }
+.cbook-attack { font-style: italic; color: #6b3a22; }
+.cbook-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cbook-chips span { padding: 3px 10px; border: 1px solid var(--pg-line); border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--pg-soft); }
+.rules-list { padding-left: 18px; }
+.rules-list li + li { margin-top: 4px; }
+.rules-list b { color: var(--parchment-100); }
+.cbook-page .rules-list b { color: var(--pg-ink); }
+
+.cbook-entry-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--pg-line);
+}
+.cbook-entry-actions label { font-size: 13px; font-weight: 600; color: var(--pg-soft); }
+.cbook-entry-actions .cbook-select { flex: 1 1 140px; min-width: 0; }
+.cbook-btn {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid #8a6a4a;
+  background: transparent;
+  color: var(--pg-leather);
+  font-size: 15px;
+  font-weight: 600;
+}
+.cbook-btn:hover:not(:disabled) { background: rgba(107, 58, 34, 0.1); }
+.cbook-btn.primary { background: var(--pg-accent); border-color: transparent; color: #fff; }
+.cbook-btn.primary:hover:not(:disabled) { background: #b84a2a; }
+.cbook-btn:disabled { opacity: 0.45; cursor: default; }
+.cbook-btn:focus-visible { outline: 2px solid var(--pg-accent); outline-offset: 2px; }
+.cbook-feedback { flex-basis: 100%; font-size: 13px; font-weight: 600; color: #4d6b3a; }
+.cbook-feedback:empty { display: none; }
+/* A hint printed on the page reads in the page's own ink. */
+.cbook-page .hint { flex: 1; border-color: var(--pg-line); background: rgba(248, 240, 218, 0.55); }
+.cbook-page .hint-icon, .cbook-page .hint-action { color: #6b3a22; }
+.cbook-page .hint-action { border-color: #8a6a4a; }
+.cbook-page .hint-body p { color: var(--pg-ink); }
 
 .cbook-tabs { flex-shrink: 0; width: 112px; padding-top: 70px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .cbook-tab {
@@ -3018,7 +3114,7 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   height: 56px;
   padding: 0 0 0 14px;
   text-align: left;
-  border: 1px solid var(--gold-line);
+  border: 1px solid rgba(201, 160, 84, 0.55);
   border-left: 0;
   border-radius: 0 10px 10px 0;
   background: #4a2c1d;
@@ -3028,92 +3124,25 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   font-size: 16px;
   letter-spacing: 0.04em;
 }
+.cbook-tab:hover { background: #5e3624; }
 .cbook-tab.active { background: #7a3b26; width: 112px; }
-.cbook-tab:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
-
-.cbook-tray {
-  position: relative;
-  flex: 0 0 340px;
-  min-width: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 16px;
-  padding: 64px 20px 20px;
-  overflow-y: auto;
-  background: var(--ink-900);
-  border: 1px solid var(--gold-line);
-  border-radius: 14px;
-}
-.cbook-tray-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cbook-search, .cbook-select {
-  height: 44px;
-  padding: 0 12px;
-  background: var(--ink-950);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
-  color: var(--parchment-100);
-  font-size: 15px;
-}
-.cbook-search { width: 100%; box-sizing: border-box; }
-.cbook-search:focus, .cbook-select:focus { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
-.cbook-filter { display: flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: var(--ink-950); border: 1px solid var(--ink-700); border-radius: 10px; }
-.cbook-filter button {
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 7px;
-  font-size: 14px;
-  font-weight: 600;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--parchment-300);
-}
-.cbook-filter button.active { background: var(--ink-700); border-color: var(--gold-line); color: var(--parchment-100); }
-.cbook-filter button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
-.cbook-count { font-size: 13px; color: var(--parchment-300); white-space: nowrap; }
-
-.cbook-selection { display: flex; flex-direction: column; gap: 6px; }
-.cbook-selection-name { font-family: var(--font-display); font-weight: 600; font-size: 22px; color: var(--parchment-100); }
-.cbook-token-preview { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--parchment-100); object-fit: cover; }
-.cbook-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0; font-family: var(--font-mono); font-size: 12px; color: var(--parchment-200); }
-.cbook-attack { font-size: 13px; line-height: 1.4; color: var(--gold-hi); }
-.cbook-selection-line { font-size: 13px; line-height: 1.4; color: var(--parchment-300); }
-
-.cbook-give { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cbook-give label { font-size: 13px; font-weight: 600; color: var(--parchment-200); }
-.cbook-btn {
-  height: 44px;
-  padding: 0 18px;
-  border-radius: 10px;
-  border: 1px solid var(--gold-line);
-  background: transparent;
-  color: var(--parchment-100);
-  font-size: 15px;
-  font-weight: 600;
-}
-.cbook-btn.primary { background: var(--ember); border-color: transparent; color: #fff; }
-.cbook-btn:disabled { opacity: 0.45; cursor: default; }
-.cbook-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
-.cbook-feedback { min-width: 110px; font-size: 13px; color: var(--moss); }
-
-@media (max-width: 1100px) {
-  .cbook-tray { flex-basis: 280px; padding: 60px 14px 14px; }
-}
+.cbook-tab:focus-visible { outline: 2px solid #f2e9d4; outline-offset: 2px; }
 
 @media (max-width: 900px) {
   .cbook-stage { flex-direction: column; gap: 8px; }
   .cbook-cover { flex: 1 1 0; min-height: 0; }
   .cbook-ribbon { display: none; }
-  /* static tray: the close button pins to the stage's top-right, beside the tabs */
-  .cbook-tray { position: static; flex: 0 1 38%; min-height: 0; padding: 14px; }
+  /* The tabs run along the top, with the close button at the end of the row. */
   .cbook-close { top: 0; right: 0; }
   .cbook-tabs { width: auto; padding: 0 52px 0 0; flex-direction: row; gap: 6px; order: -1; }
-  .cbook-tab { flex: 1 1 0; min-width: 0; border-left: 1px solid var(--gold-line); border-radius: 10px 10px 0 0; width: auto; padding: 0 8px; height: 44px; text-align: center; font-size: 14px; }
+  .cbook-tab { flex: 1 1 0; min-width: 0; border-left: 1px solid rgba(201, 160, 84, 0.55); border-radius: 10px 10px 0 0; width: auto; padding: 0 8px; height: 44px; text-align: center; font-size: 14px; }
   .cbook-tab.active { width: auto; }
-  .cbook-page { padding: 12px 14px 6px; }
-  .cbook-row-name { font-size: 17px; }
-  .cbook-row-big { font-size: 18px; }
+  .cbook-page.left { padding: 12px 26px 12px 14px; }
+  .cbook-page.right { padding: 12px 14px 12px 28px; }
+  .cbook-row-name { font-size: 16px; }
+  .cbook-row-big { font-size: 16px; }
+  .cbook-entry-name { font-size: 24px; }
+  .cbook-entry-img { width: 84px; height: 84px; }
 }
 
 .ruler-line {
@@ -4437,7 +4466,10 @@ button.card-notes { border-style: solid; }
   pointer-events: none;
 }
 :root[data-theme='grimoire'] .island-canvas:not(.tool-play) .grid-wrap.active { box-shadow: 0 0 0 2.5px var(--ember); }
-:root[data-theme='grimoire'] .grid-wrap .grid-svg line { stroke: rgba(42, 32, 24, 0.4); stroke-width: 1; stroke-dasharray: 1 5; }
+/* A map with its own grid lines (its Settings) keeps them as it set them. */
+:root[data-theme='grimoire'] .grid-wrap .grid-svg:not(.grid-custom) line,
+:root[data-theme='grimoire'] .grid-preview:not(.grid-custom) line { stroke: rgba(42, 32, 24, 0.4); stroke-width: 1; stroke-dasharray: 1 5; }
+:root[data-theme='grimoire'] .grid-preview { background-color: #f6eedb; }
 
 /* Tokens as ink roundels: a double ring drawn around the art. */
 :root[data-theme='grimoire'] .token { border: 2px solid #2a2018; box-shadow: 0 0 0 2px #f3e9d0, 0 0 0 3.5px #2a2018, 0 3px 6px rgba(40, 25, 10, 0.35); }
@@ -4480,7 +4512,6 @@ button.card-notes { border-style: solid; }
    when (max-width: 767px), (max-height: 499px) matches. Islands first: the
    top bar names the island, chips fly between islands, a mini-map shows the
    whole layer. Built on the palette variables so every palette still works. */
-.app-shell:has(.game-screen.phone) > .top-bar { display: none; }
 .game-layout.phone-layout { grid-template-columns: minmax(0, 1fr); }
 .game-layout.phone-layout > .game-center { grid-column: 1; }
 .game-screen.phone .stage { touch-action: none; }
@@ -5167,8 +5198,6 @@ body:has(.game-screen.phone) .book-card {
 .phone-edit-text { font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
 .phone-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .phone-edit-actions button { flex: 1 1 auto; min-height: 44px; }
-.game-screen.phone .group-confirm-panel { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; width: auto; max-width: none; border-radius: 16px; }
-.game-screen.phone .group-confirm-panel .btn { min-height: 44px; }
 .phone-atlas-manage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 @media (max-height: 499px) and (orientation: landscape) {
   .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
@@ -5187,45 +5216,6 @@ body:has(.game-screen.phone) .book-card {
 @media (max-height: 499px) and (orientation: landscape) {
   .game-screen.phone .phone-edit-bar { top: 12px; left: 12px; right: 12px; }
 }
-
-/* Grouping islands on a phone (PhoneGroupSheet): a tappable map of the
-   layer, the same islands as a checklist, then a name. */
-.phone-group-map {
-  width: 100%;
-  height: 170px;
-  box-sizing: border-box;
-  padding: 8px;
-  border: 1px solid var(--ink-700);
-  border-radius: 14px;
-  background: var(--ink-950);
-}
-.phone-group-island { fill: var(--ink-700); stroke: var(--ink-950); stroke-width: 3; vector-effect: non-scaling-stroke; cursor: pointer; }
-.phone-group-island.active { stroke: var(--parchment-300); }
-.phone-group-island.picked { fill: var(--gold-hi); stroke: #fff; }
-.phone-group-island.grouped { fill: var(--ink-800); stroke-dasharray: 6 4; stroke: var(--parchment-300); cursor: default; }
-.phone-group-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.phone-group-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 6px 14px;
-  border: 1px solid var(--ink-700);
-  border-radius: 14px;
-  background: var(--ink-800);
-  cursor: pointer;
-}
-.phone-group-row.picked { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 10%, var(--ink-800)); }
-.phone-group-row.grouped { opacity: 0.55; cursor: default; }
-.phone-group-row input { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--gold-hi); }
-.phone-group-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.phone-group-text b { font-size: 15px; }
-.phone-group-text span { font-size: 13px; color: var(--parchment-300); }
-.phone-group-name { display: flex; flex-direction: column; gap: 6px; }
-.phone-group-name .field,
-.phone-group-existing .field { min-height: 48px; font-size: 16px; }
-.phone-group-existing { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
-.phone-group-existing .phone-caption { grid-column: 1 / -1; order: 3; }
 
 /* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), where the token
    card sits otherwise. */
@@ -5323,7 +5313,6 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .target-card .hint-icon, .target-card .hint-action { color: #7a5412; }
 .target-card .hint-action { border-color: var(--card-gold); }
 .target-card .hint-body p { color: var(--card-ink); }
-.cbook-hint { flex-basis: 100%; margin-top: 8px; }
 .toolbar-hint-anchor { position: relative; display: inline-flex; }
 .toolbar-hint-pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 120; width: 280px; padding: 6px; border: 1px solid var(--gold-line); border-radius: 12px; background: var(--ink-900); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5); }
 .hint-icon { flex-shrink: 0; margin-top: 1px; color: var(--gold-hi); }
@@ -5463,18 +5452,6 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .toolbar-codes-tip { position: absolute; top: calc(100% + 12px); left: 0; z-index: 130; }
 .phone-tip { width: auto; margin: 4px 0 8px; }
 .phone-tip .tip-arrow { display: none; }
-/* The DM's empty map: centred over the grid, clicks elsewhere still reach it. */
-.map-empty {
-  position: absolute;
-  inset: 0;
-  z-index: 18;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  pointer-events: none;
-}
-.map-empty .hint-empty { pointer-events: auto; max-width: 320px; background: var(--ink-900); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45); }
 .phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 24; }
 .phone-no-hero .hint-empty { background: var(--ink-900); border-style: solid; border-color: var(--gold-line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55); }
 .inspector-scroll .hint-empty { margin: 12px 4px; }
@@ -5546,3 +5523,284 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 @media (prefers-reduced-motion: reduce) {
   .tour-spot { transition: none; }
 }
+
+/* ---------- One rail (desktop) ----------
+   The toolbar stands on its side down the left edge (Toolbar.jsx `rail`):
+   each section is a tab sticking out of the edge like the Grimoire palette's
+   thumb tabs, with its icon over its name, drawn from the palette's own
+   colours so every palette gets them. A section's menu opens beside its tab.
+   The Tokens panel folds out over the map from the Tokens tab; the Inspector
+   stays docked on the right. */
+.game-screen.rail-layout { flex-direction: row; }
+.game-screen.rail-layout > .game-layout { min-width: 0; }
+
+.toolbar.toolbar-rail {
+  flex-direction: column;
+  align-items: flex-start;
+  /* The tabs take their height from the window's, so the whole rail fits
+     without scrolling on an ordinary screen; on a very short one it scrolls. */
+  --tab-h: clamp(44px, 6.2vh, 60px);
+  --tab-gap: clamp(3px, 0.5vh, 5px);
+  gap: var(--tab-gap);
+  width: var(--rail-w, 100px);
+  box-sizing: border-box;
+  padding: 8px 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--ink-700);
+  background: var(--ink-950);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.toolbar-rail::-webkit-scrollbar { display: none; }
+.toolbar-rail .toolbar-group { flex-direction: column; align-items: flex-start; gap: var(--tab-gap); padding: 0; border-left: 0; }
+.toolbar-rail .toolbar-hint-anchor { display: flex; }
+.toolbar-rail .spacer { flex: 1 0 2px; }
+/* A tip beside the rail points left at its tab, not up. */
+.toolbar-rail .toolbar-codes-tip .tip-arrow { left: -7px; top: 18px; transform: rotate(-45deg); }
+
+/* The tabs: a section's own button, never the cards inside its menu. */
+.toolbar-rail > .toolbar-group > .tool-card,
+.toolbar-rail > .toolbar-group > .toolbar-hint-anchor > .tool-card {
+  width: 92px;
+  min-width: 0;
+  height: var(--tab-h);
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 0 2px;
+  border: 1px solid var(--gold-line);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+.toolbar-rail > .toolbar-group > .tool-card:hover:not(:disabled),
+.toolbar-rail > .toolbar-group > .toolbar-hint-anchor > .tool-card:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gold-hi) 16%, var(--ink-800));
+  border-color: var(--gold-line);
+  color: var(--parchment-100);
+  transform: translateX(3px);
+}
+.toolbar-rail > .toolbar-group > .tool-card.active,
+.toolbar-rail > .toolbar-group > .toolbar-hint-anchor > .tool-card.active {
+  background: color-mix(in srgb, var(--gold-hi) 16%, var(--ink-800));
+  border-color: var(--gold-hi);
+  color: var(--gold-hi);
+  transform: translateX(4px);
+}
+.toolbar-rail > .toolbar-group > .tool-card.active .tool-icon,
+.toolbar-rail > .toolbar-group > .toolbar-hint-anchor > .tool-card.active .tool-icon { color: var(--gold-hi); }
+.toolbar-rail > .toolbar-group > .tool-card .tool-card-label,
+.toolbar-rail > .toolbar-group > .toolbar-hint-anchor > .tool-card .tool-card-label {
+  font-family: var(--font-display-caps);
+  font-size: clamp(11px, 1.35vh, 12.5px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-rail .tool-card { transition: none; }
+}
+
+/* The Tokens panel, folded out over the map's left edge. */
+.tokens-flyout {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  width: min(var(--left-w, 260px), calc(100% - 96px));
+  box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
+  animation: drawer-in-left 0.18s ease-out;
+}
+.tokens-flyout > .panel { flex: 1; min-width: 0; border-right-color: var(--gold-line); }
+@media (prefers-reduced-motion: reduce) {
+  .tokens-flyout { animation: none; }
+}
+
+/* The readouts that left the toolbar for the strip above the map. */
+.strip-saved { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--parchment-300); }
+.strip-saved-countdown { font-family: var(--font-mono); font-size: 11px; }
+.strip-clock { display: inline-flex; align-items: center; gap: 4px; }
+.strip-clock .clock-readout { padding: 0 6px; }
+.strip-clock .clock-readout-icon { width: 26px; height: 26px; }
+.strip-clock .clock-readout-caption { display: none; }
+.strip-clock .clock-readout-time { font-size: 15px; }
+.strip-clock .clock-toggle { width: 26px; height: 26px; font-size: 11px; }
+
+/* ---------- Side panels (desktop rail) ----------
+   Configurations, Players, the logs, Dice and Music open beside the rail,
+   over the left of the map, in the place the Tokens panel takes
+   (ModalShell's `side`; MusicModal draws its own). One at a time. */
+:root { --rail-w: 100px; }
+.side-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: var(--rail-w);
+  z-index: 90;
+  width: min(var(--side-w, 340px), calc(100vw - var(--rail-w) - 96px));
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--gold-line);
+  box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
+  animation: drawer-in-left 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-panel { animation: none; }
+}
+.side-panel > .book-card-header { flex-shrink: 0; }
+.side-panel-body { flex: 1; min-height: 0; overflow-y: auto; }
+/* MusicModal's own wrapper adds nothing when it is a side panel. */
+.side-panel-host { display: contents; }
+
+/* What a rail menu holds, laid out in a panel: the same cards, wrapping. */
+.side-panel-menu { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; }
+.side-panel-menu.players-menu { flex-direction: column; flex-wrap: nowrap; gap: 2px; }
+.side-panel-menu > .players-menu-head { flex-basis: 100%; }
+.side-panel-menu > .roll-log, .side-panel-menu > .roll-log-empty { flex-basis: 100%; }
+
+/* Roll log / Character log, inside the Logs panel. */
+.side-tabs { flex-basis: 100%; display: flex; gap: 4px; padding: 3px; margin-bottom: 6px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-950); }
+.side-tabs button { flex: 1 1 0; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--parchment-300); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.side-tabs button.active { background: var(--ink-700); border-color: var(--gold-line); color: var(--parchment-100); }
+.side-tabs button:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
+.side-tab-count { min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--ember); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; }
+
+/* The dice roller in a side panel: its two halves stack, and the history
+   takes whatever height is left. */
+.side-panel .dm-main { min-height: 100%; }
+.side-panel .dm-left { flex-basis: 100%; border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--gold-line) 35%, transparent); }
+.side-panel .dm-right { flex-basis: 100%; }
+.side-panel .dm-hist { max-height: none; }
+
+/* ---------- The compendium drawer (desktop rail) ----------
+   The Compendium tab's side panel: its three books lying in the drawer, then
+   Storage. A book is its cover seen from above — leather, a spine, a gilt
+   line and the page edges under it — in its own colours under every
+   palette, like the open book it turns into (.cbook-*). */
+.side-panel-menu.book-drawer { flex-direction: column; flex-wrap: nowrap; gap: 14px; }
+.book-drawer-note { margin: 0; font-size: 13px; color: var(--parchment-300); }
+.drawer-book {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 96px;
+  padding: 0 18px 0 38px;
+  border: 0;
+  border-radius: 4px 10px 10px 4px;
+  background: var(--book, #4a2c1d);
+  color: #f2e9d4;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35), 0 3px 0 #d8c8a2, 0 4px 0 #b9a87e, 0 10px 16px -8px rgba(0, 0, 0, 0.7);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.drawer-book.monsters { --book: #3c4a2f; }
+.drawer-book.items { --book: #4a2c1d; }
+.drawer-book.weapons { --book: #6b2a22; }
+.drawer-book::after {
+  content: '';
+  position: absolute;
+  inset: 7px 7px 7px 28px;
+  border: 1px solid rgba(201, 160, 84, 0.55);
+  border-radius: 3px 6px 6px 3px;
+  pointer-events: none;
+}
+.drawer-book-spine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 21px;
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.12));
+  box-shadow: inset -1px 0 0 rgba(201, 160, 84, 0.45), inset 0 14px 0 -12px rgba(201, 160, 84, 0.6), inset 0 -14px 0 -12px rgba(201, 160, 84, 0.6);
+}
+.drawer-book:hover { transform: translateX(5px); filter: brightness(1.14); }
+.drawer-book:focus-visible, .drawer-storage:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.drawer-book-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.drawer-book-title { font-family: var(--font-display-caps); font-size: 20px; font-weight: 600; letter-spacing: 0.05em; }
+.drawer-book-sub { font-size: 12.5px; line-height: 1.35; color: rgba(242, 233, 212, 0.78); }
+.drawer-book-icon { flex-shrink: 0; color: #e0c27a; }
+.drawer-book-icon .tool-icon { width: 28px; height: 28px; }
+.drawer-storage {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  margin-top: 6px;
+  padding: 0 14px;
+  border: 1px dashed var(--gold-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-storage > .tool-icon { flex-shrink: 0; width: 24px; height: 24px; color: var(--gold-hi); }
+.drawer-storage:hover, .drawer-storage.active { border-style: solid; background: color-mix(in srgb, var(--gold-hi) 10%, transparent); }
+.drawer-storage-title { font-family: var(--font-display-caps); font-size: 16px; font-weight: 600; letter-spacing: 0.04em; }
+.drawer-storage-sub { font-size: 12.5px; color: var(--parchment-300); }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-book { transition: none; }
+}
+
+/* The Tools drawer: each tool with what it does. The Mapping drawer's switch
+   between World maps and Layers. */
+.drawer-tool {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: 10px 14px;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-tool:hover { border-color: var(--gold-line); }
+.drawer-tool.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-800)); }
+.drawer-tool:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.drawer-tool-icon { flex-shrink: 0; color: var(--gold-hi); }
+.drawer-tool-icon .tool-icon { width: 26px; height: 26px; }
+.drawer-tool-name { font-family: var(--font-display-caps); font-size: 16px; font-weight: 600; letter-spacing: 0.04em; }
+.drawer-tool.active .drawer-tool-name { color: var(--gold-hi); }
+.drawer-tool-sub { font-size: 12.5px; line-height: 1.4; color: var(--parchment-300); }
+.side-panel-menu.tools-drawer { gap: 8px; }
+.side-tabs.drawer-tabs { margin-bottom: 14px; }
+
+/* The World drawer: the clock, day / night and ambience, one under another. */
+.drawer-section { display: flex; flex-direction: column; gap: 8px; }
+.drawer-section + .drawer-section { padding-top: 14px; border-top: 1px solid var(--ink-700); }
+.drawer-section > .section-label { margin: 0; }
+
+/* A side panel's footer (ModalShell `footer`): pinned under the scrolling
+   body. The Mapping drawer keeps + New map there, and the form it opens;
+   Initiative and Dice keep their roll buttons there. */
+.side-panel-footer {
+  flex-shrink: 0;
+  max-height: 60%;
+  overflow-y: auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--gold-line);
+  background: color-mix(in srgb, var(--ink-950) 55%, transparent);
+}
+.side-panel-footer .island-new { margin: 0; }
+.side-panel-footer button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+
+/* The Configurations drawer: cards under headings; Leave reads as the way out. */
+.side-panel-menu.config-drawer { gap: 14px; }
+.drawer-tool.danger .drawer-tool-icon, .drawer-tool.danger .drawer-tool-name { color: var(--danger); }
+.drawer-tool.danger:hover { border-color: var(--danger); }

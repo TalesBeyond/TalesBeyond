@@ -18,8 +18,9 @@ import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
+import { mobSheetWithAttacks } from '../utils/combat.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
-import { renderIslandTemplateToDataUrl } from '../utils/image.js';
+import { renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl } from '../data/defaultTokens.js';
 import { resolveImage, storeImage } from '../lib/imageCache.js';
 import {
@@ -84,7 +85,8 @@ import { useCatalog } from '../lib/catalog.js';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
-import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import { LayerStrip, StripSaved, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import ClockReadout from './ClockReadout.jsx';
 import {
   usePhoneLayout,
   PhoneTopBar,
@@ -94,7 +96,6 @@ import {
   PhoneTokenCard,
   PhoneNav,
   PhoneSheet,
-  PhoneGroupSheet,
   PhoneSwitch,
   PhoneLayersSheet,
   PhoneAtlas,
@@ -255,6 +256,7 @@ const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
 const COLLAPSED_PANEL_WIDTH = 36;
+const RAIL_WIDTH = 100; // the toolbar rail down the left edge (.toolbar-rail in styles.css)
 // Below this window width both side panels can't sit beside the map without
 // crushing it, so they become drawers that slide over the map instead — one
 // open at a time, both folded to their rails by default.
@@ -392,7 +394,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [hasExportedGuestTable, setHasExportedGuestTable] = useState(false);
   const [pendingLeaveWarning, setPendingLeaveWarning] = useState(false);
   const [pendingKickId, setPendingKickId] = useState(null); // the seat the DM is about to kick, awaiting confirm
-  const [leftCollapsed, setLeftCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
+  // The Tokens panel is a flyout opened from the rail's Tokens tab, closed
+  // until asked for.
+  const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
@@ -418,7 +422,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Crossing the breakpoint resets the panels to that layout's default:
   // folded to rails as drawers, both open side by side on a wide window.
   useEffect(() => {
-    setLeftCollapsed(drawerLayout);
+    setLeftCollapsed(true);
     setRightCollapsed(drawerLayout);
   }, [drawerLayout]);
 
@@ -426,6 +430,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function togglePanel(side) {
     const opening = side === 'left' ? leftCollapsed : rightCollapsed;
     (side === 'left' ? setLeftCollapsed : setRightCollapsed)(!opening);
+    // The Tokens panel and Music stand in the same place beside the rail.
+    if (opening && side === 'left') setShowMusicModal(false);
     if (opening && drawerLayout) (side === 'left' ? setRightCollapsed : setLeftCollapsed)(true);
   }
 
@@ -650,14 +656,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLayerId, currentLayer.islandOrder]);
 
-  // Island ids the host has clicked so far while the 'group' tool is
-  // active — cleared on confirm/cancel, and whenever the tool changes away
-  // from 'group' (see the effect below).
-  const [pendingGroupIslandIds, setPendingGroupIslandIds] = useState([]);
-  useEffect(() => {
-    if (tool !== 'group') setPendingGroupIslandIds([]);
-  }, [tool]);
-
   // The map canvas is padded well beyond the islands themselves (see
   // computeCanvasBounds) so panning never hits an edge — which means the
   // scroll position has to be deliberately centered on an island rather
@@ -666,15 +664,38 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // below and the toolbar's Recenter card scroll the actual DOM element.
   const stageRef = useRef(null);
   function recenterOnIsland(islandId) {
-    const stage = stageRef.current;
     const island = currentLayer.islands[islandId];
-    if (!stage || !island) return;
+    if (island) recenterOnIslands([island]);
+  }
+  // Scrolls the middle of the rectangle holding these islands to the middle
+  // of the view.
+  function recenterOnIslands(islands) {
+    const stage = stageRef.current;
+    if (!stage || !islands.length) return;
     const { originX, originY } = computeCanvasBounds(currentLayer.islands);
+    const minX = Math.min(...islands.map((i) => i.x));
+    const minY = Math.min(...islands.map((i) => i.y));
+    const maxX = Math.max(...islands.map((i) => i.x + i.cols * i.cellSize));
+    const maxY = Math.max(...islands.map((i) => i.y + i.rows * i.cellSize));
     // The canvas sits STAGE_PADDING in from the stage's scroll origin.
-    const centerX = (island.x - originX + (island.cols * island.cellSize) / 2) * zoom + STAGE_PADDING;
-    const centerY = (island.y - originY + (island.rows * island.cellSize) / 2) * zoom + STAGE_PADDING;
+    const centerX = ((minX + maxX) / 2 - originX) * zoom + STAGE_PADDING;
+    const centerY = ((minY + maxY) / 2 - originY) * zoom + STAGE_PADDING;
     stage.scrollLeft = centerX - stage.clientWidth / 2;
     stage.scrollTop = centerY - stage.clientHeight / 2;
+  }
+  // World maps → Recenter: makes that island the active one and brings it to
+  // the middle of the view. An island in a group centres the whole group.
+  function recenterOnMap(islandId) {
+    const island = currentLayer.islands[islandId];
+    if (!island) return;
+    if (isPhone) {
+      flyToIsland(islandId);
+      return;
+    }
+    setActiveIslandId(islandId);
+    const group = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    const members = group ? group.islandIds.map((id) => currentLayer.islands[id]).filter(Boolean) : [];
+    recenterOnIslands(members.length > 1 ? members : [island]);
   }
   useEffect(() => {
     recenterOnIsland(currentLayer.islandOrder[0]);
@@ -1365,7 +1386,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       targetRow,
       conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
       dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
-      mobSheet: draft.kind === 'mob' ? draft.mobSheet : undefined,
+      // Every monster is placed with something to attack with.
+      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
@@ -1774,7 +1796,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   function createLayer({ name, cols, rows }) {
     if (!isHost) return;
-    const layerName = name.trim() || 'Untitled Map';
+    const layerName = name.trim() || 'Untitled World';
     const layer = createInitialLayer({
       name: layerName,
       islandOverrides: { name: layerName, cols: clampGridDims(cols), rows: clampGridDims(rows) },
@@ -1803,8 +1825,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // on reload), so nudge past anything the candidate spot would actually
   // collide with rather than trusting it's clear. Mutates `island.x`/`y`,
   // then dispatches it exactly like every other island-adding path.
-  function placeAndAddIsland(island) {
-    const reference = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+  // `beside`: a sub map goes next to its parent instead of the active island.
+  function placeAndAddIsland(island, beside = null) {
+    const reference = beside || currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
     island.x = reference ? reference.x + reference.cols * reference.cellSize + 60 : 0;
     island.y = reference ? reference.y : 0;
     const w = island.cols * island.cellSize;
@@ -1828,30 +1851,49 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_ISLAND', layerId: currentLayerId, island });
   }
 
-  function createIsland({ name, cols, rows, feetPerSquare }) {
+  // `parentId`: the new island is a sub map of that one — placed beside it
+  // and grouped with it, so the two move together and share the parent's
+  // name. A sub map is nothing more than that group membership (the parent
+  // is the group's first island), so it needs no state of its own.
+  function createIsland({ name, cols, rows, feetPerSquare, parentId = null }) {
     if (!isHost) return;
     const island = createInitialIsland({
-      name: name.trim() || 'Untitled Island',
+      name: name.trim() || 'Untitled Map',
       cols: clampGridDims(cols),
       rows: clampGridDims(rows),
       feetPerSquare: clampFeetPerSquare(feetPerSquare),
     });
-    placeAndAddIsland(island);
+    const parent = parentId ? currentLayer.islands[parentId] : null;
+    placeAndAddIsland(island, parent);
+    if (!parent) return;
+    const parentGroup = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(parent.id));
+    if (parentGroup) {
+      updateGroup(parentGroup.id, { islandIds: [...parentGroup.islandIds, island.id] });
+    } else {
+      addIslandGroup({ id: generateEntityId(), name: parent.name, islandIds: [parent.id, island.id], conditions: [...(parent.conditions || [])] });
+    }
   }
 
   // Downloads an island (the active one by default) as a standalone PNG
   // (background + grid lines, at native pixel resolution) for editing in an
   // external image editor — the result can be uploaded back from the
   // island's settings (Mapping → Islands) as its background.
+  // An island in a group downloads the whole group as one picture, each
+  // island where it sits; uploading that picture back spreads it across the
+  // group the same way (Toolbar's uploadIslandBackground).
   async function downloadIslandImage(islandId = activeIslandId) {
     const island = currentLayer.islands[islandId];
     if (!island) return;
+    const group = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    const members = group ? group.islandIds.map((id) => currentLayer.islands[id]).filter(Boolean) : [];
+    const islands = members.length > 1 ? members : [island];
+    const title = members.length > 1 ? group.name : island.name;
     try {
-      const dataUrl = await renderIslandTemplateToDataUrl({ ...island, backgroundImage: resolveImage(island.backgroundImage) });
-      const filename = `${(island.name || 'island').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'island'}.png`;
+      const dataUrl = await renderIslandsTemplateToDataUrl(islands.map((i) => ({ ...i, backgroundImage: resolveImage(i.backgroundImage) })));
+      const filename = `${(title || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}.png`;
       downloadDataUrl(dataUrl, filename);
     } catch {
-      alert("Could not export this island's image — its background image could not be loaded.");
+      alert("Could not export this map's image — a background image could not be loaded.");
     }
   }
 
@@ -2179,25 +2221,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }
 
-  // While the 'group' tool is active, clicking an island toggles it into
-  // the pending selection rather than selecting/dragging it normally (see
-  // MapBoard's onIslandDragUp).
-  function toggleGroupCandidate(islandId) {
-    setPendingGroupIslandIds((prev) => (prev.includes(islandId) ? prev.filter((id) => id !== islandId) : [...prev, islandId]));
-  }
-
-  // Bundles the selected islands into one island group — each keeps its own
+  // Bundles islands into one island group — each keeps its own
   // grid/background/size; only their membership and the group's own name
-  // are new state. Requires at least 2 islands (a group of one is
-  // meaningless).
-  // `islandIds`: the phone's group sheet picks from a list; the desktop
-  // Group Islands tool picks on the map (pendingGroupIslandIds).
-  function confirmGroup(name, islandIds = pendingGroupIslandIds) {
-    if (!isHost || islandIds.length < 2) return;
-    // The group starts with every condition its islands had; from here on
-    // the group's conditions stand for all of them.
-    const conditions = [...new Set(islandIds.flatMap((id) => currentLayer.islands[id]?.conditions || []))];
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds, conditions };
+  // are new state. A group is a parent map and its sub maps (createIsland).
+  function addIslandGroup(group) {
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -2205,13 +2232,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     } else if (isGuestHost) {
       broadcastGuestChange({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     }
-    setPendingGroupIslandIds([]);
-    setTool('edit');
-  }
-
-  function cancelGroup() {
-    setPendingGroupIslandIds([]);
-    setTool('edit');
   }
 
   function ungroupIslands(groupId) {
@@ -2223,6 +2243,16 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     } else if (isGuestHost) {
       broadcastGuestChange({ type: 'REMOVE_ISLAND_GROUP', layerId: currentLayerId, groupId });
     }
+  }
+
+  // Takes one island out of its group (a sub map made a map of its own
+  // again). A group left with a single island is dissolved.
+  function detachIslandFromGroup(islandId) {
+    const group = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    if (!group) return;
+    const islandIds = group.islandIds.filter((id) => id !== islandId);
+    if (islandIds.length < 2) ungroupIslands(group.id);
+    else updateGroup(group.id, { islandIds });
   }
 
   function renameGroup(groupId, name) {
@@ -2860,7 +2890,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       feet: sameIsland ? feetDistance(entity, target, fps) : null,
       leftAfter,
       total: speedOf(entity),
-      islandName: sameIsland ? null : island?.name || 'another island',
+      islandName: sameIsland ? null : island?.name || 'another map',
     };
   }
   // On the acting hero's turn, a creature they could attack gets a Target button.
@@ -2907,9 +2937,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   // A player has no Tokens panel (placing tokens is the DM's), so only the
   // right panel shares the room with the map.
-  const shownPanelWidths = isHost
-    ? fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed)
-    : { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth, false, rightCollapsed), left: 0 };
+  // The Tokens flyout lies over the map, so it takes no room from it either.
+  const shownPanelWidths = { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth - RAIL_WIDTH, false, rightCollapsed), left: isHost ? panelWidths.left : 0 };
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
@@ -2944,7 +2973,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onOpenClock={() => setShowClockModal(true)}
         audio={audioApi}
         musicHint={isGuest ? 'On a guest table the music plays only on the DM’s own device.' : 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.'}
-        onOpenMusic={() => setShowMusicModal(true)}
+        onOpenMusic={() => {
+          // Music takes the Tokens panel's place beside the rail.
+          setShowMusicModal(true);
+          if (!isPhone) setLeftCollapsed(true);
+        }}
+        musicOpen={showMusicModal && audioEnabled}
+        onCloseMusic={() => setShowMusicModal(false)}
         onSetClockRunning={setClockRunning}
         dayPhase={tablePhase}
         dayNightOverride={state.dayNightOverride}
@@ -2954,6 +2989,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onLeave={leaveTable}
         onKickPlayer={isHost ? setPendingKickId : null}
         onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
+        theme={theme}
+        onThemeChange={onThemeChange}
         lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
@@ -2963,12 +3000,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onCreateLayer={createLayer}
         onRemoveLayer={removeLayer}
         activeIslandId={activeIslandId}
-        onSelectIsland={setActiveIslandId}
+        onRecenterIsland={recenterOnMap}
         onCreateIsland={createIsland}
         onRemoveIsland={removeIsland}
         onDownloadIslandImage={downloadIslandImage}
         onUpdateIsland={updateIsland}
-        onUngroupIslands={ungroupIslands}
+        onDetachIsland={detachIslandFromGroup}
         onRenameGroup={renameGroup}
         onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}
         onGroupConditions={(groupId, conditions) => updateGroup(groupId, { conditions })}
@@ -2982,7 +3019,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         customAssets={state.customAssets}
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
-        collapsed={isPhone ? false : toolbarCollapsed}
+        rail={!isPhone}
+        tokensOpen={!leftCollapsed}
+        onToggleTokens={() => togglePanel('left')}
+        collapsed={false}
         onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
         zoom={zoom}
       />
@@ -2997,7 +3037,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           currentLayerId={currentLayerId}
           isHost={isHost}
           customAssets={state.customAssets}
-          collapsed={isPhone ? false : leftCollapsed}
+          collapsed={false}
           onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('left'))}
           layout={isPhone ? 'phone' : 'panel'}
         />
@@ -3031,7 +3071,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const { originX: canvasOriginX, originY: canvasOriginY } = computeCanvasBounds(currentLayer.islands);
 
   return (
-    <div className={`game-screen${isPhone ? ' phone' : ''}`}>
+    <div className={`game-screen${isPhone ? ' phone' : ' rail-layout'}`}>
       {isPhone ? (
         <>
           <PhoneTopBar
@@ -3057,10 +3097,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       )}
 
       <div
-        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && !isHost ? ' no-left' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
+        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone ? ' no-left' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
         style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
       >
-        {!isPhone && isHost && tokenSidebarEl}
+        {!isPhone && isHost && !leftCollapsed && <div className="tokens-flyout">{tokenSidebarEl}</div>}
 
         <div className="game-center">
           {!isPhone && (
@@ -3072,8 +3112,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             isHost={isHost}
             onSwitchLayer={setHostViewLayerId}
             feetPerSquare={islandFeet(currentLayer, activeIslandId)}
-            clock={state.clock}
+            clock={null}
             phaseOverride={state.dayNightOverride}
+            extra={
+              <>
+                {isHost && <StripSaved label={savedAgo} secondsLeft={autosaveSecondsLeft} />}
+                {state.clock && (
+                  <span className="strip-clock">
+                    <ClockReadout clock={state.clock} isHost={isHost} onOpen={() => setShowClockModal(true)} onSetRunning={setClockRunning} phaseOverride={state.dayNightOverride} />
+                  </span>
+                )}
+              </>
+            }
           />
           )}
           <div className="stage-wrap">
@@ -3082,9 +3132,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               islands={currentLayer.islands}
               islandOrder={currentLayer.islandOrder}
               islandGroups={currentLayer.islandGroups || {}}
-              pendingGroupIslandIds={pendingGroupIslandIds}
               dayPhase={tablePhase}
-              onToggleGroupCandidate={toggleGroupCandidate}
               onMoveIslandGroup={moveIslandGroup}
               feetPerSquare={currentLayer.feetPerSquare}
               activeIslandId={activeIslandId}
@@ -3132,14 +3180,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 onOpen={() => setPhoneSheet('atlas')}
               />
               <PhoneIslandConditions conditions={islandConditionKeys(currentLayer, activeIslandId)} />
-              {isHost && (tool === 'edit' || tool === 'group') && (
+              {isHost && tool === 'edit' && (
                 <PhoneEditBar
-                  tool={tool}
                   islandName={activeIsland?.name}
                   onSettings={() => emitFx({ type: 'open', panel: 'islands', islandId: activeIslandId })}
-                  onGroup={() => setPhoneSheet('group')}
                   onDraw={() => setTool('draw')}
-                  onDone={() => setTool(tool === 'group' ? 'edit' : 'play')}
+                  onDone={() => setTool('play')}
                 />
               )}
               {isHost && tool === 'draw' && (
@@ -3193,7 +3239,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             />
           )}
           <FxLayer />
-          {!isPhone && <BookTabs isHost={isHost} chronicleOpen={chronicleOpen} onToggleChronicle={() => setChronicleOpen((o) => !o)} />}
+          {!isPhone && <BookTabs chronicleOpen={chronicleOpen} onToggleChronicle={() => setChronicleOpen((o) => !o)} />}
           {chronicleOpen && (
             <div className="book-chronicle">
               <CombatLog log={combatLog} onClose={() => setChronicleOpen(false)} />
@@ -3201,24 +3247,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
           <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
-          {isHost && tool === 'play' && Object.keys(layerEntities).length === 0 && (
-            <div className="map-empty">
-              <EmptyState
-                icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>}
-                title="This map is empty"
-                action={isPhone ? 'Add to the map' : 'Open Tokens'}
-                onAction={() => emitFx({ type: 'open', panel: 'tokens' })}
-              >
-                {isPhone ? (
-                  <>Add heroes, monsters, doors and chests with the <b>Add</b> button below.</>
-                ) : (
-                  <>
-                    Add heroes, monsters, doors and chests from the <b>Tokens</b> panel on the left.
-                  </>
-                )}
-              </EmptyState>
-            </div>
-          )}
           {/* While a tool changes what a press does, say so across the top of
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
@@ -3228,17 +3256,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
           {!isPhone && isHost && tool === 'edit' && (
             <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
-              Drag an island to move it. Where edges touch, tokens walk across.
-            </ModeBar>
-          )}
-          {!isPhone && isHost && tool === 'group' && (
-            <ModeBar id="group" className="map-mode-bar" label="Group islands." doneLabel="Cancel" onDone={cancelGroup}>
-              Click islands to add them to a group. A group moves together and shares one name.
+              Drag a map to move it. Where edges touch, tokens walk across.
             </ModeBar>
           )}
           {!isPhone && isHost && tool === 'draw' && (
             <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
-              Everyone at the table sees what you draw. Right-drag moves the map.
+              Everyone at the table sees what you draw. Right-drag moves the view.
             </ModeBar>
           )}
           {isHost && !isPhone && tool === 'draw' && (
@@ -3250,7 +3273,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               canRedo={canRedoDrawing}
               onUndo={undoDrawing}
               onRedo={redoDrawing}
-              islandName={currentLayer.islands[activeIslandId]?.name || 'this island'}
+              islandName={currentLayer.islands[activeIslandId]?.name || 'this map'}
               mapName={currentLayer.name}
               islandCount={drawingIdsOnIsland(activeIslandId).length}
               mapCount={drawingIdsOnMap().length}
@@ -3285,6 +3308,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               setSfxVolume(ENCOUNTER_MUSIC.id, v);
             }}
             onClose={() => setShowMusicModal(false)}
+            side={!isPhone}
           />
         )}
 
@@ -3310,7 +3334,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!isPhone && isHost && !leftCollapsed && !drawerLayout && (
+        {!isPhone && isHost && !leftCollapsed && (
           <PanelResizer
             side="left"
             width={shownPanelWidths.left}
@@ -3348,8 +3372,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           </div>
         )}
-
-        {tool === 'group' && !isPhone && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
 
         {tourOpen && isHost && !isPhone && <Tour onFinish={closeTour} />}
 
@@ -3530,20 +3552,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onClose={() => setPhoneSheet(null)}
             />
           )}
-          {phoneSheet === 'group' && isHost && (
-            <PhoneGroupSheet
-              layer={currentLayer}
-              tokenCounts={Object.values(layerEntities).reduce((acc, e) => ({ ...acc, [e.islandId]: (acc[e.islandId] || 0) + 1 }), {})}
-              activeIslandId={activeIslandId}
-              onGroup={(ids, name) => {
-                confirmGroup(name, ids);
-                setPhoneSheet(null);
-              }}
-              onRename={renameGroup}
-              onUngroup={ungroupIslands}
-              onClose={() => setPhoneSheet(null)}
-            />
-          )}
           {phoneSheet === 'drawstyle' && isHost && (
             <PhoneSheet title="Drawing style" onClose={() => setPhoneSheet(null)} className="phone-sheet-drawstyle">
               <DrawStylePanel style={drawSettings.style} recent={recentColours} onChange={(style) => setDrawSettings({ ...drawSettings, style })} />
@@ -3554,7 +3562,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 onChange={(snap) => setDrawSettings({ ...drawSettings, snap })}
               />
               <DrawClearMenu
-                islandName={currentLayer.islands[activeIslandId]?.name || 'this island'}
+                islandName={currentLayer.islands[activeIslandId]?.name || 'this map'}
                 mapName={currentLayer.name}
                 islandCount={drawingIdsOnIsland(activeIslandId).length}
                 mapCount={drawingIdsOnMap().length}
@@ -3715,35 +3723,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           )}
         </>
       )}
-    </div>
-  );
-}
-
-// Floating panel shown while the 'group' tool is active — the host clicks
-// islands on the map to build up the pending selection (see
-// GameView.toggleGroupCandidate) while this stays open, then names the
-// group and confirms here.
-function GroupConfirmPanel({ count, onConfirm, onCancel }) {
-  const [name, setName] = useState('');
-  return (
-    <div className="group-confirm-panel">
-      <h4>Group islands</h4>
-      <p>Click islands on the map to select them — {count} selected.</p>
-      <input
-        className="field"
-        placeholder="Group name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        style={{ marginBottom: 12 }}
-      />
-      <div className="merge-confirm-actions">
-        <button className="btn btn-secondary" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-primary" onClick={() => onConfirm(name)} disabled={count < 2}>
-          Group ({count})
-        </button>
-      </div>
     </div>
   );
 }

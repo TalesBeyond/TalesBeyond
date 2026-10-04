@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
-import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds } from '../utils/grid.js';
+import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
@@ -35,9 +35,7 @@ export default function MapBoard({
   islands,
   islandOrder,
   islandGroups = {},
-  pendingGroupIslandIds = [],
   dayPhase = null,
-  onToggleGroupCandidate,
   onMoveIslandGroup,
   feetPerSquare,
   activeIslandId,
@@ -51,7 +49,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'group' | 'draw'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw'
   zoom = 1,
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
@@ -413,14 +411,6 @@ export default function MapBoard({
     const p = getRelativePoint(e.clientX, e.clientY);
     const moved = Math.hypot(p.x - current.downX, p.y - current.downY);
     const isClick = moved < CLICK_MOVE_THRESHOLD_PX;
-
-    // While the 'group' tool is active, a click toggles the island into the
-    // pending group selection instead of selecting/repositioning it —
-    // dragging is ignored entirely in this mode.
-    if (tool === 'group') {
-      if (isClick) onToggleGroupCandidate?.(current.id);
-      return;
-    }
 
     // A tap on a square with a movable token selected moves it (or plans the
     // move, mid-encounter) instead of selecting the island.
@@ -877,18 +867,19 @@ export default function MapBoard({
         const w = island.cols * island.cellSize * zoom;
         const h = island.rows * island.cellSize * zoom;
         const cellPx = island.cellSize * zoom;
-        const isPendingGroupMember = pendingGroupIslandIds.includes(id);
         // This island's own day/night setting, else the table clock's phase.
         const phase = DAY_PHASES[islandPhase(island, dayPhase)];
         // Fill (Draw tool): a colour laid over the map art, under the grid.
         const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
         const fillColour = fill && islandFillColour(fill.style);
         const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, resolveImage(island.backgroundImage) && `url(${resolveImage(island.backgroundImage)})`].filter(Boolean);
+        // The map's own grid lines, if its settings ask for heavier or coloured ones.
+        const gridLines = gridLineStyle(island);
 
         return (
           <div
             key={id}
-            className={`grid-wrap${activeIslandId === id ? ' active' : ''}${isPendingGroupMember ? ' pending-group-member' : ''}`}
+            className={`grid-wrap${activeIslandId === id ? ' active' : ''}`}
             style={{
               left,
               top,
@@ -922,12 +913,12 @@ export default function MapBoard({
                   style={{ left: c.col * cellPx, top: c.row * cellPx, width: cellPx, height: cellPx }}
                 />
               ))}
-            <svg className="grid-svg" width={w} height={h}>
+            <svg className={`grid-svg${gridLines.custom ? ' grid-custom' : ''}`} width={w} height={h}>
               {Array.from({ length: island.cols + 1 }).map((_, v) => (
-                <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke="rgba(23,20,15,0.28)" strokeWidth={v % 5 === 0 ? 1.4 : 0.7} />
+                <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke={gridLines.stroke} strokeWidth={v % 5 === 0 ? gridLines.major : gridLines.minor} />
               ))}
               {Array.from({ length: island.rows + 1 }).map((_, hh) => (
-                <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke="rgba(23,20,15,0.28)" strokeWidth={hh % 5 === 0 ? 1.4 : 0.7} />
+                <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke={gridLines.stroke} strokeWidth={hh % 5 === 0 ? gridLines.major : gridLines.minor} />
               ))}
             </svg>
             {/* Dusk/night/dawn tint - over the map art and grid, under the tokens. */}

@@ -26,7 +26,7 @@ const CATALOG = [
     label: 'Fire',
     color: '#c2481f',
     icon: 'isle-fire',
-    description: 'Flames sweep the island - creatures that end their turn here risk fire damage.',
+    description: 'Flames sweep the map - creatures that end their turn here risk fire damage.',
   },
   {
     key: 'unstable',

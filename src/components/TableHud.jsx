@@ -49,7 +49,9 @@ function StripClock({ clock, phaseOverride }) {
 // Layer tabs under the toolbar. The host can switch which layer they're
 // viewing; players only ever see the layer they're on, so it renders as a
 // single static label for them.
-export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitchLayer, feetPerSquare, clock, phaseOverride }) {
+// `extra`: readouts that used to sit in the toolbar (the saved status, the
+// in-game clock), shown ahead of the strip's own.
+export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitchLayer, feetPerSquare, clock, phaseOverride, extra = null }) {
   return (
     <div className="layer-strip">
       <div className="layer-strip-tabs" role={isHost ? 'tablist' : undefined} aria-label="Layers">
@@ -76,10 +78,24 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
         })}
       </div>
       <div className="layer-strip-meta">
+        {extra}
         <StripClock clock={clock} phaseOverride={phaseOverride} />
-        <span title="Feet per square on the island you're looking at">{feetPerSquare} ft per square</span>
+        <span title="Feet per square on the map you're looking at">{feetPerSquare} ft per square</span>
       </div>
     </div>
+  );
+}
+
+// When the table was last saved and how long until it saves itself again,
+// for the DM (it sat in the toolbar before the toolbar became a rail).
+export function StripSaved({ label, secondsLeft }) {
+  const countdown = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`;
+  return (
+    <span className="strip-saved" role="status" title={`${label || 'Saved'} — auto-saves in ${countdown}. Save in Configurations still works any time.`}>
+      <span className="toolbar-saved-dot" aria-hidden="true" />
+      {label && <span>{label}</span>}
+      <span className="strip-saved-countdown">{countdown}</span>
+    </span>
   );
 }
 
@@ -195,7 +211,7 @@ export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter
       <button type="button" aria-label="Zoom in" onClick={onZoomIn}>
         +
       </button>
-      <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current island" title="Scroll back to the currently selected island" onClick={onRecenter}>
+      <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current map" title="Scroll back to the currently selected map" onClick={onRecenter}>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3" />
         </svg>
