@@ -140,6 +140,31 @@ input, select {
   color: var(--parchment-100);
 }
 
+/* Scrollbars: a slim gilt bar in a dark groove, in every palette's own
+   colours (a brass rod on the grimoire's page). The ::-webkit- rules draw it
+   where they exist; other browsers get the same colours on their own thin
+   scrollbar. */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--ink-950) 70%, transparent);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold-line) 22%, transparent);
+}
+::-webkit-scrollbar-thumb {
+  /* The border is the gap between the bar and its groove. */
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--gold-hi), var(--gold-line)) padding-box;
+  min-height: 36px;
+}
+::-webkit-scrollbar-thumb:horizontal { background: linear-gradient(180deg, var(--gold-hi), var(--gold-line)) padding-box; min-width: 36px; }
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active { background: var(--gold-hi) padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--gold-line) color-mix(in srgb, var(--ink-950) 70%, transparent); }
+}
+
 /* ---------- Layout shells ---------- */
 
 .app-shell {
