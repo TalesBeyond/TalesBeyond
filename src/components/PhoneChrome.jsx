@@ -11,13 +11,13 @@ import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
 import { useHintPrefs } from './Hints.jsx';
-import { useHudFold, HudFoldButton } from './TableHud.jsx';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 
-// The phone layout (MOBILE_DESIGN.md): islands first. GameView swaps its
-// desktop chrome (toolbar, side panels, layer strip) for these pieces when the
-// viewport is phone-sized; the map itself is the same MapBoard.
+// The phone layout: the map first. GameView swaps its desktop chrome (toolbar,
+// side panels, layer strip) for these pieces when the viewport is phone-sized;
+// the map itself is the same MapBoard, filling the screen, and everything here
+// floats over it.
 
 // Portrait phones by width, phones held sideways by their short height.
 export const PHONE_QUERY = '(max-width: 767px), (max-height: 499px)';
@@ -50,6 +50,9 @@ const ICONS = {
   minus: 'M5 12h14',
   dice: 'M12 2l9 5v10l-9 5-9-5V7z M3 7l9 6 9-6 M12 13v9',
   run: 'M4 5h16v14H4z M12 5v14 M7 9h2 M7 12h2 M15 9h2 M15 12h2',
+  recenter: 'M12 3v4 M12 17v4 M3 12h4 M17 12h4 M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+  sheet: 'M6 3h9l4 4v14H6z M15 3v4h4 M9 12h6 M9 16h6',
+  sword: 'M20 4h-4l-9 9 4 4 9-9z M6 12l6 6 M4 20l4-4',
 };
 
 export function PhoneIcon({ name, size = 22, strokeWidth = 1.8 }) {
@@ -87,205 +90,43 @@ function groupNameOf(layer, islandId) {
   return null;
 }
 
-// ---------- top bar: the island you're on, over the layer it's part of ----------
+// ---------- top row: the island you're on, its conditions, worlds and the menu ----------
 
-export function PhoneTopBar({ islandName, layerName, layerIndex, layerCount, feetPerSquare, onAtlas, onLayers, onMenu }) {
+// `conditions`: the island's condition keys in force (islandConditionKeys — a
+// group's, for a grouped island).
+export function PhoneTopBar({ islandName, conditions = [], onAtlas, onLayers, onMenu }) {
+  const labels = conditions.map((key) => getIslandCondition(key)?.label).filter(Boolean);
   return (
     <header className="phone-topbar">
       <button type="button" className="phone-topbar-title" onClick={onAtlas} aria-label={`${islandName}, open the map overview`}>
-        <span className="phone-topbar-island">
-          {islandName}
-          <PhoneIcon name="down" size={13} strokeWidth={3} />
-        </span>
-        <span className="phone-topbar-sub">
-          {layerName} · {layerCount > 1 ? `Layer ${layerIndex + 1} of ${layerCount} · ` : ''}
-          {feetPerSquare} ft squares
-        </span>
+        <span className="phone-topbar-island">{islandName}</span>
+        <PhoneIcon name="down" size={13} strokeWidth={3} />
       </button>
-      <button type="button" className="phone-icon-btn" onClick={onLayers} aria-label="Worlds">
-        <PhoneIcon name="layers" />
-      </button>
-      <button type="button" className="phone-icon-btn" onClick={onMenu} aria-label="Table menu">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="5" cy="12" r="2" />
-          <circle cx="12" cy="12" r="2" />
-          <circle cx="19" cy="12" r="2" />
-        </svg>
-      </button>
+      {labels.length > 0 && (
+        <div className="phone-conditions" role="status" aria-label={`Map conditions: ${labels.join(', ')}`}>
+          <PhoneIcon name="fog" size={16} strokeWidth={2} />
+          <span>{labels.join(' · ')}</span>
+        </div>
+      )}
+      <div className="phone-topbar-actions">
+        <button type="button" className="phone-icon-btn" onClick={onLayers} aria-label="Worlds">
+          <PhoneIcon name="layers" />
+        </button>
+        <button type="button" className="phone-icon-btn" onClick={onMenu} aria-label="Table menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="2" />
+            <circle cx="12" cy="12" r="2" />
+            <circle cx="19" cy="12" r="2" />
+          </svg>
+        </button>
+      </div>
     </header>
   );
 }
 
-// ---------- island chips ----------
+// ---------- the dock: tools and the two sheets used most, icons only ----------
 
-export function PhoneIslandStrip({ layer, entities, activeIslandId, onPick, onAddIsland }) {
-  return (
-    <nav className="phone-strip" aria-label="Maps in this world">
-      {layer.islandOrder.map((id) => {
-        const island = layer.islands[id];
-        if (!island) return null;
-        const count = occupantsOf(entities, id).length;
-        const group = groupNameOf(layer, id);
-        const active = id === activeIslandId;
-        return (
-          <button key={id} type="button" className={`phone-chip${active ? ' active' : ''}`} aria-pressed={active} onClick={() => onPick(id)}>
-            <span className="phone-chip-name">{island.name}</span>
-            <span className="phone-chip-sub">
-              {group || `${island.cols} × ${island.rows}`}
-              {count ? ` · ${count} here` : ''}
-            </span>
-          </button>
-        );
-      })}
-      {onAddIsland && (
-        <button type="button" className="phone-chip phone-chip-add" onClick={onAddIsland}>
-          <PhoneIcon name="plus" size={16} strokeWidth={2.2} />
-          Map
-        </button>
-      )}
-    </nav>
-  );
-}
-
-// ---------- mini-map: every island, and the part the screen shows ----------
-
-export function PhoneMiniMap({ layer, zoom, stageRef, originX, originY, stagePadding, activeIslandId, onOpen }) {
-  const [view, setView] = useState(null);
-  const [folded, setFolded] = useHudFold('minimap');
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return undefined;
-    let frame = 0;
-    const measure = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() =>
-        setView({
-          x: originX + (stage.scrollLeft - stagePadding) / zoom,
-          y: originY + (stage.scrollTop - stagePadding) / zoom,
-          w: stage.clientWidth / zoom,
-          h: stage.clientHeight / zoom,
-        })
-      );
-    };
-    measure();
-    stage.addEventListener('scroll', measure);
-    window.addEventListener('resize', measure);
-    return () => {
-      cancelAnimationFrame(frame);
-      stage.removeEventListener('scroll', measure);
-      window.removeEventListener('resize', measure);
-    };
-  }, [stageRef, zoom, originX, originY, stagePadding]);
-
-  if (folded) {
-    return (
-      <button type="button" className="phone-minimap folded hud-unfold" aria-label="Show the mini-map" title="Show the mini-map" onClick={() => setFolded(false)}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" />
-        </svg>
-      </button>
-    );
-  }
-  const b = islandBounds(layer);
-  const pad = Math.max(b.w, b.h) * 0.06;
-  return (
-    <>
-    <HudFoldButton label="Hide the mini-map" className="phone-minimap-fold" onClick={() => setFolded(true)} />
-    <button type="button" className="phone-minimap" onClick={onOpen} aria-label="Map overview">
-      <svg viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        {layer.islandOrder.map((id) => {
-          const i = layer.islands[id];
-          if (!i) return null;
-          return (
-            <rect
-              key={id}
-              x={i.x}
-              y={i.y}
-              width={i.cols * i.cellSize}
-              height={i.rows * i.cellSize}
-              className={id === activeIslandId ? 'phone-minimap-island active' : 'phone-minimap-island'}
-            />
-          );
-        })}
-        {view && <rect x={view.x} y={view.y} width={view.w} height={view.h} className="phone-minimap-view" vectorEffect="non-scaling-stroke" />}
-      </svg>
-    </button>
-    </>
-  );
-}
-
-// ---------- the island's conditions (Fog, Darkness…) ----------
-
-// `conditions`: the keys in force (islandConditionKeys — a group's, for a
-// grouped island).
-export function PhoneIslandConditions({ conditions = [] }) {
-  const labels = conditions.map((key) => getIslandCondition(key)?.label).filter(Boolean);
-  if (!labels.length) return null;
-  return (
-    <div className="phone-conditions" role="status" aria-label={`Map conditions: ${labels.join(', ')}`}>
-      <PhoneIcon name="fog" size={16} strokeWidth={2} />
-      {labels.join(' · ')}
-    </div>
-  );
-}
-
-// ---------- the selected token, one tap from its card ----------
-
-// canEditLife: the +/- hit point buttons show (the DM, or a hero's own player).
-export function PhoneTokenCard({ entity, isHost, canEditLife = isHost, onOpen, onHp, onTarget }) {
-  useImageCacheVersion(); // redraw when a shared picture arrives
-  if (!entity) return null;
-  const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
-  const pct = hasHp ? Math.max(0, Math.min(1, entity.hp / entity.maxHp)) : 0;
-  const ac = entity.kind === 'mob' ? entity.armorClass : entity.kind === 'hero' ? entity.sheet?.armorClass : null;
-  const kindLabel = { hero: 'Hero', mob: 'Monster', door: 'Door', chest: 'Chest', trap: 'Trap' }[entity.kind] || '';
-  return (
-    <div className="phone-token-card">
-      <button type="button" className="phone-token-main" onClick={onOpen} aria-label={`${entity.name}. Open its card`}>
-        <span className="phone-token-avatar" style={{ backgroundImage: `url(${entityImageSrc(entity)})`, '--token-color': entity.color || 'transparent' }} />
-        <span className="phone-token-text">
-          <span className="phone-token-name">
-            <b>{entity.name}</b>
-            <span>{kindLabel}</span>
-          </span>
-          {hasHp ? (
-            <span className="phone-token-stats">
-              <span className="phone-token-bar">
-                <span style={{ width: `${pct * 100}%`, background: pct > 0.5 ? 'var(--moss)' : pct > 0.25 ? 'var(--gold-hi)' : 'var(--danger)' }} />
-              </span>
-              <span className="phone-token-hp">
-                {entity.hp}/{entity.maxHp}
-              </span>
-              {ac != null && <span className="phone-token-ac">AC {ac}</span>}
-            </span>
-          ) : (
-            <span className="phone-token-hint">Tap for details</span>
-          )}
-        </span>
-        {!(canEditLife && hasHp) && !onTarget && <PhoneIcon name="chev" size={18} strokeWidth={2.4} />}
-      </button>
-      {onTarget && (
-        <button type="button" className="phone-btn-primary phone-token-target" onClick={onTarget}>
-          Target
-        </button>
-      )}
-      {canEditLife && hasHp && (
-        <div className="phone-token-steppers" role="group" aria-label={`${entity.name} hit points`}>
-          <button type="button" aria-label={`${entity.name} gains 1 hit point`} onClick={() => onHp(Math.min(entity.maxHp, entity.hp + 1))}>
-            <PhoneIcon name="plus" size={16} strokeWidth={2.4} />
-          </button>
-          <button type="button" aria-label={`${entity.name} loses 1 hit point`} onClick={() => onHp(Math.max(0, entity.hp - 1))}>
-            <PhoneIcon name="minus" size={16} strokeWidth={2.4} />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------- bottom nav ----------
-
-export function PhoneNav({ isHost, tool, onTool, onOpen }) {
+export function PhoneNav({ isHost, tool, onTool, onOpen, onRecenter }) {
   const tools = isHost
     ? [
         ['play', 'Play'],
@@ -297,36 +138,30 @@ export function PhoneNav({ isHost, tool, onTool, onOpen }) {
         ['pan', 'Pan'],
         ['ruler', 'Ruler'],
       ];
+  const sheets = isHost
+    ? [
+        ['add', 'Add'],
+        ['run', 'Run table'],
+      ]
+    : [
+        ['dice', 'Dice'],
+        ['party', 'Party'],
+      ];
   return (
     <nav className="phone-nav" aria-label="Tools">
       {tools.map(([id, label]) => (
-        <button key={id} type="button" className={tool === id ? 'active' : ''} aria-pressed={tool === id} onClick={() => onTool(id)}>
+        <button key={id} type="button" className={tool === id ? 'active' : ''} aria-pressed={tool === id} aria-label={label} title={label} onClick={() => onTool(id)}>
           <PhoneIcon name={id} />
-          {label}
         </button>
       ))}
-      {isHost ? (
-        <button type="button" onClick={() => onOpen('add')}>
-          <PhoneIcon name="add" />
-          Add
+      {sheets.map(([id, label]) => (
+        <button key={id} type="button" aria-label={label} title={label} onClick={() => onOpen(id)}>
+          <PhoneIcon name={id} />
         </button>
-      ) : (
-        <button type="button" onClick={() => onOpen('dice')}>
-          <PhoneIcon name="dice" />
-          Dice
-        </button>
-      )}
-      {isHost ? (
-        <button type="button" onClick={() => onOpen('run')}>
-          <PhoneIcon name="run" />
-          Run table
-        </button>
-      ) : (
-        <button type="button" onClick={() => onOpen('party')}>
-          <PhoneIcon name="party" />
-          Party
-        </button>
-      )}
+      ))}
+      <button type="button" aria-label="Recenter on the current map" title="Recenter" onClick={onRecenter}>
+        <PhoneIcon name="recenter" />
+      </button>
     </nav>
   );
 }
@@ -562,36 +397,6 @@ export function PhoneGuestHostNote() {
       This guest table runs on this phone. Keep Hearthbound open and the screen on while you play, and export the table before you
       close it.
     </p>
-  );
-}
-
-// ---------- a planned move, waiting for "Move here" ----------
-
-export function PhoneMoveCard({ info, onCancel, onConfirm }) {
-  if (!info) return null;
-  const crossing = info.islandName != null;
-  return (
-    <section className="phone-move-card" aria-label="Planned move" aria-live="polite">
-      <div className="phone-move-head">
-        <b>{crossing ? `Move into ${info.islandName}?` : `Move ${info.name} here?`}</b>
-        {info.feet != null && <span className="phone-move-feet">{info.feet} ft</span>}
-      </div>
-      <p className="phone-move-sub">
-        {crossing
-          ? 'Distance isn’t measured across maps.'
-          : info.leftAfter != null
-            ? `${info.leftAfter} of ${info.total} ft left after.`
-            : 'Tap another square to change it.'}
-      </p>
-      <div className="phone-move-actions">
-        <button type="button" className="phone-btn-ghost" onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="button" className="phone-btn-primary" onClick={onConfirm}>
-          Move here
-        </button>
-      </div>
-    </section>
   );
 }
 

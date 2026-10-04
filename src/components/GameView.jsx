@@ -89,17 +89,13 @@ import { LayerStrip, StripSaved, InitiativeBar, RulerReadout, ZoomControl } from
 import ClockReadout from './ClockReadout.jsx';
 import {
   usePhoneLayout,
+  PhoneIcon,
   PhoneTopBar,
-  PhoneIslandStrip,
-  PhoneMiniMap,
-  PhoneIslandConditions,
-  PhoneTokenCard,
   PhoneNav,
   PhoneSheet,
   PhoneSwitch,
   PhoneLayersSheet,
   PhoneAtlas,
-  PhoneMoveCard,
   PhoneTargetSheet,
   PhoneDoorSheet,
   PhoneChestSheet,
@@ -2663,9 +2659,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }, []);
 
   // ---- Phone layout (MOBILE_DESIGN.md) ----
-  // Islands first: the top bar names the island you're on, the chips fly the
-  // camera from island to island (fitting each to the screen), and a pinch
-  // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
+  // The map first: it fills the screen, the top row names the island you're on
+  // (and opens the atlas, which flies the camera from island to island,
+  // fitting each to the screen), and a pinch zooms. Everything not yet
+  // redesigned for phones opens in a bottom sheet.
   const isPhone = usePhoneLayout();
   // The first-table tutorial (Tour.jsx): opens by itself the first time a
   // DM is at a table on this device, and again from Configurations →
@@ -2784,7 +2781,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       } else if (e.touches.length === 1) {
         g.panned = false;
         g.pan =
-          toolRef.current === 'play' && !e.target.closest('.token')
+          toolRef.current === 'play' && !e.target.closest('.token, .token-ring, .planned-move-actions')
             ? { x: e.touches[0].clientX, y: e.touches[0].clientY, left: stage.scrollLeft, top: stage.scrollTop }
             : null;
       }
@@ -2874,7 +2871,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     setPlannedMove(null);
   }
 
-  // What the confirm card and the map label say about a planned move.
+  // What the map's "Move here" button says about a planned move.
   let plannedMoveInfo = null;
   if (plannedMove && state.entities[plannedMove.entityId]) {
     const entity = state.entities[plannedMove.entityId];
@@ -2898,9 +2895,38 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && selectedEntity.kind === 'mob'
   );
 
-  const plannedMoveForMap = plannedMove
-    ? { ...plannedMove, label: plannedMoveInfo?.feet != null ? `${plannedMoveInfo.feet} ft` : plannedMoveInfo?.islandName || '' }
-    : null;
+  const plannedMoveForMap =
+    plannedMove && plannedMoveInfo
+      ? {
+          ...plannedMove,
+          confirmLabel: plannedMoveInfo.islandName != null ? `Move into ${plannedMoveInfo.islandName}` : `Move here · ${plannedMoveInfo.feet} ft`,
+          note:
+            plannedMoveInfo.islandName != null
+              ? 'Distance isn’t measured across maps.'
+              : plannedMoveInfo.leftAfter != null
+                ? `${plannedMoveInfo.leftAfter} of ${plannedMoveInfo.total} ft left after`
+                : null,
+          onConfirm: confirmPlannedMove,
+          onCancel: () => setPlannedMove(null),
+        }
+      : null;
+
+  // The selected token's actions, fanned around it on the map (phone): its
+  // card, a target button on the acting hero's turn, and the hit point
+  // steppers for whoever may change its life (the DM, or a hero's own player).
+  let tokenActions = null;
+  if (isPhone && selectedEntity) {
+    const entity = selectedEntity;
+    const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
+    const canEditLife = isHost || (entity.kind === 'hero' && entity.ownerId === me.id);
+    const sheet = entity.kind === 'chest' ? 'chest' : entity.kind === 'hero' || entity.kind === 'mob' ? 'creature' : 'inspect';
+    tokenActions = [
+      { id: 'open', label: `${entity.name}. Open its card`, icon: <PhoneIcon name="sheet" size={20} />, onPress: () => setPhoneSheet(sheet) },
+      canTargetSelected && { id: 'target', label: `Target ${entity.name}`, icon: <PhoneIcon name="sword" size={20} strokeWidth={2} />, primary: true, onPress: () => setPhoneSheet('target') },
+      canEditLife && hasHp && { id: 'hp-down', label: `${entity.name} loses 1 hit point`, icon: <PhoneIcon name="minus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.max(0, entity.hp - 1) }) },
+      canEditLife && hasHp && { id: 'hp-up', label: `${entity.name} gains 1 hit point`, icon: <PhoneIcon name="plus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.min(entity.maxHp, entity.hp + 1) }) },
+    ].filter(Boolean);
+  }
 
   // A guest table lives in the DM's browser: while one is hosted from a
   // phone, keep the screen from sleeping. The browser drops the lock whenever
@@ -3068,30 +3094,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   const activeIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
   const layerIndex = state.layerOrder.indexOf(currentLayerId);
-  const { originX: canvasOriginX, originY: canvasOriginY } = computeCanvasBounds(currentLayer.islands);
 
   return (
     <div className={`game-screen${isPhone ? ' phone' : ' rail-layout'}`}>
       {isPhone ? (
-        <>
-          <PhoneTopBar
-            islandName={activeIsland?.name || currentLayer.name}
-            layerName={currentLayer.name}
-            layerIndex={layerIndex}
-            layerCount={state.layerOrder.length}
-            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
-            onAtlas={() => setPhoneSheet('atlas')}
-            onLayers={() => setPhoneSheet('layers')}
-            onMenu={() => setPhoneSheet('menu')}
-          />
-          <PhoneIslandStrip
-            layer={currentLayer}
-            entities={layerEntities}
-            activeIslandId={activeIslandId}
-            onPick={flyToIsland}
-            onAddIsland={isHost ? () => emitFx({ type: 'open', panel: 'islands' }) : null}
-          />
-        </>
+        <PhoneTopBar
+          islandName={activeIsland?.name || currentLayer.name}
+          conditions={islandConditionKeys(currentLayer, activeIslandId)}
+          onAtlas={() => setPhoneSheet('atlas')}
+          onLayers={() => setPhoneSheet('layers')}
+          onMenu={() => setPhoneSheet('menu')}
+        />
       ) : (
         toolbarEl
       )}
@@ -3154,6 +3167,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               gestureRef={touchGestureRef}
               onTapCell={isPhone ? handleTapCell : null}
               plannedMove={isPhone ? plannedMoveForMap : null}
+              tokenActions={tokenActions}
               drawings={state.drawings}
               // The desktop bar has no "Hide drawings" switch for now, so a saved
               // choice only applies on phones, where the switch still is.
@@ -3169,17 +3183,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </div>
           {isPhone && (
             <>
-              <PhoneMiniMap
-                layer={currentLayer}
-                zoom={zoom}
-                stageRef={stageRef}
-                originX={canvasOriginX}
-                originY={canvasOriginY}
-                stagePadding={STAGE_PADDING}
-                activeIslandId={activeIslandId}
-                onOpen={() => setPhoneSheet('atlas')}
-              />
-              <PhoneIslandConditions conditions={islandConditionKeys(currentLayer, activeIslandId)} />
               {isHost && tool === 'edit' && (
                 <PhoneEditBar
                   islandName={activeIsland?.name}
@@ -3206,18 +3209,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                     Ask your DM to pick you under <b>played by</b> on a hero’s card. You can look around and roll dice meanwhile.
                   </EmptyState>
                 </div>
-              )}
-              {tool === 'draw' ? null : plannedMoveInfo ? (
-                <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
-              ) : (
-                <PhoneTokenCard
-                  entity={selectedEntity}
-                  isHost={isHost}
-                  canEditLife={isHost || (selectedEntity?.kind === 'hero' && selectedEntity.ownerId === me.id)}
-                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'inspect')}
-                  onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
-                  onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
-                />
               )}
             </>
           )}
@@ -3281,13 +3272,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onClearMap={() => removeDrawings(drawingIdsOnMap())}
             />
           )}
-          <ZoomControl
-            zoom={zoom}
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
-            onZoomReset={zoomReset}
-            onRecenter={() => (isPhone ? flyToIsland(activeIslandId) : recenterOnIsland(activeIslandId))}
-          />
+          {/* A phone pinches to zoom and recenters from its dock. */}
+          {!isPhone && <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />}
           </div>
         </div>
 
@@ -3447,7 +3433,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               bestiary, initiative, layers, islands, asset storage — can open over
               lib/fx.js from the phone screens. */}
           {isHost && <div className="phone-toolbar-host">{toolbarEl}</div>}
-          <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
+          <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} onRecenter={() => flyToIsland(activeIslandId)} />
           {phoneSheet === 'inspect' && (selectedEntity?.kind === 'door' || selectedEntity?.kind === 'trap') && (
             <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
               <div className="phone-sheet-pad">

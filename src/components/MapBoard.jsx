@@ -56,7 +56,8 @@ export default function MapBoard({
   actorId = null, // whose turn it is, during an encounter
   gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
-  plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
+  plannedMove = null, // phone layout: { entityId, islandId, col, row, confirmLabel, note, onConfirm, onCancel } — a move waiting for "Move here"
+  tokenActions = null, // phone layout: the selected token's actions, fanned around it — [{ id, label, icon, primary, onPress }]
   drawings = {}, // the DM's drawings (utils/drawing.js), keyed by id
   drawingOrder = [], // creation order — later drawings paint on top
   hideDrawings = false, // this viewer's "Hide drawings"
@@ -1069,6 +1070,21 @@ export default function MapBoard({
 
       {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
 
+      {tokenActions?.length > 0 && tool === 'play' && !plannedMove && dragPos?.id !== selectedId && (() => {
+        const entity = entities[selectedId];
+        const r = entity && islandRects[entity.islandId];
+        if (!r) return null;
+        const span = r.cellSize * (entity.size || 1);
+        return (
+          <TokenRing
+            cx={(r.x - originX) * zoom + entity.col * r.cellSize + span / 2}
+            cy={(r.y - originY) * zoom + entity.row * r.cellSize + span / 2}
+            radius={Math.max(RING_MIN_RADIUS, span / 2 + 44)}
+            actions={tokenActions}
+          />
+        );
+      })()}
+
       {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
         <DrawFeetLabel
           label={shapeFeetLabel(draft.kind, draft.geometry, feetOn(draft.islandId), drawRef.current?.snap)}
@@ -1135,33 +1151,111 @@ function hpPercent(entity) {
   return Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
 }
 
+// Floating phone chrome an on-map control must stay clear of: the top row, and
+// the dock with the encounter bar over it.
+const CHROME_TOP_PX = 76;
+const CHROME_BOTTOM_PX = 200;
+const RING_MIN_RADIUS = 74; // keeps 48 px buttons from touching around a one-square token
+const RING_BUTTON_PX = 48;
+
+// How far an on-map control's anchor (the element's own position, a point on
+// the map) sits from each edge of the visible stage, measured after layout —
+// what the control needs to keep clear of the screen's edges and the chrome.
+function useStageInsets(ref, deps) {
+  const [insets, setInsets] = useState(null);
+  useLayoutEffect(() => {
+    const stage = ref.current?.closest('.stage');
+    if (!stage) return;
+    const box = stage.getBoundingClientRect();
+    const at = ref.current.getBoundingClientRect();
+    setInsets({ top: at.top - box.top, bottom: box.bottom - at.top, left: at.left - box.left, right: box.right - at.left });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return insets;
+}
+
+// Phone layout: the selected token's actions, fanned over it on the map —
+// under it when it stands too near the top of the screen, and leaning away
+// from a side edge it stands next to.
+function TokenRing({ cx, cy, radius, actions }) {
+  const ref = useRef(null);
+  const insets = useStageInsets(ref, [cx, cy, radius]);
+  const reach = radius + RING_BUTTON_PX / 2;
+  const below = Boolean(insets) && insets.top - reach < CHROME_TOP_PX;
+  const lean = !insets ? 0 : insets.left < reach ? 1 : insets.right < reach ? -1 : 0;
+  const step = 2 * Math.asin((RING_BUTTON_PX + 6) / 2 / radius);
+  const fan = step * (actions.length - 1);
+  const start = -Math.PI / 2 - fan / 2 + (lean * fan) / 2;
+  return (
+    <div className="token-ring" ref={ref} style={{ left: cx, top: cy }} role="group" aria-label="Token actions">
+      {actions.map((action, i) => {
+        const angle = start + step * i;
+        return (
+          <button
+            key={action.id}
+            type="button"
+            className={`token-ring-btn${action.primary ? ' primary' : ''}`}
+            style={{ left: Math.cos(angle) * radius, top: Math.sin(angle) * radius * (below ? -1 : 1) }}
+            aria-label={action.label}
+            title={action.label}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              action.onPress();
+            }}
+          >
+            {action.icon}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // A move waiting for "Move here" (phone, mid-encounter): a dashed path from
-// the token to the chosen square, a ghost ring there, and its label.
+// the token to the chosen square, a ghost ring there, and under it (over it,
+// near the bottom of the screen) the buttons that commit or drop the move.
 function PlannedMoveOverlay({ plan, entity, islandRects, originX, originY, zoom, width, height }) {
   const from = entity && islandRects[entity.islandId];
   const to = islandRects[plan.islandId];
+  const size = entity?.size || 1;
+  const x2 = to ? (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2 : 0;
+  const y2 = to ? (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2 : 0;
+  const radius = to ? (to.cellSize * size) / 2 - 2 : 0;
+  const actionsRef = useRef(null);
+  const insets = useStageInsets(actionsRef, [x2, y2, radius]);
+  const above = Boolean(insets) && insets.bottom - radius - 64 < CHROME_BOTTOM_PX;
   if (!from || !to) return null;
-  const size = entity.size || 1;
   const x1 = (from.x - originX) * zoom + entity.col * from.cellSize + (from.cellSize * size) / 2;
   const y1 = (from.y - originY) * zoom + entity.row * from.cellSize + (from.cellSize * size) / 2;
-  const x2 = (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2;
-  const y2 = (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2;
-  const radius = (to.cellSize * size) / 2 - 2;
-  const label = plan.label || '';
-  const labelW = label.length * 7.2 + 14;
   return (
-    <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
-      <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
-      <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
-      {label && (
-        <g>
-          <rect x={x2 - labelW / 2} y={y2 - radius - 26} width={labelW} height={20} rx={10} className="planned-move-label-bg" />
-          <text x={x2} y={y2 - radius - 12} textAnchor="middle" className="planned-move-label">
-            {label}
-          </text>
-        </g>
-      )}
-    </svg>
+    <>
+      <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
+        <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
+        <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
+      </svg>
+      <div className="planned-move-anchor" ref={actionsRef} style={{ left: x2, top: y2 }}>
+        {plan.onConfirm && (
+          <div
+            className={`planned-move-actions${above ? ' above' : ''}`}
+            style={{ top: above ? -(radius + 10) : radius + 10 }}
+            aria-live="polite"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button type="button" className="planned-move-cancel" aria-label="Cancel the move" onClick={plan.onCancel}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+            <button type="button" className="planned-move-confirm" onClick={plan.onConfirm}>
+              <b>{plan.confirmLabel}</b>
+              {plan.note && <span>{plan.note}</span>}
+            </button>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
