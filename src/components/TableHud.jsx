@@ -49,7 +49,9 @@ function StripClock({ clock, phaseOverride }) {
 // Layer tabs under the toolbar. The host can switch which layer they're
 // viewing; players only ever see the layer they're on, so it renders as a
 // single static label for them.
-export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitchLayer, feetPerSquare, clock, phaseOverride }) {
+// `extra`: readouts that used to sit in the toolbar (the saved status, the
+// in-game clock), shown ahead of the strip's own.
+export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitchLayer, feetPerSquare, clock, phaseOverride, extra = null }) {
   return (
     <div className="layer-strip">
       <div className="layer-strip-tabs" role={isHost ? 'tablist' : undefined} aria-label="Layers">
@@ -76,10 +78,24 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
         })}
       </div>
       <div className="layer-strip-meta">
+        {extra}
         <StripClock clock={clock} phaseOverride={phaseOverride} />
         <span title="Feet per square on the map you're looking at">{feetPerSquare} ft per square</span>
       </div>
     </div>
+  );
+}
+
+// When the table was last saved and how long until it saves itself again,
+// for the DM (it sat in the toolbar before the toolbar became a rail).
+export function StripSaved({ label, secondsLeft }) {
+  const countdown = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`;
+  return (
+    <span className="strip-saved" role="status" title={`${label || 'Saved'} — auto-saves in ${countdown}. Save in Configurations still works any time.`}>
+      <span className="toolbar-saved-dot" aria-hidden="true" />
+      {label && <span>{label}</span>}
+      <span className="strip-saved-countdown">{countdown}</span>
+    </span>
   );
 }
 

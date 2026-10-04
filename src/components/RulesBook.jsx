@@ -1,6 +1,5 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { RULE_CHAPTERS, TABLE_RULES } from '../data/tableRules.js';
-import { playSfx } from '../lib/sfx.js';
 import { usePhoneLayout } from './PhoneChrome.jsx';
 
 // The Game table rules (Configurations → Game table rules): what every
@@ -8,27 +7,16 @@ import { usePhoneLayout } from './PhoneChrome.jsx';
 // tutorial (Hints.jsx, Tour.jsx) show once; this stays.
 //
 // It is the compendium's book (CompendiumBook.jsx) with different pages: the
-// same cover, tabs, page turn and desk tray, and the same styles. Chapters
-// are its tabs, each button is an entry, and picking one puts its
-// explanation on the tray. Searching looks through every chapter at once.
-// A player's book leaves out the DM's buttons.
-
-const ROW_H = 86;
-const FLIP_MS = 750;
-
-function shortName(name) {
-  return name.split(' ')[0];
-}
+// same cover, tabs and styles. Chapters are its tabs, the left page lists a
+// chapter's buttons, and the right page explains the one that is picked.
+// Searching looks through every chapter at once. A player's book leaves out
+// the DM's buttons.
 
 export default function RulesBook({ isHost, onClose }) {
   const [chapter, setChapter] = useState(RULE_CHAPTERS[0].key);
   const [search, setSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState(null);
-  const [spread, setSpread] = useState(0);
-  const [flip, setFlip] = useState({ phase: 'idle', dir: 'fwd' }); // phase: idle | prep | go
-  const [perPage, setPerPage] = useState(6);
-  const pagesRef = useRef(null);
-  const timers = useRef([]);
+  const rowsRef = useRef(null);
   const isPhone = usePhoneLayout();
 
   const q = search.trim().toLowerCase();
@@ -44,67 +32,37 @@ export default function RulesBook({ isHost, onClose }) {
   }, [isHost, chapter, searching, q]);
 
   const title = searching ? 'Search' : RULE_CHAPTERS.find((c) => c.key === chapter).title;
-  const pageCount = Math.max(2, Math.ceil(entries.length / perPage));
-  const spreads = Math.ceil(pageCount / 2);
-  const shownSpread = Math.min(spread, spreads - 1);
-  // The book opens ready to read: the first entry on the page is on the tray
-  // until another is picked.
+  // The book opens ready to read: the first entry in the index is on the
+  // right page until another is picked.
   const selected = entries.find((e) => e.key === selectedKey) || (isPhone ? null : entries[0]) || null;
-  const idle = flip.phase === 'idle';
-
-  // Rows that fit on a page depend on how tall the book is on this screen.
-  useLayoutEffect(() => {
-    const el = pagesRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const measure = () => {
-      const fit = Math.floor((el.clientHeight - 120) / ROW_H);
-      setPerPage(Math.max(3, Math.min(8, fit)));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const selectedAt = selected ? entries.indexOf(selected) : -1;
 
   useEffect(() => {
-    setSpread(0);
-    setFlip({ phase: 'idle', dir: 'fwd' });
-  }, [chapter, search, perPage]);
+    if (rowsRef.current) rowsRef.current.scrollTop = 0;
+  }, [chapter, search]);
 
-  useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout);
-    },
-    []
-  );
+  useEffect(() => {
+    rowsRef.current?.querySelector('.cbook-row.selected')?.scrollIntoView({ block: 'nearest' });
+  }, [selected?.key]);
 
-  function turn(dir) {
-    if (flip.phase !== 'idle') return;
-    if (dir === 'fwd' ? shownSpread >= spreads - 1 : shownSpread <= 0) return;
-    playSfx('page');
-    setFlip({ phase: 'prep', dir });
-    timers.current.push(setTimeout(() => setFlip({ phase: 'go', dir }), 40));
-    timers.current.push(
-      setTimeout(() => {
-        setSpread(shownSpread + (dir === 'fwd' ? 1 : -1));
-        setFlip({ phase: 'idle', dir });
-      }, FLIP_MS + 60)
-    );
-  }
-
-  const turnRef = useRef(turn);
-  turnRef.current = turn;
+  // Up and Down walk the index, from the search box too.
+  const stepRef = useRef(null);
+  stepRef.current = (by) => {
+    if (entries.length === 0) return;
+    setSelectedKey(entries[Math.max(0, Math.min(entries.length - 1, selectedAt + by))].key);
+  };
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
-      // The arrows belong to the search box while it is being typed in.
-      else if (e.target?.tagName === 'INPUT') return;
-      else if (e.key === 'ArrowRight') turnRef.current('fwd');
-      else if (e.key === 'ArrowLeft') turnRef.current('back');
+      else if (isPhone) return;
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        stepRef.current(e.key === 'ArrowDown' ? 1 : -1);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, isPhone]);
 
   function openChapter(key) {
     setSearch('');
@@ -217,101 +175,79 @@ export default function RulesBook({ isHost, onClose }) {
     );
   }
 
-  function renderPage(p, role, extraClass, style, interactive) {
-    const slice = entries.slice(p * perPage, p * perPage + perPage);
-    const range = slice.length
-      ? slice.length === 1
-        ? shortName(slice[0].name)
-        : `${shortName(slice[0].name)} to ${shortName(slice[slice.length - 1].name)}`
-      : '';
-    const left = role === 'L';
-    return (
-      <div
-        key={`${extraClass}-${p}`}
-        className={`cbook-page ${left ? 'left' : 'right'} ${extraClass}`}
-        style={style}
-        aria-hidden={interactive ? undefined : true}
-      >
-        <div className="cbook-page-head">
-          <span className="cbook-chapter">{title}</span>
-          <span className="cbook-range">{range}</span>
-        </div>
-        <div className="cbook-rows">
-          {slice.map((e) => (
-            <button
-              key={e.key}
-              type="button"
-              className={`cbook-row${selected && e.key === selected.key ? ' selected' : ''}`}
-              aria-pressed={Boolean(selected && e.key === selected.key)}
-              tabIndex={interactive ? 0 : -1}
-              onClick={() => setSelectedKey(e.key)}
-            >
-              <span className="cbook-row-lead">
-                <span className="cbook-row-main">
-                  <span className="cbook-row-name">{e.name}</span>
-                  <span className="cbook-row-sub">{e.sub}</span>
-                </span>
-              </span>
-              {e.dm && (
-                <span className="cbook-row-side">
-                  <span className="cbook-row-small">DM only</span>
-                </span>
-              )}
-            </button>
-          ))}
-          {slice.length === 0 && p === 0 && <p className="cbook-empty">Nothing in the rules matches that search.</p>}
-        </div>
-        <div className={`cbook-page-foot ${left ? 'left' : 'right'}`}>
-          {interactive && left && idle && shownSpread > 0 && (
-            <button type="button" className="cbook-turn" aria-label="Previous page" onClick={() => turn('back')}>
-              &#8249;
-            </button>
-          )}
-          <span className="cbook-num">{p + 1}</span>
-          {interactive && !left && idle && shownSpread < spreads - 1 && (
-            <button type="button" className="cbook-turn" aria-label="Next page" onClick={() => turn('fwd')}>
-              &#8250;
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const L = shownSpread * 2;
-  const go = flip.phase === 'go';
-  const trans = go ? `transform ${FLIP_MS}ms cubic-bezier(0.45, 0.05, 0.25, 1)` : 'none';
-  let slots;
-  if (idle) {
-    slots = [renderPage(L, 'L', 'base', { left: 0 }, true), renderPage(L + 1, 'R', 'base', { left: '50%' }, true)];
-  } else if (flip.dir === 'fwd') {
-    const ang = go ? -180 : 0;
-    slots = [
-      renderPage(L, 'L', 'base', { left: 0 }, false),
-      renderPage(L + 3, 'R', 'base', { left: '50%' }, false),
-      renderPage(L + 1, 'R', 'leaf', { left: '50%', transformOrigin: 'left center', transition: trans, transform: `rotateY(${ang}deg)` }, false),
-      renderPage(L + 2, 'L', 'leaf', { left: '50%', transformOrigin: 'left center', transition: trans, transform: `rotateY(${ang}deg) translateX(100%) rotateY(180deg)` }, false),
-    ];
-  } else {
-    const ang = go ? 180 : 0;
-    slots = [
-      renderPage(L - 2, 'L', 'base', { left: 0 }, false),
-      renderPage(L + 1, 'R', 'base', { left: '50%' }, false),
-      renderPage(L, 'L', 'leaf', { left: 0, transformOrigin: 'right center', transition: trans, transform: `rotateY(${ang}deg)` }, false),
-      renderPage(L - 1, 'R', 'leaf', { left: 0, transformOrigin: 'right center', transition: trans, transform: `rotateY(${ang}deg) translateX(-100%) rotateY(180deg)` }, false),
-    ];
-  }
-
   return (
     <div className="cbook-backdrop" onClick={onClose}>
       <div className="cbook-stage" role="dialog" aria-modal="true" aria-label="Game table rules" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="cbook-close" aria-label="Close the rules" title="Close" onClick={onClose}>
+          &times;
+        </button>
         <div className="cbook-cover">
           <div className="cbook-cover-line" />
           <div className="cbook-stack left" />
           <div className="cbook-stack right" />
           <div className="cbook-ribbon" />
-          <div className="cbook-pages" ref={pagesRef}>
-            {slots}
+          <div className="cbook-pages">
+            <div className="cbook-page left">
+              <div className="cbook-page-head">
+                <span className="cbook-chapter">{title}</span>
+                <span className="cbook-range">
+                  {entries.length} of {totalCount}
+                </span>
+              </div>
+              <div className="cbook-controls">
+                <input
+                  className="cbook-search"
+                  type="search"
+                  aria-label="Search the rules"
+                  placeholder="Search every chapter…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="cbook-rows" ref={rowsRef}>
+                {entries.map((e) => {
+                  const on = Boolean(selected && e.key === selected.key);
+                  return (
+                    <button key={e.key} type="button" className={`cbook-row${on ? ' selected' : ''}`} aria-pressed={on} onClick={() => setSelectedKey(e.key)}>
+                      <span className="cbook-row-lead">
+                        <span className="cbook-row-main">
+                          <span className="cbook-row-name">{e.name}</span>
+                          <span className="cbook-row-sub">{e.sub}</span>
+                        </span>
+                      </span>
+                      {e.dm && (
+                        <span className="cbook-row-side">
+                          <span className="cbook-row-small">DM only</span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                {entries.length === 0 && <p className="cbook-empty">Nothing in the rules matches that search.</p>}
+              </div>
+            </div>
+
+            <div className="cbook-page right">
+              <div className="cbook-page-head">
+                <span className="cbook-chapter">Game table rules</span>
+                <span className="cbook-range">{selected ? `${selectedAt + 1} of ${entries.length}` : ''}</span>
+              </div>
+              {!selected ? (
+                <p className="cbook-empty">Nothing to show. Try another search.</p>
+              ) : (
+                <div className="cbook-entry">
+                  <div className="cbook-entry-title">
+                    <h3 className="cbook-entry-name">{selected.name}</h3>
+                    <span className="cbook-entry-sub">{selected.sub}</span>
+                  </div>
+                  <div className="cbook-chips">
+                    <span>{selected.where}</span>
+                    {who(selected) && <span>{who(selected)}</span>}
+                  </div>
+                  {ruleBody(selected, 'cbook-entry-text', 'cbook-entry-text rules-list')}
+                </div>
+              )}
+            </div>
             <div className="cbook-gutter" />
           </div>
         </div>
@@ -322,36 +258,6 @@ export default function RulesBook({ isHost, onClose }) {
               {t.label}
             </button>
           ))}
-        </div>
-
-        <div className="cbook-tray">
-          <button type="button" className="cbook-close" aria-label="Close the rules" onClick={onClose}>
-            &times;
-          </button>
-          <div className="cbook-tray-controls">
-            <input
-              className="cbook-search"
-              type="search"
-              aria-label="Search the rules"
-              placeholder="Search every chapter…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <span className="cbook-count">
-              {entries.length} of {totalCount}
-            </span>
-          </div>
-
-          <div className="cbook-selection">
-            <span className="cbook-selection-name">{selected ? selected.name : 'Game table rules'}</span>
-            {selected && (
-              <span className="cbook-stats">
-                <span>{selected.where}</span>
-                {who(selected) && <span>{who(selected)}</span>}
-              </span>
-            )}
-            {selected ? ruleBody(selected, 'cbook-rule-text', 'cbook-rule-text rules-list') : <p className="cbook-rule-text">Tap an entry in the book to read how it works.</p>}
-          </div>
         </div>
       </div>
     </div>

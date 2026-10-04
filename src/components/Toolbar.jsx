@@ -53,11 +53,14 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title, badge,
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
 // tour: the name the tutorial (Tour.jsx) finds this button by.
-function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge, tour }) {
+// panel: { title, icon, width } — the entry opens as a side panel beside the
+// rail instead of a menu (ModalShell's `side`). A panel stays open while the
+// table is played, so a click elsewhere or Escape doesn't close it.
+function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge, tour, panel = null }) {
   const ref = useRef(null);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || panel) return undefined;
     function handlePointerDown(e) {
       if (!ref.current?.contains(e.target)) onClose();
     }
@@ -70,12 +73,17 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, panel]);
 
   return (
     <div className={`toolbar-group ${className}`} ref={ref} data-tour={tour}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
-      {open && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
+      {open && panel && (
+        <ModalShell side title={panel.title} icon={panel.icon} width={panel.width} closeLabel={`Close ${panel.title}`} onClose={onClose}>
+          <div className={`side-panel-menu${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>
+        </ModalShell>
+      )}
+      {open && !panel && <div className={`toolbar-menu${align === 'end' ? ' align-end' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>}
       {popovers}
     </div>
   );
@@ -130,6 +138,7 @@ const ICON_PATHS = {
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
   trash: 'M4 6h12M8 6V4h4v2M5.5 6l.8 11h7.4l.8-11M8.5 9.5v4.5M11.5 9.5v4.5',
+  token: 'M10 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM6.5 16.5l1.3-6.5h4.4l1.3 6.5M5 16.5h10',
   mapdownload: 'M3 2.5h14v9H3zM3 9.5l3.5-3 3 2.5 2.5-2 5 3.5M10 13.5v5M7.5 16l2.5 2.5 2.5-2.5',
   hints: 'M8 16h4M8.5 18.5h3M10 2.5a5 5 0 0 0-3.3 8.8c.7.6.8 1.2.8 2.2h5c0-1 .1-1.6.8-2.2A5 5 0 0 0 10 2.5z',
   rules: 'M10 5C8 3.5 5 3.5 3 4.5v11c2-1 5-1 7 .5 2-1.5 5-1.5 7-.5v-11c-2-1-5-1-7 .5zM10 5v11',
@@ -202,6 +211,16 @@ export default function Toolbar({
   meId = null,
   onKickPlayer = null,
   onStartTour = null, // the DM's tutorial replay (desktop only)
+  // Desktop: the bar stands on its side as a rail of book-style tabs down
+  // the left edge, and its menus open to the right of it. The Tokens panel
+  // opens from a tab of its own.
+  rail = false,
+  tokensOpen = false,
+  onToggleTokens = null,
+  // Music is a side panel too, but GameView holds it (the phone opens it as
+  // well): whether it is open, and how to close it.
+  musicOpen = false,
+  onCloseMusic = null,
   // The app-wide colour palette, picked in Configurations.
   theme,
   onThemeChange = null,
@@ -289,15 +308,33 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState(null);
   // The newest roll seen with the Roll log open; anything newer from someone
   // else counts on the button's badge.
+  // Which side panel stands beside the rail: 'dice' | 'logs' | 'players' |
+  // 'configurations' | null. One at a time, and never alongside the Tokens
+  // panel or Music, which take the same place.
+  const [sidePanel, setSidePanel] = useState(null);
+  const [logTab, setLogTab] = useState('rolls'); // 'rolls' | 'heroes', inside the Logs panel
+  const closeSide = useCallback(() => setSidePanel(null), []);
+  function openSide(name) {
+    const opening = sidePanel !== name;
+    setOpenMenu(null);
+    setSidePanel(opening ? name : null);
+    if (!opening) return;
+    if (tokensOpen) onToggleTokens?.();
+    if (musicOpen) onCloseMusic?.();
+  }
+  useEffect(() => {
+    if (tokensOpen || musicOpen) setSidePanel(null);
+  }, [tokensOpen, musicOpen]);
+
   const [seenRollId, setSeenRollId] = useState(() => rollLog[0]?.id ?? null);
-  const rollLogOpen = openMenu === 'rolls';
+  const rollLogOpen = rail ? sidePanel === 'logs' && (logTab === 'rolls' || !activityLog) : openMenu === 'rolls';
   useEffect(() => {
     if (rollLogOpen && rollLog[0]) setSeenRollId(rollLog[0].id);
   }, [rollLogOpen, rollLog]);
   // The same "new since you last looked" count for the character log.
   const activity = activityLog || [];
   const [seenActivityId, setSeenActivityId] = useState(() => activity[0]?.id ?? null);
-  const activityOpen = openMenu === 'activity';
+  const activityOpen = rail ? sidePanel === 'logs' && logTab === 'heroes' && Boolean(activityLog) : openMenu === 'activity';
   useEffect(() => {
     if (activityOpen && activity[0]) setSeenActivityId(activity[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,15 +357,21 @@ export default function Toolbar({
   const fitToolbar = useCallback(() => {
     const bar = barRef.current;
     const leave = leaveRef.current;
-    if (!bar || !leave) return;
+    if (!bar) return;
     delete bar.dataset.overflow;
+    // The rail has no width to run out of; the codes always live in Invite.
+    if (rail) {
+      bar.dataset.density = 'codes';
+      return;
+    }
+    if (!leave) return;
     for (const density of TOOLBAR_DENSITIES) {
       bar.dataset.density = density;
       const limit = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
       if (leave.getBoundingClientRect().right <= limit + 0.5) return;
     }
     bar.dataset.overflow = 'wrap';
-  }, []);
+  }, [rail]);
 
   useEffect(() => {
     const bar = barRef.current;
@@ -351,6 +394,36 @@ export default function Toolbar({
   // Content that changes the bar's width without resizing it.
   useLayoutEffect(fitToolbar, [fitToolbar, collapsed, isHost, isGuestHost, Boolean(clock), dayPhase, lastSavedLabel, session.isOpen]);
 
+  // On the rail a menu opens beside its tab, not under it. The rail scrolls
+  // when the window is short, which would clip anything positioned inside
+  // it, so each open menu is pinned to the window instead: level with its
+  // tab, pulled up when it would run off the bottom.
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!rail || !bar) return undefined;
+    const pops = [...bar.querySelectorAll('.toolbar-menu, [data-rail-pop], .toolbar-codes-tip')];
+    if (pops.length === 0) return undefined;
+    const place = () => {
+      const left = bar.getBoundingClientRect().right + 6;
+      for (const pop of pops) {
+        const anchor = pop.closest('.toolbar-group');
+        if (!anchor) continue;
+        const top = Math.max(8, Math.min(anchor.getBoundingClientRect().top, window.innerHeight - pop.offsetHeight - 8));
+        Object.assign(pop.style, { position: 'fixed', left: `${left}px`, top: `${top}px`, right: 'auto', bottom: 'auto' });
+      }
+    };
+    place();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    pops.forEach((pop) => observer?.observe(pop));
+    window.addEventListener('resize', place);
+    bar.addEventListener('scroll', place);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', place);
+      bar.removeEventListener('scroll', place);
+    };
+  });
+
   function closePopovers() {
     setShowLayers(false);
     setShowIslands(false);
@@ -364,7 +437,17 @@ export default function Toolbar({
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
+  // A section that opens a menu or a dialog takes the place of whatever panel
+  // stands beside the rail: Tokens, Music or one of the side panels.
+  function closePanels() {
+    if (!rail) return;
+    setSidePanel(null);
+    if (tokensOpen) onToggleTokens?.();
+    if (musicOpen) onCloseMusic?.();
+  }
+
   function toggleMenu(name) {
+    closePanels();
     closePopovers();
     setOpenMenu((m) => (m === name ? null : name));
   }
@@ -520,7 +603,9 @@ export default function Toolbar({
   // Once, the first time someone hosts: which code to share. Shown by the
   // inline codes or, when the bar folds them away, by the Invite menu — CSS
   // shows whichever of the two is on screen.
-  const codesTip = isHost && (
+  // Kept out of the way while a panel stands beside the rail, where it would
+  // lie across it.
+  const codesTip = isHost && !(rail && (sidePanel || tokensOpen || musicOpen)) && (
     <Tip id="codes" title="Share the player code" className="toolbar-codes-tip">
       Players join with the player code. Keep the {isGuestHost ? 'DM code' : 'host key'} to yourself — it’s how you get the table back.
     </Tip>
@@ -537,10 +622,12 @@ export default function Toolbar({
   }
 
   return (
-    <div className="toolbar" ref={barRef}>
-      <button className="toolbar-collapse-btn" onClick={onToggleCollapsed} title="Collapse toolbar">
-        ▴
-      </button>
+    <div className={`toolbar${rail ? ' toolbar-rail' : ''}`} ref={barRef}>
+      {!rail && (
+        <button className="toolbar-collapse-btn" onClick={onToggleCollapsed} title="Collapse toolbar">
+          ▴
+        </button>
+      )}
 
       {/* The trigger shows the active tool's icon, so the current mode is
           still visible with the menu folded away. */}
@@ -590,6 +677,14 @@ export default function Toolbar({
           </>
         )}
       </ToolMenu>
+
+      {/* The Tokens panel no longer sits beside the map: its tab folds it
+          out over the map's left edge and away again. */}
+      {rail && isHost && onToggleTokens && (
+        <div className="toolbar-group" data-tour="tokens">
+          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, doors, chests, traps and your own images to put on the map" />
+        </div>
+      )}
 
       {isHost && (
         <ToolMenu
@@ -651,7 +746,7 @@ export default function Toolbar({
       {isHost && (
         <ToolMenu
           icon={<Icon name="world" />}
-          label="World state"
+          label={rail ? 'World' : 'World state'}
           tour="world"
           title="In-game time, day / night and the world's ambience"
           active={showDayNight || showAmbience}
@@ -695,7 +790,7 @@ export default function Toolbar({
       )}
 
       {/* Not a button: the readout is how every player sees the in-game time. */}
-      {clock && (
+      {clock && !rail && (
         <div className="toolbar-group">
           <ClockReadout
             clock={clock}
@@ -756,7 +851,10 @@ export default function Toolbar({
             label="Initiative"
             tour="initiative"
             active={showInitiative}
-            onClick={() => togglePopover('initiative')}
+            onClick={() => {
+              closePanels();
+              togglePopover('initiative');
+            }}
             title="Roll for Initiative"
           />
         )}
@@ -765,27 +863,78 @@ export default function Toolbar({
             icon={<Icon name="music" />}
             label="Music"
             tour="music"
-            active={Boolean(audio?.playback?.nowPlaying) || showMusicHint}
-            onClick={audio?.enabled ? onOpenMusic : () => setShowMusicHint((s) => !s)}
+            active={Boolean(audio?.playback?.nowPlaying) || showMusicHint || musicOpen}
+            onClick={audio?.enabled ? (musicOpen ? onCloseMusic : onOpenMusic) : () => {
+              closePanels();
+              setShowMusicHint((s) => !s);
+            }}
             title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
           />
           {showMusicHint && !audio?.enabled && (
-            <div className="toolbar-hint-pop">
+            <div className="toolbar-hint-pop" data-rail-pop="">
               <Hint>{musicHint}</Hint>
             </div>
           )}
         </span>
-        <ToolCard icon={<Icon name="dice" />} label="Dice" tour="dice" active={showDice} onClick={() => togglePopover('dice')} title="Roll the dice" />
-        {showDice && (
-          <DiceModal
-            {...dice}
-            onClose={() => setShowDice(false)}
-          />
-        )}
+        <ToolCard
+          icon={<Icon name="dice" />}
+          label="Dice"
+          tour="dice"
+          active={rail ? sidePanel === 'dice' : showDice}
+          onClick={() => (rail ? openSide('dice') : togglePopover('dice'))}
+          title="Roll the dice"
+        />
+        {(rail ? sidePanel === 'dice' : showDice) && <DiceModal {...dice} side={rail} onClose={rail ? closeSide : () => setShowDice(false)} />}
       </div>
+
+      {/* On the rail the roll log and the character log share one tab and
+          one side panel; the DM switches between them inside it. */}
+      {rail && (
+        <ToolMenu
+          icon={<Icon name="rolllog" />}
+          label="Logs"
+          tour="rolls"
+          title={activityLog ? 'The roll log and the character log' : 'Every roll at the table this session'}
+          open={sidePanel === 'logs'}
+          onToggle={() => openSide('logs')}
+          onClose={closeSide}
+          panel={{ title: 'Logs', width: 360 }}
+          badge={(rollLogOpen ? 0 : unseenRolls) + (activityLog && !activityOpen ? unseenActivity : 0)}
+        >
+          {activityLog && (
+            <div className="side-tabs" role="tablist" aria-label="Logs">
+              {[
+                ['rolls', 'Roll log', rollLogOpen ? 0 : unseenRolls],
+                ['heroes', 'Character log', activityOpen ? 0 : unseenActivity],
+              ].map(([key, text, unseen]) => (
+                <button key={key} type="button" role="tab" aria-selected={logTab === key} className={logTab === key ? 'active' : ''} onClick={() => setLogTab(key)}>
+                  {text}
+                  {unseen > 0 && <span className="side-tab-count">{unseen > 9 ? '9+' : unseen}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {activityLog && logTab === 'heroes' ? (
+            <>
+              <div className="players-menu-head">
+                Character log <span>{activity.length ? `${activity.length} this session` : 'only you see this'}</span>
+              </div>
+              <CharacterLog entries={activity} />
+            </>
+          ) : (
+            <>
+              <div className="players-menu-head">
+                Roll log <span>{rollLog.length ? `${rollLog.length} this session` : ''}</span>
+              </div>
+              <RollLog entries={rollLog} />
+            </>
+          )}
+        </ToolMenu>
+      )}
 
       {/* This session's rolls — everyone's, and the DM's own (marked when
           hidden). Open to everyone at the table. */}
+      {!rail && (
       <ToolMenu
         icon={<Icon name="rolllog" />}
         label="Roll log"
@@ -802,10 +951,11 @@ export default function Toolbar({
         </div>
         <RollLog entries={rollLog} />
       </ToolMenu>
+      )}
 
       {/* What each player changed on their own hero (hit points, bag,
           coins, weapons, spells). The DM's alone. */}
-      {activityLog && (
+      {activityLog && !rail && (
         <ToolMenu
           icon={<Icon name="charlog" />}
           label="Character log"
@@ -893,7 +1043,7 @@ export default function Toolbar({
 
       {/* Saved state over the autosave countdown, stacked so the pair costs
           one narrow column instead of two side by side. */}
-      {isHost && (
+      {isHost && !rail && (
         <div className="toolbar-status">
           {lastSavedLabel && (
             <span className="toolbar-saved" role="status" title={lastSavedLabel}>
@@ -917,12 +1067,13 @@ export default function Toolbar({
       {/* Who's at the table — everyone gets this one, not just the DM. */}
       <ToolMenu
         icon={<Icon name="players" />}
-        label={`${Object.keys(players).length}/${MAX_SEATS} players`}
+        label={rail ? 'Players' : `${Object.keys(players).length}/${MAX_SEATS} players`}
         tour="players"
         title="Who's at the table"
-        open={openMenu === 'players'}
-        onToggle={() => toggleMenu('players')}
-        onClose={closeMenu}
+        open={rail ? sidePanel === 'players' : openMenu === 'players'}
+        onToggle={() => (rail ? openSide('players') : toggleMenu('players'))}
+        onClose={rail ? closeSide : closeMenu}
+        panel={rail ? { title: 'Players', width: 340 } : null}
         menuClassName="players-menu"
         align="end"
       >
@@ -950,12 +1101,14 @@ export default function Toolbar({
           far less often than anything above. */}
       <ToolMenu
         icon={<Icon name="config" />}
-        label="Configurations"
+        label={rail ? 'Config' : 'Configurations'}
         tour="config"
         title="Save, export, import, close, hints, and leave"
-        open={openMenu === 'configurations'}
-        onToggle={() => toggleMenu('configurations')}
-        onClose={closeMenu}
+        open={rail ? sidePanel === 'configurations' : openMenu === 'configurations'}
+        onToggle={() => (rail ? openSide('configurations') : toggleMenu('configurations'))}
+        onClose={rail ? closeSide : closeMenu}
+        panel={rail ? { title: 'Configurations', width: 340 } : null}
+        menuClassName="config-menu"
         align="end"
       >
         {isHost && (
@@ -1014,6 +1167,7 @@ export default function Toolbar({
             ))}
           </div>
         )}
+        {rail && <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />}
         {/* What the tips and the tutorial said, kept to read at any time. */}
         <ToolCard
           icon={<Icon name="rules" />}
@@ -1029,10 +1183,13 @@ export default function Toolbar({
       </ToolMenu>
       {showRules && <RulesBook isHost={isHost} onClose={() => setShowRules(false)} />}
 
-      <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
-        <Icon name="leave" />
-        <span className="toolbar-leave-label">Leave</span>
-      </button>
+      {/* On the rail, Leave is the last card in Configurations instead. */}
+      {!rail && (
+        <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
+          <Icon name="leave" />
+          <span className="toolbar-leave-label">Leave</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -1044,6 +1201,7 @@ function DayNightPopover({ override, hasClock, hasCycle, onSelect, island, onIsl
   const isManual = Boolean(override);
   return (
     <div
+      data-rail-pop=""
       style={{
         position: 'absolute',
         top: 54,

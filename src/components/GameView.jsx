@@ -84,7 +84,8 @@ import { useCatalog } from '../lib/catalog.js';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
-import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import { LayerStrip, StripSaved, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import ClockReadout from './ClockReadout.jsx';
 import {
   usePhoneLayout,
   PhoneTopBar,
@@ -254,6 +255,7 @@ const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
 const COLLAPSED_PANEL_WIDTH = 36;
+const RAIL_WIDTH = 100; // the toolbar rail down the left edge (.toolbar-rail in styles.css)
 // Below this window width both side panels can't sit beside the map without
 // crushing it, so they become drawers that slide over the map instead — one
 // open at a time, both folded to their rails by default.
@@ -391,7 +393,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [hasExportedGuestTable, setHasExportedGuestTable] = useState(false);
   const [pendingLeaveWarning, setPendingLeaveWarning] = useState(false);
   const [pendingKickId, setPendingKickId] = useState(null); // the seat the DM is about to kick, awaiting confirm
-  const [leftCollapsed, setLeftCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
+  // The Tokens panel is a flyout opened from the rail's Tokens tab, closed
+  // until asked for.
+  const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
@@ -417,7 +421,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Crossing the breakpoint resets the panels to that layout's default:
   // folded to rails as drawers, both open side by side on a wide window.
   useEffect(() => {
-    setLeftCollapsed(drawerLayout);
+    setLeftCollapsed(true);
     setRightCollapsed(drawerLayout);
   }, [drawerLayout]);
 
@@ -425,6 +429,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function togglePanel(side) {
     const opening = side === 'left' ? leftCollapsed : rightCollapsed;
     (side === 'left' ? setLeftCollapsed : setRightCollapsed)(!opening);
+    // The Tokens panel and Music stand in the same place beside the rail.
+    if (opening && side === 'left') setShowMusicModal(false);
     if (opening && drawerLayout) (side === 'left' ? setRightCollapsed : setLeftCollapsed)(true);
   }
 
@@ -2929,9 +2935,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   // A player has no Tokens panel (placing tokens is the DM's), so only the
   // right panel shares the room with the map.
-  const shownPanelWidths = isHost
-    ? fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed)
-    : { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth, false, rightCollapsed), left: 0 };
+  // The Tokens flyout lies over the map, so it takes no room from it either.
+  const shownPanelWidths = { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth - RAIL_WIDTH, false, rightCollapsed), left: isHost ? panelWidths.left : 0 };
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
@@ -2966,7 +2971,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onOpenClock={() => setShowClockModal(true)}
         audio={audioApi}
         musicHint={isGuest ? 'On a guest table the music plays only on the DM’s own device.' : 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.'}
-        onOpenMusic={() => setShowMusicModal(true)}
+        onOpenMusic={() => {
+          // Music takes the Tokens panel's place beside the rail.
+          setShowMusicModal(true);
+          if (!isPhone) setLeftCollapsed(true);
+        }}
+        musicOpen={showMusicModal && audioEnabled}
+        onCloseMusic={() => setShowMusicModal(false)}
         onSetClockRunning={setClockRunning}
         dayPhase={tablePhase}
         dayNightOverride={state.dayNightOverride}
@@ -3006,7 +3017,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         customAssets={state.customAssets}
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
-        collapsed={isPhone ? false : toolbarCollapsed}
+        rail={!isPhone}
+        tokensOpen={!leftCollapsed}
+        onToggleTokens={() => togglePanel('left')}
+        collapsed={false}
         onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
         zoom={zoom}
       />
@@ -3021,7 +3035,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           currentLayerId={currentLayerId}
           isHost={isHost}
           customAssets={state.customAssets}
-          collapsed={isPhone ? false : leftCollapsed}
+          collapsed={false}
           onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('left'))}
           layout={isPhone ? 'phone' : 'panel'}
         />
@@ -3055,7 +3069,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const { originX: canvasOriginX, originY: canvasOriginY } = computeCanvasBounds(currentLayer.islands);
 
   return (
-    <div className={`game-screen${isPhone ? ' phone' : ''}`}>
+    <div className={`game-screen${isPhone ? ' phone' : ' rail-layout'}`}>
       {isPhone ? (
         <>
           <PhoneTopBar
@@ -3081,10 +3095,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       )}
 
       <div
-        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone && !isHost ? ' no-left' : ''}${!isPhone && leftCollapsed ? ' left-collapsed' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
+        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone ? ' no-left' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
         style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
       >
-        {!isPhone && isHost && tokenSidebarEl}
+        {!isPhone && isHost && !leftCollapsed && <div className="tokens-flyout">{tokenSidebarEl}</div>}
 
         <div className="game-center">
           {!isPhone && (
@@ -3096,8 +3110,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             isHost={isHost}
             onSwitchLayer={setHostViewLayerId}
             feetPerSquare={islandFeet(currentLayer, activeIslandId)}
-            clock={state.clock}
+            clock={null}
             phaseOverride={state.dayNightOverride}
+            extra={
+              <>
+                {isHost && <StripSaved label={savedAgo} secondsLeft={autosaveSecondsLeft} />}
+                {state.clock && (
+                  <span className="strip-clock">
+                    <ClockReadout clock={state.clock} isHost={isHost} onOpen={() => setShowClockModal(true)} onSetRunning={setClockRunning} phaseOverride={state.dayNightOverride} />
+                  </span>
+                )}
+              </>
+            }
           />
           )}
           <div className="stage-wrap">
@@ -3213,7 +3237,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             />
           )}
           <FxLayer />
-          {!isPhone && <BookTabs isHost={isHost} chronicleOpen={chronicleOpen} onToggleChronicle={() => setChronicleOpen((o) => !o)} />}
+          {!isPhone && <BookTabs chronicleOpen={chronicleOpen} onToggleChronicle={() => setChronicleOpen((o) => !o)} />}
           {chronicleOpen && (
             <div className="book-chronicle">
               <CombatLog log={combatLog} onClose={() => setChronicleOpen(false)} />
@@ -3282,6 +3306,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               setSfxVolume(ENCOUNTER_MUSIC.id, v);
             }}
             onClose={() => setShowMusicModal(false)}
+            side={!isPhone}
           />
         )}
 
@@ -3307,7 +3332,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!isPhone && isHost && !leftCollapsed && !drawerLayout && (
+        {!isPhone && isHost && !leftCollapsed && (
           <PanelResizer
             side="left"
             width={shownPanelWidths.left}

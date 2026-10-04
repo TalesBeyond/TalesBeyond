@@ -24,8 +24,9 @@ export const HOST_TOUR = [
   },
   {
     target: 'tools',
+    side: 'right',
     title: 'Tools',
-    text: 'What your mouse does on the map. The button shows the tool you are using.',
+    text: 'What your mouse does on the map. The tab shows the icon of the tool you are using.',
     items: [
       ['Play', 'select tokens and drag them around. The everyday tool.'],
       ['Ruler', 'drag across the map to measure a distance.'],
@@ -34,7 +35,14 @@ export const HOST_TOUR = [
     ],
   },
   {
+    target: 'tokens',
+    side: 'right',
+    title: 'Tokens',
+    text: 'Opens the panel of everything you can put on the map: heroes, doors, chests, traps and your own images. Click the tab again to fold it away.',
+  },
+  {
     target: 'mapping',
+    side: 'right',
     title: 'Mapping',
     text: 'Where you build the world your players walk through.',
     items: [
@@ -44,6 +52,7 @@ export const HOST_TOUR = [
   },
   {
     target: 'world',
+    side: 'right',
     title: 'World state',
     text: 'The mood of the scene.',
     items: [
@@ -54,6 +63,7 @@ export const HOST_TOUR = [
   },
   {
     target: 'compendium',
+    side: 'right',
     title: 'Compendium',
     text: 'Things ready to drop into the game.',
     items: [
@@ -63,31 +73,31 @@ export const HOST_TOUR = [
   },
   {
     target: 'initiative',
+    side: 'right',
     title: 'Initiative',
     text: 'Start a fight: roll for turn order, then step through each creature’s turn.',
   },
   {
     target: 'music',
+    side: 'right',
     title: 'Music',
     text: 'Songs for the whole table, for one world, or for a single token. Each player sets their own volume.',
   },
   {
     target: 'dice',
+    side: 'right',
     title: 'Dice',
     text: 'Roll any dice. Your rolls stay hidden from players unless you choose to reveal them.',
   },
   {
     target: 'rolls',
-    title: 'Roll log',
-    text: 'Every roll made at the table this session, with who rolled it.',
-  },
-  {
-    target: 'charlog',
-    title: 'Character log',
-    text: 'What each player changed on their own hero: hit points, items, coins, spells. Only you can see it.',
+    side: 'right',
+    title: 'Logs',
+    text: 'Two logs in one panel. The roll log has every roll made at the table this session, with who rolled it. The character log shows what each player changed on their own hero: hit points, items, coins, spells. Only you can see that one.',
   },
   {
     target: 'codes',
+    side: 'right',
     title: 'Invite your players',
     text: 'Share the player code so people can join. Keep the DM code to yourself: it is how you get this table back. “New code” replaces the player code, so the old one stops working.',
   },
@@ -95,10 +105,11 @@ export const HOST_TOUR = [
     target: 'players',
     title: 'Players',
     text: 'Who is seated at your table. You can remove a player from here.',
-    side: 'bottom',
+    side: 'right',
   },
   {
     target: 'config',
+    side: 'right',
     title: 'Configurations',
     text: 'Save and housekeeping.',
     items: [
