@@ -106,6 +106,7 @@ const ICON_PATHS = {
   edit: 'M4 16l1-4L14 3l3 3-9 9zM12 5l3 3',
   pan: 'M10 2v16M2 10h16M10 2L7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5',
   ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
+  area: 'M3 10L16 4c1.500 3.500 1.500 8.500 0 12z',
   group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
   draw: 'M3 17c2-1 3-3 5-3M13 3l4 4-8 8-4 1 1-4z',
   hidedraw: 'M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6zM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM3 17L17 3',
@@ -188,14 +189,16 @@ const TOOL_ICONS = {
   edit: <Icon name="edit" />,
   pan: <Icon name="pan" />,
   ruler: <Icon name="ruler" />,
+  area: <Icon name="area" />,
   draw: <Icon name="draw" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', draw: 'Draw' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', area: 'Area', draw: 'Draw' };
 
 // The Tools drawer (rail): each tool with what it does. `dm`: the DM's only.
 const DRAWER_TOOLS = [
   { key: 'play', text: 'Select tokens and drag them around the map. The everyday tool.' },
   { key: 'ruler', text: 'Drag across the map to measure a distance in feet.' },
+  { key: 'area', text: 'Lay a spell’s area on the map: a cone, cube, line, sphere and more.' },
   { key: 'draw', text: 'Sketch on the map. Everyone at the table sees it.', dm: true },
   { key: 'edit', text: 'Drag whole maps to move them and line them up.', dm: true },
 ];
@@ -265,6 +268,7 @@ export default function Toolbar({
   activeIsland,
   tool,
   onToolChange,
+  onArea, // opens the area-of-effect picker; the Area tool itself starts once a shape is chosen
   revealRolls = false,
   onRevealRollsChange,
   hideDrawings = false,
@@ -725,7 +729,7 @@ export default function Toolbar({
         {rail && (
           <>
             {DRAWER_TOOLS.filter((t) => isHost || !t.dm).map((t) => (
-              <button key={t.key} type="button" className={`drawer-tool${tool === t.key ? ' active' : ''}`} aria-pressed={tool === t.key} onClick={() => onToolChange(t.key)}>
+              <button key={t.key} type="button" className={`drawer-tool${tool === t.key ? ' active' : ''}`} aria-pressed={tool === t.key} onClick={() => (t.key === 'area' ? onArea() : onToolChange(t.key))}>
                 <span className="drawer-tool-icon">{TOOL_ICONS[t.key]}</span>
                 <span className="drawer-book-text">
                   <span className="drawer-tool-name">{TOOL_LABELS[t.key]}</span>
@@ -755,6 +759,13 @@ export default function Toolbar({
           active={tool === 'ruler'}
           onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
+        />
+        <ToolCard
+          icon={TOOL_ICONS.area}
+          label="Area"
+          active={tool === 'area'}
+          onClick={() => pick(onArea)}
+          title="Lay an area of effect on the map — everyone at the table sees it"
         />
         {isHost && (
           <>

@@ -76,6 +76,9 @@ import {
   fetchTableSnapshot,
 } from '../lib/remoteApi.js';
 import MapBoard from './MapBoard.jsx';
+import ModalShell from './ModalShell.jsx';
+import AreaPicker from './AreaPicker.jsx';
+import { MAX_AREAS, areaShape, areaLabel, sanitizeArea } from '../utils/areaOfEffect.js';
 import TokenSidebar from './TokenSidebar.jsx';
 import RightPanel from './RightPanel.jsx';
 import Toolbar from './Toolbar.jsx';
@@ -89,17 +92,13 @@ import { LayerStrip, StripSaved, InitiativeBar, RulerReadout, ZoomControl } from
 import ClockReadout from './ClockReadout.jsx';
 import {
   usePhoneLayout,
+  PhoneIcon,
   PhoneTopBar,
-  PhoneIslandStrip,
-  PhoneMiniMap,
-  PhoneIslandConditions,
-  PhoneTokenCard,
   PhoneNav,
   PhoneSheet,
   PhoneSwitch,
   PhoneLayersSheet,
   PhoneAtlas,
-  PhoneMoveCard,
   PhoneTargetSheet,
   PhoneDoorSheet,
   PhoneChestSheet,
@@ -123,7 +122,7 @@ import {
   AUDIO_TABLE_QUOTA_BYTES,
 } from '../lib/storageUpload.js';
 
-const ZOOM_MIN = 0.4;
+const ZOOM_MIN = 0.1; // far enough out to take in several maps at once, on a desktop and on a phone
 const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 0.1;
 const STAGE_PADDING = 28; // .stage's padding in styles.css — the map canvas starts this far in
@@ -153,13 +152,11 @@ const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
 // happens; saveNow there just relabels the toolbar), but harmless there too.
 const AUTOSAVE_INTERVAL_SECONDS = 15 * 60;
 
-// A phone can zoom further out, so a whole island fits its narrow screen.
-const PHONE_ZOOM_MIN = 0.2;
 // Entering an encounter: the dice sound, then this long before the encounter music.
 const ENCOUNTER_MUSIC_DELAY_MS = 2000;
 
-function clampZoom(z, min = ZOOM_MIN) {
-  return Math.min(ZOOM_MAX, Math.max(min, Math.round(z * 10) / 10));
+function clampZoom(z) {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));
 }
 
 function findFreeCell(entities, islandId, cols, rows) {
@@ -856,9 +853,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         isHost,
         onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
       },
-      (roll) => receiveRollRef.current(roll)
+      (roll) => receiveRollRef.current(roll),
+      (message) => receiveAreaRef.current(message)
     );
-    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll };
+    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll, sendArea: unsubscribe.sendArea };
     return () => {
       tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
@@ -925,7 +923,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.entities, isHost]);
   const [rollToasts, setRollToasts] = useState([]);
-  const tableChannelRef = useRef(null); // cloud: { sendRoll }
+  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea }
   function addRoll(entry) {
     setRollLog((prev) => [entry, ...prev].slice(0, 100));
     if (entry.mine) return;
@@ -963,6 +961,102 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isRemote) tableChannelRef.current?.sendRoll(roll);
     else if (isGuest) guestChannelRef.current?.sendRoll(roll);
   });
+  // ---- Areas of effect (utils/areaOfEffect.js) ----
+  // Spell templates anyone at the table lays over the map. Like dice rolls
+  // they are announced over the table's channel and never stored: a template
+  // lives in each open browser until someone takes it off, and whoever joins
+  // or reloads afterwards doesn't get the ones already down.
+  const [areas, setAreas] = useState({}); // id -> area
+  const [areaDraft, setAreaDraft] = useState(null); // the one being aimed (the Area tool)
+  const [areaPicker, setAreaPicker] = useState(null); // { entityId } while its shape and size are chosen
+  const [lastArea, setLastArea] = useState(null); // { shape, size, width } — the picker reopens on it
+  // A message from the channel, or this browser's own: { op: 'set', area } or
+  // { op: 'remove', ids, byId }. Only its owner or the DM takes a template off.
+  function applyAreaMessage(message) {
+    if (message?.op === 'set') {
+      const area = sanitizeArea(message.area);
+      if (!area) return;
+      setAreas((prev) => {
+        const next = { ...prev };
+        delete next[area.id];
+        next[area.id] = area;
+        const ids = Object.keys(next);
+        for (const id of ids.slice(0, Math.max(0, ids.length - MAX_AREAS))) delete next[id];
+        return next;
+      });
+    } else if (message?.op === 'remove' && Array.isArray(message.ids)) {
+      const hostId = stateRef.current.session.hostPlayerId;
+      setAreas((prev) => {
+        const next = { ...prev };
+        for (const id of message.ids) if (next[id] && (next[id].byId === message.byId || message.byId === hostId)) delete next[id];
+        return next;
+      });
+    }
+  }
+  const receiveAreaRef = useRef(applyAreaMessage);
+  receiveAreaRef.current = applyAreaMessage;
+  function announceArea(message) {
+    applyAreaMessage(message);
+    if (isRemote) tableChannelRef.current?.sendArea(message);
+    else if (isGuest) guestChannelRef.current?.sendArea(message);
+  }
+  // The picker opens for the selected token when this viewer may act for it
+  // (the DM for any creature, a player for their own hero); otherwise the
+  // template starts wherever it is first aimed.
+  function openAreaPicker(entity) {
+    const caster = entity && (entity.kind === 'hero' || entity.kind === 'mob') && canMoveEntity(entity) ? entity : null;
+    setAreaPicker({ entityId: caster?.id || null });
+  }
+  function startArea(choice) {
+    const player = state.players[me.id];
+    const draft = {
+      id: 'draft',
+      byId: me.id,
+      name: player?.name || (isHost ? 'DM' : 'Someone'),
+      color: player?.color || null,
+      layerId: currentLayerId,
+      ...choice,
+      entityId: areaPicker?.entityId || null,
+      islandId: null,
+      origin: null,
+      aim: null,
+      angle: -Math.PI / 2,
+    };
+    setLastArea(choice);
+    setAreaPicker(null);
+    if (areaShape(choice.shape).aim === 'self') {
+      placeArea(draft);
+    } else {
+      setAreaDraft(draft);
+      setTool('area');
+    }
+  }
+  function placeArea(draft = areaDraft) {
+    if (!draft) return;
+    const area = { ...draft, id: `${me.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` };
+    // A sphere never aimed away from its caster is centred on them.
+    const entity = area.entityId ? state.entities[area.entityId] : null;
+    if (areaShape(area.shape).aim === 'point' && !area.aim && entity) {
+      const span = entity.size || 1;
+      area.aim = [entity.col + span / 2, entity.row + span / 2];
+      area.islandId = entity.islandId;
+    }
+    announceArea({ op: 'set', area });
+    setAreaDraft(null);
+    setTool('play');
+  }
+  function removeArea(id) {
+    announceArea({ op: 'remove', ids: [id], byId: me.id });
+  }
+  // The draft belongs to the Area tool, and to the layer it was started on.
+  useEffect(() => {
+    if (tool !== 'area') setAreaDraft(null);
+  }, [tool]);
+  useEffect(() => {
+    setAreaDraft(null);
+    setTool((t) => (t === 'area' ? 'play' : t));
+  }, [currentLayerId]);
+
   const [chronicleOpen, setChronicleOpen] = useState(false); // Grimoire's Chronicle tab (BookTabs.jsx)
   const logSeq = useRef(0);
   useFx((event) => {
@@ -1151,6 +1245,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       isHost: isGuestHost,
       onHostPresenceChange: isGuestHost ? undefined : handleHostPresenceChange,
       onRoll: (roll) => receiveRollRef.current(roll),
+      onArea: (message) => receiveAreaRef.current(message),
     });
     guestChannelRef.current = channel;
     return () => {
@@ -2627,11 +2722,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // (MapBoard's onWheel, active in every tool) so both drive the same zoom.
   function zoomIn() {
     captureZoomAnchor();
-    setZoom((z) => clampZoom(z + ZOOM_STEP, isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN));
+    setZoom((z) => clampZoom(z + ZOOM_STEP));
   }
   function zoomOut() {
     captureZoomAnchor();
-    setZoom((z) => clampZoom(z - ZOOM_STEP, isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN));
+    setZoom((z) => clampZoom(z - ZOOM_STEP));
   }
   function zoomReset() {
     captureZoomAnchor();
@@ -2663,9 +2758,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }, []);
 
   // ---- Phone layout (MOBILE_DESIGN.md) ----
-  // Islands first: the top bar names the island you're on, the chips fly the
-  // camera from island to island (fitting each to the screen), and a pinch
-  // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
+  // The map first: it fills the screen, the top row names the island you're on
+  // (and opens the atlas, which flies the camera from island to island,
+  // fitting each to the screen), and a pinch zooms. Everything not yet
+  // redesigned for phones opens in a bottom sheet.
   const isPhone = usePhoneLayout();
   // The first-table tutorial (Tour.jsx): opens by itself the first time a
   // DM is at a table on this device, and again from Configurations →
@@ -2692,7 +2788,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const w = stage.clientWidth - STAGE_PADDING * 2 - 16;
     const h = stage.clientHeight - STAGE_PADDING * 2 - 16;
     const z = Math.min(w / (island.cols * island.cellSize), h / (island.rows * island.cellSize));
-    return Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, Math.round(z * 100) / 100));
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
   }
   function flyToIsland(islandId) {
     const island = currentLayer.islands[islandId];
@@ -2734,7 +2830,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const stage = stageRef.current;
     if (!stage) return undefined;
     const g = touchGestureRef.current;
-    const zoomMin = isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN;
     const rel = (t) => {
       const r = stage.getBoundingClientRect();
       return { x: t.clientX - r.left, y: t.clientY - r.top };
@@ -2749,7 +2844,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       p.canvas.style.transform = '';
       p.canvas.style.transformOrigin = '';
       p.canvas.style.willChange = '';
-      const next = Math.min(ZOOM_MAX, Math.max(zoomMin, p.zoom * p.scale));
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, p.zoom * p.scale));
       if (next === zoomRef.current) {
         stage.scrollLeft = p.worldX * next + STAGE_PADDING - p.mid.x;
         stage.scrollTop = p.worldY * next + STAGE_PADDING - p.mid.y;
@@ -2784,7 +2879,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       } else if (e.touches.length === 1) {
         g.panned = false;
         g.pan =
-          toolRef.current === 'play' && !e.target.closest('.token')
+          toolRef.current === 'play' && !e.target.closest('.token, .token-ring, .planned-move-actions')
             ? { x: e.touches[0].clientX, y: e.touches[0].clientY, left: stage.scrollLeft, top: stage.scrollTop }
             : null;
       }
@@ -2796,7 +2891,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         const a = rel(e.touches[0]);
         const b = rel(e.touches[1]);
         const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        const next = Math.min(ZOOM_MAX, Math.max(zoomMin, (p.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / p.dist));
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (p.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / p.dist));
         const scale = next / p.zoom;
         // Keep the world point that started under the fingers under their midpoint.
         const tx = mid.x - STAGE_PADDING + p.left - p.worldX * p.zoom * scale;
@@ -2874,7 +2969,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     setPlannedMove(null);
   }
 
-  // What the confirm card and the map label say about a planned move.
+  // What the map's "Move here" button says about a planned move.
   let plannedMoveInfo = null;
   if (plannedMove && state.entities[plannedMove.entityId]) {
     const entity = state.entities[plannedMove.entityId];
@@ -2898,9 +2993,50 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && selectedEntity.kind === 'mob'
   );
 
-  const plannedMoveForMap = plannedMove
-    ? { ...plannedMove, label: plannedMoveInfo?.feet != null ? `${plannedMoveInfo.feet} ft` : plannedMoveInfo?.islandName || '' }
-    : null;
+  const plannedMoveForMap =
+    plannedMove && plannedMoveInfo
+      ? {
+          ...plannedMove,
+          confirmLabel: plannedMoveInfo.islandName != null ? `Move into ${plannedMoveInfo.islandName}` : `Move here · ${plannedMoveInfo.feet} ft`,
+          note:
+            plannedMoveInfo.islandName != null
+              ? 'Distance isn’t measured across maps.'
+              : plannedMoveInfo.leftAfter != null
+                ? `${plannedMoveInfo.leftAfter} of ${plannedMoveInfo.total} ft left after`
+                : null,
+          onConfirm: confirmPlannedMove,
+          onCancel: () => setPlannedMove(null),
+        }
+      : null;
+
+  // The selected token's actions, fanned around it on the map (phone): its
+  // card, a target button on the acting hero's turn, and the hit point
+  // steppers for whoever may change its life (the DM, or a hero's own player).
+  let tokenActions = null;
+  if (isPhone && selectedEntity) {
+    const entity = selectedEntity;
+    const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
+    const canEditLife = isHost || (entity.kind === 'hero' && entity.ownerId === me.id);
+    const sheet = entity.kind === 'chest' ? 'chest' : entity.kind === 'hero' || entity.kind === 'mob' ? 'creature' : 'inspect';
+    tokenActions = [
+      { id: 'open', label: `${entity.name}. Open its card`, icon: <PhoneIcon name="sheet" size={20} />, onPress: () => setPhoneSheet(sheet) },
+      canTargetSelected && { id: 'target', label: `Target ${entity.name}`, icon: <PhoneIcon name="sword" size={20} strokeWidth={2} />, primary: true, onPress: () => setPhoneSheet('target') },
+      canEditLife && hasHp && { id: 'hp-down', label: `${entity.name} loses 1 hit point`, icon: <PhoneIcon name="minus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.max(0, entity.hp - 1) }) },
+      canEditLife && hasHp && { id: 'hp-up', label: `${entity.name} gains 1 hit point`, icon: <PhoneIcon name="plus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.min(entity.maxHp, entity.hp + 1) }) },
+      (entity.kind === 'hero' || entity.kind === 'mob') && canMoveEntity(entity) && { id: 'area', label: `Area of effect from ${entity.name}`, icon: <PhoneIcon name="area" size={20} />, onPress: () => openAreaPicker(entity) },
+    ].filter(Boolean);
+  }
+
+  // The templates on the layer in view; its owner or the DM may take one off.
+  const layerAreas = Object.values(areas)
+    .filter((a) => a.layerId === currentLayerId)
+    .map((a) => ({ ...a, removable: isHost || a.byId === me.id }));
+  const areaDraftShape = areaDraft ? areaShape(areaDraft.shape) : null;
+  const areaCaster = areaDraft?.entityId ? state.entities[areaDraft.entityId] : null;
+  const areaReady = Boolean(areaDraft && (areaCaster || (areaDraftShape.aim === 'point' ? areaDraft.aim : areaDraft.origin)));
+  const areaPickerEl = areaPicker && (
+    <AreaPicker casterName={state.entities[areaPicker.entityId]?.name || null} initial={lastArea} onAim={startArea} />
+  );
 
   // A guest table lives in the DM's browser: while one is hosted from a
   // phone, keep the screen from sleeping. The browser drops the lock whenever
@@ -2962,6 +3098,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         hideDrawings={hideDrawings}
         onToggleHideDrawings={() => setHideDrawings(!hideDrawings)}
         onToolChange={setTool}
+        onArea={() => openAreaPicker(selectedEntity)}
         onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
         session={state.session}
         onRegenerateCode={regenerateCode}
@@ -3068,30 +3205,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   const activeIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
   const layerIndex = state.layerOrder.indexOf(currentLayerId);
-  const { originX: canvasOriginX, originY: canvasOriginY } = computeCanvasBounds(currentLayer.islands);
 
   return (
     <div className={`game-screen${isPhone ? ' phone' : ' rail-layout'}`}>
       {isPhone ? (
-        <>
-          <PhoneTopBar
-            islandName={activeIsland?.name || currentLayer.name}
-            layerName={currentLayer.name}
-            layerIndex={layerIndex}
-            layerCount={state.layerOrder.length}
-            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
-            onAtlas={() => setPhoneSheet('atlas')}
-            onLayers={() => setPhoneSheet('layers')}
-            onMenu={() => setPhoneSheet('menu')}
-          />
-          <PhoneIslandStrip
-            layer={currentLayer}
-            entities={layerEntities}
-            activeIslandId={activeIslandId}
-            onPick={flyToIsland}
-            onAddIsland={isHost ? () => emitFx({ type: 'open', panel: 'islands' }) : null}
-          />
-        </>
+        <PhoneTopBar
+          islandName={activeIsland?.name || currentLayer.name}
+          conditions={islandConditionKeys(currentLayer, activeIslandId)}
+          onAtlas={() => setPhoneSheet('atlas')}
+          onLayers={() => setPhoneSheet('layers')}
+          onMenu={() => setPhoneSheet('menu')}
+        />
       ) : (
         toolbarEl
       )}
@@ -3154,6 +3278,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               gestureRef={touchGestureRef}
               onTapCell={isPhone ? handleTapCell : null}
               plannedMove={isPhone ? plannedMoveForMap : null}
+              tokenActions={tokenActions}
+              areas={layerAreas}
+              areaDraft={areaDraft}
+              onAreaAim={(patch) => setAreaDraft((draft) => (draft ? { ...draft, ...patch } : draft))}
+              onRemoveArea={removeArea}
               drawings={state.drawings}
               // The desktop bar has no "Hide drawings" switch for now, so a saved
               // choice only applies on phones, where the switch still is.
@@ -3169,17 +3298,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </div>
           {isPhone && (
             <>
-              <PhoneMiniMap
-                layer={currentLayer}
-                zoom={zoom}
-                stageRef={stageRef}
-                originX={canvasOriginX}
-                originY={canvasOriginY}
-                stagePadding={STAGE_PADDING}
-                activeIslandId={activeIslandId}
-                onOpen={() => setPhoneSheet('atlas')}
-              />
-              <PhoneIslandConditions conditions={islandConditionKeys(currentLayer, activeIslandId)} />
               {isHost && tool === 'edit' && (
                 <PhoneEditBar
                   islandName={activeIsland?.name}
@@ -3206,18 +3324,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                     Ask your DM to pick you under <b>played by</b> on a hero’s card. You can look around and roll dice meanwhile.
                   </EmptyState>
                 </div>
-              )}
-              {tool === 'draw' ? null : plannedMoveInfo ? (
-                <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
-              ) : (
-                <PhoneTokenCard
-                  entity={selectedEntity}
-                  isHost={isHost}
-                  canEditLife={isHost || (selectedEntity?.kind === 'hero' && selectedEntity.ownerId === me.id)}
-                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'inspect')}
-                  onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
-                  onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
-                />
               )}
             </>
           )}
@@ -3254,6 +3360,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               Drag from one square to another. Every second diagonal counts as {islandFeet(currentLayer, activeIslandId) * 2} ft.
             </ModeBar>
           )}
+          {tool === 'area' && areaDraft && (
+            <div role="status" className="mode-bar map-mode-bar area-bar">
+              <span className="mode-bar-text">
+                <b>{areaLabel(areaDraft)}.</b>{' '}
+                {areaDraftShape.aim === 'point'
+                  ? areaCaster
+                    ? `Press or drag to the point it is centred on. It starts on ${areaCaster.name}.`
+                    : 'Press or drag to the point it is centred on.'
+                  : areaCaster
+                    ? `Drag on the map to aim it from ${areaCaster.name}.`
+                    : areaDraft.origin
+                      ? 'Drag to aim it.'
+                      : 'Press where it starts, then drag to aim it.'}
+              </span>
+              <button type="button" className="mode-bar-done" onClick={() => setTool('play')}>
+                Cancel
+              </button>
+              <button type="button" className="area-bar-place" disabled={!areaReady} onClick={() => placeArea()}>
+                Place
+              </button>
+            </div>
+          )}
           {!isPhone && isHost && tool === 'edit' && (
             <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
               Drag a map to move it. Where edges touch, tokens walk across.
@@ -3281,17 +3409,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onClearMap={() => removeDrawings(drawingIdsOnMap())}
             />
           )}
-          <ZoomControl
-            zoom={zoom}
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
-            onZoomReset={zoomReset}
-            onRecenter={() => (isPhone ? flyToIsland(activeIslandId) : recenterOnIsland(activeIslandId))}
-          />
+          {/* A phone pinches to zoom and recenters from its dock. */}
+          {!isPhone && <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />}
           </div>
         </div>
 
         {!isPhone && rightPanelEl}
+
+        {areaPicker && !isPhone && (
+          <ModalShell title="Area of effect" maxWidth={440} onClose={() => setAreaPicker(null)}>
+            {areaPickerEl}
+          </ModalShell>
+        )}
 
         {showMusicModal && audioEnabled && (
           <MusicModal
@@ -3447,7 +3576,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               bestiary, initiative, layers, islands, asset storage — can open over
               lib/fx.js from the phone screens. */}
           {isHost && <div className="phone-toolbar-host">{toolbarEl}</div>}
-          <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
+          <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} onRecenter={() => flyToIsland(activeIslandId)} />
+          {areaPicker && (
+            <PhoneSheet title="Area of effect" onClose={() => setAreaPicker(null)}>
+              {areaPickerEl}
+            </PhoneSheet>
+          )}
           {phoneSheet === 'inspect' && (selectedEntity?.kind === 'door' || selectedEntity?.kind === 'trap') && (
             <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
               <div className="phone-sheet-pad">

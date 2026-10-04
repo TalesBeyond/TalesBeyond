@@ -33,7 +33,7 @@ function channelNameFor(code) {
 //   ever signal the host leaving.
 export function subscribeToGuestTable(
   code,
-  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange, onRoll } = {}
+  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange, onRoll, onArea } = {}
 ) {
   const channel = supabase.channel(channelNameFor(code));
   let hasJoinedOnce = false;
@@ -64,6 +64,11 @@ export function subscribeToGuestTable(
   // not state, so every client just shows them.
   if (onRoll) {
     channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
+  }
+  // Area-of-effect templates anyone lays on the map (GameView.jsx's "Areas
+  // of effect") — like rolls, announced to everyone and never part of state.
+  if (onArea) {
+    channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
   }
   if (onStateSnapshot) {
     channel.on('broadcast', { event: 'state_snapshot' }, ({ payload }) => onStateSnapshot(payload.state, payload.forId));
@@ -103,6 +108,9 @@ export function subscribeToGuestTable(
     },
     sendRoll(roll) {
       channel.send({ type: 'broadcast', event: 'roll', payload: roll });
+    },
+    sendArea(message) {
+      channel.send({ type: 'broadcast', event: 'area', payload: message });
     },
   };
 }

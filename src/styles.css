@@ -140,6 +140,31 @@ input, select {
   color: var(--parchment-100);
 }
 
+/* Scrollbars: a slim gilt bar in a dark groove, in every palette's own
+   colours (a brass rod on the grimoire's page). The ::-webkit- rules draw it
+   where they exist; other browsers get the same colours on their own thin
+   scrollbar. */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--ink-950) 70%, transparent);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold-line) 22%, transparent);
+}
+::-webkit-scrollbar-thumb {
+  /* The border is the gap between the bar and its groove. */
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--gold-hi), var(--gold-line)) padding-box;
+  min-height: 36px;
+}
+::-webkit-scrollbar-thumb:horizontal { background: linear-gradient(180deg, var(--gold-hi), var(--gold-line)) padding-box; min-width: 36px; }
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active { background: var(--gold-hi) padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--gold-line) color-mix(in srgb, var(--ink-950) 70%, transparent); }
+}
+
 /* ---------- Layout shells ---------- */
 
 .app-shell {
@@ -832,25 +857,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .turn-ribbon.folded { padding: 0 14px; gap: 8px; flex-wrap: nowrap; overflow: visible; }
 .turn-ribbon.folded { min-height: 44px; }
 .turn-ribbon-fold { align-self: center; }
-/* The phone's mini-map: a chevron on its top-right corner (a 44 px touch
-   area), folding it to one map button. */
-.phone-minimap-fold {
-  position: absolute;
-  left: 76px;
-  top: 14px;
-  z-index: 24;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  background: var(--ink-950);
-  border: 1px solid var(--ink-700);
-}
-.phone-minimap-fold::after { content: ''; position: absolute; inset: -9px; }
-.phone-minimap.folded { width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; }
-.phone-minimap.folded svg { width: 22px; height: 22px; }
-.game-screen.phone .stage-wrap:has(.phone-minimap.folded) .hud-initiative,
-.game-screen.phone .stage-wrap:has(.phone-minimap.folded) .turn-ribbon { left: 68px; max-width: calc(100% - 136px); }
-.game-screen.phone:has(.phone-edit-bar) .phone-minimap-fold { display: none; }
 /* Fold the zoom buttons away, and back. */
 .hud-zoom .hud-zoom-toggle { display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
 .hud-zoom .hud-zoom-hide { min-width: 32px; border-left: 1px solid var(--ink-700); }
@@ -1555,7 +1561,7 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .phone-check small { font-size: 13px; }
 .dm-result .roll-chip { align-self: center; margin-top: 6px; }
 .game-screen.phone .roll-toasts,
-.game-screen.phone .stage-wrap .roll-toasts { top: 12px; left: 12px; right: 12px; width: auto; z-index: 30; }
+.game-screen.phone .stage-wrap .roll-toasts { top: var(--phone-top); left: 12px; right: 12px; width: auto; z-index: 30; }
 .inspector-card { display: flex; flex-direction: column; }
 .inspector-card h4 {
   margin: 0 0 8px;
@@ -2172,6 +2178,8 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .stage.right-panning,
 .stage.right-panning * { cursor: grabbing !important; user-select: none; }
 .island-canvas.tool-ruler { cursor: crosshair; }
+.island-canvas.tool-area { cursor: crosshair; user-select: none; }
+.island-canvas.tool-area .grid-wrap { cursor: crosshair; }
 .island-canvas.tool-draw { cursor: crosshair; user-select: none; }
 .island-canvas.tool-draw .grid-wrap { cursor: crosshair; }
 .island-canvas.draw-select,
@@ -4520,57 +4528,67 @@ button.card-notes { border-style: solid; }
 :root[data-theme='grimoire'] .book-tab.active { background: #efe3c6; color: var(--ember); transform: translateX(4px); }
 :root[data-theme='grimoire'] .book-tab:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 
-/* ---------- Phone layout (MOBILE_DESIGN.md) ----------
+/* ---------- Phone layout ----------
    GameView renders PhoneChrome.jsx in place of the toolbar and side panels
-   when (max-width: 767px), (max-height: 499px) matches. Islands first: the
-   top bar names the island, chips fly between islands, a mini-map shows the
-   whole layer. Built on the palette variables so every palette still works. */
+   when (max-width: 767px), (max-height: 499px) matches. The map first: it
+   fills the screen, and the chrome floats over it — a top row naming the
+   island, a dock of tools, and the selected token's actions on the map
+   itself. Built on the palette variables so every palette still works.
+   --phone-top / --phone-bottom: where the map's own HUD may start, clear of
+   the top row and the dock. */
 .game-layout.phone-layout { grid-template-columns: minmax(0, 1fr); }
 .game-layout.phone-layout > .game-center { grid-column: 1; }
+.game-screen.phone {
+  position: relative;
+  --phone-top: calc(64px + env(safe-area-inset-top));
+  --phone-bottom: calc(78px + env(safe-area-inset-bottom));
+}
 .game-screen.phone .stage { touch-action: none; }
 
 .phone-topbar {
-  height: 56px;
-  flex-shrink: 0;
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
+  right: calc(12px + env(safe-area-inset-right));
+  z-index: 28;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px 0 6px;
-  background: var(--ink-900);
-  border-bottom: 1px solid var(--ink-700);
+  gap: 8px;
+  pointer-events: none;
+}
+.phone-topbar > * { pointer-events: auto; }
+.phone-topbar-title,
+.phone-topbar .phone-icon-btn,
+.phone-nav {
+  background: color-mix(in srgb, var(--ink-950) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold-line) 60%, transparent);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
 }
 .phone-topbar-title {
-  flex: 1;
   min-width: 0;
-  min-height: 48px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
+  height: 44px;
+  padding: 0 14px 0 16px;
+  border-radius: 22px;
   color: var(--parchment-100);
   font: inherit;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 1px;
-  text-align: left;
-  cursor: pointer;
-}
-.phone-topbar-island {
-  display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 100%;
+  cursor: pointer;
+}
+.phone-topbar-title svg { flex-shrink: 0; color: var(--gold-hi); }
+.phone-topbar-island {
   font-family: var(--font-display-caps);
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.phone-topbar-island svg { flex-shrink: 0; color: var(--gold-hi); }
-.phone-topbar-sub { max-width: 100%; font-size: 12px; color: var(--parchment-300); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone-topbar-actions { margin-left: auto; flex-shrink: 0; display: flex; gap: 8px; }
+.phone-topbar .phone-icon-btn { border-radius: 50%; }
+.phone-topbar .phone-icon-btn:hover { background: var(--ink-800); }
 .phone-icon-btn {
   width: 44px;
   height: 44px;
@@ -4587,113 +4605,54 @@ button.card-notes { border-style: solid; }
 .phone-icon-btn:hover { background: var(--ink-800); }
 .phone-topbar-title:focus-visible,
 .phone-icon-btn:focus-visible,
-.phone-chip:focus-visible,
 .phone-nav button:focus-visible,
-.phone-minimap:focus-visible,
-.phone-token-main:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.token-ring-btn:focus-visible,
+.planned-move-actions button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 
-.phone-strip {
-  height: 56px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  background: var(--ink-950);
-  border-bottom: 1px solid var(--ink-700);
-}
-.phone-chip {
-  flex-shrink: 0;
-  height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--ink-700);
-  border-radius: 12px;
-  background: var(--ink-900);
-  color: var(--parchment-100);
-  font: inherit;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 1px;
-  cursor: pointer;
-}
-.phone-chip-name { font-size: 14px; font-weight: 600; white-space: nowrap; }
-.phone-chip-sub { font-size: 11px; color: var(--parchment-300); white-space: nowrap; }
-.phone-chip.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-900)); }
-.phone-chip.active .phone-chip-name { color: var(--gold-hi); }
-.phone-chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--parchment-300); font-size: 14px; font-weight: 600; }
-
-.phone-minimap {
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  z-index: 23;
-  width: 92px;
-  height: 92px;
-  padding: 6px;
-  border: 1px solid var(--ink-700);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--ink-950) 92%, transparent);
-  cursor: pointer;
-}
-.phone-minimap svg { display: block; width: 100%; height: 100%; }
-.phone-minimap-island { fill: var(--ink-700); }
-.phone-minimap-island.active { fill: var(--gold-line); }
-.phone-minimap-view { fill: none; stroke: var(--parchment-100); stroke-width: 2; }
-
+/* The island's conditions (Fog, Darkness…), beside its name in the top row. */
 .phone-conditions {
-  position: absolute;
-  left: 12px;
-  top: 112px;
-  z-index: 23;
-  max-width: calc(100% - 88px);
-  min-height: 32px;
-  padding: 0 12px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px 0 10px;
   border-radius: 999px;
   background: #2f5b88;
   color: #ffffff;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
+.phone-conditions svg { flex-shrink: 0; }
+.phone-conditions span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.phone-token-card {
+/* The selected token's actions, fanned around it on the map (MapBoard.jsx
+   TokenRing): the ring is a point at the token's centre, each button offset
+   from it. */
+.token-ring { position: absolute; z-index: 45; width: 0; height: 0; }
+.token-ring-btn {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 24;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
   border: 1px solid var(--gold-line);
-  border-radius: 16px;
-  background: var(--ink-900);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
-}
-.phone-token-main {
-  flex: 1;
-  min-width: 0;
-  min-height: 56px;
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--parchment-100);
-  font: inherit;
-  text-align: left;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink-950) 92%, transparent);
+  color: var(--gold-hi);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
   cursor: pointer;
+  animation: token-ring-in 0.16s ease-out both;
 }
-.phone-token-main > svg { flex-shrink: 0; color: var(--gold-hi); }
+.token-ring-btn.primary { border-color: var(--ember); background: var(--ember-dim); color: #ffffff; }
+@keyframes token-ring-in { from { opacity: 0; transform: scale(0.6); } }
+@media (prefers-reduced-motion: reduce) {
+  .token-ring-btn { animation: none; }
+}
+
 .phone-token-avatar {
   width: 44px;
   height: 44px;
@@ -4707,70 +4666,48 @@ button.card-notes { border-style: solid; }
   box-shadow: 0 0 0 2px var(--token-color, transparent);
 }
 .phone-token-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.phone-token-name { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
-.phone-token-name b { overflow: hidden; text-overflow: ellipsis; font-family: var(--font-display); font-size: 18px; font-weight: 600; }
-.phone-token-name span { font-size: 12px; color: var(--parchment-300); }
 .phone-token-stats { display: flex; align-items: center; gap: 8px; }
 .phone-token-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--ink-700); overflow: hidden; }
 .phone-token-bar span { display: block; height: 100%; transition: width 0.2s ease; }
 .phone-token-hp { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
 .phone-token-ac { padding: 1px 6px; border: 1px solid var(--ink-700); border-radius: 6px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--parchment-200); }
 .phone-token-hint { font-size: 13px; color: var(--parchment-300); }
-.phone-token-steppers { display: flex; flex-direction: column; gap: 2px; }
-.phone-token-steppers button {
+
+/* Existing map HUD, re-seated under the top row and over the dock. */
+.game-screen.phone .hud-initiative,
+.game-screen.phone .turn-ribbon { top: var(--phone-top); left: 12px; right: 12px; transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
+.game-screen.phone .hud-initiative { width: max-content; max-width: calc(100% - 24px); scrollbar-width: none; }
+.game-screen.phone .hud-initiative-chip,
+.game-screen.phone .hud-initiative .hud-caption { flex-shrink: 0; white-space: nowrap; }
+.game-screen.phone .encounter-actions { left: 12px; right: 12px; width: auto; bottom: var(--phone-bottom); }
+.game-screen.phone .hud-ruler { left: 12px; bottom: var(--phone-bottom); }
+
+/* The dock: tools and the sheets used most, icons only, centred over the
+   bottom edge. */
+.phone-nav {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 28;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 26px;
+}
+.phone-nav button {
   width: 44px;
-  height: 30px;
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
-  background: var(--ink-800);
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
   color: var(--parchment-100);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
-
-/* Existing map HUD, re-seated around the phone chrome. */
-.game-screen.phone .hud-zoom { top: 12px; right: 12px; bottom: auto; flex-direction: column; }
-.game-screen.phone .hud-zoom .hud-zoom-value { min-width: 44px; font-size: 11px; }
-.game-screen.phone .hud-zoom .hud-zoom-recenter { border-left: 0; border-top: 1px solid var(--ink-700); }
-.game-screen.phone .hud-zoom .hud-zoom-hide { min-width: 44px; height: 32px; border-left: 0; border-top: 1px solid var(--ink-700); }
-.game-screen.phone .hud-zoom .hud-zoom-hide svg { transform: rotate(-90deg); }
-.game-screen.phone .hud-initiative,
-.game-screen.phone .turn-ribbon { top: 12px; left: 116px; right: 68px; transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
-.game-screen.phone .hud-initiative { width: max-content; max-width: calc(100% - 184px); scrollbar-width: none; }
-.game-screen.phone .hud-initiative-chip,
-.game-screen.phone .hud-initiative .hud-caption { flex-shrink: 0; white-space: nowrap; }
-.game-screen.phone .encounter-actions { left: 12px; right: 12px; width: auto; bottom: 108px; }
-.game-screen.phone .hud-ruler { left: 12px; bottom: 108px; }
-
-.phone-nav {
-  flex-shrink: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 2px;
-  padding: 4px 6px calc(8px + env(safe-area-inset-bottom));
-  background: var(--ink-900);
-  border-top: 1px solid var(--ink-700);
-}
-.phone-nav button {
-  height: 60px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--parchment-300);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  cursor: pointer;
-}
-.phone-nav button.active { color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, transparent); }
+.phone-nav button.active { color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 18%, transparent); }
 
 .phone-sheet-backdrop { position: fixed; inset: 0; z-index: 150; background: rgba(10, 8, 6, 0.62); display: flex; align-items: flex-end; }
 .phone-sheet {
@@ -4881,25 +4818,7 @@ button.card-notes { border-style: solid; }
 .phone-atlas-row-text .phone-atlas-conds { color: #9ec3ea; }
 .phone-atlas-list .phone-caption { margin: 12px 0 0; }
 
-/* A phone held sideways: map on the left, islands and tools in a rail. */
 @media (max-height: 499px) and (orientation: landscape) {
-  .game-screen.phone { display: grid; grid-template-columns: minmax(0, 1fr) 220px; grid-template-rows: 48px minmax(0, 1fr) auto; }
-  .game-screen.phone > .phone-topbar { grid-column: 1; grid-row: 1; height: 48px; }
-  .game-screen.phone > .game-layout { grid-column: 1; grid-row: 2 / 4; }
-  .game-screen.phone > .phone-strip {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    height: auto;
-    flex-direction: column;
-    align-items: stretch;
-    padding: 8px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    border-bottom: 0;
-    border-left: 1px solid var(--ink-700);
-  }
-  .game-screen.phone > .phone-nav { grid-column: 2; grid-row: 3; padding: 4px; border-left: 1px solid var(--ink-700); }
-  .game-screen.phone > .phone-nav button { height: 48px; font-size: 0; gap: 0; }
   .phone-atlas-map { flex-basis: 55%; }
 }
 
@@ -4915,7 +4834,6 @@ button.card-notes { border-style: solid; }
   border-radius: 14px;
   background: color-mix(in srgb, var(--ink-950) 94%, transparent);
 }
-.game-screen.phone .stage-wrap:not(:has(.phone-token-card)) .encounter-actions { bottom: 12px; }
 .game-screen.phone .encounter-move { grid-area: move; padding: 6px 10px; }
 .game-screen.phone .encounter-end-row { grid-area: end; }
 .game-screen.phone .encounter-end { min-height: 44px; font-size: 14px; letter-spacing: 0.08em; }
@@ -4925,25 +4843,18 @@ button.card-notes { border-style: solid; }
 .game-screen.phone .encounter-stop { grid-area: stop; align-self: center; justify-self: end; min-height: 44px; }
 .game-screen.phone .combat-log { left: 0; right: 0; width: auto; }
 
-/* Sideways phone: the token card and the encounter bar share the bottom edge
-   instead of stacking over the short map. */
+/* Sideways phone: the encounter bar keeps to the right half, beside the dock,
+   instead of spanning the short map. */
 @media (max-height: 499px) and (orientation: landscape) {
-  .game-screen.phone .phone-token-card { right: auto; width: min(340px, calc(50% - 18px)); }
-  .game-screen.phone .stage-wrap .encounter-actions { left: auto; width: min(340px, calc(50% - 18px)); bottom: 12px; }
-  .game-screen.phone .phone-conditions { top: 12px; left: 116px; }
+  .game-screen.phone .stage-wrap .encounter-actions { left: auto; width: min(340px, calc(50% - 18px)); }
 }
 
 /* Notches, rounded corners and the home indicator (viewport-fit=cover in
    index.html makes the env() insets real). */
 .game-screen.phone { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-.game-screen.phone > .phone-topbar { box-sizing: border-box; height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
 .phone-atlas { padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .phone-atlas-header { box-sizing: border-box; height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
 .phone-sheet { max-height: calc(88dvh - env(safe-area-inset-top)); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-@media (max-height: 499px) and (orientation: landscape) {
-  .game-screen.phone { grid-template-rows: calc(48px + env(safe-area-inset-top)) minmax(0, 1fr) auto; }
-  .game-screen.phone > .phone-topbar { height: calc(48px + env(safe-area-inset-top)); }
-}
 
 .phone-palettes { display: flex; gap: 8px; padding: 12px 16px 4px; overflow-x: auto; scrollbar-width: none; }
 .phone-palettes button {
@@ -4988,27 +4899,35 @@ button.card-notes { border-style: solid; }
 .planned-move { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 40; overflow: visible; }
 .planned-move-path { stroke: var(--gold-hi); stroke-width: 3; stroke-dasharray: 7 6; stroke-linecap: round; }
 .planned-move-ghost { fill: color-mix(in srgb, var(--gold-hi) 18%, transparent); stroke: var(--gold-hi); stroke-width: 2; stroke-dasharray: 4 4; }
-.planned-move-label-bg { fill: var(--ink-950); stroke: var(--gold-hi); stroke-width: 1; }
-.planned-move-label { fill: var(--gold-hi); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
-.phone-move-card {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 25;
+/* "Move here" and its cancel, under the ghost (over it near the bottom of the
+   screen): the anchor is a point at the ghost's centre. */
+.planned-move-anchor { position: absolute; z-index: 46; width: 0; height: 0; }
+.planned-move-actions { position: absolute; left: 0; transform: translateX(-50%); display: flex; align-items: stretch; gap: 6px; }
+.planned-move-actions.above { transform: translate(-50%, -100%); }
+.planned-move-actions button { min-height: 44px; border-radius: 22px; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55); font: inherit; cursor: pointer; }
+.planned-move-cancel {
+  width: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--gold-line);
+  background: color-mix(in srgb, var(--ink-950) 92%, transparent);
+  color: var(--parchment-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.planned-move-confirm {
+  padding: 4px 16px;
+  border: 0;
+  background: var(--gold-hi);
+  color: var(--ink-950);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--gold-line);
-  border-radius: 16px;
-  background: var(--ink-900);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
-.phone-move-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.phone-move-head b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
-.phone-move-feet { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--gold-hi); }
-.phone-move-sub { margin: 0; font-size: 13px; color: var(--parchment-300); }
+.planned-move-confirm b { font-size: 14px; font-weight: 700; }
+.planned-move-confirm span { font-size: 11px; font-weight: 600; }
 .phone-move-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; }
 .phone-move-actions button { min-height: 48px; }
 .phone-btn-primary {
@@ -5024,13 +4943,8 @@ button.card-notes { border-style: solid; }
   cursor: pointer;
 }
 .phone-btn-primary:disabled { opacity: 0.5; cursor: default; }
-.game-screen.phone .stage-wrap:has(.phone-move-card) .encounter-actions { bottom: 132px; }
-@media (max-height: 499px) and (orientation: landscape) {
-  .phone-move-card { right: auto; width: min(340px, calc(50% - 18px)); }
-}
 
 /* Target and attack (phone). */
-.phone-token-target { flex-shrink: 0; min-height: 48px; }
 .phone-target { display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 20px; }
 .phone-target-summary { display: flex; align-items: center; gap: 12px; }
 .phone-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--parchment-300); }
@@ -5199,7 +5113,7 @@ body:has(.game-screen.phone) .book-card {
   position: absolute;
   left: 12px;
   right: 12px;
-  top: 116px;
+  top: var(--phone-top, 12px);
   z-index: 26;
   display: flex;
   flex-direction: column;
@@ -5214,31 +5128,19 @@ body:has(.game-screen.phone) .book-card {
 .phone-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .phone-edit-actions button { flex: 1 1 auto; min-height: 44px; }
 .phone-atlas-manage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-@media (max-height: 499px) and (orientation: landscape) {
-  .phone-edit-bar { top: 12px; left: 116px; right: 68px; }
-}
-.game-screen.phone .stage-wrap:has(.phone-edit-bar) .phone-conditions { display: none; }
-/* Edit mode on a phone clears the top of the screen for the map: no island
-   chips, mini-map, zoom column, turn order or condition banner (pinch still
-   zooms), and the Edit bar takes the island chips' place. Done brings it all
+/* Edit mode on a phone clears the top of the map: no turn order or condition
+   banner, and the Edit bar sits right under the top row. Done brings them
    back. */
-.game-screen.phone:has(.phone-edit-bar) .phone-strip,
-.game-screen.phone:has(.phone-edit-bar) .phone-minimap,
-.game-screen.phone:has(.phone-edit-bar) .hud-zoom,
+.game-screen.phone:has(.phone-edit-bar) .phone-conditions,
 .game-screen.phone:has(.phone-edit-bar) .hud-initiative,
 .game-screen.phone:has(.phone-edit-bar) .turn-ribbon { display: none; }
-.game-screen.phone .phone-edit-bar { top: 12px; }
-@media (max-height: 499px) and (orientation: landscape) {
-  .game-screen.phone .phone-edit-bar { top: 12px; left: 12px; right: 12px; }
-}
 
-/* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), where the token
-   card sits otherwise. */
+/* The phone's drawing bar (DrawingBar.jsx PhoneDrawBar), over the dock. */
 .phone-draw-bar {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: var(--phone-bottom, 12px);
   z-index: 27;
   display: flex;
   flex-direction: column;
@@ -5416,11 +5318,8 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .stage-wrap:has(.draw-bar) .map-mode-bar { left: 76px; width: min(520px, calc(100% - 92px)); }
 .stage-wrap:has(.hud-initiative) .map-mode-bar { top: 84px; }
 .stage-wrap:has(.turn-ribbon) .map-mode-bar { top: 136px; }
-.game-screen.phone .map-mode-bar { top: 116px; left: 12px; right: 12px; width: auto; }
-.game-screen.phone .stage-wrap:has(.hud-initiative) .map-mode-bar { top: 116px; }
-@media (max-height: 499px) and (orientation: landscape) {
-  .game-screen.phone .map-mode-bar { top: 12px; left: 116px; right: 68px; }
-}
+.game-screen.phone .map-mode-bar { top: var(--phone-top); left: 12px; right: 12px; width: auto; }
+.game-screen.phone .stage-wrap:has(.hud-initiative) .map-mode-bar { top: calc(var(--phone-top) + 56px); }
 .mode-bar-text { flex-grow: 1; font-size: 13px; line-height: 1.4; color: var(--parchment-100); }
 .mode-bar-done,
 .mode-bar-close {
@@ -5436,6 +5335,140 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .mode-bar-close { width: 40px; display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
 .mode-bar-done:hover,
 .mode-bar-close:hover { background: var(--ink-800); }
+
+/* ---------- Areas of effect (utils/areaOfEffect.js) ----------
+   A template on the map (MapBoard.jsx): the squares it covers, its outline,
+   and a tag at its far edge. --area-color is its owner's colour. */
+.area-layer { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.area-cell { fill: var(--area-color); fill-opacity: 0.3; stroke: var(--area-color); stroke-opacity: 0.55; stroke-width: 1; }
+/* The dark edge keeps the outline readable on map art of its own colour. */
+.area-outline { fill: var(--area-color); fill-opacity: 0.12; stroke: var(--area-color); stroke-width: 2.5; stroke-linejoin: round; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9)); }
+.area.draft .area-outline { stroke-dasharray: 8 6; }
+.area-range { stroke: var(--area-color); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
+.token.in-area { outline: 2px dashed var(--parchment-100); outline-offset: 3px; }
+.area-tag {
+  position: absolute;
+  z-index: 44;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--area-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-950) 92%, transparent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  color: var(--parchment-100);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.area-tag.draft { pointer-events: none; padding-right: 10px; }
+.area-tag:not(:has(button)) { padding-right: 10px; }
+.area-tag-swatch { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--area-color); }
+.area-tag b { color: var(--gold-hi); font-weight: 700; }
+.area-tag button {
+  width: 32px;
+  height: 32px;
+  margin: -3px -2px -3px 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--parchment-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.area-tag button:hover { background: var(--ink-700); color: var(--parchment-100); }
+.area-tag button:focus-visible,
+.area-picker button:focus-visible,
+.area-bar-place:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.game-screen.phone .area-tag button { width: 44px; height: 44px; margin: -9px -4px -9px -4px; }
+
+/* Aiming one: the mode bar, with Cancel and Place. */
+.area-bar-place {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--gold-hi);
+  color: var(--ink-950);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.area-bar-place:disabled { opacity: 0.5; cursor: default; }
+
+/* Choosing one (AreaPicker.jsx), in a modal on desktop and a sheet on a phone. */
+.area-picker { display: flex; flex-direction: column; gap: 14px; }
+.phone-sheet .area-picker { padding: 16px 16px 20px; }
+.area-shapes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.area-shapes button {
+  min-height: 68px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: var(--ink-900);
+  color: var(--parchment-200);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.area-shapes button.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-900)); color: var(--gold-hi); }
+.area-rule,
+.area-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-300); }
+.area-field { display: flex; flex-direction: column; gap: 8px; }
+.area-field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-300); }
+.area-sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.area-sizes button {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--parchment-100);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.area-sizes button.active { border-color: var(--gold-hi); color: var(--gold-hi); }
+.area-number { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--parchment-300); }
+.area-number input {
+  width: 64px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--parchment-100);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.area-go {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--gold-hi);
+  color: var(--ink-950);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.area-go:disabled { opacity: 0.5; cursor: default; }
 
 .tip {
   position: relative;
@@ -5467,7 +5500,7 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .toolbar-codes-tip { position: absolute; top: calc(100% + 12px); left: 0; z-index: 130; }
 .phone-tip { width: auto; margin: 4px 0 8px; }
 .phone-tip .tip-arrow { display: none; }
-.phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 24; }
+.phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: var(--phone-bottom, 12px); z-index: 24; }
 .phone-no-hero .hint-empty { background: var(--ink-900); border-style: solid; border-color: var(--gold-line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55); }
 .inspector-scroll .hint-empty { margin: 12px 4px; }
 .asset-empty-hint { margin-bottom: 14px; }

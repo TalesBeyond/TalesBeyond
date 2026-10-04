@@ -15,6 +15,7 @@ import {
   movedGeometry,
   resizedGeometry,
 } from '../utils/drawing.js';
+import { areaShape, areaLabel, areaOutline, outlineBounds, outlineContains } from '../utils/areaOfEffect.js';
 import IslandDrawings from './DrawingLayer.jsx';
 import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
@@ -49,14 +50,19 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw' | 'area'
   zoom = 1,
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
   actorId = null, // whose turn it is, during an encounter
   gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
-  plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
+  plannedMove = null, // phone layout: { entityId, islandId, col, row, confirmLabel, note, onConfirm, onCancel } — a move waiting for "Move here"
+  tokenActions = null, // phone layout: the selected token's actions, fanned around it — [{ id, label, icon, primary, onPress }]
+  areas = [], // area-of-effect templates on this layer (utils/areaOfEffect.js), each with `removable` for this viewer
+  areaDraft = null, // Area tool: the template being aimed
+  onAreaAim = null, // (patch) => void — the draft's origin, aim point or angle, from a press or drag
+  onRemoveArea = null, // (id) => void
   drawings = {}, // the DM's drawings (utils/drawing.js), keyed by id
   drawingOrder = [], // creation order — later drawings paint on top
   hideDrawings = false, // this viewer's "Hide drawings"
@@ -377,7 +383,7 @@ export default function MapBoard({
   // resolves the same reliable way token dragging already does.
 
   function handleIslandPointerDown(e, island) {
-    if (tool === 'ruler' || tool === 'pan' || tool === 'draw') return;
+    if (tool === 'ruler' || tool === 'pan' || tool === 'draw' || tool === 'area') return;
     e.stopPropagation();
     const p = getRelativePoint(e.clientX, e.clientY);
     islandDragRef.current = { id: island.id, downX: p.x, downY: p.y, startX: island.x, startY: island.y };
@@ -765,6 +771,10 @@ export default function MapBoard({
       startDrawing(e);
       return;
     }
+    if (tool === 'area') {
+      startAreaAim(e);
+      return;
+    }
     if (tool !== 'ruler') return;
     const p = getRelativePoint(e.clientX, e.clientY);
     const found = findIslandAt(p.x, p.y);
@@ -835,6 +845,141 @@ export default function MapBoard({
       rulerLine = { p1, p2, feet };
     }
   }
+
+  // ---- Areas of effect (utils/areaOfEffect.js) ----
+  // A template is measured on one island's grid: its token's, or the one it
+  // was laid on. A press (and the drag after it) in the Area tool aims the
+  // draft: a shape with a direction turns towards the pointer, one centred on
+  // a point goes to it. With no token to cast from, the first press is the
+  // origin.
+
+  const areaAimRef = useRef(null); // { islandId, aim: 'direction' | 'point', at } while the pointer is down
+
+  function squaresAt(p, islandId) {
+    const r = islandRects[islandId];
+    return [(p.x - (r.x - originX) * zoom) / r.cellSize, (p.y - (r.y - originY) * zoom) / r.cellSize];
+  }
+  // Corners and centres of squares, where a spell's point of origin goes.
+  const snapHalf = ([x, y]) => [Math.round(x * 2) / 2, Math.round(y * 2) / 2];
+
+  function areaAimPatch(p) {
+    const { islandId, aim, at } = areaAimRef.current;
+    const at2 = squaresAt(p, islandId);
+    if (aim === 'point') return { islandId, aim: snapHalf(at2) };
+    const dx = at2[0] - at[0];
+    const dy = at2[1] - at[1];
+    return Math.hypot(dx, dy) < 0.15 ? {} : { angle: Math.atan2(dy, dx) };
+  }
+
+  function startAreaAim(e) {
+    const shape = areaDraft && areaShape(areaDraft.shape);
+    if (!shape || shape.aim === 'self' || !onAreaAim) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const entity = areaDraft.entityId ? entities[areaDraft.entityId] : null;
+    let islandId = entity ? entity.islandId : areaDraft.islandId;
+    let origin = areaDraft.origin;
+    const patch = {};
+    if (!entity && (shape.aim === 'point' || !origin)) {
+      const found = findIslandAt(p.x, p.y);
+      if (found) islandId = found.island.id;
+      if (!islandRects[islandId]) return;
+      patch.islandId = islandId;
+      if (shape.aim === 'direction') {
+        origin = snapHalf(squaresAt(p, islandId));
+        patch.origin = origin;
+      }
+    }
+    if (!islandRects[islandId]) return;
+    e.preventDefault();
+    const span = entity?.size || 1;
+    areaAimRef.current = { islandId, aim: shape.aim, at: entity ? [entity.col + span / 2, entity.row + span / 2] : origin };
+    onAreaAim({ ...patch, ...areaAimPatch(p) });
+    window.addEventListener('pointermove', onAreaAimMove);
+    window.addEventListener('pointerup', onAreaAimUp);
+  }
+
+  function onAreaAimMove(e) {
+    if (areaAimRef.current) onAreaAim(areaAimPatch(getRelativePoint(e.clientX, e.clientY)));
+  }
+
+  function onAreaAimUp() {
+    window.removeEventListener('pointermove', onAreaAimMove);
+    window.removeEventListener('pointerup', onAreaAimUp);
+    areaAimRef.current = null;
+  }
+
+  // Where a template sits this render: its outline in pixels, the squares it
+  // covers on every island (those whose centre is inside) and the creatures
+  // standing on them. Null while it can't be drawn — its token is on another
+  // map, or it hasn't been given an origin yet.
+  function areaView(area, isDraft) {
+    const shape = areaShape(area.shape);
+    if (!shape) return null;
+    const entity = area.entityId ? entities[area.entityId] : null;
+    if (area.entityId && !entity && (isDraft || shape.aim !== 'point')) return null;
+    const islandId = shape.aim === 'point' ? area.islandId || entity?.islandId : entity ? entity.islandId : area.islandId;
+    const r = islandRects[islandId];
+    if (!r) return null;
+    const span = entity?.size || 1;
+    const fromToken = Boolean(entity) && entity.islandId === islandId;
+    const at = fromToken ? [entity.col + span / 2, entity.row + span / 2] : shape.aim === 'point' ? area.aim : area.origin;
+    const feet = feetOn(islandId);
+    const outline = areaOutline(area, at, fromToken ? span / 2 : 0, feet);
+    if (!outline) return null;
+    const left = (r.x - originX) * zoom;
+    const top = (r.y - originY) * zoom;
+    const toPx = ([x, y]) => [left + x * r.cellSize, top + y * r.cellSize];
+
+    const bounds = outlineBounds(outline);
+    const [minX, minY] = toPx([bounds.minX, bounds.minY]);
+    const [maxX, maxY] = toPx([bounds.maxX, bounds.maxY]);
+    const cells = [];
+    const covered = new Set();
+    for (const id of islandOrder) {
+      const ir = islandRects[id];
+      if (!ir) continue;
+      const iLeft = (ir.x - originX) * zoom;
+      const iTop = (ir.y - originY) * zoom;
+      const lastCol = Math.min(ir.island.cols - 1, Math.floor((maxX - iLeft) / ir.cellSize));
+      const lastRow = Math.min(ir.island.rows - 1, Math.floor((maxY - iTop) / ir.cellSize));
+      for (let row = Math.max(0, Math.floor((minY - iTop) / ir.cellSize)); row <= lastRow; row++) {
+        for (let col = Math.max(0, Math.floor((minX - iLeft) / ir.cellSize)); col <= lastCol; col++) {
+          const cx = iLeft + (col + 0.5) * ir.cellSize;
+          const cy = iTop + (row + 0.5) * ir.cellSize;
+          if (!outlineContains(outline, (cx - left) / r.cellSize, (cy - top) / r.cellSize)) continue;
+          cells.push({ x: iLeft + col * ir.cellSize, y: iTop + row * ir.cellSize, size: ir.cellSize });
+          covered.add(`${id}:${col}:${row}`);
+        }
+      }
+    }
+
+    // A creature is inside when any square of its space is; the one a cone,
+    // line, cube or emanation comes from is not.
+    const inside = [];
+    for (const id of entityOrder) {
+      const e = entities[id];
+      if (!e || (e.kind !== 'hero' && e.kind !== 'mob')) continue;
+      if (e.id === area.entityId && shape.aim !== 'point') continue;
+      const size = e.size || 1;
+      let hit = false;
+      for (let dy = 0; dy < size && !hit; dy++) for (let dx = 0; dx < size && !hit; dx++) hit = covered.has(`${e.islandId}:${e.col + dx}:${e.row + dy}`);
+      if (hit) inside.push(e);
+    }
+
+    const tag = outline.circle
+      ? toPx([outline.cx, outline.cy - outline.r])
+      : toPx([(outline.points[1][0] + outline.points[2][0]) / 2, (outline.points[1][1] + outline.points[2][1]) / 2]);
+    // While aiming a sphere from a token: the line out to its centre, and how far that is.
+    const range =
+      isDraft && shape.aim === 'point' && fromToken
+        ? { from: toPx(at), to: toPx([outline.cx, outline.cy]), feet: Math.round(Math.hypot(outline.cx - at[0], outline.cy - at[1]) * feet) }
+        : null;
+    return { area, isDraft, outline, toPx, scale: r.cellSize, cells, inside, tag, range };
+  }
+
+  const areaViews = [...areas.map((a) => areaView(a, false)), areaDraft && tool === 'area' ? areaView(areaDraft, true) : null].filter(Boolean);
+  const inAreaIds = new Set(areaViews.flatMap((v) => v.inside.map((e) => e.id)));
 
   // Leaving the Ruler tool wipes the measurement off the map; leaving Draw
   // drops a shape that was never finished.
@@ -968,6 +1113,25 @@ export default function MapBoard({
         );
       })}
 
+      {/* Area-of-effect templates: over the maps, under the tokens. */}
+      {areaViews.length > 0 && (
+        <svg className="grid-svg area-layer" width={canvasWidth} height={canvasHeight} aria-hidden="true">
+          {areaViews.map((v) => (
+            <g key={v.area.id} className={`area${v.isDraft ? ' draft' : ''}`} style={{ '--area-color': v.area.color || 'var(--gold-hi)' }}>
+              {v.cells.map((c) => (
+                <rect key={`${c.x}:${c.y}`} x={c.x} y={c.y} width={c.size} height={c.size} className="area-cell" />
+              ))}
+              {v.outline.circle ? (
+                <circle cx={v.toPx([v.outline.cx, v.outline.cy])[0]} cy={v.toPx([v.outline.cx, v.outline.cy])[1]} r={v.outline.r * v.scale} className="area-outline" />
+              ) : (
+                <polygon points={v.outline.points.map((pt) => v.toPx(pt).join(',')).join(' ')} className="area-outline" />
+              )}
+              {v.range && <line x1={v.range.from[0]} y1={v.range.from[1]} x2={v.range.to[0]} y2={v.range.to[1]} className="area-range" />}
+            </g>
+          ))}
+        </svg>
+      )}
+
       {/* Doors render last (on top) regardless of entityOrder, so one stays
           clickable/openable even when a hero token shares its square —
           otherwise whichever happened to be placed more recently would
@@ -991,7 +1155,7 @@ export default function MapBoard({
           return (
             <div
               key={id}
-              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}`}
+              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
               style={{
                 width: size,
                 height: size,
@@ -1067,7 +1231,48 @@ export default function MapBoard({
         );
       })}
 
+      {/* Each template's tag: what it is, whose, how many creatures are inside,
+          and a button to take it off for whoever may. */}
+      {areaViews.map((v) => (
+        <div
+          key={v.area.id}
+          className={`area-tag${v.isDraft ? ' draft' : ''}`}
+          style={{ left: v.tag[0], top: v.tag[1], '--area-color': v.area.color || 'var(--gold-hi)' }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="area-tag-swatch" aria-hidden="true" />
+          <span>
+            {areaLabel(v.area)}
+            {v.range ? ` · ${v.range.feet} ft away` : !v.isDraft ? ` · ${v.area.name}` : ''}
+          </span>
+          {v.inside.length > 0 && <b title={v.inside.map((e) => e.name).join(', ')}>{v.inside.length} inside</b>}
+          {v.area.removable && onRemoveArea && (
+            <button type="button" aria-label={`Remove ${v.area.name}’s ${areaLabel(v.area)}`} title="Remove" onClick={() => onRemoveArea(v.area.id)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      ))}
+
       {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
+
+      {tokenActions?.length > 0 && tool === 'play' && !plannedMove && dragPos?.id !== selectedId && (() => {
+        const entity = entities[selectedId];
+        const r = entity && islandRects[entity.islandId];
+        if (!r) return null;
+        const span = r.cellSize * (entity.size || 1);
+        return (
+          <TokenRing
+            cx={(r.x - originX) * zoom + entity.col * r.cellSize + span / 2}
+            cy={(r.y - originY) * zoom + entity.row * r.cellSize + span / 2}
+            radius={Math.max(RING_MIN_RADIUS, span / 2 + 44)}
+            actions={tokenActions}
+          />
+        );
+      })()}
 
       {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
         <DrawFeetLabel
@@ -1135,33 +1340,111 @@ function hpPercent(entity) {
   return Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
 }
 
+// Floating phone chrome an on-map control must stay clear of: the top row, and
+// the dock with the encounter bar over it.
+const CHROME_TOP_PX = 76;
+const CHROME_BOTTOM_PX = 200;
+const RING_MIN_RADIUS = 74; // keeps 48 px buttons from touching around a one-square token
+const RING_BUTTON_PX = 48;
+
+// How far an on-map control's anchor (the element's own position, a point on
+// the map) sits from each edge of the visible stage, measured after layout —
+// what the control needs to keep clear of the screen's edges and the chrome.
+function useStageInsets(ref, deps) {
+  const [insets, setInsets] = useState(null);
+  useLayoutEffect(() => {
+    const stage = ref.current?.closest('.stage');
+    if (!stage) return;
+    const box = stage.getBoundingClientRect();
+    const at = ref.current.getBoundingClientRect();
+    setInsets({ top: at.top - box.top, bottom: box.bottom - at.top, left: at.left - box.left, right: box.right - at.left });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return insets;
+}
+
+// Phone layout: the selected token's actions, fanned over it on the map —
+// under it when it stands too near the top of the screen, and leaning away
+// from a side edge it stands next to.
+function TokenRing({ cx, cy, radius, actions }) {
+  const ref = useRef(null);
+  const insets = useStageInsets(ref, [cx, cy, radius]);
+  const reach = radius + RING_BUTTON_PX / 2;
+  const below = Boolean(insets) && insets.top - reach < CHROME_TOP_PX;
+  const lean = !insets ? 0 : insets.left < reach ? 1 : insets.right < reach ? -1 : 0;
+  const step = 2 * Math.asin((RING_BUTTON_PX + 6) / 2 / radius);
+  const fan = step * (actions.length - 1);
+  const start = -Math.PI / 2 - fan / 2 + (lean * fan) / 2;
+  return (
+    <div className="token-ring" ref={ref} style={{ left: cx, top: cy }} role="group" aria-label="Token actions">
+      {actions.map((action, i) => {
+        const angle = start + step * i;
+        return (
+          <button
+            key={action.id}
+            type="button"
+            className={`token-ring-btn${action.primary ? ' primary' : ''}`}
+            style={{ left: Math.cos(angle) * radius, top: Math.sin(angle) * radius * (below ? -1 : 1) }}
+            aria-label={action.label}
+            title={action.label}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              action.onPress();
+            }}
+          >
+            {action.icon}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // A move waiting for "Move here" (phone, mid-encounter): a dashed path from
-// the token to the chosen square, a ghost ring there, and its label.
+// the token to the chosen square, a ghost ring there, and under it (over it,
+// near the bottom of the screen) the buttons that commit or drop the move.
 function PlannedMoveOverlay({ plan, entity, islandRects, originX, originY, zoom, width, height }) {
   const from = entity && islandRects[entity.islandId];
   const to = islandRects[plan.islandId];
+  const size = entity?.size || 1;
+  const x2 = to ? (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2 : 0;
+  const y2 = to ? (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2 : 0;
+  const radius = to ? (to.cellSize * size) / 2 - 2 : 0;
+  const actionsRef = useRef(null);
+  const insets = useStageInsets(actionsRef, [x2, y2, radius]);
+  const above = Boolean(insets) && insets.bottom - radius - 64 < CHROME_BOTTOM_PX;
   if (!from || !to) return null;
-  const size = entity.size || 1;
   const x1 = (from.x - originX) * zoom + entity.col * from.cellSize + (from.cellSize * size) / 2;
   const y1 = (from.y - originY) * zoom + entity.row * from.cellSize + (from.cellSize * size) / 2;
-  const x2 = (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2;
-  const y2 = (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2;
-  const radius = (to.cellSize * size) / 2 - 2;
-  const label = plan.label || '';
-  const labelW = label.length * 7.2 + 14;
   return (
-    <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
-      <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
-      <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
-      {label && (
-        <g>
-          <rect x={x2 - labelW / 2} y={y2 - radius - 26} width={labelW} height={20} rx={10} className="planned-move-label-bg" />
-          <text x={x2} y={y2 - radius - 12} textAnchor="middle" className="planned-move-label">
-            {label}
-          </text>
-        </g>
-      )}
-    </svg>
+    <>
+      <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
+        <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
+        <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
+      </svg>
+      <div className="planned-move-anchor" ref={actionsRef} style={{ left: x2, top: y2 }}>
+        {plan.onConfirm && (
+          <div
+            className={`planned-move-actions${above ? ' above' : ''}`}
+            style={{ top: above ? -(radius + 10) : radius + 10 }}
+            aria-live="polite"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button type="button" className="planned-move-cancel" aria-label="Cancel the move" onClick={plan.onCancel}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+            <button type="button" className="planned-move-confirm" onClick={plan.onConfirm}>
+              <b>{plan.confirmLabel}</b>
+              {plan.note && <span>{plan.note}</span>}
+            </button>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
