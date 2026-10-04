@@ -207,8 +207,8 @@ rule (`src/utils/grid.js`'s `feetDistance`).
 - **Add your own image**: upload any image as a Hero or Monster token
   (client-resized to 256px before embedding as a data URL).
 - **Default heroes** (8: Fighter, Wizard, Rogue, Ranger, Bard, Barbarian,
-  Cleric, Paladin) and **default monsters** (6: Goblin, Skeleton, Orc,
-  Dire Wolf, Young Dragon, Beholder) — hand-drawn inline-SVG icons
+  Cleric, Paladin) and **default monsters** (5: Goblin, Skeleton, Orc,
+  Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
   (`src/data/defaultTokens.js`), one click to place. Placing a default
   monster auto-seeds its **Droppables** loot list (see below).
 - **Placeable → Door**: name + target layer (disabled until a second
@@ -217,22 +217,36 @@ rule (`src/utils/grid.js`'s `feetDistance`).
   XLarge=12 item slots) → opens a configuration modal (shared
   `ChestContentsEditor`, see below) before placing.
 
-### Right panel — inspector (`RightPanel.jsx`)
+### Players button (`Toolbar.jsx` `PlayerList`)
 
-Selecting a token shows a kind-specific inspector card:
+A toolbar button beside Configurations, for everyone at the table, labelled
+with the seats taken ("2/10 players"). It drops down the player list: colour
+and online dot, name ("(you)" for yourself), and the DM or the hero they play,
+"away" when they've dropped.
 
-- **Hero** — a tabbed 5e character sheet: **Overview** (level, speed, AC,
-  initiative, death saves, HP, size, conditions), **Abilities** (6
-  scores + auto-computed modifiers), **Saves & Skills** (proficiency
-  checkboxes + hand-adjustable bonus per save/skill, for Expertise etc.),
-  **Battle Equipment** (attacks picked from a small default weapon list,
-  each rollable: d20 to-hit vs. a picked mob's AC, then damage dice
-  straight off that mob's HP), **Spells** (per-level slots + prepared
-  spell list, levels 0–9), **Bag** (freeform gear + other-items lists,
-  plus bronze/silver/gold currency). DM notes appear at the bottom,
-  host-only.
-- **Mob** — name, AC, HP, size, conditions, a collapsible **Droppables**
-  section (see below), and DM notes — all host-only where noted.
+### Right panel — inspector (`RightPanel.jsx`, `CreatureCard.jsx`)
+
+Selecting a hero or monster shows its whole inspector as one collectible
+**card**: the name (and a hero's level) on the title bar, the token art with
+an armor-class shield and a hit-point heart, the owner picker ("played by",
+DM-only), a life bar with −/+ steppers, Initiative / Speed / Size plaques,
+the six ability scores, death saves (heroes), condition chips, and a tab
+ribbon:
+
+- **Hero** — Battle (attacks from a small default weapon list, each
+  rollable: d20 to-hit vs. a picked mob's AC, then damage dice straight off
+  that mob's HP), Spells (per-level slots + prepared list, levels 0–9), Bag
+  (gear and other items, bronze/silver/gold), Skills (proficiency + a
+  hand-adjustable bonus per save/skill), and DM (host-only: token sound,
+  private notes, remove).
+- **Mob** — Battle, Loot (the Droppables list, below), Skills and DM for the
+  host; a player sees only its name, AC, HP, size and conditions.
+
+Every value a viewer may change is **click-to-edit**: a pencil appears on
+hover, a click turns it into a field, Enter or leaving it saves, Esc
+cancels. The DM edits the card; a hero's own player edits its Battle, Spells
+and Bag tabs; anyone else sees plain values with no pencil.
+
 - **Door** — name + linked layer.
 - **Chest** — name, Open/Close toggle (independent of the active tool), a
   **Give to a player** picker per item once opened (moves the item from
@@ -265,6 +279,33 @@ built from the PHB weapon/item prices already in the compendiums (the
 PHB itself doesn't publish monster loot tables — that's the DMG/Monster
 Manual's job — so these are hand-picked, not canonical).
 
+### Encounters (`EncounterHud.jsx`, `utils/encounter.js`)
+
+Roll for Initiative has a **Start encounter** box (ticked by default). Rolling
+with it ticked starts a fight: a turn-order ribbon with the round across the
+top of the map, the acting token pulsing, its reachable squares (speed from
+the sheet, measured from where the turn began) tinted on the map, and an
+**End turn / Roll d20 / Log** stack bottom-right. The encounter is one synced value (`tables.encounter`,
+49_encounter.sql): the DM ends any turn; a player ends their own hero's turn
+through the `end_encounter_turn` RPC (or an intent, on a guest table).
+
+During an encounter, selecting a creature other than the acting hero adds a
+preview of that hero's first attack against it under its inspector card
+(chance to hit, damage, HP left).
+
+### Game-feel moments (`lib/fx.js`, `FxLayer.jsx`)
+
+Floating hit / critical / heal / MISS numbers over tokens, a life bar whose
+lost chunk drains after a beat and glows below 25%, a turn banner, a big die
+for natural 20s and 1s, cardboard condition chits, and loot cards that flip
+face-up (mob droppables, or a chest being opened). HP changes and chests are
+read from synced state, so every player sees them; rolls and misses are local.
+The **Grimoire** palette restyles all of it as the DM's open book: a
+leather cover with the map as the left page and the inspector as the right,
+cross-hatched ink walls around every island, inked tokens, and a thumb index
+down the map page's edge (`BookTabs.jsx`) — Map, Bestiary, Armory, Dice,
+Music, and the Chronicle (the combat log, open any time).
+
 ### DM notes
 
 A private free-text box on every hero and mob's inspector, labeled "only
@@ -273,6 +314,118 @@ to jot secrets (a hero's hidden backstory hook, a monster's true nature)
 that never appears in a player's own view of that token.
 
 ---
+
+### Drawings (`DrawingLayer.jsx`, `DrawingBar.jsx`, `DrawStyle.jsx`, `utils/drawing.js`)
+
+The DM's **Draw** tool (Tools menu; on a phone, Edit → Draw) marks up the
+map; every seated player sees the result, and only the DM can draw.
+
+- **Where drawings live**: each belongs to the island it was drawn on —
+  `{ id, islandId, kind: 'pencil' | 'line' | 'circle' | 'rect' | 'fill', geometry, style }`
+  in `state.drawings` / `state.drawingOrder` (creation order, newest on top),
+  geometry in grid squares from the island's top-left corner. They paint in
+  an SVG inside the island, over the map art, grid and day/night tint and
+  under every token, so anything past the island's edge is cut off. Dragging
+  the island moves them; deleting it (or its layer) deletes them.
+- **Tools**: Pencil, Line, Circle (grows from its centre), Rectangle,
+  Fill island (a click paints the whole island in the current colour, laid
+  over the map art and under the grid; an Opacity slider sits beside the
+  bar; clicking a filled island recolours it, and the same colour again
+  clears it; Select and Eraser pass over fills), Select (move any drawing within its island; handles resize lines, circles
+  and rectangles; pencil strokes move only) and Eraser (removes every
+  drawing it touches, whole). A press in Draw always draws, even on a token;
+  right-drag still pans.
+- **Style**: a colour wheel with brightness, 8 swatches and the last 5
+  colours used; 4 thicknesses, and with the Pencil a Thickness slider beside
+  the bar (a style's `width` is then a number of squares); a see-through
+  fill for circles and rectangles. **Snap to grid** puts line ends and circle centres on grid
+  corners or square centres, radii on whole squares and rectangle corners on
+  grid corners. A feet label (the ruler's look) shows while drawing or
+  resizing.
+- **Undo/redo** (bar buttons, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y) covers
+  the DM's own draws, moves, resizes, restyles, erases and clears in this
+  browser session. **Clear this island** / **Clear this map** confirm with a
+  count. Anyone can **Hide drawings** in their own browser.
+- **Sync**: one write per finished action — the `drawings` table in cloud
+  mode, the guest broadcast in a guest table, the saved state locally. The
+  drawing preferences (tool, style, Snap, recent colours, Hide) are
+  `hearthbound:drawprefs` in this browser only.
+
+### Dice rolls at the table (`RollFeed.jsx`)
+
+Players roll in the open; the DM's own rolls stay on the DM's screen unless
+they choose otherwise.
+
+- Every roll — the dice window, Roll d20 in a fight, attack rolls (with the
+  target and hit or miss) — announces itself on `lib/fx.js` as
+  `{ type: 'rolled', what, dice, detail, total, flag }`. `GameView` sends a
+  player's roll to the whole table; a DM's roll only when **Reveal rolls to
+  players** is on (Configurations; the Dice section of the phone's DM table
+  menu; off by default; this browser only, `hearthbound:revealRolls`).
+- Rolls travel live and are never stored: Supabase Broadcast on the cloud
+  table's own `table:<id>` channel (`subscribeToTable`'s `onRoll` /
+  `sendRoll`), or the guest channel's `roll` event. A local table has no one
+  else to tell.
+- Everyone else sees a short card over the map as a roll lands, and every
+  roll goes into the **Roll log** (the toolbar's **Roll log** button on desktop, with a count of new rolls from others; Run table or
+  Party → Roll log on a phone). The DM's hidden rolls are marked "Only you";
+  revealed ones show as "The DM" with "Shown by the DM". The dice window says
+  who will see the next roll.
+
+### Hints (`Hints.jsx`)
+
+Wherever someone gets stuck, the app says why something can't be used yet,
+then where to fix it — naming places the way the screen does ("Mapping →
+Layers") and offering the fix when it's one step. Four patterns:
+
+- **Hint** (inline, always shown): the door on a one-map table (Create a
+  layer opens an inline form; the new map is then picked for the door), a
+  door with no map picked, a hero nobody plays, Battle with an empty bag
+  (Open the Bag), nothing to attack, loot with no heroes (Open Tokens),
+  taking loot without a hero, Initiative with nobody picked, Islands
+  (Switch to Edit), the base layer, asset
+  storage with nothing saved, and Music where it can't play.
+- **Empty state**: the DM's empty map (Open Tokens / the Add sheet), and a
+  player without a hero (inspector, phone card).
+- **Mode bar** across the top of the map while Ruler, Edit, Group islands
+  or Draw changes what a press does, with a way out; each has an × that
+  hides it on this device.
+- **Tip**, once per device: which code to share on first hosting.
+
+**Show hints and tips** (Configurations → Hints on/off; Look & sound on a
+phone) turns tips and mode bars off on this device — inline hints stay.
+**Tips again** / **Show all tips again** brings dismissed ones back. Stored
+as `hearthbound:hints` in this browser only. "Open Tokens" and "Open the
+Bag" travel over `lib/fx.js` (`{ type: 'open', panel: 'tokens' }`,
+`{ type: 'cardTab', key }`).
+
+### Phone layout (`PhoneChrome.jsx`, `PhoneCreatureSheet.jsx`, `PhoneHostScreens.jsx`)
+
+Below `(max-width: 767px), (max-height: 499px)` (`PHONE_QUERY`) `GameView`
+renders an islands-first phone layout around the same `MapBoard`, store,
+handlers and permissions — no separate route, reducer actions or sync.
+MOBILE_DESIGN.md is the design; REQ-011 the plan.
+
+- **Island view**: the top bar names the active island over its layer; island
+  chips *fly to* an island (active island + the zoom that fits it + centre);
+  a mini-map and the **Atlas** show the whole layer. Pinch zooms (a CSS
+  transform while the fingers move, one real zoom when they lift), one finger
+  pans empty map in Play.
+- **Interaction**: tap a square to move your token (in an encounter the
+  acting token gets a *planned move* — path, feet, "Move here"); a **Target**
+  sheet previews and rolls an attack (`resolveAttackRoll` in
+  `utils/combat.js`, shared with the Battle tab); door and chest sheets.
+- **Sheets**: the phone creature sheet (Fight · Magic · Bag · Stats · DM for
+  heroes, Fight · Loot · Stats · DM for monsters, reusing the desktop tab
+  bodies on a paper page); dice (the same `DiceModal`, its roll log now kept
+  in `GameView`); the player table menu with **Mute on this device**
+  (`tb.muteDevice`, `lib/sfx.js`); Party; the DM's Add sheet
+  (`TokenSidebar` `layout="phone"`), Run the table and table menu.
+- The DM's `Toolbar` stays mounted out of sight on a phone; its panels
+  (bestiary, layers, islands, initiative, asset storage, clock, ambience)
+  open over `lib/fx.js` `{ type: 'open', panel }` events. Every modal rises
+  as a bottom sheet.
+- A guest table hosted from a phone holds a Screen Wake Lock while visible.
 
 ## 5. Persistence — local mode
 
@@ -314,6 +467,7 @@ policy and RPC below keys off that session's `auth.uid()`.
 | `13_mob_droppables.sql` | `entities.drop_items jsonb`, the Droppables loot list (superseded by migration 15) |
 | `14_entity_ordering_and_player_leave.sql` | `entities.created_at` (real, reliable stacking-order timestamp — the pre-existing `z_order` column was declared but never actually written by the client); a self-only DELETE policy on `players` so **Leave** actually frees a seat in cloud mode instead of only flipping `connected` |
 | `15_entity_dm_data_privacy.sql` | Moves `dm_notes`/`drop_items` off `entities` into a new `entity_dm_data` table with host-only SELECT/UPDATE/DELETE — a non-host's query (or Realtime subscription) now returns zero rows instead of the raw value, so this data is actually private, not just UI-hidden |
+| `52_drawings.sql` | The Draw tool: a `drawings` table (one row per shape, `island_id` cascading from `islands`), members read, host writes; added to the realtime publication |
 | `16_dm_only_edits.sql` | The DM is the only one who edits information — INSERT/DELETE on `entities` becomes host-only, and a BEFORE UPDATE trigger (`enforce_entity_write_permissions`) restricts a non-host's UPDATE to exactly two cases: moving their own hero (col/row/island_id), or opening/closing a chest (opened/image_url) |
 
 Every table trusts "any seated member of this table" for reads and (for
@@ -339,8 +493,8 @@ migration 14, deleted by its own owner (leaving).
 ### Realtime (`src/lib/realtime.js`)
 
 One Postgres-changes subscription per open table, listening on
-`entities`, `players`, `layers`, `islands`, `tables` (open/close), and
-`invite_codes` (rotation) — every event is translated into the exact same
+`entities`, `players`, `layers`, `islands`, `tables` (open/close),
+`drawings`, and `invite_codes` (rotation) — every event is translated into the exact same
 reducer action a local interaction would dispatch, so no component ever
 needs to know whether a change came from this browser or someone else's.
 Conflict handling is last-write-wins per row. This is already a working

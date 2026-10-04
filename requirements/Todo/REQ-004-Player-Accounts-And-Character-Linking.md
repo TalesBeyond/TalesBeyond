@@ -10,7 +10,7 @@
 | Area | Auth / cloud mode |
 | Author | Blaxine |
 | Created | 2026-09-09 |
-| Last Updated | 2026-09-09 |
+| Last Updated | 2026-09-30 |
 
 ## Short Description
 
@@ -33,8 +33,12 @@ unaffected.
 ## Constraints
 
 - `join_table`'s upsert (`supabase/migrations/20250101000003_functions.sql:100-107`, `on conflict (table_id, auth_user_id) do update`) already resumes the *same* `players` row whenever the same `auth_user_id` rejoins a table — this is what makes an account durable across sessions with **no schema change**: only switching identities (guest → account, a new `auth_user_id`) produces a second seat.
+  - *As of 2026-09-30:* `join_table` no longer uses `ON CONFLICT`. `20250101000020_fix_join_table_on_conflict_ambiguous.sql` replaced it with an explicit "update, else insert" (`PITFALLS.md` #14). The behaviour is the same: one seat per `(table_id, auth_user_id)`.
+- **Guest DM tables (REQ-008) have no `players` rows.** `JoinForm` first probes the invite code over Broadcast (`requestGuestJoin`, `Landing.jsx:897`) and falls back to the cloud join only when no guest DM answers. A player account can't hold a seat at a guest table, so this plan's account path applies only to cloud tables.
+- **The roster has moved out of `RightPanel`.** Since 2026-09-29 (`7361789`) the player list is the toolbar's "N/10 players" dropdown (`PlayerList`, `src/components/Toolbar.jsx:161`). On phones it's the Party sheet (`PhonePartySheet`, `src/components/PhoneChrome.jsx`), and REQ-011 committed phones to full parity. The Owner control is now the hero inspector's "Played by" select (`RightPanel.jsx`, around line 651), no longer `OwnerField`.
+- **Anonymous sessions can't upload to Storage** (`20250101000048_no_guest_uploads.sql`, keyed on the JWT's `is_anonymous`). Players never upload, so this doesn't matter today. It is, though, a precedent for telling account holders apart from anonymous sessions on the server.
 - The installed `@supabase/auth-js` already exposes `session.user.is_anonymous` (`node_modules/@supabase/auth-js/dist/main/lib/types.d.ts`) — the client can already tell "signed in for real" apart from "anonymous or no session" for its own session, with no new RPC.
-- `RightPanel.jsx`'s existing `OwnerField` (`src/components/RightPanel.jsx:172-194`) already lets the host reassign any hero's `ownerId` to any current player row by name — confirmed during the interview that this already fulfills "the DM links the token to that player," with no new linking UI needed.
+- `RightPanel.jsx`'s existing `OwnerField` (`src/components/RightPanel.jsx:172-194` when planned; now the hero inspector's "Played by" select) already lets the host reassign any hero's `ownerId` to any current player row by name — confirmed during the interview that this already fulfills "the DM links the token to that player," with no new linking UI needed.
 - No policy on `players` may subquery `players` itself directly — doing so is exactly what caused the infinite-recursion bug fixed in REQ-003 (`PITFALLS.md` #13). The new host-remove-seat policy this plan adds must go through its own `SECURITY DEFINER` helper, mirroring `my_table_ids()` (`20250101000018_fix_players_rls_recursion.sql`), not an inline subquery.
 - `entities.owner_id references players(id) on delete set null` (`supabase/migrations/20250101000001_schema.sql:65`) — removing a stale seat automatically un-assigns (not deletes) any hero it still owns. Removing the old seat before relinking is a harmless, easily-corrected no-op, not data loss.
 - A returning player who signs up produces a brand-new `players` row that counts toward `enforce_table_capacity`'s 10-seat cap (`01_schema.sql:73-85`) alongside their old, now-stale guest row, until the host removes it (Slice 3).
@@ -62,6 +66,8 @@ unaffected.
 - [ ] **AC9 — Local demo mode is unaffected.** None of this appears in local demo mode — joining stays exactly as it is today, with no account prompt.
 
 ## Technical Notes
+
+> **Line numbers below are from 2026-09-09.** As of 2026-09-30: `signUpHost`/`signInHost` are at `auth.js:28`/`:43`; in `Landing.jsx`, `HostForm` is at `:164`, `HostTablesList` at `:298`, `HostAuthForm` at `:489` and `JoinForm` at `:870`; in `remoteApi.js`, `joinTableRemote` is at `:54`, `whoamiForCodeRemote` at `:80`, `listMyTablesRemote` at `:95` and `removePlayerRemote` at `:458`; `store.jsx`'s `REMOVE_PLAYER` is at `:364`; `GameView.jsx`'s leave path is `leaveTable` (`:2351`, which gates a guest DM's un-exported leave) plus `doLeaveTable` (`:2359`). The roster notes (`RightPanel.jsx:60-73`) no longer apply; see Constraints and S007. The next migration number is `20250101000056`.
 
 - `src/lib/auth.js:28-50` — rename `signUpHost`/`signInHost` to role-agnostic `signUp`/`signIn` (the bodies are already generic email/password calls with no host-specific logic); update `Landing.jsx`'s `HostAuthForm` call sites (currently lines 233, 235) to the new names. `ensureAnonymousSession()` (lines 10-23) is untouched.
 - `src/components/Landing.jsx:73-113` (`HostForm`) — the `authState` (`checking`/`signedOut`/`signedIn`) pattern to mirror in `JoinForm` (currently lines 394-498). The one difference: `JoinForm`'s signed-out state must distinguish "no session" and "an anonymous session already exists" (both eligible for the guest choice) from "a real account is signed in" (skip straight to signed-in), using `session.user.is_anonymous` from `supabase.auth.getSession()`.
@@ -112,7 +118,7 @@ unaffected.
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
 |  | S005 | P | Host-remove-seat policy | New migration: `my_hosted_table_ids()` (`SECURITY DEFINER`, mirroring `my_table_ids()`) plus a second `players` DELETE policy using it, additive alongside the existing self-only Leave policy. | — | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
 |  | S006 | S | Host-remove-seat wiring | Add a host-only removal function in `GameView.jsx` mirroring `leaveTable`'s shape (dispatch `REMOVE_PLAYER` + call `removePlayerRemote`), passed down to `RightPanel`. | S005 | `src/components/GameView.jsx` |
-|  | S007 | U | Roster "Remove" control | Add a host-only, per-row "Remove" control to `RightPanel`'s player roster (excluding the host's own row), wired to S006. | S006 | `src/components/RightPanel.jsx` |
+|  | S007 | U | Roster "Remove" control | Add a host-only, per-row "Remove" control to the player roster (excluding the host's own row), wired to S006. The roster is now the toolbar's Players dropdown (`PlayerList`) on desktop and the Party sheet on phones, so it goes in both. | S006 | `src/components/Toolbar.jsx`, `src/components/PhoneChrome.jsx` |
 |  | S008 | D | Thesaurus + Pitfalls update | Add "Guest" and "Player account" to `THESAURUS.md`; update `PITFALLS.md` #6 to reflect that players now have the same account-based recovery path hosts already got in REQ-003. | S007 | `THESAURUS.md`, `PITFALLS.md` |
 
 ### Dependency graph
@@ -133,6 +139,7 @@ S005 → S006 → S007 → S008
 - Any change to host accounts or host-side flows — REQ-003 is untouched.
 - Bulk or self-service seat cleanup — the host removes one seat at a time.
 - Notifying a removed player's own open tab that their seat was deleted — if their tab is still open, they'll only notice their next write failing.
+- Player accounts at guest DM tables (REQ-008): those tables have no `players` rows to resume. The guest join probe keeps running before any account choice matters.
 
 ## Open Questions
 
@@ -169,3 +176,4 @@ S005 → S006 → S007 → S008
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-09-09 | Blaxine | Initial plan. |
+| 2026-09-30 | Claude | Status review against the code. Not started: `signUpHost`/`signInHost` are unchanged, and neither `listMyJoinedTablesRemote` nor `my_hosted_table_ids()` exists. Brought the plan up to date with changes since it was written: the `join_table` upsert rewrite (`020`); guest DM tables and the join probe (REQ-008); the roster moving to the toolbar's Players dropdown and the phone Party sheet, so S007 now targets `Toolbar.jsx` and `PhoneChrome.jsx`; the Owner control is now "Played by"; the anonymous-upload block (`048`). Refreshed line numbers and the next migration number. |

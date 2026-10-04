@@ -1,11 +1,13 @@
 import { makeIconDataUrl } from './defaultTokens.js';
 import { defaultCharacterSheet } from './characterSheet.js';
 
-// The Monsters chapter of the compendium: twenty of the creatures a table
+// The Monsters chapter of the compendium: nineteen of the creatures a table
 // meets most often, lowest challenge rating first. Stat numbers follow the
 // published 5e SRD stat blocks; the descriptions are our own wording.
 // `size` is the token's width in squares (Large creatures are 2x2), `attack`
-// is the short action line the DM gets as a starting note on the token.
+// is the short action line the DM gets as a starting note on the token — and
+// what the monster's Battle Equipment is read from (parseMonsterAttacks
+// below), so write each attack as "Name +to hit, dice+bonus".
 
 const M = (key, name, kind, cr, hp, ac, speed, abilities, size, icon, color, attack, description) => ({
   key,
@@ -43,12 +45,11 @@ export const MONSTERS = [
   M('owlbear', 'Owlbear', 'Large monstrosity', '3', 59, 13, 40, [20, 12, 17, 3, 12, 7], 2, 'claw', '#6b5a3e', 'Multiattack: Beak +7, 1d10+5 piercing and Claws +7, 2d8+5 slashing. Keen Sight and Smell.', 'A bear with an owl\'s beak and a foul temper, fiercely territorial and more than willing to charge anything that wanders into its woods.'),
   M('troll', 'Troll', 'Large giant', '5', 84, 15, 30, [18, 13, 20, 7, 9, 7], 2, 'fist', '#4a5d33', 'Multiattack: Bite +7, 1d6+4 and two Claws +7, 2d6+4 slashing. Regeneration: regains 10 HP each turn unless it took fire or acid damage.', 'A tall, rubbery-skinned bruiser whose wounds close almost as fast as they open. Fire and acid are the only sure cure.'),
   M('young-green-dragon', 'Young Green Dragon', 'Large dragon', '8', 136, 18, 40, [19, 12, 17, 16, 13, 15], 2, 'wing', '#3f6a3a', 'Multiattack: Bite +7, 2d10+4 piercing plus 2d6 poison, and two Claws +7, 2d6+4. Poison Breath (Recharge 5-6): 40 ft cone, DC 14 Constitution, 12d6 poison.', 'A scheming forest dragon that lures adventurers deep into the woods with lies and flattery before it attacks.'),
-  M('beholder', 'Beholder', 'Large aberration', '13', 180, 18, 20, [10, 14, 18, 17, 15, 17], 2, 'eye', '#5c3a6b', 'Bite +5, 4d6 piercing. Eye Rays: three random rays each turn (charm, paralyze, fear, slow, disintegrate, death and more). Antimagic Cone.', 'A floating sphere of teeth and eyestalks that hates every rival, its gaze deadly and its paranoia complete.'),
 ].map((m) => ({ ...m, imageUrl: makeIconDataUrl(m.icon, m.color) }));
 
 // The draft addEntity (GameView.jsx) turns into a placed monster token: hit
 // points, armor class, size and starting DM notes all come from the entry, and
-// the ability scores and speed land on the monster's character sheet.
+// the ability scores, speed and attacks land on the monster's character sheet.
 export function monsterToDraft(m) {
   return {
     kind: 'mob',
@@ -60,7 +61,7 @@ export function monsterToDraft(m) {
     size: m.size,
     mobKey: m.key,
     dmNotes: m.attack,
-    mobSheet: { ...defaultCharacterSheet(), armorClass: m.ac, speed: m.speed, abilities: { ...m.abilities } },
+    mobSheet: { ...defaultCharacterSheet(), armorClass: m.ac, speed: m.speed, abilities: { ...m.abilities }, attacks: parseMonsterAttacks(m.attack) },
   };
 }
 
@@ -68,4 +69,24 @@ export function monsterToDraft(m) {
 // name, picture, color and hit points), so it gets the plain defaults.
 export function customMonsterToDraft(m) {
   return { kind: 'mob', name: m.name, imageUrl: m.imageUrl, color: m.color, maxHp: m.maxHp || 15 };
+}
+
+// A monster's attacks, read out of its action line: every "Name +N, XdY+Z"
+// in it ("Bite +4, 1d4+2 piercing", "two Claws +7, 2d6+4") becomes one entry
+// of the sheet's Battle Equipment. Unlike a hero's, which names a weapon in
+// the bag and takes its dice from the weapon catalog, a monster's attack
+// carries its own dice — a bite is in no catalog, and a bugbear's morningstar
+// hits harder than a hero's. Riders (poison, saves, Multiattack) stay in the
+// DM notes. Works on the built-in entries and the catalog's alike, since both
+// have the line.
+const ATTACK_PATTERN = /([A-Z][A-Za-z' -]*?)\s*\+(\d+),\s*(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/g;
+
+export function parseMonsterAttacks(text) {
+  return [...String(text || '').matchAll(ATTACK_PATTERN)].map((m) => ({
+    weaponName: m[1].trim(),
+    numberOfDice: Number(m[3]),
+    diceType: `d${m[4]}`,
+    additionalModifier: Number(m[2]),
+    additionalDamage: m[6] ? Number(m[6]) * (m[5] === '-' ? -1 : 1) : 0,
+  }));
 }

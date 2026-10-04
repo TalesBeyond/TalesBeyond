@@ -1,30 +1,47 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
-import { playDiceSound } from '../lib/sfx.js';
-import { DEMO_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
+import { playDiceSound, playSfx, getSfxVolume, setSfxVolume, isDeviceMuted, setDeviceMuted } from '../lib/sfx.js';
+import { emitFx, useFx, takeCrit } from '../lib/fx.js';
+import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
+import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
+import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
+import { islandConditionKeys } from '../data/islandConditions.js';
+import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
+import DrawStylePanel from './DrawStyle.jsx';
+import { RollToasts, RollLog, CharacterLog } from './RollFeed.jsx';
+import { diffHero, mergeActivity } from '../utils/heroActivity.js';
+import { ModeBar, EmptyState, useTourState } from './Hints.jsx';
+import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
-import { clampGridDims, computeCanvasBounds } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
+import { mobSheetWithAttacks } from '../utils/combat.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
-import { renderIslandTemplateToDataUrl } from '../utils/image.js';
+import { renderIslandsTemplateToDataUrl } from '../utils/image.js';
+import { iconRefForUrl } from '../data/defaultTokens.js';
+import { resolveImage, storeImage } from '../lib/imageCache.js';
 import {
   saveSession,
   deleteSession,
   downloadSessionAsFile,
   downloadGuestSessionAsFile,
-  downloadIslandAsFile,
   downloadDataUrl,
-  readJsonFromFile,
   readEncodedJsonFromFile,
   saveIdentity,
   clearCurrentPointer,
   sessionExists,
   markGuestClean,
+  markGuestActive,
+  clearGuestMeta,
   loadLocalAudioVolumes,
   saveLocalAudioVolumes,
+  loadDrawPrefs,
+  loadRevealRolls,
+  saveRevealRolls,
+  saveDrawPrefs,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { subscribeToTable } from '../lib/realtime.js';
@@ -43,11 +60,15 @@ import {
   hideTrapRemote,
   addCustomAssetRemote,
   removeCustomAssetRemote,
+  upsertDrawingRemote,
+  removeDrawingsRemote,
   updateTableClockRemote,
   upsertAudioTrackRemote,
   removeAudioTrackRemote,
   updateAudioPlaybackRemote,
   updateTableDayNightOverrideRemote,
+  updateTableEncounterRemote,
+  endEncounterTurnRemote,
   regenerateInviteCodeRemote,
   setTableOpenRemote,
   removePlayerRemote,
@@ -64,7 +85,35 @@ import { useCatalog } from '../lib/catalog.js';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
 import MusicModal from './MusicModal.jsx';
-import { LayerStrip, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import { LayerStrip, StripSaved, InitiativeBar, RulerReadout, ZoomControl } from './TableHud.jsx';
+import ClockReadout from './ClockReadout.jsx';
+import {
+  usePhoneLayout,
+  PhoneTopBar,
+  PhoneIslandStrip,
+  PhoneMiniMap,
+  PhoneIslandConditions,
+  PhoneTokenCard,
+  PhoneNav,
+  PhoneSheet,
+  PhoneSwitch,
+  PhoneLayersSheet,
+  PhoneAtlas,
+  PhoneMoveCard,
+  PhoneTargetSheet,
+  PhoneDoorSheet,
+  PhoneChestSheet,
+  PhonePlayerMenu,
+  PhonePartySheet,
+  PhoneEditBar,
+} from './PhoneChrome.jsx';
+import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
+import { DoorInspector, TrapInspector } from './RightPanel.jsx';
+import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
+import DiceModal from './DiceModal.jsx';
+import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
+import BookTabs from './BookTabs.jsx';
+import FxLayer from './FxLayer.jsx';
 import { useTableAudio, defaultLoopFor } from '../lib/audioEngine.js';
 import {
   uploadAudio,
@@ -77,6 +126,7 @@ import {
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 0.1;
+const STAGE_PADDING = 28; // .stage's padding in styles.css — the map canvas starts this far in
 
 // REQ-001 Connection Recovery: a status flap shorter than this never
 // surfaces anything (AC1). Resync-failure backoff schedule (AC4) — index
@@ -92,6 +142,9 @@ const RESYNC_BACKOFF_MS = [2000, 4000, 8000, 16000, 30000];
 // independently off the same Presence signal, so there's no single place
 // that "ends all sessions" — they all just expire around the same time.
 const HOST_ABSENCE_GRACE_MS = 5000;
+// How long a guest DM waits after a kick before announcing the new player
+// code, so the kicked player's browser has left the channel by then.
+const KICK_CODE_REFRESH_DELAY_MS = 1500;
 const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
 
 // A host-only safety net alongside the manual Save button (Toolbar's
@@ -100,8 +153,13 @@ const HOST_ABSENCE_END_MS = 3 * 60 * 1000;
 // happens; saveNow there just relabels the toolbar), but harmless there too.
 const AUTOSAVE_INTERVAL_SECONDS = 15 * 60;
 
-function clampZoom(z) {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));
+// A phone can zoom further out, so a whole island fits its narrow screen.
+const PHONE_ZOOM_MIN = 0.2;
+// Entering an encounter: the dice sound, then this long before the encounter music.
+const ENCOUNTER_MUSIC_DELAY_MS = 2000;
+
+function clampZoom(z, min = ZOOM_MIN) {
+  return Math.min(ZOOM_MAX, Math.max(min, Math.round(z * 10) / 10));
 }
 
 function findFreeCell(entities, islandId, cols, rows) {
@@ -198,6 +256,7 @@ const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
 const COLLAPSED_PANEL_WIDTH = 36;
+const RAIL_WIDTH = 100; // the toolbar rail down the left edge (.toolbar-rail in styles.css)
 // Below this window width both side panels can't sit beside the map without
 // crushing it, so they become drawers that slide over the map instead — one
 // open at a time, both folded to their rails by default.
@@ -321,7 +380,7 @@ function saveOrWarn(code, nextState) {
   return ok;
 }
 
-export default function GameView({ me, mode, onLeave, onCodeRotated }) {
+export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onThemeChange }) {
   const state = useGameState();
   const dispatch = useGameDispatch();
   const [tool, setTool] = useState('play');
@@ -334,7 +393,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // marker Slice 4 adds), just enough to warn on Leave if they haven't.
   const [hasExportedGuestTable, setHasExportedGuestTable] = useState(false);
   const [pendingLeaveWarning, setPendingLeaveWarning] = useState(false);
-  const [leftCollapsed, setLeftCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
+  const [pendingKickId, setPendingKickId] = useState(null); // the seat the DM is about to kick, awaiting confirm
+  // The Tokens panel is a flyout opened from the rail's Tokens tab, closed
+  // until asked for.
+  const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(() => window.innerWidth < DRAWER_LAYOUT_BELOW);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
@@ -360,7 +422,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // Crossing the breakpoint resets the panels to that layout's default:
   // folded to rails as drawers, both open side by side on a wide window.
   useEffect(() => {
-    setLeftCollapsed(drawerLayout);
+    setLeftCollapsed(true);
     setRightCollapsed(drawerLayout);
   }, [drawerLayout]);
 
@@ -368,6 +430,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   function togglePanel(side) {
     const opening = side === 'left' ? leftCollapsed : rightCollapsed;
     (side === 'left' ? setLeftCollapsed : setRightCollapsed)(!opening);
+    // The Tokens panel and Music stand in the same place beside the rail.
+    if (opening && side === 'left') setShowMusicModal(false);
     if (opening && drawerLayout) (side === 'left' ? setRightCollapsed : setLeftCollapsed)(true);
   }
 
@@ -405,7 +469,57 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // Postgres row anywhere — see guestRealtime.js. Requires Supabase (for
   // Realtime) exactly like 'remote' does, but never calls remoteApi.js.
   const isGuest = mode === 'guest' && isSupabaseConfigured;
+  // Pictures are never saved to Supabase (lib/storedImages.js). On a local
+  // table an upload stays in this browser's save; on a cloud or guest table
+  // only its fingerprint is shared and the bytes go browser to browser
+  // (lib/imageCache.js, lib/imageExchange.js).
+  const isSharedTable = isRemote || isGuest;
   const isGuestHost = isGuest && isHost;
+
+  // Kicked by the DM: this player's own seat disappeared from the roster
+  // without them leaving (doLeaveTable sets leavingRef first). Drop back to
+  // the landing screen at once, so nothing more of the table reaches this
+  // browser, and say why there.
+  const leavingRef = useRef(false);
+  const wasSeatedRef = useRef(false);
+  const amSeated = Boolean(state.players[me.id]);
+  useEffect(() => {
+    if (amSeated) {
+      wasSeatedRef.current = true;
+      return;
+    }
+    if (!wasSeatedRef.current || isHost || leavingRef.current) return;
+    leavingRef.current = true;
+    clearCurrentPointer();
+    onLeave('kicked');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amSeated, isHost]);
+
+  // A guest table's code changed (the DM refreshed it): move what this
+  // browser saved under the old code to the new one, for the DM and for
+  // every player alike. The guest channel effect below re-subscribes on
+  // the same change.
+  const guestCodeRef = useRef(state.session.code);
+  useEffect(() => {
+    if (!isGuest) return;
+    const prev = guestCodeRef.current;
+    const next = state.session.code;
+    if (prev === next) return;
+    guestCodeRef.current = next;
+    saveSession(next, state);
+    deleteSession(prev);
+    if (isGuestHost) {
+      markGuestActive(next);
+      clearGuestMeta(prev);
+    }
+    onCodeRotated?.(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuest, state.session.code]);
+
+  const pendingKick = pendingKickId ? state.players[pendingKickId] : null;
+  const pendingKickHero = pendingKick
+    ? Object.values(state.entities).find((e) => e.kind === 'hero' && e.ownerId === pendingKick.id)
+    : null;
 
   // Host-absence auto-end (see HOST_ABSENCE_* above) — { endAt } once the
   // countdown is actually running (for the banner), else null. The timers
@@ -414,9 +528,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // get mutated from a Presence callback that isn't triggered by React.
   const [hostAbsentBanner, setHostAbsentBanner] = useState(null);
   const hostAbsentTimersRef = useRef({ graceTimer: null, endTimer: null });
+  // Whether the host was in the channel at the last presence sync, so a
+  // player can tell when the host (re)appears.
+  const hostSeenRef = useRef(false);
 
   function handleHostPresenceChange(hostPresent) {
     const timers = hostAbsentTimersRef.current;
+    // The host just showed up (this player opened the table first, or the
+    // host reloaded): anything asked for before went unanswered, so ask
+    // for the table as it is now.
+    if (hostPresent && !hostSeenRef.current) guestChannelRef.current?.sendStateRequest(me.id);
+    hostSeenRef.current = hostPresent;
     if (hostPresent) {
       if (timers.graceTimer) clearTimeout(timers.graceTimer);
       if (timers.endTimer) clearTimeout(timers.endTimer);
@@ -468,10 +590,48 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // anywhere, so players hear nothing); guest players and local demo tables
   // have no audio, and there the Music button is disabled.
   const audioEnabled = isRemote || isGuestHost;
-  const audioScope = isRemote ? state.session.tableId : state.session.code;
+  const audioScope = isRemote ? state.session.tableId : state.session.audioScope || state.session.code;
   const [showMusicModal, setShowMusicModal] = useState(false);
+  // This browser's volume for the encounter theme (set in the Music modal).
+  const [encounterMusicVolume, setEncounterMusicVolume] = useState(() => getSfxVolume(ENCOUNTER_MUSIC.id));
+  // Entering an encounter: the dice rattle for everyone at the table, then
+  // the encounter theme 2 s later. Ending it stops the theme at once.
+  const encounterActive = Boolean(state.encounter);
+  const [encounterMusicOn, setEncounterMusicOn] = useState(encounterActive);
+  const encounterActiveRef = useRef(encounterActive);
+  useEffect(() => {
+    const was = encounterActiveRef.current;
+    encounterActiveRef.current = encounterActive;
+    if (encounterActive && !was) playDiceSound();
+  }, [encounterActive]);
+  useEffect(() => {
+    if (!encounterActive) {
+      setEncounterMusicOn(false);
+      return undefined;
+    }
+    if (encounterMusicOn) return undefined;
+    const timer = setTimeout(() => setEncounterMusicOn(true), ENCOUNTER_MUSIC_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [encounterActive, encounterMusicOn]);
   // Each player's own level per track — this browser only.
   const [localAudioVolumes, setLocalAudioVolumes] = useState(() => loadLocalAudioVolumes(audioScope));
+  // "Mute on this device" (phone table menu): silences table music and effects here only.
+  const [deviceMuted, setDeviceMutedState] = useState(isDeviceMuted);
+  function toggleDeviceMuted(next) {
+    setDeviceMuted(next);
+    setDeviceMutedState(next);
+  }
+  // The dice roll log and saved dice sets, shared by the toolbar's Dice popover and the phone dice screen.
+  const [diceRolls, setDiceRolls] = useState([]);
+  const [diceSaved, setDiceSaved] = useState([]);
+  const diceApi = {
+    saved: diceSaved,
+    rolls: diceRolls,
+    onRoll: (roll) => setDiceRolls((prev) => [roll, ...prev].slice(0, 50)),
+    onClearRolls: () => setDiceRolls([]),
+    onSave: (entry) => setDiceSaved((prev) => [...prev, entry]),
+    onRemoveSaved: (id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id)),
+  };
   const { blocked: audioBlocked, unlock: unlockAudio, expired: expiredAudio } = useTableAudio({
     enabled: audioEnabled,
     playback: state.audio?.playback,
@@ -480,6 +640,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     layers: state.layers,
     localVolumes: localAudioVolumes,
     checkFiles: isGuest,
+    // The encounter's own theme, for everyone at the table while a fight runs.
+    override: state.encounter && encounterMusicOn ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
+    muted: deviceMuted,
   });
 
   // Which island new tokens/doors get placed onto, and which island is
@@ -493,14 +656,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLayerId, currentLayer.islandOrder]);
 
-  // Island ids the host has clicked so far while the 'group' tool is
-  // active — cleared on confirm/cancel, and whenever the tool changes away
-  // from 'group' (see the effect below).
-  const [pendingGroupIslandIds, setPendingGroupIslandIds] = useState([]);
-  useEffect(() => {
-    if (tool !== 'group') setPendingGroupIslandIds([]);
-  }, [tool]);
-
   // The map canvas is padded well beyond the islands themselves (see
   // computeCanvasBounds) so panning never hits an edge — which means the
   // scroll position has to be deliberately centered on an island rather
@@ -509,14 +664,38 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // below and the toolbar's Recenter card scroll the actual DOM element.
   const stageRef = useRef(null);
   function recenterOnIsland(islandId) {
-    const stage = stageRef.current;
     const island = currentLayer.islands[islandId];
-    if (!stage || !island) return;
+    if (island) recenterOnIslands([island]);
+  }
+  // Scrolls the middle of the rectangle holding these islands to the middle
+  // of the view.
+  function recenterOnIslands(islands) {
+    const stage = stageRef.current;
+    if (!stage || !islands.length) return;
     const { originX, originY } = computeCanvasBounds(currentLayer.islands);
-    const centerX = (island.x - originX + (island.cols * island.cellSize) / 2) * zoom;
-    const centerY = (island.y - originY + (island.rows * island.cellSize) / 2) * zoom;
+    const minX = Math.min(...islands.map((i) => i.x));
+    const minY = Math.min(...islands.map((i) => i.y));
+    const maxX = Math.max(...islands.map((i) => i.x + i.cols * i.cellSize));
+    const maxY = Math.max(...islands.map((i) => i.y + i.rows * i.cellSize));
+    // The canvas sits STAGE_PADDING in from the stage's scroll origin.
+    const centerX = ((minX + maxX) / 2 - originX) * zoom + STAGE_PADDING;
+    const centerY = ((minY + maxY) / 2 - originY) * zoom + STAGE_PADDING;
     stage.scrollLeft = centerX - stage.clientWidth / 2;
     stage.scrollTop = centerY - stage.clientHeight / 2;
+  }
+  // World maps → Recenter: makes that island the active one and brings it to
+  // the middle of the view. An island in a group centres the whole group.
+  function recenterOnMap(islandId) {
+    const island = currentLayer.islands[islandId];
+    if (!island) return;
+    if (isPhone) {
+      flyToIsland(islandId);
+      return;
+    }
+    setActiveIslandId(islandId);
+    const group = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    const members = group ? group.islandIds.map((id) => currentLayer.islands[id]).filter(Boolean) : [];
+    recenterOnIslands(members.length > 1 ? members : [island]);
   }
   useEffect(() => {
     recenterOnIsland(currentLayer.islandOrder[0]);
@@ -548,6 +727,30 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   }
 
   const selectedEntity = selectedId ? layerEntities[selectedId] : null;
+
+  // ---- Encounter (utils/encounter.js) ----
+  // Whose turn it is and how far they can still walk. Everyone sees the
+  // same encounter; only the DM and the acting hero's owner can end a turn.
+  const encounter = state.encounter || null;
+  const actorId = currentActorId(encounter);
+  const actor = actorId ? state.entities[actorId] || null : null;
+  const isMyTurn = Boolean(actor && actor.kind === 'hero' && actor.ownerId === me.id);
+  const canEndTurn = Boolean(encounter && actor && (isHost || isMyTurn));
+  let moveRange = null;
+  let movement = null;
+  if (encounter && actor) {
+    const speed = speedOf(actor);
+    const start = encounter.turnStart?.id === actor.id ? encounter.turnStart : null;
+    if (start && actor.layerId === currentLayerId) {
+      moveRange = {
+        islandId: start.islandId,
+        cells: reachableCells(currentLayer.islands[start.islandId], start, speed, islandFeet(currentLayer, start.islandId)),
+      };
+    }
+    const actorLayer = state.layers[actor.layerId] || currentLayer;
+    const moved = feetMoved(encounter, actor, islandFeet(actorLayer, actor.islandId));
+    movement = { total: speed, left: moved == null ? 0 : Math.max(0, speed - moved) };
+  }
 
   // Every hero token across every layer — the Buy/Give compendium controls
   // need to reach a hero regardless of which layer the host is currently
@@ -645,11 +848,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       }, RECONNECT_GRACE_MS);
     }
 
-    const unsubscribe = subscribeToTable(tableId, dispatch, handleStatusChange, {
-      isHost,
-      onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
-    });
+    const unsubscribe = subscribeToTable(
+      tableId,
+      dispatch,
+      handleStatusChange,
+      {
+        isHost,
+        onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
+      },
+      (roll) => receiveRollRef.current(roll)
+    );
+    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll };
     return () => {
+      tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
       if (backoffTimer) clearTimeout(backoffTimer);
       unsubscribe();
@@ -663,6 +874,170 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // from a stale render.
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // ---- Game-feel moments (lib/fx.js, drawn by MapBoard and FxLayer) ----
+
+  // The combat log: this browser's own rolls and attacks, plus every HP
+  // change and turn change it sees (those come from synced state, so every
+  // player's log agrees on them).
+  const [combatLog, setCombatLog] = useState([]);
+
+  // ---- Dice rolls at the table (RollFeed.jsx) ----
+  // Players roll in the open: every roll a player makes is announced to the
+  // whole table. The DM's own rolls stay on the DM's screen unless they turn
+  // on "Reveal rolls to players" (this browser's choice — only the DM's
+  // client ever decides to send them). Rolls travel live over the table's
+  // channel and are never stored.
+  const [revealRolls, setRevealRollsState] = useState(() => loadRevealRolls());
+  function setRevealRolls(next) {
+    setRevealRollsState(next);
+    saveRevealRolls(next);
+  }
+  const [rollLog, setRollLog] = useState([]);
+  // The character log (utils/heroActivity.js): what each player changed on
+  // their own hero. Only the DM's browser keeps one. Every change to shared
+  // state reaches the DM anyway, so the log is read off those changes
+  // rather than announced by the player: a hero that differs from how it
+  // looked a moment ago, and not because the DM just edited it
+  // (ownEditRef, set in updateEntity), was changed by its owner.
+  const [activityLog, setActivityLog] = useState([]);
+  const heroesBeforeRef = useRef(null);
+  const ownEditRef = useRef(false);
+  useEffect(() => {
+    if (!isHost) return;
+    const heroes = {};
+    for (const e of Object.values(state.entities)) if (e.kind === 'hero') heroes[e.id] = e;
+    const before = heroesBeforeRef.current;
+    heroesBeforeRef.current = heroes;
+    const own = ownEditRef.current;
+    ownEditRef.current = false;
+    if (!before || own) return;
+    const found = [];
+    for (const hero of Object.values(heroes)) {
+      const was = before[hero.id];
+      if (!was || was === hero || !hero.ownerId || hero.ownerId === me.id || was.ownerId !== hero.ownerId) continue;
+      const player = state.players[hero.ownerId];
+      if (!player) continue;
+      const changes = diffHero(was, hero);
+      if (changes.length) found.push([{ playerId: player.id, name: player.name, color: player.color, heroId: hero.id, heroName: hero.name }, changes]);
+    }
+    if (found.length) setActivityLog((log) => found.reduce((acc, [who, changes]) => mergeActivity(acc, who, changes), log));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.entities, isHost]);
+  const [rollToasts, setRollToasts] = useState([]);
+  const tableChannelRef = useRef(null); // cloud: { sendRoll }
+  function addRoll(entry) {
+    setRollLog((prev) => [entry, ...prev].slice(0, 100));
+    if (entry.mine) return;
+    setRollToasts((prev) => [entry, ...prev].slice(0, 3));
+    setTimeout(() => setRollToasts((prev) => prev.filter((t) => t.id !== entry.id)), 6000);
+  }
+  function receiveRoll(roll) {
+    if (!roll || roll.byId === me.id) return;
+    addRoll({ ...roll, mine: false, hidden: false });
+  }
+  // The channels are opened in effects that outlive a render; they call the
+  // latest receiver through this.
+  const receiveRollRef = useRef(receiveRoll);
+  receiveRollRef.current = receiveRoll;
+  // Who sees a roll made in this browser (DiceModal's note).
+  const rollShare = isHost ? (revealRolls ? 'revealed' : 'hidden') : isRemote || isGuest ? 'table' : 'local';
+  useFx((event) => {
+    if (event.type !== 'rolled') return;
+    const player = stateRef.current.players[me.id];
+    const hidden = isHost && !revealRolls;
+    const roll = {
+      id: `${me.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      byId: me.id,
+      name: player?.name || 'Someone',
+      color: player?.color || null,
+      isDm: isHost,
+      what: event.what || null,
+      dice: event.dice || '',
+      detail: event.detail || '',
+      total: event.total,
+      flag: event.flag || null,
+    };
+    addRoll({ ...roll, mine: true, hidden });
+    if (hidden) return;
+    if (isRemote) tableChannelRef.current?.sendRoll(roll);
+    else if (isGuest) guestChannelRef.current?.sendRoll(roll);
+  });
+  const [chronicleOpen, setChronicleOpen] = useState(false); // Grimoire's Chronicle tab (BookTabs.jsx)
+  const logSeq = useRef(0);
+  useFx((event) => {
+    if (event.type !== 'log') return;
+    const entry = { id: ++logSeq.current, text: event.text, tone: event.tone };
+    setCombatLog((prev) => [entry, ...prev].slice(0, 80));
+  });
+
+  // Hit numbers and loot reveals, derived from what changed in synced state
+  // rather than from who changed it, so every client shows the same blow.
+  // An HP change is settled for a moment before it's shown, so typing a new
+  // value into the HP field reads as one change, not one per keystroke.
+  const seenEntitiesRef = useRef(null);
+  const pendingHpRef = useRef({});
+  useEffect(() => {
+    const prev = seenEntitiesRef.current;
+    const seen = {};
+    // Temporary HP counts: a blow they soak up still shows its damage number.
+    const life = (e) => (typeof e.hp === 'number' ? e.hp + (e.tempHp || 0) : e.hp);
+    for (const e of Object.values(state.entities)) seen[e.id] = { hp: life(e), opened: e.opened };
+    seenEntitiesRef.current = seen;
+    if (!prev) return;
+    for (const e of Object.values(state.entities)) {
+      const before = prev[e.id];
+      if (!before) continue;
+      if (e.kind !== 'door' && e.maxHp && typeof before.hp === 'number' && typeof e.hp === 'number' && life(e) !== before.hp) {
+        const pending = pendingHpRef.current[e.id] || { baseHp: before.hp };
+        clearTimeout(pending.timer);
+        pending.timer = setTimeout(() => {
+          delete pendingHpRef.current[e.id];
+          const now = stateRef.current.entities[e.id];
+          if (!now || typeof now.hp !== 'number') return;
+          const delta = life(now) - pending.baseHp;
+          if (!delta) return;
+          if (delta < 0) {
+            emitFx({ type: 'float', entityId: e.id, kind: takeCrit(e.id) ? 'crit' : 'dmg', amount: -delta });
+            emitFx({ type: 'log', tone: 'hit', text: `${now.name} took ${-delta} damage (${now.hp}/${now.maxHp})` });
+          } else {
+            emitFx({ type: 'float', entityId: e.id, kind: 'heal', amount: delta });
+            emitFx({ type: 'log', tone: 'heal', text: `${now.name} healed ${delta} (${now.hp}/${now.maxHp})` });
+          }
+        }, 450);
+        pendingHpRef.current[e.id] = pending;
+      }
+      if (e.kind === 'chest' && before.opened === false && e.opened === true && e.layerId === currentLayerId) {
+        emitFx({ type: 'loot', title: e.name || 'Chest', items: e.items || [] });
+      }
+    }
+  }, [state.entities, currentLayerId]);
+  useEffect(() => () => Object.values(pendingHpRef.current).forEach((p) => clearTimeout(p.timer)), []);
+
+  // The turn banner, once per new turn (not on first load — joining a fight
+  // already in progress shouldn't replay it).
+  const turnKey = encounter ? `${encounter.round}:${encounter.turn}` : null;
+  const lastTurnKeyRef = useRef(undefined);
+  useEffect(() => {
+    const prevKey = lastTurnKeyRef.current;
+    lastTurnKeyRef.current = turnKey;
+    if (prevKey === undefined || turnKey === prevKey) return;
+    if (!turnKey) {
+      emitFx({ type: 'log', tone: 'turn', text: 'The encounter ended' });
+      return;
+    }
+    if (!actor) return;
+    const mine = actor.kind === 'hero' && actor.ownerId === me.id;
+    emitFx({
+      type: 'banner',
+      title: mine ? 'Your Turn' : `${actor.name}'s Turn`,
+      sub: `Round ${encounter.round} · ${speedOf(actor)} ft to move`,
+      tone: mine ? 'mine' : actor.kind === 'mob' ? 'enemy' : 'ally',
+    });
+    emitFx({ type: 'log', tone: 'turn', text: `Round ${encounter.round}: ${actor.name}'s turn` });
+    playSfx('turn');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnKey]);
 
   // REQ-008 Guest DM Sessions: the guest channel's send methods, stashed in
   // a ref so moveEntity (and, as later slices extend this, every other
@@ -687,6 +1062,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // in this handler, so their `isHost` shortcuts can't be reused here
     // without also trusting whatever the player claims).
     function applyValidatedIntent(action, senderId) {
+      // Someone who was kicked (or never seated) has no say.
+      if (!stateRef.current.players[senderId]) return;
       if (action.type === 'MOVE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
         if (!entity || entity.kind !== 'hero' || entity.ownerId !== senderId) return;
@@ -706,6 +1083,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         // Self-removal only (leaving the table) — never remove someone else.
         if (action.id !== senderId) return;
         applyAndBroadcast(action);
+      } else if (action.type === 'END_TURN') {
+        // A player may only end the turn of a hero they own, and only the
+        // current one — the host works out who is next, not the sender.
+        const current = stateRef.current.encounter;
+        const acting = stateRef.current.entities[currentActorId(current)];
+        if (!acting || acting.kind !== 'hero' || acting.ownerId !== senderId) return;
+        applyAndBroadcast({ type: 'SET_ENCOUNTER', encounter: advanceEncounter(current, stateRef.current.entities) });
       }
     }
 
@@ -734,18 +1118,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     // snapshot. Unlike handlePlayerJoin, nothing new is allocated — the
     // requester already has a playerId from before the drop.
     function handleStateRequest(requesterId) {
+      if (!stateRef.current.players[requesterId]) return; // kicked or never seated
       guestChannelRef.current?.sendStateSnapshot(requesterId, toGuestSnapshot(stateRef.current));
     }
 
-    // Player-side only: a channel recovery that isn't the very first join
-    // means a real drop happened in between, so ask the host for current
-    // state rather than trusting whatever this browser still has —
-    // mirrors REQ-001's resync intent, but over broadcast/state_snapshot
-    // instead of fetchTableSnapshot, since a guest table has no Postgres
-    // row to fetch from.
-    function handleGuestStatusChange(status, isInitialJoin) {
+    // Player-side only: every time the channel connects — opening the
+    // table after a reload as much as recovering from a drop — ask the host
+    // for current state rather than trusting whatever this browser saved
+    // last, which misses anything the DM changed meanwhile. Mirrors
+    // REQ-001's resync intent, but over broadcast/state_snapshot instead of
+    // fetchTableSnapshot, since a guest table has no Postgres row to fetch
+    // from. If the host isn't there yet, handleHostPresenceChange asks again
+    // when they arrive.
+    function handleGuestStatusChange(status) {
       if (isGuestHost) return;
-      if (status === 'SUBSCRIBED' && !isInitialJoin) {
+      if (status === 'SUBSCRIBED') {
         guestChannelRef.current?.sendStateRequest(me.id);
       }
     }
@@ -763,6 +1150,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       onStatusChange: handleGuestStatusChange,
       isHost: isGuestHost,
       onHostPresenceChange: isGuestHost ? undefined : handleHostPresenceChange,
+      onRoll: (roll) => receiveRollRef.current(roll),
     });
     guestChannelRef.current = channel;
     return () => {
@@ -824,6 +1212,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // `equipment`/`currency`. Every other key (level, abilities, saves, ...)
   // stays DM-only.
   const HERO_OWNER_SHEET_KEYS = ['attacks', 'spellcasting', 'equipment', 'currency'];
+  // A hero's own owner may also set its hit points and temporary hit
+  // points: whole numbers, never below 0, and hit points never above the
+  // hero's maximum. Maximum HP and armor class stay the DM's. The DM sees
+  // each change in the character log. Mirrored server-side by
+  // 57_player_hero_hp.sql.
+  const HERO_OWNER_LIFE_KEYS = ['hp', 'tempHp'];
+
+  function isHeroOwnerLifePatch(entity, patch) {
+    const keys = Object.keys(patch);
+    if (!keys.length || !keys.every((key) => HERO_OWNER_LIFE_KEYS.includes(key))) return false;
+    if ('hp' in patch) {
+      if (!Number.isInteger(patch.hp) || patch.hp < 0) return false;
+      if (entity.maxHp > 0 && patch.hp > entity.maxHp) return false;
+    }
+    if ('tempHp' in patch && (!Number.isInteger(patch.tempHp) || patch.tempHp < 0)) return false;
+    return true;
+  }
 
   function canMoveEntity(entity) {
     if (!entity) return false;
@@ -873,12 +1278,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     return newItems.every((it) => JSON.stringify(it) === JSON.stringify(oldItems.find((o) => o.id === it.id)));
   }
 
+  // A player's attack may lower a monster's HP and spend its temporary HP
+  // (which damage uses up first) — never raise either, never touch anything else.
   function canDamageMob(entity, patch) {
     const keys = Object.keys(patch);
-    if (keys.length !== 1 || keys[0] !== 'hp') return false;
-    const newHp = patch.hp;
-    const currentHp = entity.hp ?? entity.maxHp ?? 0;
-    return typeof newHp === 'number' && newHp >= 0 && newHp <= currentHp;
+    if (!keys.length || !keys.every((key) => key === 'hp' || key === 'tempHp')) return false;
+    if ('hp' in patch) {
+      const currentHp = entity.hp ?? entity.maxHp ?? 0;
+      if (typeof patch.hp !== 'number' || patch.hp < 0 || patch.hp > currentHp) return false;
+    }
+    if ('tempHp' in patch) {
+      if (typeof patch.tempHp !== 'number' || patch.tempHp < 0 || patch.tempHp > (entity.tempHp || 0)) return false;
+    }
+    return true;
   }
 
   // The non-host update rules, independent of whose browser is evaluating
@@ -891,7 +1303,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key)) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
-      return isHeroOwnerSheetPatch(entity, patch);
+      return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
     }
     if (entity.kind === 'mob') {
       return canDamageMob(entity, patch);
@@ -905,8 +1317,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     return canPlayerUpdateEntity(entity, patch, me.id);
   }
 
+  // On a cloud or guest table an uploaded picture (a data URL — not one of
+  // the built-in icons, which are data URLs too) is swapped for its
+  // fingerprint before it enters shared state.
+  function needsSharing(url) {
+    return isSharedTable && typeof url === 'string' && url.startsWith('data:') && !iconRefForUrl(url);
+  }
+
+  function shareImageFailed() {
+    alert('Could not keep that image in this browser — try a different file.');
+  }
+
   function addEntity(draft) {
     if (!isHost) return;
+    if (needsSharing(draft.imageUrl)) {
+      storeImage(draft.imageUrl)
+        .then((imageUrl) => addEntity({ ...draft, imageUrl }))
+        .catch(shareImageFailed);
+      return;
+    }
     const targetIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
     const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
     // Only a trap can be sized at placement (1 to 5 squares wide); everything
@@ -957,7 +1386,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       targetRow,
       conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
       dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
-      mobSheet: draft.kind === 'mob' ? draft.mobSheet : undefined,
+      // Every monster is placed with something to attack with.
+      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
@@ -1031,6 +1461,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       guestChannelRef.current?.sendIntent({ type: 'UPDATE_ENTITY', id, patch }, me.id);
       return;
     }
+    if (isHost) ownEditRef.current = true;
     dispatch({ type: 'UPDATE_ENTITY', id, patch });
     // Every text field on a hero's sheet funnels through here on each
     // keystroke today — fine at current usage, but if that ever gets slow
@@ -1067,7 +1498,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // this new roll (or the whole roll is being cleared) has it stripped
   // first. Returns the sorted results so the modal can show the turn order
   // without re-deriving it.
-  function rollInitiative(selectedIds) {
+  function rollInitiative(selectedIds, { startEncounter = false } = {}) {
     if (!isHost) return [];
     const selected = new Set(selectedIds);
     for (const entity of Object.values(state.entities)) {
@@ -1075,11 +1506,59 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         updateEntity(entity.id, { initiativeRoll: null, initiativeTurn: null });
       }
     }
-    if (selectedIds.length) playDiceSound();
+    // Starting an encounter rattles the dice itself (the encounter effect).
+    if (selectedIds.length && !startEncounter) playDiceSound();
     const rolled = selectedIds.map((id) => ({ id, roll: 1 + Math.floor(Math.random() * 20) }));
     rolled.sort((a, b) => b.roll - a.roll);
     rolled.forEach(({ id, roll }, index) => updateEntity(id, { initiativeRoll: roll, initiativeTurn: index + 1 }));
+    // A fresh roll replaces any fight already running; clearing ends it.
+    if (!rolled.length) setEncounter(null);
+    else if (startEncounter) setEncounter(createEncounter(rolled, state.entities));
     return rolled.map(({ id, roll }, index) => ({ id, roll, turn: index + 1 }));
+  }
+
+  // The encounter itself (49_encounter.sql) — the DM starts, advances and
+  // ends it; written the same way as the clock.
+  function setEncounter(next) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_ENCOUNTER', encounter: next });
+    if (isRemote) {
+      updateTableEncounterRemote(state.session.tableId, next).catch(reportError);
+    } else if (isGuestHost) {
+      broadcastGuestChange({ type: 'SET_ENCOUNTER', encounter: next });
+    } else {
+      saveOrWarn(state.session.code, { ...state, encounter: next });
+    }
+  }
+
+  // The InitiativeModal's "Start encounter" box, ticked or unticked after
+  // the roll: starts a fight from those results, or ends the running one.
+  function toggleEncounter(active, results) {
+    if (!active) setEncounter(null);
+    else if (results?.length) setEncounter(createEncounter(results, state.entities));
+  }
+
+  // End turn: the DM for anyone, a player for their own hero. A cloud
+  // player can't write the tables row, so theirs goes through an RPC that
+  // re-checks it's really their turn; a guest player's is an intent the
+  // DM's client validates.
+  function endTurn() {
+    if (!canEndTurn) return;
+    const next = advanceEncounter(encounter, state.entities);
+    if (isHost) {
+      setEncounter(next);
+    } else if (isGuest) {
+      guestChannelRef.current?.sendIntent({ type: 'END_TURN' }, me.id);
+    } else {
+      dispatch({ type: 'SET_ENCOUNTER', encounter: next });
+      if (isRemote) {
+        endEncounterTurnRemote(state.session.tableId, next).catch((err) => {
+          reportError(err);
+          dispatch({ type: 'SET_ENCOUNTER', encounter }); // refused — put the turn back
+        });
+      }
+      else saveOrWarn(state.session.code, { ...state, encounter: next });
+    }
   }
 
   // Asset Storage (Toolbar.jsx): the DM authoring a custom monster/weapon/
@@ -1093,6 +1572,179 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     if (isRemote) addCustomAssetRemote(state.session.tableId, item).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_CUSTOM_ASSET', item });
   }
+
+  // ---- Drawings (the DM's Draw tool) ----
+  // Settings for the next shape: which drawing tool, its style, and whether
+  // shapes snap to the grid. Local to this browser.
+  const [drawSettings, setDrawSettingsState] = useState(() => {
+    const prefs = loadDrawPrefs();
+    return {
+      subTool: prefs.subTool || 'pencil',
+      style: { ...DEFAULT_DRAW_STYLE, ...(prefs.style || {}) },
+      snap: prefs.snap ?? true,
+    };
+  });
+  // The drawing Select has picked, if any.
+  const [selectedDrawingId, setSelectedDrawingId] = useState(null);
+  function setDrawSettings(next) {
+    // A style change while a drawing is selected restyles that drawing too
+    // (just the fields that changed).
+    const selected = selectedDrawingId && state.drawings?.[selectedDrawingId];
+    if (selected && next.style !== drawSettings.style) {
+      const patch = {};
+      for (const key of Object.keys(next.style)) if (next.style[key] !== drawSettings.style[key]) patch[key] = next.style[key];
+      if (Object.keys(patch).length) updateDrawing({ ...selected, style: { ...selected.style, ...patch } });
+    }
+    if (next.subTool !== 'select') setSelectedDrawingId(null);
+    setDrawSettingsState(next);
+    saveDrawPrefs({ ...loadDrawPrefs(), subTool: next.subTool, style: next.style, snap: next.snap });
+  }
+  // The last few colours actually drawn with, newest first.
+  const [recentColours, setRecentColours] = useState(() => loadDrawPrefs().recentColours || []);
+  function noteColourUsed(colour) {
+    const next = withRecentColour(recentColours, colour);
+    setRecentColours(next);
+    saveDrawPrefs({ ...loadDrawPrefs(), recentColours: next });
+  }
+
+  // One write per finished action, like every other host edit: dispatch
+  // here, then the cloud row or the guest broadcast. Local and guest tables
+  // save the whole state themselves (GameProvider's autosave).
+  function writeDrawing(drawing) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_DRAWING', drawing });
+    if (isRemote) upsertDrawingRemote(state.session.tableId, drawing).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'SET_DRAWING', drawing });
+  }
+
+  function deleteDrawings(ids) {
+    if (!isHost || !ids.length) return;
+    dispatch({ type: 'REMOVE_DRAWINGS', ids });
+    if (isRemote) removeDrawingsRemote(ids).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_DRAWINGS', ids });
+  }
+
+  // Undo/redo for the DM's own drawing actions, this browser and this
+  // session only. Each step is a list of { id, before, after } (a drawing,
+  // or null where it didn't exist); undoing writes every `before` back
+  // through the normal write path, so it reaches the table like any edit.
+  // `group` merges a step into the previous one with the same key (one
+  // eraser sweep is one step).
+  const drawUndoRef = useRef([]);
+  const drawRedoRef = useRef([]);
+  const [drawHistoryTick, setDrawHistoryTick] = useState(0);
+  function recordDrawStep(changes, group = null) {
+    const undo = drawUndoRef.current;
+    const last = undo[undo.length - 1];
+    if (group && last?.group === group) last.changes.push(...changes);
+    else undo.push({ group, changes });
+    if (undo.length > 100) undo.shift();
+    drawRedoRef.current = [];
+    setDrawHistoryTick((t) => t + 1);
+  }
+  function applyDrawStep(step, direction) {
+    const current = stateRef.current;
+    const islandAlive = (islandId) => Object.values(current.layers).some((layer) => layer.islands?.[islandId]);
+    const doomed = [];
+    for (const change of step.changes) {
+      const target = direction === 'undo' ? change.before : change.after;
+      if (!target) {
+        if (current.drawings?.[change.id]) doomed.push(change.id);
+      } else if (islandAlive(target.islandId)) {
+        writeDrawing(target);
+      }
+    }
+    deleteDrawings(doomed);
+  }
+  function undoDrawing() {
+    const step = drawUndoRef.current.pop();
+    if (!step) return;
+    applyDrawStep(step, 'undo');
+    drawRedoRef.current.push(step);
+    setDrawHistoryTick((t) => t + 1);
+  }
+  function redoDrawing() {
+    const step = drawRedoRef.current.pop();
+    if (!step) return;
+    applyDrawStep(step, 'redo');
+    drawUndoRef.current.push(step);
+    setDrawHistoryTick((t) => t + 1);
+  }
+  const canUndoDrawing = drawHistoryTick >= 0 && drawUndoRef.current.length > 0;
+  const canRedoDrawing = drawHistoryTick >= 0 && drawRedoRef.current.length > 0;
+
+  function updateDrawing(drawing) {
+    const before = state.drawings?.[drawing.id];
+    if (!before) return;
+    writeDrawing(drawing);
+    recordDrawStep([{ id: drawing.id, before, after: drawing }]);
+  }
+
+  function addDrawing(drawing) {
+    const created = { ...drawing, id: generateEntityId() };
+    writeDrawing(created);
+    recordDrawStep([{ id: created.id, before: null, after: created }]);
+    if (drawing.style?.color) noteColourUsed(drawing.style.color);
+  }
+
+  function removeDrawings(ids, group = null) {
+    const present = ids.filter((id) => state.drawings?.[id]);
+    if (!present.length) return;
+    deleteDrawings(present);
+    recordDrawStep(
+      present.map((id) => ({ id, before: state.drawings[id], after: null })),
+      group
+    );
+  }
+
+  // "Clear this island" / "Clear this map": the drawings each would take.
+  const drawingIdsOnIsland = (islandId) => (state.drawingOrder || []).filter((id) => state.drawings[id]?.islandId === islandId);
+  const drawingIdsOnMap = () => {
+    const onMap = new Set(currentLayer.islandOrder);
+    return (state.drawingOrder || []).filter((id) => onMap.has(state.drawings[id]?.islandId));
+  };
+
+  // "Hide drawings": this browser only, for anyone at the table.
+  const [hideDrawings, setHideDrawingsState] = useState(() => Boolean(loadDrawPrefs().hide));
+  function setHideDrawings(hide) {
+    setHideDrawingsState(hide);
+    saveDrawPrefs({ ...loadDrawPrefs(), hide });
+  }
+
+  // Leaving Draw, or the selected drawing disappearing (erased, its island
+  // deleted), drops the selection.
+  const selectedDrawingGone = Boolean(selectedDrawingId) && !state.drawings?.[selectedDrawingId];
+  useEffect(() => {
+    if (tool !== 'draw' || selectedDrawingGone) setSelectedDrawingId(null);
+  }, [tool, selectedDrawingGone]);
+
+  // While drawing: Esc drops the selection, Delete or Backspace removes the
+  // selected drawing, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes —
+  // never while typing in a field.
+  useEffect(() => {
+    if (!isHost || tool !== 'draw') return undefined;
+    function onKey(e) {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redoDrawing();
+        else undoDrawing();
+      } else if (mod && key === 'y') {
+        e.preventDefault();
+        redoDrawing();
+      } else if (e.key === 'Escape') {
+        setSelectedDrawingId(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId) {
+        e.preventDefault();
+        removeDrawings([selectedDrawingId]);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   function removeCustomAsset(id) {
     if (!isHost) return;
@@ -1144,7 +1796,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
 
   function createLayer({ name, cols, rows }) {
     if (!isHost) return;
-    const layerName = name.trim() || 'Untitled Map';
+    const layerName = name.trim() || 'Untitled World';
     const layer = createInitialLayer({
       name: layerName,
       islandOverrides: { name: layerName, cols: clampGridDims(cols), rows: clampGridDims(rows) },
@@ -1161,9 +1813,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         layerOrder: [...state.layerOrder, layer.id],
       });
     }
+    return layer.id;
   }
 
-  // Places a freshly built island (from createIsland or importIsland) next
+  // Places a freshly built island (from createIsland) next
   // to the active island (not the rightmost edge across every island on the
   // layer) — a merge can make one island's own footprint huge, and
   // anchoring off the layer-wide edge would drop a new island far from
@@ -1172,8 +1825,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // on reload), so nudge past anything the candidate spot would actually
   // collide with rather than trusting it's clear. Mutates `island.x`/`y`,
   // then dispatches it exactly like every other island-adding path.
-  function placeAndAddIsland(island) {
-    const reference = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+  // `beside`: a sub map goes next to its parent instead of the active island.
+  function placeAndAddIsland(island, beside = null) {
+    const reference = beside || currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
     island.x = reference ? reference.x + reference.cols * reference.cellSize + 60 : 0;
     island.y = reference ? reference.y : 0;
     const w = island.cols * island.cellSize;
@@ -1197,64 +1851,60 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     else if (isGuestHost) broadcastGuestChange({ type: 'ADD_ISLAND', layerId: currentLayerId, island });
   }
 
-  function createIsland({ name, cols, rows }) {
+  // `parentId`: the new island is a sub map of that one — placed beside it
+  // and grouped with it, so the two move together and share the parent's
+  // name. A sub map is nothing more than that group membership (the parent
+  // is the group's first island), so it needs no state of its own.
+  function createIsland({ name, cols, rows, feetPerSquare, parentId = null }) {
     if (!isHost) return;
     const island = createInitialIsland({
-      name: name.trim() || 'Untitled Island',
+      name: name.trim() || 'Untitled Map',
       cols: clampGridDims(cols),
       rows: clampGridDims(rows),
+      feetPerSquare: clampFeetPerSquare(feetPerSquare),
     });
-    placeAndAddIsland(island);
-  }
-
-  // Downloads the active island's shell (grid + background — no
-  // id/position/entities) to a file for reuse/sharing.
-  function downloadIsland() {
-    const island = currentLayer.islands[activeIslandId];
-    if (island) downloadIslandAsFile(island);
-  }
-
-  // Downloads the active island as a standalone PNG (background + grid
-  // lines, at native pixel resolution) for editing in an external image
-  // editor — the result can be re-uploaded via "Upload island background
-  // image" to become a new custom map.
-  async function downloadIslandImage() {
-    const island = currentLayer.islands[activeIslandId];
-    if (!island) return;
-    try {
-      const dataUrl = await renderIslandTemplateToDataUrl(island);
-      const filename = `${(island.name || 'island').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'island'}.png`;
-      downloadDataUrl(dataUrl, filename);
-    } catch {
-      alert("Could not export this island's image — its background image could not be loaded.");
+    const parent = parentId ? currentLayer.islands[parentId] : null;
+    placeAndAddIsland(island, parent);
+    if (!parent) return;
+    const parentGroup = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(parent.id));
+    if (parentGroup) {
+      updateGroup(parentGroup.id, { islandIds: [...parentGroup.islandIds, island.id] });
+    } else {
+      addIslandGroup({ id: generateEntityId(), name: parent.name, islandIds: [parent.id, island.id], conditions: [...(parent.conditions || [])] });
     }
   }
 
-  // Reads a previously exported island-shell file and adds it as a
-  // brand-new island via the same placement logic createIsland uses,
-  // without touching the currently active/selected island beforehand.
-  function importIsland(file) {
-    if (!isHost) return;
-    readJsonFromFile(file)
-      .then((raw) => {
-        if (typeof raw?.name !== 'string' || !Number.isFinite(raw.cols) || !Number.isFinite(raw.rows) || !Number.isFinite(raw.cellSize)) {
-          alert('That file does not look like a Hearthbound island export.');
-          return;
-        }
-        const island = createInitialIsland({
-          name: raw.name.trim() || 'Untitled Island',
-          cols: clampGridDims(raw.cols),
-          rows: clampGridDims(raw.rows),
-          cellSize: raw.cellSize,
-          backgroundImage: typeof raw.backgroundImage === 'string' ? raw.backgroundImage : null,
-        });
-        placeAndAddIsland(island);
-      })
-      .catch(() => alert('Could not read that file — is it a valid Hearthbound island export?'));
+  // Downloads an island (the active one by default) as a standalone PNG
+  // (background + grid lines, at native pixel resolution) for editing in an
+  // external image editor — the result can be uploaded back from the
+  // island's settings (Mapping → Islands) as its background.
+  // An island in a group downloads the whole group as one picture, each
+  // island where it sits; uploading that picture back spreads it across the
+  // group the same way (Toolbar's uploadIslandBackground).
+  async function downloadIslandImage(islandId = activeIslandId) {
+    const island = currentLayer.islands[islandId];
+    if (!island) return;
+    const group = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    const members = group ? group.islandIds.map((id) => currentLayer.islands[id]).filter(Boolean) : [];
+    const islands = members.length > 1 ? members : [island];
+    const title = members.length > 1 ? group.name : island.name;
+    try {
+      const dataUrl = await renderIslandsTemplateToDataUrl(islands.map((i) => ({ ...i, backgroundImage: resolveImage(i.backgroundImage) })));
+      const filename = `${(title || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}.png`;
+      downloadDataUrl(dataUrl, filename);
+    } catch {
+      alert("Could not export this map's image — a background image could not be loaded.");
+    }
   }
 
   function updateIsland(islandId, patch) {
     if (!isHost) return;
+    if (needsSharing(patch.backgroundImage)) {
+      storeImage(patch.backgroundImage)
+        .then((backgroundImage) => updateIsland(islandId, { ...patch, backgroundImage }))
+        .catch(shareImageFailed);
+      return;
+    }
     dispatch({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
     if (isRemote) updateIslandRemote(islandId, patch).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
@@ -1571,20 +2221,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
-  // While the 'group' tool is active, clicking an island toggles it into
-  // the pending selection rather than selecting/dragging it normally (see
-  // MapBoard's onIslandDragUp).
-  function toggleGroupCandidate(islandId) {
-    setPendingGroupIslandIds((prev) => (prev.includes(islandId) ? prev.filter((id) => id !== islandId) : [...prev, islandId]));
-  }
-
-  // Bundles the selected islands into one island group — each keeps its own
+  // Bundles islands into one island group — each keeps its own
   // grid/background/size; only their membership and the group's own name
-  // are new state. Requires at least 2 islands (a group of one is
-  // meaningless).
-  function confirmGroup(name) {
-    if (!isHost || pendingGroupIslandIds.length < 2) return;
-    const group = { id: generateEntityId(), name: name.trim() || 'Untitled Group', islandIds: pendingGroupIslandIds };
+  // are new state. A group is a parent map and its sub maps (createIsland).
+  function addIslandGroup(group) {
     dispatch({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     if (isRemote) {
       const islandGroups = { ...(currentLayer.islandGroups || {}), [group.id]: group };
@@ -1592,13 +2232,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     } else if (isGuestHost) {
       broadcastGuestChange({ type: 'ADD_ISLAND_GROUP', layerId: currentLayerId, group });
     }
-    setPendingGroupIslandIds([]);
-    setTool('edit');
-  }
-
-  function cancelGroup() {
-    setPendingGroupIslandIds([]);
-    setTool('edit');
   }
 
   function ungroupIslands(groupId) {
@@ -1612,9 +2245,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
   }
 
+  // Takes one island out of its group (a sub map made a map of its own
+  // again). A group left with a single island is dissolved.
+  function detachIslandFromGroup(islandId) {
+    const group = Object.values(currentLayer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    if (!group) return;
+    const islandIds = group.islandIds.filter((id) => id !== islandId);
+    if (islandIds.length < 2) ungroupIslands(group.id);
+    else updateGroup(group.id, { islandIds });
+  }
+
   function renameGroup(groupId, name) {
+    updateGroup(groupId, { name: name.trim() || 'Untitled Group' });
+  }
+
+  function updateGroup(groupId, patch) {
     if (!isHost) return;
-    const patch = { name: name.trim() || 'Untitled Group' };
     dispatch({ type: 'UPDATE_ISLAND_GROUP', layerId: currentLayerId, groupId, patch });
     if (isRemote) {
       const existing = currentLayer.islandGroups?.[groupId];
@@ -1705,6 +2351,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     setPendingDoor(null);
   }
 
+  // Always the latest regenerateCode, for the delayed call after a kick.
+  const regenerateCodeRef = useRef(null);
+  regenerateCodeRef.current = regenerateCode;
+
   async function regenerateCode() {
     if (isRemote) {
       try {
@@ -1718,12 +2368,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     }
     if (isGuestHost) {
       // The invite code doubles as the guest broadcast channel's name
-      // (guestRealtime.js) — rotating it moves the DM to a brand-new
-      // channel that already-connected players have no way to learn about,
-      // silently stranding them. Unlike cloud mode (whose channel is keyed
-      // by the permanent tableId, not the invite code), there's no
-      // regeneration path here that doesn't do that.
-      alert("Regenerating the invite code isn't supported for a guest table — it would disconnect anyone already playing. Share the current code instead.");
+      // (guestRealtime.js), so a new code means a new channel. Everyone
+      // seated hears the new code on the old channel first; each client,
+      // this one included, then moves when its session.code changes (the
+      // guest channel effect re-subscribes, and the effect on
+      // guestCodeRef re-keys what this browser saved). A player who is
+      // offline at that moment misses it and needs the new code from the DM.
+      let nextGuestCode = generateInviteCode();
+      while (sessionExists(nextGuestCode)) nextGuestCode = generateInviteCode();
+      const action = { type: 'REGENERATE_INVITE_CODE', code: nextGuestCode };
+      broadcastGuestChange(action);
+      dispatch(action);
       return;
     }
     const oldCode = state.session.code;
@@ -1823,6 +2478,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       }
       const parsed = migrateLegacyState(raw);
       saveSession(parsed.session.code, parsed);
+      ownEditRef.current = true; // an imported table is not something a player did
       dispatch({ type: 'HYDRATE', state: parsed });
       const importedName = parsed.layers[parsed.layerOrder[0]]?.name;
       alert(`Imported "${importedName}". This table now reflects the imported file.`);
@@ -1845,6 +2501,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   }
 
   function doLeaveTable() {
+    leavingRef.current = true;
     // REQ-008: a guest player has no roster row of their own to just drop
     // locally — tell the DM they're leaving via intent so the DM's roster
     // (the shared source of truth) actually loses them too.
@@ -1909,6 +2566,36 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
       .catch(() => alert('Could not export this table — try again.'));
   }
 
+  // DM only: removes someone else's seat, freeing its slot. The kicked
+  // player's own client notices its seat is gone and leaves (see the
+  // effect on state.players above). The player code is refreshed right
+  // after, so the code they joined with no longer opens the table;
+  // everyone still seated carries on.
+  function kickPlayer(id) {
+    if (!isHost || id === me.id || !state.players[id]) return;
+    if (!isRemote) {
+      // Cloud mode un-assigns their heroes in the database (entities.owner_id
+      // is `on delete set null`); do the same by hand everywhere else.
+      Object.values(state.entities)
+        .filter((e) => e.kind === 'hero' && e.ownerId === id)
+        .forEach((e) => updateEntity(e.id, { ownerId: null }));
+    }
+    dispatch({ type: 'REMOVE_PLAYER', id });
+    if (isRemote) removePlayerRemote(id).catch(reportError);
+    else broadcastGuestChange({ type: 'REMOVE_PLAYER', id });
+    // A guest table announces its new code on the channel the kicked
+    // player is still leaving, so give their browser a moment to go first.
+    // Cloud mode needs no wait: the new code is only readable by members.
+    if (isGuestHost) setTimeout(() => regenerateCodeRef.current(), KICK_CODE_REFRESH_DELAY_MS);
+    else regenerateCode();
+  }
+
+  function confirmKick() {
+    const id = pendingKickId;
+    setPendingKickId(null);
+    if (id) kickPlayer(id);
+  }
+
   // Island positions are stored in world-space and scaled by zoom when
   // rendered (see MapBoard), so changing zoom shifts every island's pixel
   // position on screen — without correcting scrollLeft/scrollTop to match,
@@ -1940,11 +2627,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
   // (MapBoard's onWheel, active in every tool) so both drive the same zoom.
   function zoomIn() {
     captureZoomAnchor();
-    setZoom((z) => clampZoom(z + ZOOM_STEP));
+    setZoom((z) => clampZoom(z + ZOOM_STEP, isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN));
   }
   function zoomOut() {
     captureZoomAnchor();
-    setZoom((z) => clampZoom(z - ZOOM_STEP));
+    setZoom((z) => clampZoom(z - ZOOM_STEP, isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN));
   }
   function zoomReset() {
     captureZoomAnchor();
@@ -1975,21 +2662,306 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
     return () => stage.removeEventListener('wheel', onWheel);
   }, []);
 
-  const shownPanelWidths = fitPanelWidths(panelWidths, viewportWidth, leftCollapsed, rightCollapsed);
+  // ---- Phone layout (MOBILE_DESIGN.md) ----
+  // Islands first: the top bar names the island you're on, the chips fly the
+  // camera from island to island (fitting each to the screen), and a pinch
+  // zooms. Everything not yet redesigned for phones opens in a bottom sheet.
+  const isPhone = usePhoneLayout();
+  // The first-table tutorial (Tour.jsx): opens by itself the first time a
+  // DM is at a table on this device, and again from Configurations →
+  // Tutorial. Desktop only: the phone layout has its own, different chrome.
+  const hostTour = useTourState('host');
+  const [tourOpen, setTourOpen] = useState(() => isHost && hostTour.pending);
+  function closeTour() {
+    hostTour.finish();
+    setTourOpen(false);
+  }
+  const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
+  // A hint's "Open Tokens": the Tokens panel on desktop, the Add sheet on a
+  // phone.
+  useFx((event) => {
+    if (event.type !== 'open' || event.panel !== 'tokens' || !isHost) return;
+    if (isPhone) setPhoneSheet('add');
+    else if (leftCollapsed) togglePanel('left');
+  });
+
+  // The zoom that fits a whole island inside the stage, less its padding.
+  function fitZoomFor(island) {
+    const stage = stageRef.current;
+    if (!stage || !island) return zoom;
+    const w = stage.clientWidth - STAGE_PADDING * 2 - 16;
+    const h = stage.clientHeight - STAGE_PADDING * 2 - 16;
+    const z = Math.min(w / (island.cols * island.cellSize), h / (island.rows * island.cellSize));
+    return Math.min(ZOOM_MAX, Math.max(PHONE_ZOOM_MIN, Math.round(z * 100) / 100));
+  }
+  function flyToIsland(islandId) {
+    const island = currentLayer.islands[islandId];
+    if (!island) return;
+    setActiveIslandId(islandId);
+    setZoom(fitZoomFor(island));
+    pendingRecenterIslandIdRef.current = islandId;
+  }
+
+  // Land on your own hero's island (or the base island) whenever the phone
+  // layout starts or the layer changes.
+  const myHeroOnLayer = heroes.find((h) => h.ownerId === me.id && h.layerId === currentLayerId);
+  useEffect(() => {
+    if (!isPhone) return;
+    flyToIsland(myHeroOnLayer?.islandId || currentLayer.islandOrder[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPhone, currentLayerId]);
+
+  // Touch gestures on the map, in every layout (phones, tablets, touch
+  // laptops, a desktop browser's device emulation): two fingers pinch-zoom around their
+  // midpoint (and pan as they move); one finger on empty map pans in the Play
+  // tool, so a token drag and a pan never fight. MapBoard reads
+  // `touchGestureRef.current.panned` to skip the click that ends a pan.
+  const touchGestureRef = useRef({ panned: false, pan: null, pinch: null });
+  const pinchAnchorRef = useRef(null); // { worldX, worldY, relX, relY }
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
+  useLayoutEffect(() => {
+    const anchor = pinchAnchorRef.current;
+    const stage = stageRef.current;
+    if (!anchor || !stage) return;
+    pinchAnchorRef.current = null;
+    stage.scrollLeft = anchor.worldX * zoom + STAGE_PADDING - anchor.relX;
+    stage.scrollTop = anchor.worldY * zoom + STAGE_PADDING - anchor.relY;
+  }, [zoom]);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return undefined;
+    const g = touchGestureRef.current;
+    const zoomMin = isPhone ? PHONE_ZOOM_MIN : ZOOM_MIN;
+    const rel = (t) => {
+      const r = stage.getBoundingClientRect();
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    // While two fingers are down the canvas is only scaled with a CSS
+    // transform; the real zoom (which re-renders the whole map) is set once,
+    // when the pinch ends.
+    function endPinch() {
+      const p = g.pinch;
+      g.pinch = null;
+      if (!p) return;
+      p.canvas.style.transform = '';
+      p.canvas.style.transformOrigin = '';
+      p.canvas.style.willChange = '';
+      const next = Math.min(ZOOM_MAX, Math.max(zoomMin, p.zoom * p.scale));
+      if (next === zoomRef.current) {
+        stage.scrollLeft = p.worldX * next + STAGE_PADDING - p.mid.x;
+        stage.scrollTop = p.worldY * next + STAGE_PADDING - p.mid.y;
+      } else {
+        pinchAnchorRef.current = { worldX: p.worldX, worldY: p.worldY, relX: p.mid.x, relY: p.mid.y };
+        setZoom(next);
+      }
+    }
+    function onStart(e) {
+      const canvas = stage.querySelector('.island-canvas');
+      if (e.touches.length === 2 && canvas) {
+        const a = rel(e.touches[0]);
+        const b = rel(e.touches[1]);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const z = zoomRef.current;
+        canvas.style.transformOrigin = '0 0';
+        canvas.style.willChange = 'transform';
+        g.pinch = {
+          canvas,
+          dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+          zoom: z,
+          scale: 1,
+          mid,
+          left: stage.scrollLeft,
+          top: stage.scrollTop,
+          worldX: (stage.scrollLeft + mid.x - STAGE_PADDING) / z,
+          worldY: (stage.scrollTop + mid.y - STAGE_PADDING) / z,
+        };
+        g.pan = null;
+        g.panned = true;
+        e.preventDefault();
+      } else if (e.touches.length === 1) {
+        g.panned = false;
+        g.pan =
+          toolRef.current === 'play' && !e.target.closest('.token')
+            ? { x: e.touches[0].clientX, y: e.touches[0].clientY, left: stage.scrollLeft, top: stage.scrollTop }
+            : null;
+      }
+    }
+    function onMove(e) {
+      if (g.pinch && e.touches.length === 2) {
+        e.preventDefault();
+        const p = g.pinch;
+        const a = rel(e.touches[0]);
+        const b = rel(e.touches[1]);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const next = Math.min(ZOOM_MAX, Math.max(zoomMin, (p.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / p.dist));
+        const scale = next / p.zoom;
+        // Keep the world point that started under the fingers under their midpoint.
+        const tx = mid.x - STAGE_PADDING + p.left - p.worldX * p.zoom * scale;
+        const ty = mid.y - STAGE_PADDING + p.top - p.worldY * p.zoom * scale;
+        p.canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        p.scale = scale;
+        p.mid = mid;
+      } else if (g.pan && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - g.pan.x;
+        const dy = e.touches[0].clientY - g.pan.y;
+        if (!g.panned && Math.hypot(dx, dy) < 6) return;
+        g.panned = true;
+        e.preventDefault();
+        stage.scrollLeft = g.pan.left - dx;
+        stage.scrollTop = g.pan.top - dy;
+      }
+    }
+    function onEnd(e) {
+      if (e.touches.length < 2) endPinch();
+      if (e.touches.length === 0) {
+        g.pan = null;
+        // Long enough for the click that ends this touch to see it; then a
+        // later mouse click (a touch laptop) isn't mistaken for a pan's end.
+        if (g.panned) {
+          setTimeout(() => {
+            if (!g.pan && !g.pinch) g.panned = false;
+          }, 400);
+        }
+      }
+    }
+    stage.addEventListener('touchstart', onStart, { passive: false });
+    stage.addEventListener('touchmove', onMove, { passive: false });
+    stage.addEventListener('touchend', onEnd);
+    stage.addEventListener('touchcancel', onEnd);
+    return () => {
+      stage.removeEventListener('touchstart', onStart);
+      stage.removeEventListener('touchmove', onMove);
+      stage.removeEventListener('touchend', onEnd);
+      stage.removeEventListener('touchcancel', onEnd);
+    };
+  }, [isPhone]);
+
+  // ---- Tap to move (phone) ----
+  // With a token you may move selected, tapping a square moves it there; the
+  // acting token in an encounter only gets a planned move, which "Move here"
+  // commits (its movement is budgeted).
+  const [plannedMove, setPlannedMove] = useState(null); // { entityId, islandId, col, row }
+  useEffect(() => {
+    setPlannedMove(null);
+  }, [selectedId, actorId, currentLayerId, isPhone]);
+
+  function doorAt(islandId, col, row) {
+    return Object.values(layerEntities).find((e) => e.kind === 'door' && e.islandId === islandId && e.col === col && e.row === row) || null;
+  }
+  function commitMove(entity, islandId, col, row) {
+    moveEntity(entity.id, col, row, islandId);
+    // Landing a hero on a door's square offers to walk through it, as a drag does.
+    const door = entity.kind === 'hero' && !isHost ? doorAt(islandId, col, row) : null;
+    if (door) enterDoor(door);
+  }
+  function handleTapCell(islandId, col, row) {
+    const entity = selectedEntity;
+    if (!entity || (entity.kind !== 'hero' && entity.kind !== 'mob') || !canMoveEntity(entity)) return false;
+    if (entity.islandId === islandId && entity.col === col && entity.row === row) return false;
+    if (encounter && actor?.id === entity.id) {
+      setPlannedMove({ entityId: entity.id, islandId, col, row });
+      return true;
+    }
+    commitMove(entity, islandId, col, row);
+    return true;
+  }
+  function confirmPlannedMove() {
+    const entity = plannedMove && state.entities[plannedMove.entityId];
+    if (entity) commitMove(entity, plannedMove.islandId, plannedMove.col, plannedMove.row);
+    setPlannedMove(null);
+  }
+
+  // What the confirm card and the map label say about a planned move.
+  let plannedMoveInfo = null;
+  if (plannedMove && state.entities[plannedMove.entityId]) {
+    const entity = state.entities[plannedMove.entityId];
+    const fps = islandFeet(currentLayer, plannedMove.islandId);
+    const target = { col: plannedMove.col, row: plannedMove.row };
+    const sameIsland = entity.islandId === plannedMove.islandId;
+    const start = encounter?.turnStart?.id === entity.id ? encounter.turnStart : null;
+    const island = currentLayer.islands[plannedMove.islandId];
+    const leftAfter =
+      start && start.islandId === plannedMove.islandId ? Math.max(0, speedOf(entity) - feetDistance(start, target, fps)) : null;
+    plannedMoveInfo = {
+      name: entity.name,
+      feet: sameIsland ? feetDistance(entity, target, fps) : null,
+      leftAfter,
+      total: speedOf(entity),
+      islandName: sameIsland ? null : island?.name || 'another map',
+    };
+  }
+  // On the acting hero's turn, a creature they could attack gets a Target button.
+  const canTargetSelected = Boolean(
+    encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && selectedEntity.kind === 'mob'
+  );
+
+  const plannedMoveForMap = plannedMove
+    ? { ...plannedMove, label: plannedMoveInfo?.feet != null ? `${plannedMoveInfo.feet} ft` : plannedMoveInfo?.islandName || '' }
+    : null;
+
+  // A guest table lives in the DM's browser: while one is hosted from a
+  // phone, keep the screen from sleeping. The browser drops the lock whenever
+  // the page is hidden, so it's asked for again each time the page returns.
+  useEffect(() => {
+    if (!isPhone || !isGuestHost || !navigator.wakeLock) return undefined;
+    let lock = null;
+    let cancelled = false;
+    async function request() {
+      if (cancelled || document.visibilityState !== 'visible') return;
+      try {
+        lock = await navigator.wakeLock.request('screen');
+        if (cancelled) lock.release().catch(() => {});
+      } catch {
+        // refused (battery saver, unsupported context) — the menu's note still applies
+      }
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'visible') request();
+    }
+    request();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      lock?.release().catch(() => {});
+    };
+  }, [isPhone, isGuestHost]);
+
+  // Leaving the phone layout shouldn't leave a sheet open behind the desktop.
+  useEffect(() => {
+    if (!isPhone) setPhoneSheet(null);
+  }, [isPhone]);
+
+  // A player has no Tokens panel (placing tokens is the DM's), so only the
+  // right panel shares the room with the map.
+  // The Tokens flyout lies over the map, so it takes no room from it either.
+  const shownPanelWidths = { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth - RAIL_WIDTH, false, rightCollapsed), left: isHost ? panelWidths.left : 0 };
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
   // what lets it keep its labels on an ordinary laptop screen.
-  return (
-    <div className="game-screen">
+  const toolbarEl = (
       <Toolbar
+        rollLog={rollLog}
+        activityLog={isHost ? activityLog : null}
+        players={state.players}
+        hostId={state.session.hostPlayerId}
+        allEntities={state.entities}
+        meId={me.id}
+        dice={{ ...diceApi, share: rollShare }}
+        revealRolls={revealRolls}
+        onRevealRollsChange={setRevealRolls}
         isHost={isHost}
         isGuestHost={isGuestHost}
         layer={currentLayer}
         activeIsland={currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]]}
         tool={tool}
+        hideDrawings={hideDrawings}
+        onToggleHideDrawings={() => setHideDrawings(!hideDrawings)}
         onToolChange={setTool}
-        onLayerPatch={(patch) => updateLayer(currentLayerId, patch)}
         onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
         session={state.session}
         onRegenerateCode={regenerateCode}
@@ -2000,7 +2972,14 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         onAddEntity={addEntity}
         onOpenClock={() => setShowClockModal(true)}
         audio={audioApi}
-        onOpenMusic={() => setShowMusicModal(true)}
+        musicHint={isGuest ? 'On a guest table the music plays only on the DM’s own device.' : 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.'}
+        onOpenMusic={() => {
+          // Music takes the Tokens panel's place beside the rail.
+          setShowMusicModal(true);
+          if (!isPhone) setLeftCollapsed(true);
+        }}
+        musicOpen={showMusicModal && audioEnabled}
+        onCloseMusic={() => setShowMusicModal(false)}
         onSetClockRunning={setClockRunning}
         dayPhase={tablePhase}
         dayNightOverride={state.dayNightOverride}
@@ -2008,6 +2987,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         onExport={exportTable}
         onImport={importTable}
         onLeave={leaveTable}
+        onKickPlayer={isHost ? setPendingKickId : null}
+        onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
+        theme={theme}
+        onThemeChange={onThemeChange}
         lastSavedLabel={savedAgo}
         layers={state.layers}
         layerOrder={state.layerOrder}
@@ -2017,87 +3000,50 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         onCreateLayer={createLayer}
         onRemoveLayer={removeLayer}
         activeIslandId={activeIslandId}
-        onSelectIsland={setActiveIslandId}
+        onRecenterIsland={recenterOnMap}
         onCreateIsland={createIsland}
         onRemoveIsland={removeIsland}
-        onDownloadIsland={downloadIsland}
         onDownloadIslandImage={downloadIslandImage}
-        onImportIsland={importIsland}
-        onUngroupIslands={ungroupIslands}
+        onUpdateIsland={updateIsland}
+        onDetachIsland={detachIslandFromGroup}
         onRenameGroup={renameGroup}
+        onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}
+        onGroupConditions={(groupId, conditions) => updateGroup(groupId, { conditions })}
         heroes={heroes}
         onUpdateEntity={updateEntity}
         initiativeHeroes={initiativeHeroes}
         initiativeMobs={initiativeMobs}
         onRollInitiative={rollInitiative}
+        encounterActive={Boolean(encounter)}
+        onToggleEncounter={toggleEncounter}
         customAssets={state.customAssets}
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
-        collapsed={toolbarCollapsed}
+        rail={!isPhone}
+        tokensOpen={!leftCollapsed}
+        onToggleTokens={() => togglePanel('left')}
+        collapsed={false}
         onToggleCollapsed={() => setToolbarCollapsed((c) => !c)}
         zoom={zoom}
       />
+  );
 
-      <div
-        className={`game-layout${drawerLayout ? ' drawers' : ''}${leftCollapsed ? ' left-collapsed' : ''}${rightCollapsed ? ' right-collapsed' : ''}`}
-        style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
-      >
+  const tokenSidebarEl = (
         <TokenSidebar
           onAddEntity={addEntity}
+          onCreateLayer={isHost ? createLayer : null}
           layers={state.layers}
           layerOrder={state.layerOrder}
           currentLayerId={currentLayerId}
           isHost={isHost}
           customAssets={state.customAssets}
-          collapsed={leftCollapsed}
-          onToggleCollapsed={() => togglePanel('left')}
+          collapsed={false}
+          onToggleCollapsed={() => (isPhone ? setPhoneSheet(null) : togglePanel('left'))}
+          layout={isPhone ? 'phone' : 'panel'}
         />
+  );
 
-        <div className="game-center">
-          <LayerStrip
-            layers={state.layers}
-            layerOrder={state.layerOrder}
-            currentLayerId={currentLayerId}
-            layerPlayerCounts={layerPlayerCounts}
-            isHost={isHost}
-            onSwitchLayer={setHostViewLayerId}
-            feetPerSquare={currentLayer.feetPerSquare}
-            clock={state.clock}
-            phaseOverride={state.dayNightOverride}
-          />
-          <div className="stage-wrap">
-          <div className="stage" ref={stageRef}>
-            <MapBoard
-              islands={currentLayer.islands}
-              islandOrder={currentLayer.islandOrder}
-              islandGroups={currentLayer.islandGroups || {}}
-              pendingGroupIslandIds={pendingGroupIslandIds}
-              dayPhase={tablePhase}
-              onToggleGroupCandidate={toggleGroupCandidate}
-              onMoveIslandGroup={moveIslandGroup}
-              feetPerSquare={currentLayer.feetPerSquare}
-              activeIslandId={activeIslandId}
-              onSelectIsland={setActiveIslandId}
-              onMoveIsland={moveIsland}
-              entities={layerEntities}
-              entityOrder={layerEntityOrder}
-              selectedId={selectedId}
-              onSelectEntity={setSelectedId}
-              onMoveEntity={moveEntity}
-              canMoveEntity={canMoveEntity}
-              isHost={isHost}
-              onEnterDoor={enterDoor}
-              tool={tool}
-              zoom={zoom}
-              onRulerChange={setRulerFeet}
-            />
-          </div>
-          <InitiativeBar entities={layerEntities} />
-          <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          <ZoomControl zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onZoomReset={zoomReset} onRecenter={() => recenterOnIsland(activeIslandId)} />
-          </div>
-        </div>
-
+  const rightPanelEl = (
         <RightPanel
           audio={audioApi}
           players={state.players}
@@ -2116,7 +3062,236 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           onTakeChestItem={takeChestItem}
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
+          encounterActor={actor}
         />
+  );
+
+  const activeIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+  const layerIndex = state.layerOrder.indexOf(currentLayerId);
+  const { originX: canvasOriginX, originY: canvasOriginY } = computeCanvasBounds(currentLayer.islands);
+
+  return (
+    <div className={`game-screen${isPhone ? ' phone' : ' rail-layout'}`}>
+      {isPhone ? (
+        <>
+          <PhoneTopBar
+            islandName={activeIsland?.name || currentLayer.name}
+            layerName={currentLayer.name}
+            layerIndex={layerIndex}
+            layerCount={state.layerOrder.length}
+            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
+            onAtlas={() => setPhoneSheet('atlas')}
+            onLayers={() => setPhoneSheet('layers')}
+            onMenu={() => setPhoneSheet('menu')}
+          />
+          <PhoneIslandStrip
+            layer={currentLayer}
+            entities={layerEntities}
+            activeIslandId={activeIslandId}
+            onPick={flyToIsland}
+            onAddIsland={isHost ? () => emitFx({ type: 'open', panel: 'islands' }) : null}
+          />
+        </>
+      ) : (
+        toolbarEl
+      )}
+
+      <div
+        className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone ? ' no-left' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
+        style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
+      >
+        {!isPhone && isHost && !leftCollapsed && <div className="tokens-flyout">{tokenSidebarEl}</div>}
+
+        <div className="game-center">
+          {!isPhone && (
+          <LayerStrip
+            layers={state.layers}
+            layerOrder={state.layerOrder}
+            currentLayerId={currentLayerId}
+            layerPlayerCounts={layerPlayerCounts}
+            isHost={isHost}
+            onSwitchLayer={setHostViewLayerId}
+            feetPerSquare={islandFeet(currentLayer, activeIslandId)}
+            clock={null}
+            phaseOverride={state.dayNightOverride}
+            extra={
+              <>
+                {isHost && <StripSaved label={savedAgo} secondsLeft={autosaveSecondsLeft} />}
+                {state.clock && (
+                  <span className="strip-clock">
+                    <ClockReadout clock={state.clock} isHost={isHost} onOpen={() => setShowClockModal(true)} onSetRunning={setClockRunning} phaseOverride={state.dayNightOverride} />
+                  </span>
+                )}
+              </>
+            }
+          />
+          )}
+          <div className="stage-wrap">
+          <div className="stage" ref={stageRef}>
+            <MapBoard
+              islands={currentLayer.islands}
+              islandOrder={currentLayer.islandOrder}
+              islandGroups={currentLayer.islandGroups || {}}
+              dayPhase={tablePhase}
+              onMoveIslandGroup={moveIslandGroup}
+              feetPerSquare={currentLayer.feetPerSquare}
+              activeIslandId={activeIslandId}
+              onSelectIsland={setActiveIslandId}
+              onMoveIsland={moveIsland}
+              entities={layerEntities}
+              entityOrder={layerEntityOrder}
+              selectedId={selectedId}
+              onSelectEntity={setSelectedId}
+              onMoveEntity={moveEntity}
+              canMoveEntity={canMoveEntity}
+              isHost={isHost}
+              onEnterDoor={enterDoor}
+              tool={tool}
+              zoom={zoom}
+              onRulerChange={setRulerFeet}
+              moveRange={moveRange}
+              actorId={actorId}
+              gestureRef={touchGestureRef}
+              onTapCell={isPhone ? handleTapCell : null}
+              plannedMove={isPhone ? plannedMoveForMap : null}
+              drawings={state.drawings}
+              // The desktop bar has no "Hide drawings" switch for now, so a saved
+              // choice only applies on phones, where the switch still is.
+              hideDrawings={isPhone && hideDrawings}
+              drawingOrder={state.drawingOrder}
+              drawSettings={isHost ? drawSettings : null}
+              onAddDrawing={isHost ? addDrawing : null}
+              onUpdateDrawing={isHost ? updateDrawing : null}
+              onRemoveDrawings={isHost ? removeDrawings : null}
+              selectedDrawingId={tool === 'draw' ? selectedDrawingId : null}
+              onSelectDrawing={setSelectedDrawingId}
+            />
+          </div>
+          {isPhone && (
+            <>
+              <PhoneMiniMap
+                layer={currentLayer}
+                zoom={zoom}
+                stageRef={stageRef}
+                originX={canvasOriginX}
+                originY={canvasOriginY}
+                stagePadding={STAGE_PADDING}
+                activeIslandId={activeIslandId}
+                onOpen={() => setPhoneSheet('atlas')}
+              />
+              <PhoneIslandConditions conditions={islandConditionKeys(currentLayer, activeIslandId)} />
+              {isHost && tool === 'edit' && (
+                <PhoneEditBar
+                  islandName={activeIsland?.name}
+                  onSettings={() => emitFx({ type: 'open', panel: 'islands', islandId: activeIslandId })}
+                  onDraw={() => setTool('draw')}
+                  onDone={() => setTool('play')}
+                />
+              )}
+              {isHost && tool === 'draw' && (
+                <PhoneDrawBar
+                  settings={drawSettings}
+                  onChange={setDrawSettings}
+                  canUndo={canUndoDrawing}
+                  canRedo={canRedoDrawing}
+                  onUndo={undoDrawing}
+                  onRedo={redoDrawing}
+                  onStyle={() => setPhoneSheet('drawstyle')}
+                  onDone={() => setTool('edit')}
+                />
+              )}
+              {!isHost && tool !== 'draw' && !selectedEntity && !heroes.some((h) => h.ownerId === me.id) && (
+                <div className="phone-no-hero">
+                  <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
+                    Ask your DM to pick you under <b>played by</b> on a hero’s card. You can look around and roll dice meanwhile.
+                  </EmptyState>
+                </div>
+              )}
+              {tool === 'draw' ? null : plannedMoveInfo ? (
+                <PhoneMoveCard info={plannedMoveInfo} onCancel={() => setPlannedMove(null)} onConfirm={confirmPlannedMove} />
+              ) : (
+                <PhoneTokenCard
+                  entity={selectedEntity}
+                  isHost={isHost}
+                  canEditLife={isHost || (selectedEntity?.kind === 'hero' && selectedEntity.ownerId === me.id)}
+                  onOpen={() => setPhoneSheet(selectedEntity?.kind === 'chest' ? 'chest' : selectedEntity?.kind === 'hero' || selectedEntity?.kind === 'mob' ? 'creature' : 'inspect')}
+                  onHp={(hp) => selectedEntity && updateEntity(selectedEntity.id, { hp })}
+                  onTarget={canTargetSelected ? () => setPhoneSheet('target') : null}
+                />
+              )}
+            </>
+          )}
+          {encounter && !isPhone ? (
+            <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} />
+          ) : (
+            <InitiativeBar entities={encounter ? state.entities : layerEntities} encounter={encounter} />
+          )}
+          {encounter && (
+            <EncounterActions
+              actor={actor}
+              canEndTurn={canEndTurn}
+              isMyTurn={isMyTurn}
+              onEndTurn={endTurn}
+              isHost={isHost}
+              onEndEncounter={() => setEncounter(null)}
+              movement={movement}
+              log={combatLog}
+            />
+          )}
+          <FxLayer />
+          {!isPhone && <BookTabs chronicleOpen={chronicleOpen} onToggleChronicle={() => setChronicleOpen((o) => !o)} />}
+          {chronicleOpen && (
+            <div className="book-chronicle">
+              <CombatLog log={combatLog} onClose={() => setChronicleOpen(false)} />
+            </div>
+          )}
+          <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
+          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
+          {/* While a tool changes what a press does, say so across the top of
+              the map (the phone's Edit and Draw have their own bars). */}
+          {tool === 'ruler' && (
+            <ModeBar id="ruler" className="map-mode-bar" label="Ruler." doneLabel="Play" onDone={() => setTool('play')}>
+              Drag from one square to another. Every second diagonal counts as {islandFeet(currentLayer, activeIslandId) * 2} ft.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'edit' && (
+            <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
+              Drag a map to move it. Where edges touch, tokens walk across.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'draw' && (
+            <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
+              Everyone at the table sees what you draw. Right-drag moves the view.
+            </ModeBar>
+          )}
+          {isHost && !isPhone && tool === 'draw' && (
+            <DrawingBar
+              settings={drawSettings}
+              onChange={setDrawSettings}
+              recentColours={recentColours}
+              canUndo={canUndoDrawing}
+              canRedo={canRedoDrawing}
+              onUndo={undoDrawing}
+              onRedo={redoDrawing}
+              islandName={currentLayer.islands[activeIslandId]?.name || 'this map'}
+              mapName={currentLayer.name}
+              islandCount={drawingIdsOnIsland(activeIslandId).length}
+              mapCount={drawingIdsOnMap().length}
+              onClearIsland={() => removeDrawings(drawingIdsOnIsland(activeIslandId))}
+              onClearMap={() => removeDrawings(drawingIdsOnMap())}
+            />
+          )}
+          <ZoomControl
+            zoom={zoom}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onZoomReset={zoomReset}
+            onRecenter={() => (isPhone ? flyToIsland(activeIslandId) : recenterOnIsland(activeIslandId))}
+          />
+          </div>
+        </div>
+
+        {!isPhone && rightPanelEl}
 
         {showMusicModal && audioEnabled && (
           <MusicModal
@@ -2127,7 +3302,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             layerOrder={state.layerOrder}
             entities={state.entities}
             isGuest={isGuest}
+            encounterVolume={encounterMusicVolume}
+            onEncounterVolume={(v) => {
+              setEncounterMusicVolume(v);
+              setSfxVolume(ENCOUNTER_MUSIC.id, v);
+            }}
             onClose={() => setShowMusicModal(false)}
+            side={!isPhone}
           />
         )}
 
@@ -2153,7 +3334,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!leftCollapsed && !drawerLayout && (
+        {!isPhone && isHost && !leftCollapsed && (
           <PanelResizer
             side="left"
             width={shownPanelWidths.left}
@@ -2162,17 +3343,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
             onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
           />
         )}
-        {!rightCollapsed && !drawerLayout && (
+        {!isPhone && !rightCollapsed && !drawerLayout && (
           <PanelResizer
             side="right"
             width={shownPanelWidths.right}
-            label="Resize players and inspector panel"
+            label="Resize the inspector panel"
             onResize={(w) => resizePanel('right', w)}
             onReset={() => resizePanel('right', DEFAULT_PANEL_WIDTHS.right)}
           />
         )}
 
-        {pendingDoor && (
+        {!isPhone && pendingDoor && (
           <div className="door-confirm-backdrop" onClick={cancelEnterDoor}>
             <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
               <h4><ModalIcon name="door" />Open the door?</h4>
@@ -2192,7 +3373,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           </div>
         )}
 
-        {tool === 'group' && <GroupConfirmPanel count={pendingGroupIslandIds.length} onConfirm={confirmGroup} onCancel={cancelGroup} />}
+        {tourOpen && isHost && !isPhone && <Tour onFinish={closeTour} />}
+
+        {pendingKick && (
+          <div className="door-confirm-backdrop" onClick={() => setPendingKickId(null)}>
+            <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
+              <h4><ModalIcon name="exit" />Kick {pendingKick.name}?</h4>
+              <p>
+                {pendingKick.name} leaves the table right away and their seat is freed.
+                {pendingKickHero ? ` ${pendingKickHero.name} stays on the map with no one playing it.` : ''}{' '}
+                The player code changes too, so the one they joined with stops working. Everyone else stays seated.
+              </p>
+              <div className="door-confirm-actions">
+                <button className="btn btn-secondary" onClick={() => setPendingKickId(null)}>
+                  Cancel
+                </button>
+                <button className="btn btn-danger" onClick={confirmKick}>
+                  Kick
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {pendingLeaveWarning && (
           <div className="door-confirm-backdrop" onClick={cancelLeaveWarning}>
@@ -2238,35 +3440,289 @@ export default function GameView({ me, mode, onLeave, onCodeRotated }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
 
-// Floating panel shown while the 'group' tool is active — the host clicks
-// islands on the map to build up the pending selection (see
-// GameView.toggleGroupCandidate) while this stays open, then names the
-// group and confirms here.
-function GroupConfirmPanel({ count, onConfirm, onCancel }) {
-  const [name, setName] = useState('');
-  return (
-    <div className="group-confirm-panel">
-      <h4>Merge islands</h4>
-      <p>Click islands on the map to select them — {count} selected.</p>
-      <input
-        className="field"
-        placeholder="Group name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        style={{ marginBottom: 12 }}
-      />
-      <div className="merge-confirm-actions">
-        <button className="btn btn-secondary" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-primary" onClick={() => onConfirm(name)} disabled={count < 2}>
-          Merge ({count})
-        </button>
-      </div>
+      {isPhone && (
+        <>
+          {/* The host's toolbar stays mounted (hidden) on a phone so its panels —
+              bestiary, initiative, layers, islands, asset storage — can open over
+              lib/fx.js from the phone screens. */}
+          {isHost && <div className="phone-toolbar-host">{toolbarEl}</div>}
+          <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} />
+          {phoneSheet === 'inspect' && (selectedEntity?.kind === 'door' || selectedEntity?.kind === 'trap') && (
+            <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
+              <div className="phone-sheet-pad">
+                {selectedEntity.kind === 'door' ? (
+                  <DoorInspector
+                    entity={selectedEntity}
+                    layers={state.layers}
+                    layerOrder={state.layerOrder}
+                    isHost={isHost}
+                    onUpdate={updateEntity}
+                    onRemove={(id) => {
+                      removeEntity(id);
+                      setPhoneSheet(null);
+                    }}
+                  />
+                ) : (
+                  <TrapInspector
+                    entity={selectedEntity}
+                    isHost={isHost}
+                    onUpdate={updateEntity}
+                    onRemove={(id) => {
+                      removeEntity(id);
+                      setPhoneSheet(null);
+                    }}
+                  />
+                )}
+              </div>
+            </PhoneSheet>
+          )}
+          {pendingDoor && (
+            <PhoneDoorSheet
+              door={pendingDoor.door}
+              doorIslandName={currentLayer.islands[pendingDoor.door.islandId]?.name}
+              destLayerName={state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}
+              destIslandName={state.layers[pendingDoor.destinationLayerId]?.islands?.[state.layers[pendingDoor.destinationLayerId]?.islandOrder?.[0]]?.name}
+              peopleThere={Object.values(state.players)
+                .filter((p) => p.id !== me.id && (p.currentLayerId || baseLayerId) === pendingDoor.destinationLayerId)
+                .map((p) => p.name)}
+              onWalk={confirmEnterDoor}
+              onCancel={cancelEnterDoor}
+            />
+          )}
+          {phoneSheet === 'chest' && selectedEntity?.kind === 'chest' && (
+            <PhoneChestSheet
+              entity={selectedEntity}
+              islandName={currentLayer.islands[selectedEntity.islandId]?.name}
+              isHost={isHost}
+              heroes={heroes}
+              meId={me.id}
+              onUpdate={updateEntity}
+              onGive={giveChestItemToHero}
+              onTake={takeChestItem}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'creature' && selectedEntity && (selectedEntity.kind === 'hero' || selectedEntity.kind === 'mob') && (
+            <PhoneCreatureSheet
+              entity={selectedEntity}
+              isHost={isHost}
+              meId={me.id}
+              players={state.players}
+              entities={layerEntities}
+              audio={audioApi}
+              onUpdate={updateEntity}
+              onRemove={removeEntity}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'target' && canTargetSelected && (
+            <PhoneTargetSheet
+              actor={actor}
+              target={selectedEntity}
+              getTarget={(id) => state.entities[id]}
+              onDamage={updateEntity}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'add' && isHost && (
+            <PhoneSheet title="Add to the map" onClose={() => setPhoneSheet(null)}>
+              {tokenSidebarEl}
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'menu' && !isHost && (
+            <PhonePlayerMenu
+              clock={state.clock}
+              phaseOverride={state.dayNightOverride}
+              layerName={currentLayer.name}
+              dmName={state.players[state.session.hostPlayerId]?.name}
+              seated={Object.values(state.players)
+                .filter((p) => p.id !== state.session.hostPlayerId)
+                .map((p) => (p.id === me.id ? `${p.name} (you)` : p.name))}
+              island={activeIsland}
+              islandConditions={islandConditionKeys(currentLayer, activeIslandId)}
+              feetPerSquare={islandFeet(currentLayer, activeIslandId)}
+              theme={theme}
+              onThemeChange={onThemeChange}
+              muted={deviceMuted}
+              onMutedChange={toggleDeviceMuted}
+              hideDrawings={hideDrawings}
+              onHideDrawingsChange={setHideDrawings}
+              onLeave={leaveTable}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'drawstyle' && isHost && (
+            <PhoneSheet title="Drawing style" onClose={() => setPhoneSheet(null)} className="phone-sheet-drawstyle">
+              <DrawStylePanel style={drawSettings.style} recent={recentColours} onChange={(style) => setDrawSettings({ ...drawSettings, style })} />
+              <PhoneSwitch
+                label="Snap to grid"
+                caption="Lines, circles and rectangles land on the grid."
+                checked={drawSettings.snap}
+                onChange={(snap) => setDrawSettings({ ...drawSettings, snap })}
+              />
+              <DrawClearMenu
+                islandName={currentLayer.islands[activeIslandId]?.name || 'this map'}
+                mapName={currentLayer.name}
+                islandCount={drawingIdsOnIsland(activeIslandId).length}
+                mapCount={drawingIdsOnMap().length}
+                onClearIsland={() => removeDrawings(drawingIdsOnIsland(activeIslandId))}
+                onClearMap={() => removeDrawings(drawingIdsOnMap())}
+              />
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'party' && (
+            <PhonePartySheet
+              players={state.players}
+              hostId={state.session.hostPlayerId}
+              meId={me.id}
+              entities={state.entities}
+              layers={state.layers}
+              currentLayerId={currentLayerId}
+              onShow={(hero) => {
+                setPhoneSheet(null);
+                flyToIsland(hero.islandId);
+                setSelectedId(hero.id);
+              }}
+              onShowRolls={() => setPhoneSheet('rolls')}
+              rollCount={rollLog.length}
+              onKick={isHost ? setPendingKickId : null}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'dice' && <DiceModal {...diceApi} share={rollShare} onClose={() => setPhoneSheet(null)} />}
+          {phoneSheet === 'menu' && isHost && (
+            <PhoneHostMenu
+              session={state.session}
+              isGuestHost={isGuestHost}
+              savedLabel={savedAgo}
+              autosaveSecondsLeft={autosaveSecondsLeft}
+              onRegenerateCode={regenerateCode}
+              onToggleOpen={toggleOpen}
+              onSaveNow={saveNow}
+              onExport={exportTable}
+              onImport={importTable}
+              onManageIslands={() => {
+                setPhoneSheet(null);
+                emitFx({ type: 'open', panel: 'islands' });
+              }}
+              onManageLayers={() => {
+                setPhoneSheet(null);
+                emitFx({ type: 'open', panel: 'layers' });
+              }}
+              theme={theme}
+              onThemeChange={onThemeChange}
+              muted={deviceMuted}
+              onMutedChange={toggleDeviceMuted}
+              hideDrawings={hideDrawings}
+              onHideDrawingsChange={setHideDrawings}
+              revealRolls={revealRolls}
+              onRevealRollsChange={setRevealRolls}
+              onLeave={leaveTable}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'run' && isHost && (
+            <PhoneRunTable
+              encounter={encounter}
+              actorName={actor?.name}
+              onEndEncounter={() => setEncounter(null)}
+              onShowLog={() => setPhoneSheet('log')}
+              onShowRolls={() => setPhoneSheet('rolls')}
+              rollCount={rollLog.length}
+              onShowActivity={() => setPhoneSheet('activity')}
+              activityCount={activityLog.length}
+              clock={state.clock}
+              phaseOverride={state.dayNightOverride}
+              onSetClockRunning={setClockRunning}
+              onSetDayNight={updateDayNightOverride}
+              islandName={activeIsland?.name}
+              islandDayNight={activeIsland?.dayNight || 'cycle'}
+              onIslandDayNight={(dayNight) => updateIsland(activeIslandId, { dayNight })}
+              audioEnabled={audioEnabled}
+              onOpenMusic={() => setShowMusicModal(true)}
+              onOpenDice={() => setPhoneSheet('dice')}
+              onOpenParty={() => setPhoneSheet('party')}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'rolls' && (
+            <PhoneSheet title="Roll log" onClose={() => setPhoneSheet(null)} className="phone-sheet-rolls">
+              <div className="phone-sheet-pad">
+                <p className="phone-caption phone-caption-flush">
+                  {isHost
+                    ? revealRolls
+                      ? 'Everyone’s rolls this session. Reveal is on: players see yours too.'
+                      : 'Everyone’s rolls this session. Yours are marked “Only you”.'
+                    : 'Everyone’s rolls this session, and the DM’s when they show them.'}
+                </p>
+                <RollLog entries={rollLog} />
+              </div>
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'activity' && isHost && (
+            <PhoneSheet title="Character log" onClose={() => setPhoneSheet(null)} className="phone-sheet-rolls">
+              <div className="phone-sheet-pad">
+                <p className="phone-caption phone-caption-flush">What each player changed on their own hero this session. Only you see this.</p>
+                <CharacterLog entries={activityLog} />
+              </div>
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'log' && (
+            <PhoneSheet title="Combat log" onClose={() => setPhoneSheet(null)} className="phone-sheet-log">
+              <CombatLog log={combatLog} onClose={() => setPhoneSheet(null)} />
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'layers' && (
+            <PhoneLayersSheet
+              layers={state.layers}
+              layerOrder={state.layerOrder}
+              currentLayerId={currentLayerId}
+              layerPlayerCounts={layerPlayerCounts}
+              isHost={isHost}
+              onSwitch={(id) => {
+                setHostViewLayerId(id);
+                setPhoneSheet(null);
+              }}
+              onManage={() => {
+                setPhoneSheet(null);
+                emitFx({ type: 'open', panel: 'layers' });
+              }}
+              onClose={() => setPhoneSheet(null)}
+            />
+          )}
+          {phoneSheet === 'atlas' && (
+            <PhoneAtlas
+              layer={currentLayer}
+              entities={layerEntities}
+              activeIslandId={activeIslandId}
+              myHeroId={myHeroOnLayer?.id}
+              layerLabel={`${state.layerOrder.length > 1 ? `Layer ${layerIndex + 1} of ${state.layerOrder.length} · ` : ''}${currentLayer.islandOrder.length} islands · ${islandFeet(currentLayer, activeIslandId)} ft squares here`}
+              onPick={(id) => {
+                setPhoneSheet(null);
+                flyToIsland(id);
+              }}
+              onClose={() => setPhoneSheet(null)}
+              onManageIslands={
+                isHost
+                  ? () => {
+                      setPhoneSheet(null);
+                      emitFx({ type: 'open', panel: 'islands' });
+                    }
+                  : null
+              }
+              onManageLayers={
+                isHost
+                  ? () => {
+                      setPhoneSheet(null);
+                      emitFx({ type: 'open', panel: 'layers' });
+                    }
+                  : null
+              }
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }

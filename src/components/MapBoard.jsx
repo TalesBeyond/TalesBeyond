@@ -1,10 +1,26 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
-import { pixelToCell, feetDistance, computeCanvasBounds } from '../utils/grid.js';
+import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
+import { useFx } from '../lib/fx.js';
+import {
+  finishPencilPoints,
+  shapeGeometry,
+  shapeFeetLabel,
+  hitsDrawing,
+  drawingBounds,
+  drawingHandles,
+  islandFillColour,
+  movedGeometry,
+  resizedGeometry,
+} from '../utils/drawing.js';
+import IslandDrawings from './DrawingLayer.jsx';
+import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
+import { entityImageSrc } from '../lib/storedImages.js';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
+const FLOAT_MS = 1300; // how long a hit number drifts up over a token
 const ISLAND_SNAP_PX = 20; // un-zoomed pixels — how close an island's edge must get to another's to snap flush
 
 // Paint order among tokens, lowest first: traps underneath, doors on top,
@@ -19,9 +35,7 @@ export default function MapBoard({
   islands,
   islandOrder,
   islandGroups = {},
-  pendingGroupIslandIds = [],
   dayPhase = null,
-  onToggleGroupCandidate,
   onMoveIslandGroup,
   feetPerSquare,
   activeIslandId,
@@ -35,10 +49,26 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw'
   zoom = 1,
   onRulerChange,
+  moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
+  actorId = null, // whose turn it is, during an encounter
+  gestureRef = null, // touch gestures (GameView): { panned } — set when a touch just panned the map, so its closing click is ignored
+  onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
+  plannedMove = null, // phone layout: { entityId, islandId, col, row, label } — a move waiting for "Move here"
+  drawings = {}, // the DM's drawings (utils/drawing.js), keyed by id
+  drawingOrder = [], // creation order — later drawings paint on top
+  hideDrawings = false, // this viewer's "Hide drawings"
+  drawSettings = null, // Draw tool: { subTool, style, snap }
+  onAddDrawing = null, // (drawing without an id) => void — the DM only
+  onUpdateDrawing = null, // (drawing) => void — a move or resize, the DM only
+  onRemoveDrawings = null, // (ids, sweepKey) => void — the eraser, the DM only
+  selectedDrawingId = null, // the drawing Select has picked
+  onSelectDrawing = null, // (id | null) => void
 }) {
+  const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
+  useImageCacheVersion(); // redraw when a shared picture arrives
   const wrapRef = useRef(null);
   const panRef = useRef(null); // { startX, startY, scrollLeft, scrollTop }
   // Authoritative drag data lives in refs (not state) so the *Up handlers
@@ -55,6 +85,25 @@ export default function MapBoard({
   const groupDragRef = useRef(null); // { groupId, downX, downY, dx, dy }
   const [groupDragPos, setGroupDragPos] = useState(null); // { groupId, dx, dy } — unzoomed delta, visual only
   const [ruler, setRuler] = useState(null); // { start: {islandId,col,row}, end: {islandId,col,row} }
+  // The shape the DM is drawing right now (Draw tool), shown in its island
+  // until the pointer lifts. The ref holds the live copy the move/up
+  // handlers read; `draft` is what renders.
+  const drawRef = useRef(null);
+  const [draft, setDraft] = useState(null);
+  // A drawing being moved or resized with Select: { id, geometry } shown in
+  // place of the stored one until the pointer lifts.
+  const [editPreview, setEditPreview] = useState(null);
+
+  // Hit numbers (lib/fx.js 'float' events): −7, a critical −18, +9, MISS —
+  // each drifts up from its token and fades.
+  const [floats, setFloats] = useState([]);
+  const floatSeq = useRef(0);
+  useFx((event) => {
+    if (event.type !== 'float') return;
+    const key = ++floatSeq.current;
+    setFloats((prev) => [...prev, { ...event, key }]);
+    setTimeout(() => setFloats((prev) => prev.filter((f) => f.key !== key)), FLOAT_MS);
+  });
 
   // Which group (if any) each island belongs to, for label-suppression and
   // for translating grouped islands together while their group's handle is
@@ -81,6 +130,22 @@ export default function MapBoard({
     const cellSize = island.cellSize * zoom;
     islandRects[id] = { island, x, y, cellSize, w: island.cols * cellSize, h: island.rows * cellSize };
   }
+  // Each island's drawings, oldest first.
+  const drawingsByIsland = new Map();
+  if (!hideDrawings) {
+    for (const id of drawingOrder) {
+      const stored = drawings[id];
+      if (!stored || !islandRects[stored.islandId]) continue;
+      const d = editPreview?.id === id ? { ...stored, geometry: editPreview.geometry } : stored;
+      if (!drawingsByIsland.has(d.islandId)) drawingsByIsland.set(d.islandId, []);
+      drawingsByIsland.get(d.islandId).push(d);
+    }
+  }
+  // The latest copy for the window listeners of a drag that began in an
+  // earlier render (the eraser removes drawings while it's still down).
+  const drawingsRef = useRef(drawingsByIsland);
+  drawingsRef.current = drawingsByIsland;
+
   // Padded generously beyond the islands' own bounding box (see
   // CANVAS_PAN_PADDING) so there's always room to pan in every direction —
   // computed from the stored island positions, not the live drag override
@@ -312,7 +377,7 @@ export default function MapBoard({
   // resolves the same reliable way token dragging already does.
 
   function handleIslandPointerDown(e, island) {
-    if (tool === 'ruler' || tool === 'pan') return;
+    if (tool === 'ruler' || tool === 'pan' || tool === 'draw') return;
     e.stopPropagation();
     const p = getRelativePoint(e.clientX, e.clientY);
     islandDragRef.current = { id: island.id, downX: p.x, downY: p.y, startX: island.x, startY: island.y };
@@ -339,16 +404,25 @@ export default function MapBoard({
     setIslandDragPos(null);
     if (!current) return;
 
+    // A phone pan scrolls the map under a still finger, so the island would
+    // otherwise read it as a click and select itself.
+    if (gestureRef?.current?.panned) return;
+
     const p = getRelativePoint(e.clientX, e.clientY);
     const moved = Math.hypot(p.x - current.downX, p.y - current.downY);
     const isClick = moved < CLICK_MOVE_THRESHOLD_PX;
 
-    // While the 'group' tool is active, a click toggles the island into the
-    // pending group selection instead of selecting/repositioning it —
-    // dragging is ignored entirely in this mode.
-    if (tool === 'group') {
-      if (isClick) onToggleGroupCandidate?.(current.id);
-      return;
+    // A tap on a square with a movable token selected moves it (or plans the
+    // move, mid-encounter) instead of selecting the island.
+    if (isClick && tool === 'play' && onTapCell) {
+      const found = findIslandAt(p.x, p.y);
+      if (found) {
+        const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+        if (onTapCell(found.island.id, col, row)) {
+          tapConsumedRef.current = true;
+          return;
+        }
+      }
     }
 
     // Selecting the "active" island (for placing new tokens) works in any
@@ -423,11 +497,272 @@ export default function MapBoard({
     panRef.current = null;
   }
 
+  // Desktop: holding the right mouse button anywhere over the map view pans
+  // it, in every tool and over tokens and islands alike. Caught on the way
+  // down (capture) so nothing underneath selects or drags; the browser's
+  // context menu is suppressed over the map.
+  useEffect(() => {
+    const stage = wrapRef.current?.parentElement;
+    if (!stage) return undefined;
+    function onRightDown(e) {
+      if (e.pointerType !== 'mouse' || e.button !== 2) return;
+      e.stopPropagation();
+      stage.classList.add('right-panning');
+      startPan(e);
+      const done = () => {
+        stage.classList.remove('right-panning');
+        window.removeEventListener('pointerup', done);
+      };
+      window.addEventListener('pointerup', done);
+    }
+    function onContextMenu(e) {
+      e.preventDefault();
+    }
+    stage.addEventListener('pointerdown', onRightDown, true);
+    stage.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      stage.removeEventListener('pointerdown', onRightDown, true);
+      stage.removeEventListener('contextmenu', onContextMenu);
+    };
+    // startPan and its move/up handlers only touch refs, so the first
+    // render's copies stay correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- Draw ----
+  // A press on an island starts a shape there — even on a token, which lets
+  // the press through outside the Play tool. The shape stays on that island
+  // whatever the pointer crosses; the island's SVG cuts off what's outside.
+  // Select picks the topmost drawing under the pointer (or a handle of the
+  // selected one) and drags it; Eraser removes every drawing it touches.
+  // drawRef.current.mode says which: 'create' | 'edit' | 'erase'.
+
+  function toIslandSquares(e, islandId) {
+    const r = islandRects[islandId];
+    if (!r) return null;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const left = (r.x - originX) * zoom;
+    const top = (r.y - originY) * zoom;
+    return [(p.x - left) / r.cellSize, (p.y - top) / r.cellSize];
+  }
+
+  // What the unfinished shape looks like right now, or null when it has no
+  // size yet.
+  function draftFrom(d) {
+    if (d.kind === 'pencil') return { id: 'draft', islandId: d.islandId, kind: 'pencil', geometry: { points: d.raw }, style: d.style };
+    const geometry = shapeGeometry(d.kind, d.start, d.end, d.snap);
+    return geometry ? { id: 'draft', islandId: d.islandId, kind: d.kind, geometry, style: d.style } : null;
+  }
+
+  // How far a press may miss a drawing's line and still hit it, in squares
+  // (a finger gets more room than a mouse).
+  function hitTolerance(e, cellSize) {
+    return Math.max(0.15, (e.pointerType === 'mouse' ? 6 : 14) / cellSize);
+  }
+
+  function startDrawing(e) {
+    if (!isHost || !drawSettings || !onAddDrawing) return;
+    if (drawRef.current) {
+      cancelDrawing();
+      return;
+    }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const found = findIslandAt(p.x, p.y);
+    const subTool = drawSettings.subTool;
+
+    if (subTool === 'select') {
+      e.preventDefault();
+      if (!startEditing(e, p, found)) onSelectDrawing?.(null);
+      return;
+    }
+    if (subTool === 'eraser') {
+      e.preventDefault();
+      drawRef.current = { mode: 'erase', erased: new Set(), sweep: `erase-${Date.now()}` };
+      eraseAt(e);
+      listenWhileDrawing();
+      return;
+    }
+    if (!found) return;
+    e.preventDefault();
+    if (subTool === 'fill') {
+      fillIsland(found.island.id);
+      return;
+    }
+    const start = toIslandSquares(e, found.island.id);
+    drawRef.current = {
+      mode: 'create',
+      islandId: found.island.id,
+      kind: subTool,
+      raw: [start],
+      start,
+      end: start,
+      snap: drawSettings.snap,
+      style: { ...drawSettings.style },
+    };
+    setDraft(draftFrom(drawRef.current));
+    listenWhileDrawing();
+  }
+
+  // Fill: paints the whole island one colour. A press on an island that
+  // already has a fill recolours it; the same colour and opacity again
+  // takes it off.
+  function fillIsland(islandId) {
+    const style = { color: drawSettings.style.color, opacity: drawSettings.style.opacity ?? 1 };
+    const fills = drawingOrder.map((id) => drawings[id]).filter((d) => d?.islandId === islandId && d.kind === 'fill');
+    const existing = fills[fills.length - 1];
+    if (!existing) onAddDrawing({ islandId, kind: 'fill', geometry: {}, style });
+    else if (existing.style?.color === style.color && (existing.style?.opacity ?? 1) === style.opacity) onRemoveDrawings?.(fills.map((d) => d.id));
+    else onUpdateDrawing?.({ ...existing, style });
+  }
+
+  // Select: a handle of the selected drawing first (they can sit past the
+  // island's edge), then the topmost drawing under the pointer. Returns
+  // false when the press hit nothing.
+  function startEditing(e, p, found) {
+    const selected = selectedDrawingId && drawings[selectedDrawingId];
+    const selectedRect = selected && islandRects[selected.islandId];
+    if (selected && selectedRect) {
+      const left = (selectedRect.x - originX) * zoom;
+      const top = (selectedRect.y - originY) * zoom;
+      const grab = e.pointerType === 'mouse' ? 9 : 22;
+      const handle = drawingHandles(selected).find(
+        (h) => Math.hypot(left + h.at[0] * selectedRect.cellSize - p.x, top + h.at[1] * selectedRect.cellSize - p.y) <= grab
+      );
+      if (handle) {
+        beginEdit(e, selected, 'handle', handle.id);
+        return true;
+      }
+    }
+    if (!found) return false;
+    const point = toIslandSquares(e, found.island.id);
+    const onIsland = drawingsRef.current.get(found.island.id) || [];
+    const tolerance = hitTolerance(e, found.cellSize);
+    const hit = [...onIsland].reverse().find((d) => hitsDrawing(d, point, tolerance));
+    if (!hit) return false;
+    onSelectDrawing?.(hit.id);
+    beginEdit(e, hit, 'move', null);
+    return true;
+  }
+
+  function beginEdit(e, drawing, op, handle) {
+    drawRef.current = {
+      mode: 'edit',
+      op,
+      handle,
+      drawing,
+      islandId: drawing.islandId,
+      start: toIslandSquares(e, drawing.islandId),
+      snap: drawSettings.snap,
+      geometry: drawing.geometry,
+    };
+    listenWhileDrawing();
+  }
+
+  // A moved drawing keeps the middle of its bounding box on its island, so
+  // it can hang over the edge but never leave.
+  function clampMove(drawing, dx, dy) {
+    const island = islandRects[drawing.islandId]?.island;
+    if (!island) return [dx, dy];
+    const [x0, y0, x1, y1] = drawingBounds(drawing);
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    return [Math.min(island.cols - cx, Math.max(-cx, dx)), Math.min(island.rows - cy, Math.max(-cy, dy))];
+  }
+
+  function eraseAt(e) {
+    const d = drawRef.current;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const found = findIslandAt(p.x, p.y);
+    if (!found) return;
+    const point = toIslandSquares(e, found.island.id);
+    const tolerance = hitTolerance(e, found.cellSize) + 0.15;
+    const doomed = (drawingsRef.current.get(found.island.id) || [])
+      .filter((drawing) => !d.erased.has(drawing.id) && hitsDrawing(drawing, point, tolerance))
+      .map((drawing) => drawing.id);
+    if (!doomed.length) return;
+    doomed.forEach((id) => d.erased.add(id));
+    onRemoveDrawings?.(doomed, d.sweep);
+  }
+
+  function listenWhileDrawing() {
+    window.addEventListener('pointermove', onDrawMove);
+    window.addEventListener('pointerup', onDrawUp);
+    window.addEventListener('pointercancel', cancelDrawing);
+  }
+
+  function onDrawMove(e) {
+    const d = drawRef.current;
+    if (!d) return;
+    if (gestureRef?.current?.pinch) {
+      cancelDrawing();
+      return;
+    }
+    if (d.mode === 'erase') {
+      eraseAt(e);
+      return;
+    }
+    const point = toIslandSquares(e, d.islandId);
+    if (!point) return;
+    if (d.mode === 'edit') {
+      let geometry;
+      if (d.op === 'move') {
+        const [dx, dy] = clampMove(d.drawing, point[0] - d.start[0], point[1] - d.start[1]);
+        geometry = movedGeometry(d.drawing, dx, dy, d.snap);
+      } else {
+        geometry = resizedGeometry(d.drawing, d.handle, point, d.snap) || d.geometry;
+      }
+      d.geometry = geometry;
+      setEditPreview({ id: d.drawing.id, geometry });
+      return;
+    }
+    if (d.kind === 'pencil') d.raw = [...d.raw, point];
+    else d.end = point;
+    setDraft(draftFrom(d));
+  }
+
+  function stopDrawingListeners() {
+    window.removeEventListener('pointermove', onDrawMove);
+    window.removeEventListener('pointerup', onDrawUp);
+    window.removeEventListener('pointercancel', cancelDrawing);
+  }
+
+  function onDrawUp() {
+    stopDrawingListeners();
+    const d = drawRef.current;
+    drawRef.current = null;
+    setDraft(null);
+    setEditPreview(null);
+    if (!d || d.mode === 'erase') return;
+    if (d.mode === 'edit') {
+      if (JSON.stringify(d.geometry) !== JSON.stringify(d.drawing.geometry)) onUpdateDrawing?.({ ...d.drawing, geometry: d.geometry });
+      return;
+    }
+    if (d.kind === 'pencil') {
+      const points = finishPencilPoints(d.raw);
+      if (points) onAddDrawing({ islandId: d.islandId, kind: 'pencil', geometry: { points }, style: d.style });
+      return;
+    }
+    const geometry = shapeGeometry(d.kind, d.start, d.end, d.snap);
+    if (geometry) onAddDrawing({ islandId: d.islandId, kind: d.kind, geometry, style: d.style });
+  }
+
+  function cancelDrawing() {
+    stopDrawingListeners();
+    drawRef.current = null;
+    setDraft(null);
+    setEditPreview(null);
+  }
+
   // ---- Ruler ----
 
   function handleStagePointerDown(e) {
     if (tool === 'pan') {
       startPan(e);
+      return;
+    }
+    if (tool === 'draw') {
+      startDrawing(e);
       return;
     }
     if (tool !== 'ruler') return;
@@ -455,6 +790,11 @@ export default function MapBoard({
   }
 
   function handleStageClick() {
+    if (tapConsumedRef.current) {
+      tapConsumedRef.current = false;
+      return;
+    }
+    if (gestureRef?.current?.panned) return;
     if (tool === 'play') onSelectEntity(null);
   }
 
@@ -468,6 +808,9 @@ export default function MapBoard({
     return { x: left + point.col * r.cellSize + r.cellSize / 2, y: top + point.row * r.cellSize + r.cellSize / 2 };
   }
 
+  // Feet per square on one island (its own, else the layer's).
+  const feetOn = (islandId) => islands[islandId]?.feetPerSquare || feetPerSquare || 5;
+
   let rulerLine = null;
   if (ruler) {
     const p1 = rulerPoint(ruler.start);
@@ -475,18 +818,31 @@ export default function MapBoard({
     if (p1 && p2) {
       let feet;
       if (ruler.start.islandId === ruler.end.islandId) {
-        feet = feetDistance(ruler.start, ruler.end, feetPerSquare);
+        feet = feetDistance(ruler.start, ruler.end, feetOn(ruler.start.islandId));
       } else {
         // Different islands: the 5-10-5 diagonal rule doesn't translate
-        // across two independent grids, so fall back to straight-line
-        // distance using the starting island's scale.
-        const cellSize = islandRects[ruler.start.islandId].cellSize;
-        const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        feet = Math.round((pixelDist / cellSize) * feetPerSquare);
+        // across independent grids, so it's a straight line — and each
+        // stretch of it counts at the scale of the island it crosses (a gap
+        // at the last island's), whichever end it started from.
+        const areas = islandOrder
+          .filter((id) => islandRects[id])
+          .map((id) => {
+            const r = islandRects[id];
+            return { left: (r.x - originX) * zoom, top: (r.y - originY) * zoom, w: r.w, h: r.h, feetPerPx: feetOn(id) / r.cellSize };
+          });
+        feet = Math.round(feetAlongLine(p1, p2, areas));
       }
       rulerLine = { p1, p2, feet };
     }
   }
+
+  // Leaving the Ruler tool wipes the measurement off the map; leaving Draw
+  // drops a shape that was never finished.
+  useEffect(() => {
+    if (tool !== 'ruler') setRuler(null);
+    if (tool !== 'draw' && drawRef.current) cancelDrawing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool]);
 
   // Report the live measurement upward so the HUD can show it.
   const rulerFeet = rulerLine ? rulerLine.feet : null;
@@ -497,7 +853,7 @@ export default function MapBoard({
   return (
     <div
       ref={wrapRef}
-      className={`island-canvas tool-${tool}`}
+      className={`island-canvas tool-${tool}${tool === 'draw' && drawSettings ? ` draw-${drawSettings.subTool}` : ''}`}
       style={{ width: canvasWidth, height: canvasHeight }}
       onPointerDown={handleStagePointerDown}
       onClick={handleStageClick}
@@ -511,20 +867,25 @@ export default function MapBoard({
         const w = island.cols * island.cellSize * zoom;
         const h = island.rows * island.cellSize * zoom;
         const cellPx = island.cellSize * zoom;
-        const isPendingGroupMember = pendingGroupIslandIds.includes(id);
         // This island's own day/night setting, else the table clock's phase.
         const phase = DAY_PHASES[islandPhase(island, dayPhase)];
+        // Fill (Draw tool): a colour laid over the map art, under the grid.
+        const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
+        const fillColour = fill && islandFillColour(fill.style);
+        const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, resolveImage(island.backgroundImage) && `url(${resolveImage(island.backgroundImage)})`].filter(Boolean);
+        // The map's own grid lines, if its settings ask for heavier or coloured ones.
+        const gridLines = gridLineStyle(island);
 
         return (
           <div
             key={id}
-            className={`grid-wrap${activeIslandId === id ? ' active' : ''}${isPendingGroupMember ? ' pending-group-member' : ''}`}
+            className={`grid-wrap${activeIslandId === id ? ' active' : ''}`}
             style={{
               left,
               top,
               width: w,
               height: h,
-              backgroundImage: island.backgroundImage ? `url(${island.backgroundImage})` : undefined,
+              backgroundImage: background.length ? background.join(', ') : undefined,
             }}
             onPointerDown={(e) => handleIslandPointerDown(e, island)}
           >
@@ -532,27 +893,38 @@ export default function MapBoard({
                 single shared title (rendered below) stands in for it. */}
             {!groupIdByIslandId.has(id) && <div className="island-label">{island.name}</div>}
             {/* Condition badges (fog, fire, ...) sit on the island's top edge for
-                everyone - a grouped island keeps its own, unlike the label. */}
-            {(phase || island.conditions?.length > 0) && (
+                everyone. A grouped island shows only its day/night badge: the
+                group's conditions sit on the group's title instead. */}
+            {(phase || (!groupIdByIslandId.has(id) && island.conditions?.length > 0)) && (
               <div className="island-conditions">
                 {phase && <img src={phase.imageUrl} alt={phase.label} title={`${phase.label} — ${phase.description}`} />}
-                {(island.conditions || []).map((key) => {
+                {(groupIdByIslandId.has(id) ? [] : island.conditions || []).map((key) => {
                   const c = getIslandCondition(key);
                   if (!c) return null;
                   return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
                 })}
               </div>
             )}
-            <svg className="grid-svg" width={w} height={h}>
+            {moveRange?.islandId === id &&
+              moveRange.cells.map((c) => (
+                <div
+                  key={`${c.col}_${c.row}`}
+                  className="move-cell"
+                  style={{ left: c.col * cellPx, top: c.row * cellPx, width: cellPx, height: cellPx }}
+                />
+              ))}
+            <svg className={`grid-svg${gridLines.custom ? ' grid-custom' : ''}`} width={w} height={h}>
               {Array.from({ length: island.cols + 1 }).map((_, v) => (
-                <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke="rgba(23,20,15,0.28)" strokeWidth={v % 5 === 0 ? 1.4 : 0.7} />
+                <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke={gridLines.stroke} strokeWidth={v % 5 === 0 ? gridLines.major : gridLines.minor} />
               ))}
               {Array.from({ length: island.rows + 1 }).map((_, hh) => (
-                <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke="rgba(23,20,15,0.28)" strokeWidth={hh % 5 === 0 ? 1.4 : 0.7} />
+                <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke={gridLines.stroke} strokeWidth={hh % 5 === 0 ? gridLines.major : gridLines.minor} />
               ))}
             </svg>
             {/* Dusk/night/dawn tint - over the map art and grid, under the tokens. */}
             {phase?.tint && <div className="island-daynight" style={{ background: phase.tint }} />}
+            {/* The DM's drawings — chalk on the floor, still under the tokens. */}
+            <IslandDrawings drawings={drawingsByIsland.get(id) || []} draft={draft?.islandId === id ? draft : null} cellPx={cellPx} width={w} height={h} />
           </div>
         );
       })}
@@ -583,6 +955,15 @@ export default function MapBoard({
               />
             )}
             <div className="group-label">{group.name}</div>
+            {group.conditions?.length > 0 && (
+              <div className="island-conditions group-conditions">
+                {group.conditions.map((key) => {
+                  const c = getIslandCondition(key);
+                  if (!c) return null;
+                  return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                })}
+              </div>
+            )}
           </div>
         );
       })}
@@ -610,13 +991,13 @@ export default function MapBoard({
           return (
             <div
               key={id}
-              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}`}
+              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}`}
               style={{
                 width: size,
                 height: size,
                 left: cx - size / 2,
                 top: cy - size / 2,
-                backgroundImage: `url(${entity.imageUrl})`,
+                backgroundImage: `url(${entityImageSrc(entity)})`,
                 '--token-color': entity.color || 'transparent',
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
@@ -630,24 +1011,40 @@ export default function MapBoard({
                 </span>
               )}
               {entity.kind !== 'door' && entity.maxHp ? (
-                <span className="token-hpbar" aria-hidden="true">
-                  <span
-                    className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`}
-                    style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
-                  />
+                // The ghost underneath shows damage just taken, then drains
+                // down to the new value after a beat (a CSS transition delay).
+                <span className={`token-hpbar${entity.hp / entity.maxHp < 0.25 ? ' critical' : ''}`} aria-hidden="true">
+                  <span className="token-hpbar-ghost" style={{ width: `${hpPercent(entity)}%` }} />
+                  <span className={`token-hpbar-fill${entity.hp / entity.maxHp < 0.4 ? ' low' : ''}`} style={{ width: `${hpPercent(entity)}%` }} />
+                </span>
+              ) : null}
+              {/* Temporary HP: a thin blue layer riding on top of the life bar. */}
+              {entity.kind !== 'door' && entity.maxHp && entity.tempHp > 0 ? (
+                <span className="token-tempbar" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, (entity.tempHp / entity.maxHp) * 100)}%` }} />
                 </span>
               ) : null}
               {entity.kind !== 'door' && entity.maxHp ? (
                 <span className="token-hp">
                   {entity.hp}/{entity.maxHp}
+                  {entity.tempHp > 0 && <span className="token-hp-temp"> +{entity.tempHp}</span>}
                 </span>
               ) : null}
               {entity.kind !== 'door' && entity.conditions?.length > 0 && (
+                // Cardboard chits clipped to the token's edge; hovering the
+                // token fans out their names.
                 <span className="token-conditions">
                   {entity.conditions.map((key) => {
                     const c = CONDITIONS.find((cond) => cond.key === key);
                     if (!c) return null;
-                    return <img key={key} src={c.imageUrl} alt={c.label} title={`${c.label} — ${c.description}`} />;
+                    return (
+                      <span key={key} className="token-chit" title={`${c.label} — ${c.description}`}>
+                        <img src={c.imageUrl} alt={c.label} />
+                        <span className="token-chit-label" aria-hidden="true">
+                          {c.label}
+                        </span>
+                      </span>
+                    );
                   })}
                 </span>
               )}
@@ -655,12 +1052,116 @@ export default function MapBoard({
           );
         })}
 
+      {floats.map((f) => {
+        const entity = entities[f.entityId];
+        const r = entity && islandRects[entity.islandId];
+        if (!r) return null;
+        const size = entity.size || 1;
+        const x = (r.x - originX) * zoom + entity.col * r.cellSize + (r.cellSize * size) / 2;
+        const y = (r.y - originY) * zoom + entity.row * r.cellSize;
+        return (
+          <span key={f.key} className={`hit-float hit-${f.kind}`} style={{ left: x, top: y }} aria-hidden="true">
+            {f.kind === 'crit' && <small>Critical</small>}
+            {f.kind === 'miss' ? 'MISS' : f.kind === 'heal' ? `+${f.amount}` : `−${f.amount}`}
+          </span>
+        );
+      })}
+
+      {plannedMove && <PlannedMoveOverlay plan={plannedMove} entity={entities[plannedMove.entityId]} islandRects={islandRects} originX={originX} originY={originY} zoom={zoom} width={canvasWidth} height={canvasHeight} />}
+
+      {draft && draft.kind !== 'pencil' && islandRects[draft.islandId] && (
+        <DrawFeetLabel
+          label={shapeFeetLabel(draft.kind, draft.geometry, feetOn(draft.islandId), drawRef.current?.snap)}
+          rect={islandRects[draft.islandId]}
+          left={(islandRects[draft.islandId].x - originX) * zoom}
+          top={(islandRects[draft.islandId].y - originY) * zoom}
+        />
+      )}
+      {tool === 'draw' && selectedDrawingId && drawings[selectedDrawingId] && islandRects[drawings[selectedDrawingId].islandId] && (() => {
+        const stored = drawings[selectedDrawingId];
+        const shown = editPreview?.id === stored.id ? { ...stored, geometry: editPreview.geometry } : stored;
+        const r = islandRects[shown.islandId];
+        const left = (r.x - originX) * zoom;
+        const top = (r.y - originY) * zoom;
+        return (
+          <>
+            <DrawSelection drawing={shown} rect={r} left={left} top={top} width={canvasWidth} height={canvasHeight} />
+            {editPreview && shown.kind !== 'pencil' && (
+              <DrawFeetLabel label={shapeFeetLabel(shown.kind, shown.geometry, feetOn(shown.islandId), drawSettings?.snap)} rect={r} left={left} top={top} />
+            )}
+          </>
+        );
+      })()}
+
       {rulerLine && (
         <svg className="grid-svg ruler-overlay" width={canvasWidth} height={canvasHeight}>
           <RulerOverlay p1={rulerLine.p1} p2={rulerLine.p2} feet={rulerLine.feet} />
         </svg>
       )}
     </div>
+  );
+}
+
+// The selected drawing's dashed box and its resize handles (Select). Drawn
+// over the whole canvas so handles past the island's edge still show;
+// MapBoard finds handles by distance, so this takes no pointer events.
+function DrawSelection({ drawing, rect, left, top, width, height }) {
+  const px = (at) => [left + at[0] * rect.cellSize, top + at[1] * rect.cellSize];
+  const [x0, y0, x1, y1] = drawingBounds(drawing);
+  const [bx, by] = px([x0, y0]);
+  const [bx1, by1] = px([x1, y1]);
+  return (
+    <svg className="grid-svg draw-selection" width={width} height={height} aria-hidden="true">
+      <rect x={bx - 4} y={by - 4} width={bx1 - bx + 8} height={by1 - by + 8} className="draw-selection-box" />
+      {drawingHandles(drawing).map((h) => {
+        const [hx, hy] = px(h.at);
+        return <rect key={h.id} x={hx - 6} y={hy - 6} width={12} height={12} rx={2} className="draw-handle" />;
+      })}
+    </svg>
+  );
+}
+
+// A shape's size in feet while it's being drawn, like the ruler's label.
+function DrawFeetLabel({ label, rect, left, top }) {
+  if (!label) return null;
+  return (
+    <span className="draw-feet" style={{ left: left + label.at[0] * rect.cellSize, top: top + label.at[1] * rect.cellSize }}>
+      {label.text}
+    </span>
+  );
+}
+
+function hpPercent(entity) {
+  return Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
+}
+
+// A move waiting for "Move here" (phone, mid-encounter): a dashed path from
+// the token to the chosen square, a ghost ring there, and its label.
+function PlannedMoveOverlay({ plan, entity, islandRects, originX, originY, zoom, width, height }) {
+  const from = entity && islandRects[entity.islandId];
+  const to = islandRects[plan.islandId];
+  if (!from || !to) return null;
+  const size = entity.size || 1;
+  const x1 = (from.x - originX) * zoom + entity.col * from.cellSize + (from.cellSize * size) / 2;
+  const y1 = (from.y - originY) * zoom + entity.row * from.cellSize + (from.cellSize * size) / 2;
+  const x2 = (to.x - originX) * zoom + plan.col * to.cellSize + (to.cellSize * size) / 2;
+  const y2 = (to.y - originY) * zoom + plan.row * to.cellSize + (to.cellSize * size) / 2;
+  const radius = (to.cellSize * size) / 2 - 2;
+  const label = plan.label || '';
+  const labelW = label.length * 7.2 + 14;
+  return (
+    <svg className="grid-svg planned-move" width={width} height={height} aria-hidden="true">
+      <line x1={x1} y1={y1} x2={x2} y2={y2} className="planned-move-path" />
+      <circle cx={x2} cy={y2} r={radius} className="planned-move-ghost" />
+      {label && (
+        <g>
+          <rect x={x2 - labelW / 2} y={y2 - radius - 26} width={labelW} height={20} rx={10} className="planned-move-label-bg" />
+          <text x={x2} y={y2 - radius - 12} textAnchor="middle" className="planned-move-label">
+            {label}
+          </text>
+        </g>
+      )}
+    </svg>
   );
 }
 

@@ -10,7 +10,7 @@ export const MAX_PLAYERS = 10; // 1 host + 9 players
 export function createInitialIsland(overrides = {}) {
   return {
     id: generateEntityId(),
-    name: 'Untitled Island',
+    name: 'Untitled Map',
     cols: 20,
     rows: 15,
     cellSize: 42,
@@ -26,7 +26,7 @@ export function createInitialLayer(overrides = {}) {
   const baseIsland = createInitialIsland({ name: 'Untitled Map', ...islandOverrides });
   return {
     id: generateEntityId(),
-    name: 'Untitled Map',
+    name: 'Untitled World',
     feetPerSquare: 5,
     islands: { [baseIsland.id]: baseIsland },
     islandOrder: [baseIsland.id],
@@ -77,9 +77,23 @@ function reconcileAudio(state) {
   return doomed.length ? { ...state, audio: pruneAudio(state.audio, doomed) } : state;
 }
 
+// A drawing belongs to its island: removing the island (or its whole layer)
+// removes the drawings on it.
+function reconcileDrawings(state) {
+  if (!state.drawingOrder?.length) return state;
+  const islandIds = new Set();
+  for (const layer of Object.values(state.layers)) for (const id of Object.keys(layer.islands || {})) islandIds.add(id);
+  const drawingOrder = state.drawingOrder.filter((id) => islandIds.has(state.drawings[id]?.islandId));
+  if (drawingOrder.length === state.drawingOrder.length) return state;
+  const drawings = {};
+  for (const id of drawingOrder) drawings[id] = state.drawings[id];
+  return { ...state, drawings, drawingOrder };
+}
+
 function reducer(state, action) {
   const next = baseReducer(state, action);
-  return next !== state && AUDIO_CASCADE_ACTIONS.has(action.type) ? reconcileAudio(next) : next;
+  if (next === state || !AUDIO_CASCADE_ACTIONS.has(action.type)) return next;
+  return reconcileDrawings(reconcileAudio(next));
 }
 
 // The tracks (and resulting audio slice) a REMOVE_* action would take with it,
@@ -122,6 +136,8 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     // back ("Follow the clock" = null). Independent of the clock, so it works
     // with the cycle on, off, or no clock at all.
     dayNightOverride: null,
+    // The running fight (utils/encounter.js), or null outside of one.
+    encounter: null,
     entities: {},
     entityOrder: [],
     // DM-authored custom monsters/weapons/items (Toolbar.jsx's Asset Storage
@@ -136,6 +152,11 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     // offsetMs } | null, resume: { [trackId]: offsetMs } } — see
     // 38_synced_table_audio.sql. Cloud tables only in Slice 1.
     audio: { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } },
+    // The DM's Draw tool (52_drawings.sql): {id: {id, islandId, kind,
+    // geometry, style}}, geometry in grid squares from the island's top-left
+    // corner. `drawingOrder` is creation order — later drawings paint on top.
+    drawings: {},
+    drawingOrder: [],
     players: {
       [hostPlayerId]: {
         id: hostPlayerId,
@@ -355,7 +376,12 @@ function baseReducer(state, action) {
     }
 
     case 'REGENERATE_INVITE_CODE':
-      return { ...state, session: { ...state.session, code: action.code } };
+      // Outside cloud mode the table's music is keyed by its code (GameView's
+      // audioScope), so remember the first code for that when it changes.
+      return {
+        ...state,
+        session: { ...state.session, code: action.code, audioScope: state.session.audioScope || state.session.code },
+      };
 
     case 'SET_SESSION_OPEN':
       return { ...state, session: { ...state.session, isOpen: action.isOpen } };
@@ -365,6 +391,9 @@ function baseReducer(state, action) {
 
     case 'SET_DAY_NIGHT_OVERRIDE':
       return { ...state, dayNightOverride: action.phase ?? null };
+
+    case 'SET_ENCOUNTER':
+      return { ...state, encounter: action.encounter ?? null };
 
     case 'ADD_ENTITY': {
       const alreadyPresent = Boolean(state.entities[action.entity.id]);
@@ -449,6 +478,32 @@ function baseReducer(state, action) {
 
     case 'SET_AUDIO_PLAYBACK':
       return { ...state, audio: { ...(state.audio || EMPTY_AUDIO), playback: normalizePlayback(action.playback) } };
+
+    // Adds a drawing, or replaces it in place (a move or resize keeps its
+    // stacking position).
+    case 'SET_DRAWING': {
+      const drawings = state.drawings || {};
+      const order = state.drawingOrder || [];
+      return {
+        ...state,
+        drawings: { ...drawings, [action.drawing.id]: action.drawing },
+        drawingOrder: drawings[action.drawing.id] ? order : [...order, action.drawing.id],
+      };
+    }
+
+    case 'REMOVE_DRAWINGS': {
+      const doomed = new Set(action.ids);
+      const order = state.drawingOrder || [];
+      if (!order.some((id) => doomed.has(id))) return state;
+      const drawings = {};
+      const drawingOrder = [];
+      for (const id of order) {
+        if (doomed.has(id) || !state.drawings[id]) continue;
+        drawings[id] = state.drawings[id];
+        drawingOrder.push(id);
+      }
+      return { ...state, drawings, drawingOrder };
+    }
 
     case 'REMOVE_CUSTOM_ASSET': {
       const { [action.id]: _removed, ...rest } = state.customAssets || {};

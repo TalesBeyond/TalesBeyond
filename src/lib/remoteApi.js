@@ -20,8 +20,11 @@ import {
   mapDbCustomAsset,
   mapDbAudioTrack,
   audioTrackToDb,
+  mapDbDrawing,
+  drawingToDb,
   mapDbPlayer,
 } from './mappers.js';
+import { customAssetDataToDb } from './storedImages.js';
 
 // dmNotes/droppables live in their own host-only-readable table (see
 // 15_entity_dm_data_privacy.sql) instead of on `entities` — split a patch
@@ -158,6 +161,9 @@ export async function fetchTableSnapshot(tableId) {
   // in its own query so a project that has 32 but not 33 still gets its clock.
   const overrideRes = await supabase.from('tables').select('day_night_override').eq('id', tableId).maybeSingle();
   const dayNightOverride = overrideRes.error ? null : overrideRes.data?.day_night_override ?? null;
+  // And the running encounter (49_encounter.sql), just as forgivingly.
+  const encounterRes = await supabase.from('tables').select('encounter').eq('id', tableId).maybeSingle();
+  const encounter = encounterRes.error ? null : encounterRes.data?.encounter ?? null;
 
   // Custom assets (36_custom_assets.sql) are a whole separate table rather
   // than a column, so a project that hasn't run that migration yet gets an
@@ -183,6 +189,17 @@ export async function fetchTableSnapshot(tableId) {
   }
   const playbackRes = await supabase.from('tables').select('audio_playback').eq('id', tableId).maybeSingle();
   const audioPlayback = playbackRes.error ? null : playbackRes.data?.audio_playback ?? null;
+
+  // The DM's drawings (52_drawings.sql), forgiving like the rest, oldest
+  // first so later drawings paint on top.
+  const drawingsRes = await supabase.from('drawings').select('*').eq('table_id', tableId).order('created_at', { ascending: true });
+  const drawingRows = drawingsRes.error ? [] : drawingsRes.data;
+  const drawings = {};
+  const drawingOrder = [];
+  for (const row of drawingRows) {
+    drawings[row.id] = mapDbDrawing(row);
+    drawingOrder.push(row.id);
+  }
 
   const players = {};
   let hostPlayerId = null;
@@ -237,10 +254,13 @@ export async function fetchTableSnapshot(tableId) {
     layerOrder,
     clock,
     dayNightOverride,
+    encounter,
     entities,
     entityOrder,
     customAssets,
     customAssetOrder,
+    drawings,
+    drawingOrder,
     audio: {
       tracks: audioTracks,
       trackOrder: audioTrackOrder,
@@ -264,6 +284,18 @@ export async function removeAudioTrackRemote(id) {
   must(await supabase.from('audio_tracks').delete().eq('id', id), 'removeAudioTrack');
 }
 
+// ---- Drawings (52_drawings.sql) — host only ----
+
+// Inserts a new drawing or rewrites a moved/resized one.
+export async function upsertDrawingRemote(tableId, drawing) {
+  must(await supabase.from('drawings').upsert(drawingToDb(tableId, drawing)), 'upsertDrawing');
+}
+
+export async function removeDrawingsRemote(ids) {
+  if (!ids.length) return;
+  must(await supabase.from('drawings').delete().in('id', ids), 'removeDrawings');
+}
+
 export async function updateAudioPlaybackRemote(tableId, playback) {
   must(await supabase.from('tables').update({ audio_playback: playback }).eq('id', tableId), 'updateAudioPlayback');
 }
@@ -276,6 +308,19 @@ export async function updateTableClockRemote(tableId, clock) {
 
 export async function updateTableDayNightOverrideRemote(tableId, phase) {
   must(await supabase.from('tables').update({ day_night_override: phase }).eq('id', tableId), 'updateTableDayNightOverride');
+}
+
+// ---- Encounter (49_encounter.sql) ----
+
+// Host-only, like every other table-wide setting.
+export async function updateTableEncounterRemote(tableId, encounter) {
+  must(await supabase.from('tables').update({ encounter }).eq('id', tableId), 'updateTableEncounter');
+}
+
+// A player ending their own hero's turn: they can't write the tables row,
+// so the RPC checks it really is their turn before advancing it.
+export async function endEncounterTurnRemote(tableId, next) {
+  must(await supabase.rpc('end_encounter_turn', { p_table_id: tableId, p_next: next }), 'endEncounterTurn');
 }
 
 // ---- Layers ----
@@ -395,7 +440,7 @@ export async function hideTrapRemote(tableId, entity) {
 
 export async function addCustomAssetRemote(tableId, item) {
   must(
-    await supabase.from('custom_assets').insert({ id: item.id, table_id: tableId, asset_type: item.assetType, data: item.data }),
+    await supabase.from('custom_assets').insert({ id: item.id, table_id: tableId, asset_type: item.assetType, data: customAssetDataToDb(item.data) }),
     'addCustomAsset'
   );
 }
@@ -410,6 +455,8 @@ export async function removeCustomAssetRemote(id) {
 // 14_entity_ordering_and_player_leave.sql) so the table's capacity count —
 // which counts every player row regardless of `connected` — actually goes
 // back down when someone leaves, matching local mode's full row removal.
+// The DM kicking a player deletes that player's seat through this same call
+// (the host policy added in 56_host_kick_player.sql).
 export async function removePlayerRemote(playerId) {
   must(await supabase.from('players').delete().eq('id', playerId), 'removePlayer');
 }

@@ -1,4 +1,30 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { loadHudFolded, saveHudFolded } from '../state/persistence.js';
+
+// Pieces of the map's HUD (zoom, turn order, the phone's mini-map) can be
+// folded down to one small button to leave more of the map in view. Each
+// piece's choice is remembered in this browser.
+export function useHudFold(name) {
+  const [folded, setFolded] = useState(() => loadHudFolded(name));
+  return [
+    folded,
+    (next) => {
+      setFolded(next);
+      saveHudFolded(name, next);
+    },
+  ];
+}
+
+// The chevron that folds a HUD piece away.
+export function HudFoldButton({ label, onClick, className = '' }) {
+  return (
+    <button type="button" className={`hud-fold ${className}`} aria-label={label} title={label} onClick={onClick}>
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M5 12.5l5-5 5 5" />
+      </svg>
+    </button>
+  );
+}
 import { useNow } from '../state/useGameClock.js';
 import { DAY_PHASES } from '../data/dayPhases.js';
 import { clockTotalMinutes, splitTotalMinutes, formatClockTime, dayPhase } from '../utils/gameClock.js';
@@ -23,7 +49,9 @@ function StripClock({ clock, phaseOverride }) {
 // Layer tabs under the toolbar. The host can switch which layer they're
 // viewing; players only ever see the layer they're on, so it renders as a
 // single static label for them.
-export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitchLayer, feetPerSquare, clock, phaseOverride }) {
+// `extra`: readouts that used to sit in the toolbar (the saved status, the
+// in-game clock), shown ahead of the strip's own.
+export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCounts, isHost, onSwitchLayer, feetPerSquare, clock, phaseOverride, extra = null }) {
   return (
     <div className="layer-strip">
       <div className="layer-strip-tabs" role={isHost ? 'tablist' : undefined} aria-label="Layers">
@@ -50,30 +78,96 @@ export function LayerStrip({ layers, layerOrder, currentLayerId, layerPlayerCoun
         })}
       </div>
       <div className="layer-strip-meta">
+        {extra}
         <StripClock clock={clock} phaseOverride={phaseOverride} />
-        <span>{feetPerSquare} ft per square</span>
+        <span title="Feet per square on the map you're looking at">{feetPerSquare} ft per square</span>
       </div>
     </div>
   );
 }
 
-// Floating turn order, built from whatever Roll for Initiative stamped on the
-// entities. Hidden until someone has rolled.
-export function InitiativeBar({ entities }) {
-  const order = Object.values(entities || {})
-    .filter((e) => e.initiativeTurn != null)
-    .sort((a, b) => a.initiativeTurn - b.initiativeTurn);
-  if (order.length === 0) return null;
+// When the table was last saved and how long until it saves itself again,
+// for the DM (it sat in the toolbar before the toolbar became a rail).
+export function StripSaved({ label, secondsLeft }) {
+  const countdown = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`;
   return (
-    <div className="hud-initiative" role="list" aria-label="Initiative order">
+    <span className="strip-saved" role="status" title={`${label || 'Saved'} — auto-saves in ${countdown}. Save in Configurations still works any time.`}>
+      <span className="toolbar-saved-dot" aria-hidden="true" />
+      {label && <span>{label}</span>}
+      <span className="strip-saved-countdown">{countdown}</span>
+    </span>
+  );
+}
+
+// Floating turn order, built from whatever Roll for Initiative stamped on the
+// entities. Hidden until someone has rolled. On a phone it is also the
+// encounter's turn order: the acting creature's chip is raised and kept in
+// view as the turns go round.
+export function InitiativeBar({ entities, encounter = null }) {
+  const barRef = useRef(null);
+  const [folded, setFolded] = useHudFold('initiative');
+  const order = encounter
+    ? encounter.order
+        .map((entry) => (entities?.[entry.id] ? { ...entities[entry.id], initiativeRoll: entry.roll } : null))
+        .filter(Boolean)
+    : Object.values(entities || {})
+        .filter((e) => e.initiativeTurn != null)
+        .sort((a, b) => a.initiativeTurn - b.initiativeTurn);
+  const activeId = encounter ? encounter.order[encounter.turn]?.id : order[0]?.id;
+
+  useEffect(() => {
+    // Scroll the bar itself only, never the map behind it.
+    const bar = barRef.current;
+    const chip = bar?.querySelector('[aria-current="true"]');
+    if (!chip) return;
+    // The first chip keeps the bar at its start (caption showing); later ones
+    // scroll just far enough to be fully in view.
+    const first = chip === bar.querySelector('.hud-initiative-chip');
+    const right = chip.offsetLeft + chip.offsetWidth + 6;
+    let left = bar.scrollLeft;
+    if (first) left = 0;
+    else if (right > left + bar.clientWidth) left = right - bar.clientWidth;
+    else if (chip.offsetLeft - 6 < left) left = chip.offsetLeft - 6;
+    bar.scrollLeft = Math.max(0, left);
+  }, [activeId]);
+
+  if (order.length === 0) return null;
+  if (folded) {
+    const active = order.find((e) => e.id === activeId);
+    return (
+      <button type="button" className="hud-initiative folded hud-unfold" aria-label="Show the initiative order" title="Show the initiative order" onClick={() => setFolded(false)}>
+        <InitiativeIcon />
+        <span>{encounter && active ? `${active.name}’s turn` : 'Initiative'}</span>
+      </button>
+    );
+  }
+  return (
+    <div ref={barRef} className="hud-initiative" role="list" aria-label="Initiative order">
       <span className="hud-caption">Initiative</span>
-      {order.map((e, i) => (
-        <span key={e.id} role="listitem" className={`hud-initiative-chip${i === 0 ? ' first' : ''}`}>
-          {e.name}
-          <span className="hud-initiative-roll">{e.initiativeRoll}</span>
-        </span>
-      ))}
+      {order.map((e) => {
+        const active = e.id === activeId;
+        return (
+          <span
+            key={e.id}
+            role="listitem"
+            aria-current={encounter && active ? 'true' : undefined}
+            className={`hud-initiative-chip${active ? ' first' : ''}`}
+          >
+            {e.name}
+            <span className="hud-initiative-roll">{e.initiativeRoll}</span>
+          </span>
+        );
+      })}
+      <HudFoldButton label="Hide the initiative order" className="hud-initiative-fold" onClick={() => setFolded(true)} />
     </div>
+  );
+}
+
+export function InitiativeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 5h12M4 10h12M4 15h8" />
+    </svg>
   );
 }
 
@@ -94,6 +188,18 @@ export function RulerReadout({ feet }) {
 
 // Bottom-right: zoom and recenter, always in reach.
 export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter }) {
+  const [hidden, setHidden] = useHudFold('zoom');
+  if (hidden) {
+    return (
+      <div className="hud-zoom folded">
+        <button type="button" className="hud-zoom-toggle" aria-label="Show zoom controls" title="Show zoom and recenter" onClick={() => setHidden(false)}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12.2 12.2l4.3 4.3M6.5 8.5h4M8.5 6.5v4" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="hud-zoom">
       <button type="button" aria-label="Zoom out" onClick={onZoomOut}>
@@ -105,9 +211,14 @@ export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomReset, onRecenter
       <button type="button" aria-label="Zoom in" onClick={onZoomIn}>
         +
       </button>
-      <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current island" title="Scroll back to the currently selected island" onClick={onRecenter}>
+      <button type="button" className="hud-zoom-recenter" aria-label="Recenter on the current map" title="Scroll back to the currently selected map" onClick={onRecenter}>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v3M10 15v3M2 10h3M15 10h3" />
+        </svg>
+      </button>
+      <button type="button" className="hud-zoom-toggle hud-zoom-hide" aria-label="Hide zoom controls" title="Hide zoom and recenter" onClick={() => setHidden(true)}>
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 5l5 5-5 5" />
         </svg>
       </button>
     </div>

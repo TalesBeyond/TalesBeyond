@@ -3,6 +3,8 @@
 // documented in SPEC.md §6.1. These functions are the only place that
 // translates between the two, so nothing else needs to know the DB layout.
 
+import { toStoredImage, toStoredBackground, fromStoredImage, customAssetDataFromDb } from './storedImages.js';
+
 // A layer is now just a named canvas — its grid fields (cols/rows/cellSize/
 // backgroundImage) moved to islands (see mapDbIsland below); `islands`/
 // `islandOrder` are assembled separately in remoteApi.js's
@@ -36,11 +38,16 @@ export function mapDbIsland(row) {
     cols: row.cols,
     rows: row.rows,
     cellSize: row.cell_size,
-    backgroundImage: row.background_url,
+    backgroundImage: toStoredBackground(row.background_url), // fingerprint only (lib/storedImages.js)
     x: row.x,
     y: row.y,
     conditions: row.conditions || [],
     dayNight: row.day_night ?? 'cycle',
+    // Null for islands from before each island had its own scale — they
+    // follow their layer's (utils/grid.js islandFeet).
+    feetPerSquare: row.feet_per_square ?? null,
+    // How its grid is drawn (utils/grid.js gridLineStyle); null is the default.
+    gridLines: row.grid_lines || null,
   };
 }
 
@@ -50,11 +57,13 @@ export function mapClientIslandPatchToDb(patch) {
   if ('cols' in patch) db.cols = patch.cols;
   if ('rows' in patch) db.rows = patch.rows;
   if ('cellSize' in patch) db.cell_size = patch.cellSize;
-  if ('backgroundImage' in patch) db.background_url = patch.backgroundImage;
+  if ('backgroundImage' in patch) db.background_url = toStoredBackground(patch.backgroundImage); // fingerprint only (lib/storedImages.js)
   if ('x' in patch) db.x = patch.x;
   if ('y' in patch) db.y = patch.y;
   if ('conditions' in patch) db.conditions = patch.conditions;
   if ('dayNight' in patch) db.day_night = patch.dayNight;
+  if ('feetPerSquare' in patch && patch.feetPerSquare != null) db.feet_per_square = patch.feetPerSquare;
+  if ('gridLines' in patch) db.grid_lines = patch.gridLines || null;
   return db;
 }
 
@@ -63,13 +72,14 @@ export function mapDbEntity(row) {
     id: row.id,
     kind: row.kind,
     name: row.name,
-    imageUrl: row.image_url,
+    imageUrl: fromStoredImage(row.image_url, row),
     color: row.color,
     col: row.col,
     row: row.row,
     size: row.size,
     hp: row.hp,
     maxHp: row.max_hp,
+    tempHp: row.temp_hp ?? 0,
     armorClass: row.armor_class ?? undefined,
     ownerId: row.owner_id,
     layerId: row.layer_id,
@@ -102,13 +112,16 @@ export function mapClientEntityToDb(entity, tableId) {
     table_id: tableId,
     kind: entity.kind,
     name: entity.name,
-    image_url: entity.imageUrl,
+    image_url: toStoredImage(entity.imageUrl),
     color: entity.color,
     col: entity.col,
     row: entity.row,
     size: entity.size,
     hp: entity.hp,
     max_hp: entity.maxHp,
+    // Only when set, so placing tokens keeps working on a project that
+    // hasn't run 51_temp_hp.sql yet.
+    ...(entity.tempHp ? { temp_hp: entity.tempHp } : {}),
     armor_class: entity.armorClass ?? null,
     owner_id: entity.ownerId,
     layer_id: entity.layerId,
@@ -138,13 +151,14 @@ export function mapClientEntityToDb(entity, tableId) {
 export function mapClientEntityPatchToDb(patch) {
   const db = {};
   if ('name' in patch) db.name = patch.name;
-  if ('imageUrl' in patch) db.image_url = patch.imageUrl;
+  if ('imageUrl' in patch) db.image_url = toStoredImage(patch.imageUrl);
   if ('color' in patch) db.color = patch.color;
   if ('col' in patch) db.col = patch.col;
   if ('row' in patch) db.row = patch.row;
   if ('size' in patch) db.size = patch.size;
   if ('hp' in patch) db.hp = patch.hp;
   if ('maxHp' in patch) db.max_hp = patch.maxHp;
+  if ('tempHp' in patch) db.temp_hp = patch.tempHp;
   if ('armorClass' in patch) db.armor_class = patch.armorClass;
   if ('ownerId' in patch) db.owner_id = patch.ownerId;
   if ('layerId' in patch) db.layer_id = patch.layerId;
@@ -197,7 +211,7 @@ export function mapDbCustomAsset(row) {
   return {
     id: row.id,
     assetType: row.asset_type,
-    data: row.data,
+    data: customAssetDataFromDb(row.asset_type, row.data),
   };
 }
 
@@ -216,6 +230,29 @@ export function mapDbAudioTrack(row) {
     sizeBytes: Number(row.size_bytes),
     baseVolume: row.base_volume ?? 1,
     loop: row.loop ?? true,
+  };
+}
+
+// Drawings (52_drawings.sql) — the DM's Draw tool. Geometry is in grid
+// squares from the island's top-left corner; see the migration for shapes.
+export function mapDbDrawing(row) {
+  return {
+    id: row.id,
+    islandId: row.island_id,
+    kind: row.kind,
+    geometry: row.geometry,
+    style: row.style || {},
+  };
+}
+
+export function drawingToDb(tableId, drawing) {
+  return {
+    id: drawing.id,
+    table_id: tableId,
+    island_id: drawing.islandId,
+    kind: drawing.kind,
+    geometry: drawing.geometry,
+    style: drawing.style || {},
   };
 }
 

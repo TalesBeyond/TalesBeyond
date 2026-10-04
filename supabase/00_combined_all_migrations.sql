@@ -2209,3 +2209,484 @@ create policy "host can upload table audio"
       select table_id from players where auth_user_id = auth.uid() and is_host
     )
   );
+
+-- ======================================================================
+-- 49_encounter.sql
+-- ======================================================================
+-- Hearthbound — 49_encounter.sql
+-- The running encounter: the turn order Roll for Initiative produced, whose
+-- turn it is, the round, and where the acting token stood when its turn
+-- began (src/utils/encounter.js). One nullable jsonb per table, like
+-- game_clock (32_game_clock.sql): null = no fight running.
+--
+-- Writing the column is already host-only ("host can update their table",
+-- 02_policies.sql) and every member can already read their table's row, so
+-- the DM starts, advances and ends encounters with a plain update.
+--
+-- A player may end their own hero's turn — the one write a non-host needs.
+-- end_encounter_turn checks the caller owns the hero whose turn it is, and
+-- that the proposed next state only moves the turn forward over the same
+-- turn order (never reorders it, rewinds it, or skips a whole round). Which
+-- participant comes next (skipping removed tokens) is the client's call,
+-- the same trust model 37_player_door_layer_move.sql uses for moves.
+
+alter table tables add column if not exists encounter jsonb;
+
+create or replace function end_encounter_turn(p_table_id uuid, p_next jsonb) returns void as $$
+declare
+  v_current jsonb;
+  v_is_host boolean;
+  v_player_id uuid;
+  v_actor_id text;
+  v_round int;
+  v_turn int;
+  v_next_round int;
+  v_next_turn int;
+begin
+  select is_host, id into v_is_host, v_player_id
+    from players where table_id = p_table_id and auth_user_id = auth.uid();
+  if v_player_id is null then
+    raise exception 'Not a member of this table';
+  end if;
+
+  select encounter into v_current from tables where id = p_table_id for update;
+  if v_current is null then
+    raise exception 'No encounter is running';
+  end if;
+
+  if not v_is_host then
+    v_turn := (v_current ->> 'turn')::int;
+    v_actor_id := v_current -> 'order' -> v_turn ->> 'id';
+    if not exists (
+      select 1 from entities
+      where id::text = v_actor_id and table_id = p_table_id and kind = 'hero' and owner_id = v_player_id
+    ) then
+      raise exception 'It is not your turn';
+    end if;
+  end if;
+
+  if p_next -> 'order' is distinct from v_current -> 'order' then
+    raise exception 'The turn order cannot be changed this way';
+  end if;
+
+  v_round := (v_current ->> 'round')::int;
+  v_turn := (v_current ->> 'turn')::int;
+  v_next_round := (p_next ->> 'round')::int;
+  v_next_turn := (p_next ->> 'turn')::int;
+  if v_next_turn < 0 or v_next_turn >= jsonb_array_length(v_current -> 'order')
+    or not (
+      (v_next_round = v_round and v_next_turn > v_turn)
+      or (v_next_round = v_round + 1 and v_next_turn <= v_turn)
+    )
+  then
+    raise exception 'A turn can only pass to the next participant';
+  end if;
+
+  update tables set encounter = p_next where id = p_table_id;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+-- ======================================================================
+-- 50_realtime_publication.sql
+-- ======================================================================
+-- Hearthbound — 50_realtime_publication.sql
+-- Every table src/lib/realtime.js listens to must be in the
+-- supabase_realtime publication, or Supabase rejects the subscription. And
+-- it rejects the *whole* channel's postgres_changes, not just the missing
+-- table: one unpublished table means a player's browser receives no token
+-- moves, HP changes, joins or layer edits at all, while a refresh (which
+-- reads the tables directly) still shows everything correctly.
+--
+-- Until now only 38_synced_table_audio.sql added tables to the publication
+-- (audio_tracks and tables); the rest had been switched on by hand in the
+-- dashboard, so a project built from these migrations alone — or one whose
+-- publication was reset — silently lost live sync. This makes it explicit.
+-- Guarded per table, so it's a no-op for any table already published.
+
+do $$
+declare
+  t text;
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  foreach t in array array[
+    'entities', 'entity_dm_data', 'players', 'layers', 'islands',
+    'tables', 'custom_assets', 'audio_tracks', 'invite_codes'
+  ] loop
+    if to_regclass('public.' || t) is not null
+      and not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+      )
+    then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
+
+-- ======================================================================
+-- 51_temp_hp.sql
+-- ======================================================================
+-- Hearthbound — 51_temp_hp.sql
+-- Temporary hit points on hero and mob tokens: the blue layer on the life
+-- bar (MapBoard.jsx, CreatureCard.jsx). Damage spends them before real hit
+-- points (RightPanel.jsx's resolveAttack); they don't stack and don't heal.
+-- A plain column on `entities` rather than a sheet key so players see a
+-- monster's temporary HP too (a mob's sheet is DM-only).
+--
+-- The DM sets it. The existing write-permission trigger
+-- (enforce_entity_write_permissions, last rebuilt in 37_player_door_layer_
+-- move.sql) doesn't list this column, which is what lets a player's attack
+-- spend a monster's temporary HP along with its HP; the client-side
+-- validators (GameView.jsx's canDamageMob) only accept it going down.
+
+alter table entities add column if not exists temp_hp integer not null default 0;
+alter table entities drop constraint if exists entities_temp_hp_check;
+alter table entities add constraint entities_temp_hp_check check (temp_hp >= 0);
+
+-- ======================================================================
+-- 52_drawings.sql
+-- ======================================================================
+-- Hearthbound — 52_drawings.sql
+-- The DM's Draw tool (MapBoard.jsx): pencil strokes, lines, circles and
+-- rectangles drawn on an island, like chalk on the floor — over the map art
+-- and grid, under every token. One row per drawing.
+--
+-- A drawing belongs to the island it was drawn on (island_id): it moves
+-- with the island and goes when the island does (on delete cascade, which
+-- also covers a deleted layer). `geometry` is in grid squares from the
+-- island's top-left corner, so zoom and cell size never change it:
+--   pencil {points: [[x, y], ...]}, line {from: [x, y], to: [x, y]},
+--   circle {center: [x, y], radius}, rect {x, y, w, h}
+-- `style` is {color: '#rrggbb', width: <preset>, fill: boolean}.
+--
+-- Only the DM writes, same trust model as custom_assets (PITFALLS.md #1);
+-- every seated member reads, since every drawing is for the whole table.
+
+create table if not exists drawings (
+  id            uuid primary key default gen_random_uuid(),
+  table_id      uuid not null references tables(id) on delete cascade,
+  island_id     uuid not null references islands(id) on delete cascade,
+  kind          text not null check (kind in ('pencil', 'line', 'circle', 'rect')),
+  geometry      jsonb not null,
+  style         jsonb not null default '{}'::jsonb,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create index if not exists drawings_table_idx on drawings (table_id);
+create index if not exists drawings_island_idx on drawings (island_id);
+
+drop trigger if exists trg_drawings_touch on drawings;
+create trigger trg_drawings_touch before update on drawings
+  for each row execute function touch_updated_at();
+
+alter table drawings enable row level security;
+
+drop policy if exists "members can read drawings at their table" on drawings;
+create policy "members can read drawings at their table"
+  on drawings for select
+  using (table_id in (select table_id from players where auth_user_id = auth.uid()));
+
+drop policy if exists "host can insert drawings at their table" on drawings;
+create policy "host can insert drawings at their table"
+  on drawings for insert
+  with check (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+drop policy if exists "host can update drawings at their table" on drawings;
+create policy "host can update drawings at their table"
+  on drawings for update
+  using (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host))
+  with check (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+drop policy if exists "host can delete drawings at their table" on drawings;
+create policy "host can delete drawings at their table"
+  on drawings for delete
+  using (table_id in (select table_id from players where auth_user_id = auth.uid() and is_host));
+
+-- Live updates: a table missing from the publication breaks the whole
+-- realtime channel, not just this table (see 50_realtime_publication.sql).
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drawings'
+  ) then
+    alter publication supabase_realtime add table public.drawings;
+  end if;
+end $$;
+
+-- ======================================================================
+-- 53_island_fill.sql
+-- ======================================================================
+-- Hearthbound — 53_island_fill.sql
+-- The Draw tool's Fill (MapBoard.jsx): a drawing of kind 'fill' paints its
+-- whole island one colour, under the grid. It has no geometry ({}); its
+-- style is {color: '#rrggbb', opacity: 0-1}. One per island in practice —
+-- filling again recolours it.
+
+alter table drawings drop constraint if exists drawings_kind_check;
+alter table drawings add constraint drawings_kind_check
+  check (kind in ('pencil', 'line', 'circle', 'rect', 'fill'));
+
+-- ======================================================================
+-- 54_island_feet_per_square.sql
+-- ======================================================================
+-- Hearthbound — 54_island_feet_per_square.sql
+-- Each island has its own scale: how many feet one of its squares stands
+-- for, set when the island is made (Mapping → Islands → New island) and
+-- changeable in its settings. Null for islands from before this — they
+-- follow their layer's feet_per_square (utils/grid.js islandFeet).
+
+alter table islands add column if not exists feet_per_square int;
+alter table islands drop constraint if exists islands_feet_per_square_check;
+alter table islands add constraint islands_feet_per_square_check
+  check (feet_per_square is null or feet_per_square between 1 and 100);
+
+-- 55_no_stored_images.sql
+-- ======================================================================
+-- Hearthbound — 55_no_stored_images.sql
+-- No picture is stored in the database any more (src/lib/storedImages.js).
+-- A token's image_url is either a reference to one of the app's built-in
+-- icons — 'icon:<name>:<#color>', drawn by the client from its own files — or
+-- '' (the client then shows that kind's default icon), or a DM upload's
+-- fingerprint — 'img:<sha-256 hex>' — whose picture lives only in the players'
+-- browsers and travels between them (src/lib/imageExchange.js). Island
+-- backgrounds are null or such a fingerprint. Custom-asset pictures are never
+-- stored.
+--
+-- 1. Existing built-in icons, stored until now as whole SVG data URLs, are
+--    converted to references (matched against the exact icon drawings in
+--    src/data/defaultTokens.js, longest first).
+-- 2. Every other stored picture — uploaded token art, compendium portraits,
+--    map backgrounds, custom-asset images — is removed.
+-- 3. Check constraints keep it that way, whatever a client sends.
+--
+-- Freed space becomes reusable as autovacuum runs. To shrink the database
+-- files right away, run in the SQL Editor (outside a transaction):
+--   vacuum full entities, islands, custom_assets;
+
+-- The DM-only edit trigger checks auth.uid(), which a migration doesn't have.
+alter table entities disable trigger trg_entities_permissions;
+
+do $$
+declare
+  r record;
+begin
+  for r in
+    select * from (values
+    ('spider', '%3Cellipse%20cx%3D%2232%22%20cy%3D%2235%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2220%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cg%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M24%2030%20L12%2022%22%2F%3E%3Cpath%20d%3D%22M23%2036%20L10%2038%22%2F%3E%3Cpath%20d%3D%22M24%2042%20L14%2052%22%2F%3E%3Cpath%20d%3D%22M40%2030%20L52%2022%22%2F%3E%3Cpath%20d%3D%22M41%2036%20L54%2038%22%2F%3E%3Cpath%20d%3D%22M40%2042%20L50%2052%22%2F%3E%3C%2Fg%3E'),
+    ('phase-day', '%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2210%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cg%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M32%2010%20V16%22%2F%3E%3Cpath%20d%3D%22M32%2048%20V54%22%2F%3E%3Cpath%20d%3D%22M10%2032%20H16%22%2F%3E%3Cpath%20d%3D%22M48%2032%20H54%22%2F%3E%3Cpath%20d%3D%22M16.5%2016.5%20L20.7%2020.7%22%2F%3E%3Cpath%20d%3D%22M43.3%2043.3%20L47.5%2047.5%22%2F%3E%3Cpath%20d%3D%22M16.5%2047.5%20L20.7%2043.3%22%2F%3E%3Cpath%20d%3D%22M43.3%2020.7%20L47.5%2016.5%22%2F%3E%3C%2Fg%3E'),
+    ('isle-gas', '%3Cg%20fill%3D%22%23f2e9d4%22%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2238%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2237%22%20cy%3D%2231%22%20r%3D%2212%22%2F%3E%3Ccircle%20cx%3D%2246%22%20cy%3D%2242%22%20r%3D%228%22%2F%3E%3Ccircle%20cx%3D%2227%22%20cy%3D%2247%22%20r%3D%228%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2233%22%20cy%3D%2236%22%20r%3D%222.6%22%20fill%3D%22%2317140f%22%2F%3E%3Ccircle%20cx%3D%2242%22%20cy%3D%2244%22%20r%3D%222%22%20fill%3D%22%2317140f%22%2F%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2244%22%20r%3D%222%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('poison', '%3Cpath%20d%3D%22M32%2014%20C42%2014%2046%2024%2046%2034%20C46%2046%2040%2052%2032%2052%20C24%2052%2018%2046%2018%2034%20C18%2024%2022%2014%2032%2014%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2234%22%20r%3D%222.6%22%20fill%3D%22%2317140f%22%2F%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2234%22%20r%3D%222.6%22%20fill%3D%22%2317140f%22%2F%3E%3Cpath%20d%3D%22M25%2043%20Q32%2038%2039%2043%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%20fill%3D%22none%22%2F%3E'),
+    ('isle-storm', '%3Cg%20fill%3D%22%23f2e9d4%22%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2226%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2236%22%20cy%3D%2222%22%20r%3D%2211%22%2F%3E%3Ccircle%20cx%3D%2246%22%20cy%3D%2229%22%20r%3D%228%22%2F%3E%3Crect%20x%3D%2218%22%20y%3D%2228%22%20width%3D%2234%22%20height%3D%228%22%20rx%3D%224%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M34%2034%20L26%2048%20L32%2048%20L28%2058%20L42%2042%20L35%2042%20L39%2034%20Z%22%20fill%3D%22%23e9c13a%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%2F%3E'),
+    ('stunned', '%3Ccircle%20cx%3D%2223%22%20cy%3D%2226%22%20r%3D%223%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2241%22%20cy%3D%2226%22%20r%3D%223%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cpath%20d%3D%22M17%2022%20L27%2030%20M27%2022%20L17%2030%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%222%22%2F%3E%3Cpath%20d%3D%22M37%2022%20L47%2030%20M47%2022%20L37%2030%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%222%22%2F%3E%3Cpath%20d%3D%22M20%2044%20Q32%2036%2044%2044%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223%22%20fill%3D%22none%22%2F%3E'),
+    ('isle-drowning', '%3Cg%20fill%3D%22none%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%224%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M10%2040%20Q18%2034%2026%2040%20T42%2040%20T58%2040%22%2F%3E%3Cpath%20d%3D%22M10%2050%20Q18%2044%2026%2050%20T42%2050%20T58%2050%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2222%22%20r%3D%224%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2235%22%20cy%3D%2213%22%20r%3D%223%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2242%22%20cy%3D%2226%22%20r%3D%222.5%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('fist', '%3Crect%20x%3D%2218%22%20y%3D%2224%22%20width%3D%2228%22%20height%3D%2222%22%20rx%3D%226%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cg%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%3E%3Cline%20x1%3D%2225%22%20y1%3D%2224%22%20x2%3D%2225%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%2232%22%20y1%3D%2224%22%20x2%3D%2232%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%2239%22%20y1%3D%2224%22%20x2%3D%2239%22%20y2%3D%2234%22%2F%3E%3C%2Fg%3E%3Crect%20x%3D%2222%22%20y%3D%2246%22%20width%3D%2220%22%20height%3D%228%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('phase-dawn', '%3Cpath%20d%3D%22M18%2042%20A14%2014%200%200%201%2046%2042%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cg%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M9%2042%20H55%22%2F%3E%3Cpath%20d%3D%22M32%2016%20V22%22%2F%3E%3Cpath%20d%3D%22M13%2024%20L17%2028%22%2F%3E%3Cpath%20d%3D%22M51%2024%20L47%2028%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M18%2051%20H46%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20opacity%3D%220.55%22%2F%3E'),
+    ('isle-dark', '%3Cdefs%3E%3Cmask%20id%3D%22m%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2226%22%20r%3D%2215%22%20fill%3D%22%23000%22%2F%3E%3C%2Fmask%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2232%22%20r%3D%2219%22%20fill%3D%22%23f2e9d4%22%20mask%3D%22url(%23m)%22%2F%3E%3Ccircle%20cx%3D%2248%22%20cy%3D%2246%22%20r%3D%222.5%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2220%22%20cy%3D%2212%22%20r%3D%222%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('isle-unstable', '%3Cpath%20d%3D%22M12%2028%20L26%2036%20L21%2042%20L38%2048%20L33%2056%22%20fill%3D%22none%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%224%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2244%22%20cy%3D%2224%22%20r%3D%224%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2251%22%20cy%3D%2234%22%20r%3D%222.6%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2217%22%20cy%3D%2216%22%20r%3D%222.4%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('chest', '%3Crect%20x%3D%2214%22%20y%3D%2226%22%20width%3D%2236%22%20height%3D%2222%22%20rx%3D%222%22%20fill%3D%22%23c98a3b%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E%3Crect%20x%3D%2214%22%20y%3D%2220%22%20width%3D%2236%22%20height%3D%2210%22%20rx%3D%222%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E%3Crect%20x%3D%2229%22%20y%3D%2230%22%20width%3D%226%22%20height%3D%228%22%20rx%3D%221%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('chest-open', '%3Crect%20x%3D%2214%22%20y%3D%2230%22%20width%3D%2236%22%20height%3D%2218%22%20rx%3D%222%22%20fill%3D%22%23c98a3b%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E%3Cpath%20d%3D%22M14%2030%20L18%2014%20L46%2014%20L50%2030%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E%3Crect%20x%3D%2225%22%20y%3D%2234%22%20width%3D%2214%22%20height%3D%226%22%20rx%3D%221%22%20fill%3D%22%2317140f%22%20opacity%3D%220.35%22%2F%3E'),
+    ('sunburst', '%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2210%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cg%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223%22%3E%3Cline%20x1%3D%2232%22%20y1%3D%228%22%20x2%3D%2232%22%20y2%3D%2216%22%2F%3E%3Cline%20x1%3D%2232%22%20y1%3D%2248%22%20x2%3D%2232%22%20y2%3D%2256%22%2F%3E%3Cline%20x1%3D%228%22%20y1%3D%2232%22%20x2%3D%2216%22%20y2%3D%2232%22%2F%3E%3Cline%20x1%3D%2248%22%20y1%3D%2232%22%20x2%3D%2256%22%20y2%3D%2232%22%2F%3E%3C%2Fg%3E'),
+    ('paw', '%3Cellipse%20cx%3D%2232%22%20cy%3D%2242%22%20rx%3D%2211%22%20ry%3D%229%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%2230%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2227%22%20cy%3D%2221%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2237%22%20cy%3D%2221%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2246%22%20cy%3D%2230%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('isle-fire', '%3Cpath%20d%3D%22M32%208%20C36%2020%2046%2024%2046%2038%20C46%2048%2039%2056%2032%2056%20C25%2056%2018%2048%2018%2038%20C18%2030%2023%2026%2026%2020%20C27%2025%2029%2027%2031%2027%20C30%2020%2030%2014%2032%208%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cpath%20d%3D%22M32%2034%20C35%2039%2039%2041%2039%2046%20C39%2050%2036%2053%2032%2053%20C28%2053%2025%2050%2025%2046%20C25%2042%2030%2040%2032%2034%20Z%22%20fill%3D%22%23c2481f%22%2F%3E'),
+    ('isle-icy', '%3Cg%20fill%3D%22none%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M32%2010%20V54%22%2F%3E%3Cpath%20d%3D%22M13%2021%20L51%2043%22%2F%3E%3Cpath%20d%3D%22M13%2043%20L51%2021%22%2F%3E%3Cpath%20d%3D%22M27%2015%20L32%2020%20L37%2015%22%2F%3E%3Cpath%20d%3D%22M27%2049%20L32%2044%20L37%2049%22%2F%3E%3C%2Fg%3E'),
+    ('skull', '%3Cellipse%20cx%3D%2232%22%20cy%3D%2228%22%20rx%3D%2216%22%20ry%3D%2214%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2238%22%20width%3D%2216%22%20height%3D%2210%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2227%22%20r%3D%224%22%20fill%3D%22%2317140f%22%2F%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2227%22%20r%3D%224%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('trap', '%3Cpath%20d%3D%22M32%2010%20L55%2051%20H9%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3Crect%20x%3D%2230%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%2215%22%20rx%3D%221.5%22%20fill%3D%22%2317140f%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2244%22%20r%3D%222.6%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('isle-fog', '%3Cg%20fill%3D%22none%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%224%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M12%2022%20Q20%2016%2028%2022%20T44%2022%20T56%2022%22%2F%3E%3Cpath%20d%3D%22M8%2033%20Q16%2027%2024%2033%20T40%2033%20T56%2033%22%2F%3E%3Cpath%20d%3D%22M12%2044%20Q20%2038%2028%2044%20T44%2044%20T56%2044%22%2F%3E%3C%2Fg%3E'),
+    ('isle-rough', '%3Cpath%20d%3D%22M8%2050%20L22%2024%20L34%2050%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M28%2050%20L42%2018%20L56%2050%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E'),
+    ('prone', '%3Cline%20x1%3D%2212%22%20y1%3D%2242%22%20x2%3D%2252%22%20y2%3D%2242%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223%22%2F%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%2235%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Crect%20x%3D%2225%22%20y%3D%2237%22%20width%3D%2224%22%20height%3D%226%22%20rx%3D%223%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('slime', '%3Cpath%20d%3D%22M14%2046%20C12%2030%2022%2016%2032%2016%20C42%2016%2052%2030%2050%2046%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2234%22%20r%3D%223%22%20fill%3D%22%2317140f%22%2F%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2234%22%20r%3D%223%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('claw', '%3Cpath%20d%3D%22M16%2046%20L26%2016%20L32%2016%20L24%2046%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cpath%20d%3D%22M26%2046%20L34%2014%20L40%2014%20L30%2046%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cpath%20d%3D%22M36%2046%20L42%2018%20L48%2018%20L40%2046%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('bow', '%3Cpath%20d%3D%22M20%2014%20C34%2024%2034%2040%2020%2050%22%20fill%3D%22none%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%223%22%2F%3E%3Cline%20x1%3D%2220%22%20y1%3D%2214%22%20x2%3D%2244%22%20y2%3D%2246%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%222%22%2F%3E'),
+    ('door', '%3Crect%20x%3D%2220%22%20y%3D%2212%22%20width%3D%2224%22%20height%3D%2240%22%20rx%3D%222%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2232%22%20r%3D%222.5%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('axe', '%3Crect%20x%3D%2229%22%20y%3D%2214%22%20width%3D%226%22%20height%3D%2234%22%20rx%3D%222%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Cpath%20d%3D%22M35%2016%20C46%2012%2050%2022%2040%2028%20C36%2028%2034%2024%2035%2016%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('bleed', '%3Cpath%20d%3D%22M32%2012%20C40%2026%2046%2034%2046%2042%20C46%2050%2040%2054%2032%2054%20C24%2054%2018%2050%2018%2042%20C18%2034%2024%2026%2032%2012%20Z%22%20fill%3D%22%238f1f1f%22%20stroke%3D%22%23f2e9d4%22%20stroke-width%3D%222%22%2F%3E'),
+    ('dagger', '%3Cpath%20d%3D%22M32%2010%20L36%2034%20L32%2044%20L28%2034%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Crect%20x%3D%2228%22%20y%3D%2242%22%20width%3D%228%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('lute', '%3Ccircle%20cx%3D%2226%22%20cy%3D%2238%22%20r%3D%2212%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Crect%20x%3D%2234%22%20y%3D%2212%22%20width%3D%226%22%20height%3D%2226%22%20rx%3D%222%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('wand', '%3Ccircle%20cx%3D%2232%22%20cy%3D%2218%22%20r%3D%225%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Crect%20x%3D%2229%22%20y%3D%2222%22%20width%3D%226%22%20height%3D%2230%22%20rx%3D%223%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('shield', '%3Cpath%20d%3D%22M32%2012%20L48%2018%20V32%20C48%2044%2040%2050%2032%2054%20C24%2050%2016%2044%2016%2032%20V18%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%222%22%2F%3E'),
+    ('eye', '%3Cellipse%20cx%3D%2232%22%20cy%3D%2232%22%20rx%3D%2218%22%20ry%3D%2210%22%20fill%3D%22%23f2e9d4%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%226%22%20fill%3D%22%2317140f%22%2F%3E'),
+    ('shocked', '%3Cpath%20d%3D%22M34%208%20L18%2034%20L28%2034%20L24%2056%20L48%2026%20L36%2026%20Z%22%20fill%3D%22%23f2e9d4%22%20stroke%3D%22%2317140f%22%20stroke-width%3D%221.5%22%2F%3E'),
+    ('wing', '%3Cpath%20d%3D%22M12%2040%20C24%2016%2044%2016%2052%2032%20C40%2028%2030%2030%2024%2040%20C20%2034%2016%2034%2012%2040%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('leaf', '%3Cpath%20d%3D%22M20%2044%20C20%2024%2044%2020%2048%2016%20C44%2044%2030%2048%2020%2044%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E'),
+    ('fangs', '%3Cpath%20d%3D%22M16%2020%20L48%2020%20L40%2044%20L32%2034%20L24%2044%20Z%22%20fill%3D%22%23f2e9d4%22%2F%3E')
+    ) as icons(name, inner_svg)
+    order by length(inner_svg) desc
+  loop
+    update entities
+       set image_url = 'icon:' || r.name || ':#'
+         || substring(image_url from 'r%3D%2232%22%20fill%3D%22%23([0-9a-fA-F]{3,8})%22')
+     where image_url like 'data:image/svg+xml;utf8,%'
+       and position(r.inner_svg in image_url) > 0
+       and substring(image_url from 'r%3D%2232%22%20fill%3D%22%23([0-9a-fA-F]{3,8})%22') is not null;
+  end loop;
+end $$;
+
+update entities set image_url = '' where image_url !~ '^icon:[a-z-]+:#[0-9a-fA-F]{3,8}$';
+
+alter table entities enable trigger trg_entities_permissions;
+
+update islands set background_url = null where background_url is not null;
+
+update custom_assets set data = data - 'imageUrl' where data ? 'imageUrl';
+
+alter table entities drop constraint if exists entities_image_is_ref;
+alter table entities add constraint entities_image_is_ref
+  check (image_url = '' or image_url ~ '^icon:[a-z-]+:#[0-9a-fA-F]{3,8}$' or image_url ~ '^img:[0-9a-f]{64}$');
+
+alter table islands drop constraint if exists islands_background_is_ref;
+alter table islands add constraint islands_background_is_ref
+  check (background_url is null or background_url ~ '^img:[0-9a-f]{64}$');
+
+alter table custom_assets drop constraint if exists custom_assets_no_image;
+alter table custom_assets add constraint custom_assets_no_image
+  check (not (data ? 'imageUrl'));
+
+-- ======================================================================
+-- 56_host_kick_player.sql
+-- ======================================================================
+-- Hearthbound — 56_host_kick_player.sql
+-- The DM can kick a player: delete someone else's seat at a table they
+-- host, freeing its slot. Until now the only DELETE policy on players was
+-- the self-only one from 14 (leaving), so a host's delete of another row
+-- matched nothing and was silently ignored.
+--
+-- The policy goes through a SECURITY DEFINER helper, like my_table_ids()
+-- in 18: a policy on players that subqueries players directly recurses
+-- (PITFALLS.md #13). It is additive: Postgres ORs permissive policies, so
+-- a player can still delete their own seat. The host's own row is left
+-- out, since a table needs its host's seat to stay readable to them.
+--
+-- A kicked player's heroes are un-assigned, not deleted
+-- (entities.owner_id is `on delete set null`). Kicking is not a ban:
+-- join_table seats them again if they still have the invitation code.
+
+create or replace function my_hosted_table_ids() returns setof uuid as $$
+  select table_id from players where auth_user_id = auth.uid() and is_host;
+$$ language sql security definer stable;
+
+drop policy if exists "the host can remove any seat at their table" on players;
+create policy "the host can remove any seat at their table"
+  on players for delete
+  using (not is_host and table_id in (select my_hosted_table_ids()));
+
+-- ======================================================================
+-- 57_player_hero_hp.sql
+-- ======================================================================
+-- Hearthbound — 57_player_hero_hp.sql
+-- A hero's own player may now change that hero's hit points (never below
+-- 0, never above the maximum the DM set). Until now 16/35/37's trigger
+-- rejected any change to a hero's hp by anyone but the DM. Maximum hit
+-- points and armor class stay DM-only. Temporary hit points needed no
+-- change: the trigger never listed temp_hp (51_temp_hp.sql), and its own
+-- check constraint keeps it at 0 or more.
+--
+-- The DM sees each of these changes in the character log (GameView.jsx,
+-- utils/heroActivity.js), which is read off the changes themselves on the
+-- DM's browser — nothing about it is stored here.
+--
+-- Rebuilt from 37_player_door_layer_move.sql's version of this function
+-- (the current one). The only change is the hero branch's hp line.
+
+create or replace function enforce_entity_write_permissions() returns trigger as $$
+declare
+  v_is_host boolean;
+  v_player_id uuid;
+begin
+  select is_host, id into v_is_host, v_player_id
+    from players where table_id = new.table_id and auth_user_id = auth.uid();
+
+  if v_is_host then
+    return new;
+  end if;
+
+  if old.kind = 'hero' and old.owner_id = v_player_id then
+    if new.name is distinct from old.name
+      or new.image_url is distinct from old.image_url
+      or new.color is distinct from old.color
+      or new.size is distinct from old.size
+      -- Their own hero's hit points: any whole number from 0 up to its
+      -- maximum (GameView.jsx's isHeroOwnerLifePatch).
+      or (new.hp is distinct from old.hp
+          and (new.hp is null or new.hp < 0 or (coalesce(old.max_hp, 0) > 0 and new.hp > old.max_hp)))
+      or new.max_hp is distinct from old.max_hp
+      or new.armor_class is distinct from old.armor_class
+      or new.owner_id is distinct from old.owner_id
+      or new.target_layer_id is distinct from old.target_layer_id
+      or new.target_col is distinct from old.target_col
+      or new.target_row is distinct from old.target_row
+      or new.conditions is distinct from old.conditions
+      or new.chest_size is distinct from old.chest_size
+      or new.opened is distinct from old.opened
+      or new.chest_items is distinct from old.chest_items
+      -- A hero's whole tabbed sheet lives in one jsonb column, so the only
+      -- way to allow "just Battle Equipment/Spells/Bag" is to require every
+      -- key except those tabs' own to be byte-for-byte unchanged.
+      or (coalesce(new.sheet, '{}'::jsonb) - array['attacks', 'spellcasting', 'equipment', 'currency'])
+        is distinct from (coalesce(old.sheet, '{}'::jsonb) - array['attacks', 'spellcasting', 'equipment', 'currency'])
+    then
+      raise exception 'Only the DM can edit token information — players may only move their own hero (including between layers via a door), change its hit points up to its maximum, and manage its Battle Equipment, Spells, and Bag';
+    end if;
+    return new;
+  end if;
+
+  if old.kind = 'chest' then
+    if new.name is distinct from old.name
+      or new.color is distinct from old.color
+      or new.col is distinct from old.col
+      or new.row is distinct from old.row
+      or new.size is distinct from old.size
+      or new.island_id is distinct from old.island_id
+      or new.chest_size is distinct from old.chest_size
+    then
+      raise exception 'Only the DM can edit chest contents or move it — players may only open, close, or loot a chest';
+    end if;
+    return new;
+  end if;
+
+  -- A hit rolled from a hero's Battle Equipment tab applies its damage to
+  -- the target mob's hp (RightPanel.jsx's confirmAttack). Bounded to a
+  -- plain decrease (never below 0, never above the mob's current hp) so
+  -- this stays "apply attack damage," not "edit a monster's hp."
+  if old.kind = 'mob' then
+    if new.name is not distinct from old.name
+      and new.image_url is not distinct from old.image_url
+      and new.color is not distinct from old.color
+      and new.col is not distinct from old.col
+      and new.row is not distinct from old.row
+      and new.size is not distinct from old.size
+      and new.max_hp is not distinct from old.max_hp
+      and new.armor_class is not distinct from old.armor_class
+      and new.owner_id is not distinct from old.owner_id
+      and new.layer_id is not distinct from old.layer_id
+      and new.island_id is not distinct from old.island_id
+      and new.conditions is not distinct from old.conditions
+      and new.drop_items is not distinct from old.drop_items
+      and new.hp is not null
+      and new.hp >= 0
+      and new.hp <= coalesce(old.hp, old.max_hp, 0)
+    then
+      return new;
+    end if;
+    raise exception 'Only the DM can edit this monster — players may only apply attack damage to its HP';
+  end if;
+
+  raise exception 'Only the DM can edit this token';
+end;
+$$ language plpgsql;
+
+-- ======================================================================
+-- 58_island_grid_lines.sql
+-- ======================================================================
+-- Hearthbound — 58_island_grid_lines.sql
+-- A map can draw its grid heavier and in another colour (Mapping → World
+-- maps → a map's Settings → Grid lines), for when the default faint ink is
+-- lost over a background image. {strength: 'light' | 'strong' | 'bold',
+-- color: '#rrggbb' | null}; null is the default (utils/grid.js gridLineStyle).
+
+alter table islands add column if not exists grid_lines jsonb;

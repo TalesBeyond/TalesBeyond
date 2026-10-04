@@ -10,7 +10,8 @@
 // SPEC.md §9.5 for the reasoning and future refinement ideas.
 
 import { supabase } from './supabaseClient.js';
-import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack } from './mappers.js';
+import { attachImageExchange } from './imageExchange.js';
+import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
 // CHANNEL_ERROR transition of this one channel (see REALTIME_SUBSCRIBE_STATES
@@ -26,9 +27,15 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // unlike postgres_changes' players-row DELETE, which a host leaving never
 // triggers — see doLeaveTable in GameView.jsx). Used to auto-end a table's
 // player sessions a few minutes after the host disappears.
-export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
+// onRoll, if given, receives the dice rolls other people at the table
+// announce over this same channel (Broadcast, never stored); the returned
+// unsubscribe function carries `sendRoll(roll)` to announce one.
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
+  if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
+  // DM-uploaded pictures travel between browsers on this same channel.
+  const images = attachImageExchange(channel);
 
   if (presence?.onHostPresenceChange) {
     channel.on('presence', { event: 'sync' }, () => {
@@ -39,10 +46,19 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
   }
 
   channel
+    // Supabase answers a subscription it can't serve — most often a table
+    // missing from the supabase_realtime publication (50_realtime_publication
+    // .sql) — with an error here, and then drops every postgres_changes
+    // binding on the channel while the channel itself still reports
+    // SUBSCRIBED. Nothing else would ever surface that.
+    .on('system', {}, (message) => {
+      if (message?.status === 'error') console.error(`[realtime] table:${tableId} live updates refused:`, message.message);
+    })
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'entities', filter: `table_id=eq.${tableId}` },
       (payload) => {
+        console.debug(`[realtime] entities ${payload.eventType}`, payload.new?.name ?? payload.old?.id);
         if (payload.eventType === 'INSERT') {
           dispatch({ type: 'ADD_ENTITY', entity: mapDbEntity(payload.new) });
         } else if (payload.eventType === 'UPDATE') {
@@ -124,6 +140,7 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         if ('game_clock' in payload.new) dispatch({ type: 'SET_CLOCK', clock: payload.new.game_clock ?? null });
         if ('audio_playback' in payload.new) dispatch({ type: 'SET_AUDIO_PLAYBACK', playback: payload.new.audio_playback });
         if ('day_night_override' in payload.new) dispatch({ type: 'SET_DAY_NIGHT_OVERRIDE', phase: payload.new.day_night_override ?? null });
+        if ('encounter' in payload.new) dispatch({ type: 'SET_ENCOUNTER', encounter: payload.new.encounter ?? null });
       }
     )
     .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_assets', filter: `table_id=eq.${tableId}` }, (payload) => {
@@ -140,6 +157,13 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         dispatch({ type: 'SET_AUDIO_TRACK', track: mapDbAudioTrack(payload.new) });
       }
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'drawings', filter: `table_id=eq.${tableId}` }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'REMOVE_DRAWINGS', ids: [payload.old.id] });
+      } else {
+        dispatch({ type: 'SET_DRAWING', drawing: mapDbDrawing(payload.new) });
+      }
+    })
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'invite_codes', filter: `table_id=eq.${tableId}` },
@@ -147,7 +171,11 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         if (!payload.new.revoked_at) dispatch({ type: 'REGENERATE_INVITE_CODE', code: payload.new.code });
       }
     )
-    .subscribe((status) => {
+    .subscribe((status, err) => {
+      // A channel that fails to join (or drops) otherwise fails silently —
+      // the table just stops updating — so say so in the console.
+      if (status === 'SUBSCRIBED') console.info(`[realtime] table:${tableId} connected`);
+      else console.warn(`[realtime] table:${tableId} ${status}`, err?.message || err || '');
       if (status === 'SUBSCRIBED' && !hasJoinedOnce) {
         hasJoinedOnce = true;
         onStatusChange?.(status, true);
@@ -155,9 +183,14 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence) {
         onStatusChange?.(status, false);
       }
       if (status === 'SUBSCRIBED' && presence?.isHost) channel.track({ isHost: true });
+      if (status === 'SUBSCRIBED') images.onSubscribed();
+      else images.onDisconnected();
     });
 
-  return () => {
+  const unsubscribe = () => {
+    images.detach();
     supabase.removeChannel(channel);
   };
+  unsubscribe.sendRoll = (roll) => channel.send({ type: 'broadcast', event: 'roll', payload: roll });
+  return unsubscribe;
 }

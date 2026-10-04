@@ -256,27 +256,6 @@ export function findUnclosedGuestTable() {
   return best ? best.code : null;
 }
 
-// An island's shell — grid + background, no id/position/entities — so it
-// can be re-imported as a brand-new island elsewhere.
-export function downloadIslandAsFile(island) {
-  const shell = {
-    name: island.name,
-    cols: island.cols,
-    rows: island.rows,
-    cellSize: island.cellSize,
-    backgroundImage: island.backgroundImage ?? null,
-  };
-  const blob = new Blob([JSON.stringify(shell, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(island.name || 'island').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'island'}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 // Triggers a browser download of a data: URL (e.g. a canvas.toDataURL()
 // PNG) — the same create-<a>-click-remove pattern as the Blob-based
 // downloads above, minus createObjectURL/revokeObjectURL since a data URL
@@ -388,5 +367,90 @@ export function saveLocalAudioVolumes(tableKey, volumes) {
     window.localStorage.setItem(AUDIO_VOLUME_NAMESPACE + tableKey, JSON.stringify(volumes));
   } catch {
     // storage blocked or full - the level just won't survive a refresh
+  }
+}
+
+// The Draw tool's choices in this browser — the drawing tool, style, Snap to
+// grid, recent colours, and whether drawings are hidden here. Never synced;
+// tolerant of storage being unavailable like the audio volumes above.
+const DRAW_PREFS_KEY = 'hearthbound:drawprefs';
+
+export function loadDrawPrefs() {
+  try {
+    const raw = window.localStorage.getItem(DRAW_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveDrawPrefs(prefs) {
+  try {
+    window.localStorage.setItem(DRAW_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage blocked or full - the choices just won't survive a refresh
+  }
+}
+
+// Hints and tips (components/Hints.jsx) in this browser: whether tips and
+// mode bars show at all, and which tips / mode bars were already dismissed.
+const HINT_PREFS_KEY = 'hearthbound:hints';
+
+export function loadHintPrefs() {
+  try {
+    const raw = window.localStorage.getItem(HINT_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveHintPrefs(prefs) {
+  try {
+    window.localStorage.setItem(HINT_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
+
+// Which pieces of the map's HUD are folded away in this browser
+// (TableHud.jsx's useHudFold): 'zoom', 'initiative', 'minimap'.
+const HUD_FOLD_NAMESPACE = 'hearthbound:hud:';
+
+export function loadHudFolded(name) {
+  try {
+    return window.localStorage.getItem(HUD_FOLD_NAMESPACE + name) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveHudFolded(name, folded) {
+  try {
+    window.localStorage.setItem(HUD_FOLD_NAMESPACE + name, folded ? '1' : '0');
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
+  }
+}
+
+// The DM's "Reveal rolls to players" (Configurations), this browser only:
+// off keeps the DM's own dice rolls on their screen.
+const REVEAL_ROLLS_KEY = 'hearthbound:revealRolls';
+
+export function loadRevealRolls() {
+  try {
+    return window.localStorage.getItem(REVEAL_ROLLS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveRevealRolls(reveal) {
+  try {
+    window.localStorage.setItem(REVEAL_ROLLS_KEY, reveal ? '1' : '0');
+  } catch {
+    // storage blocked or full - the choice just won't survive a refresh
   }
 }

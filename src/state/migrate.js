@@ -49,6 +49,9 @@ export function migrateLegacyState(raw) {
   if (!state.customAssetOrder) state = { ...state, customAssetOrder: [] };
   // REQ-009's audio slice, same backfill reasoning.
   if (!state.audio) state = { ...state, audio: { tracks: {}, trackOrder: [], playback: { nowPlaying: null, resume: {} } } };
+  // The Draw tool's drawings, same again.
+  if (!state.drawings) state = { ...state, drawings: {} };
+  if (!state.drawingOrder) state = { ...state, drawingOrder: [] };
 
   // session.hostKey (the local/guest "rejoin as host" code — see
   // store.jsx's createEmptyGameState) is likewise a field added after

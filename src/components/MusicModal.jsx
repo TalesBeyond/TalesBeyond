@@ -4,7 +4,7 @@ import { DebouncedRange, CatalogSongSelect, DemoTrackPicker } from './SoundField
 import { isCatalogTrack } from '../lib/audioEngine.js';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
 import { getSfxVolume, setSfxVolume, playSfx } from '../lib/sfx.js';
-import { SOUND_EFFECTS, DEMO_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
+import { SOUND_EFFECTS, DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 
 function formatSeconds(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -22,7 +22,9 @@ const isDefaultTrack = (track) => isCatalogTrack(track);
 // the app's default music + sound effects. Each sound is a collapsible row:
 // the header shows its title and play/pause; opening it shows the volume
 // sliders (and, for the DM, loop / replace / remove).
-export default function MusicModal({ audio, worldTrack, worldTargetId, layers, layerOrder, entities, isGuest, onClose }) {
+// `side`: on the desktop rail it stands beside the rail as a side panel
+// (styles.css .side-panel) instead of a centred dialog over a backdrop.
+export default function MusicModal({ audio, worldTrack, worldTargetId, layers, layerOrder, entities, isGuest, encounterVolume, onEncounterVolume, onClose, side = false }) {
   const [tab, setTab] = useState('user');
   const rows = [{ key: 'world', source: 'World music', kind: 'world', track: worldTrack }];
   for (const track of Object.values(audio.tracks)) {
@@ -43,10 +45,12 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
   const pct = Math.min(100, (used / AUDIO_TABLE_QUOTA_BYTES) * 100);
 
   return (
-    <div className="book-backdrop" onClick={onClose}>
+    <div className={side ? 'side-panel-host' : 'book-backdrop'} onClick={side ? undefined : onClose}>
       <div
-        className="book-card"
-        style={{ maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
+        className={side ? 'side-panel' : 'book-card'}
+        role="dialog"
+        aria-label="Music"
+        style={side ? { '--side-w': '420px' } : { maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">
@@ -85,7 +89,7 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
                 {isGuest
                   ? 'Guest table: your files stay on this device and only you hear them — nothing is uploaded, and they are gone when you close the page.'
                   : audio.isHost
-                  ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to layers and tokens from Map settings and the token inspector.'
+                  ? 'MP3 or WAV, up to 10 MB each. Only one sound plays at a time, for everyone who can hear it. Attach sounds to worlds and tokens from World state → Ambience and the token inspector.'
                   : 'The DM controls the music. Your volume slider only changes what you hear.'}
               </p>
             </>
@@ -101,6 +105,7 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
               {defaultRows.map((row) => (
                 <MusicRow key={row.key} row={row} audio={audio} worldTargetId={worldTargetId} />
               ))}
+              {onEncounterVolume && <EncounterMusicRow volume={encounterVolume ?? 1} onVolume={onEncounterVolume} />}
               <div className="music-section-label">Sound effects</div>
               {SOUND_EFFECTS.map((effect) => (
                 <SoundEffectRow key={effect.id} effect={effect} />
@@ -177,6 +182,32 @@ function PlayButton({ playing, onClick, title }) {
 
 // One built-in sound effect. Local to this browser, like a player's own
 // music slider; the header button and releasing the slider play a preview.
+// The encounter theme plays by itself whenever a fight is running (see
+// GameView.jsx) — the only control is this player's own volume for it, which
+// applies live, mid-fight.
+function EncounterMusicRow({ volume, onVolume }) {
+  return (
+    <MusicDropdown source="Plays during encounters" title={ENCOUNTER_MUSIC.name} action={null}>
+      <div className="music-row-status">{ENCOUNTER_MUSIC.when}</div>
+      <SoundCredit description={ENCOUNTER_MUSIC.description} source={ENCOUNTER_MUSIC.source} />
+      <div className="music-sliders">
+        <label className="music-slider">
+          <span>Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            aria-label={`${ENCOUNTER_MUSIC.name} volume`}
+            onChange={(e) => onVolume(Number(e.target.value))}
+          />
+        </label>
+      </div>
+    </MusicDropdown>
+  );
+}
+
 function SoundEffectRow({ effect }) {
   const [volume, setVolume] = useState(() => getSfxVolume(effect.id));
   const preview = () => playSfx(effect.id);
@@ -311,7 +342,7 @@ function MusicRow({ row, audio, worldTargetId }) {
       )}
       {audio.isHost && expired && row.kind !== 'world' && !isCatalogTrack(track) && (
         <p className="footer-note" style={{ border: 'none', padding: '6px 0 0' }}>
-          Re-upload it from Map settings or the token inspector.
+          Re-upload it from World state → Ambience or the token inspector.
         </p>
       )}
       {!audio.isHost && !track && <p className="music-row-status">The DM hasn't set any music.</p>}
