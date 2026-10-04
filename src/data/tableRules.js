@@ -433,7 +433,7 @@ export const TABLE_RULES = {
       name: 'End turn',
       sub: 'Pass to the next creature',
       where: 'Bottom right, during a fight',
-      text: 'Ends the current turn and moves to the next in the order. The DM can end any turn; a player can end only their own hero’s.',
+      text: 'Ends the current turn and moves to the next in the order. The DM can end any turn; a player can end only their own hero’s. The chevron beside it shrinks the turn controls to one row (End turn, the feet left, and a chevron to open them again) to leave more of the map in view; it works on a phone too, and is remembered on this device.',
     },
     {
       key: 'rolld20',

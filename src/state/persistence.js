@@ -416,7 +416,7 @@ export function saveHintPrefs(prefs) {
 }
 
 // Which pieces of the map's HUD are folded away in this browser
-// (TableHud.jsx's useHudFold): 'zoom', 'initiative', 'minimap'.
+// (TableHud.jsx's useHudFold): 'zoom', 'initiative', 'minimap', 'encounter'.
 const HUD_FOLD_NAMESPACE = 'hearthbound:hud:';
 
 export function loadHudFolded(name) {
