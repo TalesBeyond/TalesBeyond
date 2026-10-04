@@ -30,10 +30,13 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // onRoll, if given, receives the dice rolls other people at the table
 // announce over this same channel (Broadcast, never stored); the returned
 // unsubscribe function carries `sendRoll(roll)` to announce one.
-export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll) {
+// onArea / `sendArea(message)`: the same for area-of-effect templates laid on
+// the map (GameView.jsx's "Areas of effect") — announced, never stored.
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll, onArea) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
+  if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
   // DM-uploaded pictures travel between browsers on this same channel.
   const images = attachImageExchange(channel);
 
@@ -192,5 +195,6 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
     supabase.removeChannel(channel);
   };
   unsubscribe.sendRoll = (roll) => channel.send({ type: 'broadcast', event: 'roll', payload: roll });
+  unsubscribe.sendArea = (message) => channel.send({ type: 'broadcast', event: 'area', payload: message });
   return unsubscribe;
 }

@@ -53,6 +53,7 @@ const ICONS = {
   recenter: 'M12 3v4 M12 17v4 M3 12h4 M17 12h4 M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
   sheet: 'M6 3h9l4 4v14H6z M15 3v4h4 M9 12h6 M9 16h6',
   sword: 'M20 4h-4l-9 9 4 4 9-9z M6 12l6 6 M4 20l4-4',
+  area: 'M3 12L19 5c2 4 2 10 0 14z',
 };
 
 export function PhoneIcon({ name, size = 22, strokeWidth = 1.8 }) {

@@ -2153,6 +2153,8 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .stage.right-panning,
 .stage.right-panning * { cursor: grabbing !important; user-select: none; }
 .island-canvas.tool-ruler { cursor: crosshair; }
+.island-canvas.tool-area { cursor: crosshair; user-select: none; }
+.island-canvas.tool-area .grid-wrap { cursor: crosshair; }
 .island-canvas.tool-draw { cursor: crosshair; user-select: none; }
 .island-canvas.tool-draw .grid-wrap { cursor: crosshair; }
 .island-canvas.draw-select,
@@ -5308,6 +5310,140 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .mode-bar-close { width: 40px; display: flex; align-items: center; justify-content: center; color: var(--parchment-300); }
 .mode-bar-done:hover,
 .mode-bar-close:hover { background: var(--ink-800); }
+
+/* ---------- Areas of effect (utils/areaOfEffect.js) ----------
+   A template on the map (MapBoard.jsx): the squares it covers, its outline,
+   and a tag at its far edge. --area-color is its owner's colour. */
+.area-layer { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.area-cell { fill: var(--area-color); fill-opacity: 0.3; stroke: var(--area-color); stroke-opacity: 0.55; stroke-width: 1; }
+/* The dark edge keeps the outline readable on map art of its own colour. */
+.area-outline { fill: var(--area-color); fill-opacity: 0.12; stroke: var(--area-color); stroke-width: 2.5; stroke-linejoin: round; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9)); }
+.area.draft .area-outline { stroke-dasharray: 8 6; }
+.area-range { stroke: var(--area-color); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
+.token.in-area { outline: 2px dashed var(--parchment-100); outline-offset: 3px; }
+.area-tag {
+  position: absolute;
+  z-index: 44;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--area-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-950) 92%, transparent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  color: var(--parchment-100);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.area-tag.draft { pointer-events: none; padding-right: 10px; }
+.area-tag:not(:has(button)) { padding-right: 10px; }
+.area-tag-swatch { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--area-color); }
+.area-tag b { color: var(--gold-hi); font-weight: 700; }
+.area-tag button {
+  width: 32px;
+  height: 32px;
+  margin: -3px -2px -3px 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--parchment-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.area-tag button:hover { background: var(--ink-700); color: var(--parchment-100); }
+.area-tag button:focus-visible,
+.area-picker button:focus-visible,
+.area-bar-place:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.game-screen.phone .area-tag button { width: 44px; height: 44px; margin: -9px -4px -9px -4px; }
+
+/* Aiming one: the mode bar, with Cancel and Place. */
+.area-bar-place {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--gold-hi);
+  color: var(--ink-950);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.area-bar-place:disabled { opacity: 0.5; cursor: default; }
+
+/* Choosing one (AreaPicker.jsx), in a modal on desktop and a sheet on a phone. */
+.area-picker { display: flex; flex-direction: column; gap: 14px; }
+.phone-sheet .area-picker { padding: 16px 16px 20px; }
+.area-shapes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.area-shapes button {
+  min-height: 68px;
+  border: 1px solid var(--ink-700);
+  border-radius: 12px;
+  background: var(--ink-900);
+  color: var(--parchment-200);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.area-shapes button.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-900)); color: var(--gold-hi); }
+.area-rule,
+.area-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-300); }
+.area-field { display: flex; flex-direction: column; gap: 8px; }
+.area-field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-300); }
+.area-sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.area-sizes button {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--parchment-100);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.area-sizes button.active { border-color: var(--gold-hi); color: var(--gold-hi); }
+.area-number { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--parchment-300); }
+.area-number input {
+  width: 64px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--parchment-100);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.area-go {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--gold-hi);
+  color: var(--ink-950);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.area-go:disabled { opacity: 0.5; cursor: default; }
 
 .tip {
   position: relative;
