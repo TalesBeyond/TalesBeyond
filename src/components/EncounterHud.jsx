@@ -62,7 +62,11 @@ export function TurnOrderRibbon({ encounter, entities, meId }) {
 }
 
 // Bottom-right: movement left, End turn, a quick d20 and the combat log.
+// It can be shrunk to one row — End turn, the feet left and a button to open
+// it again — to give the map back its corner. Everyone can, on a desktop and
+// on a phone, and the choice is remembered in this browser (useHudFold).
 export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHost, onEndEncounter, movement, log }) {
+  const [folded, setFolded] = useHudFold('encounter');
   const [logOpen, setLogOpen] = useState(false);
   const [lastRoll, setLastRoll] = useState(null);
 
@@ -76,6 +80,26 @@ export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHos
   }
 
   const endLabel = canEndTurn ? 'End turn' : actor ? `${actor.name}'s turn` : 'Waiting';
+
+  const endButton = (
+    <button type="button" className={`encounter-end${isMyTurn ? ' mine' : ''}`} disabled={!canEndTurn} onClick={onEndTurn}>
+      {endLabel}
+    </button>
+  );
+
+  if (folded) {
+    return (
+      <div className="encounter-actions folded">
+        {endButton}
+        {movement && (
+          <span className="encounter-move-chip" title="Movement left this turn" aria-label={`Movement: ${movement.left} of ${movement.total} feet left`}>
+            {movement.left} ft
+          </span>
+        )}
+        <HudFoldButton label="Open the turn controls" className="encounter-fold open" onClick={() => setFolded(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="encounter-actions">
@@ -93,14 +117,10 @@ export function EncounterActions({ actor, canEndTurn, isMyTurn, onEndTurn, isHos
           </div>
         </div>
       )}
-      <button
-        type="button"
-        className={`encounter-end${isMyTurn ? ' mine' : ''}`}
-        disabled={!canEndTurn}
-        onClick={onEndTurn}
-      >
-        {endLabel}
-      </button>
+      <div className="encounter-end-row">
+        {endButton}
+        <HudFoldButton label="Shrink the turn controls" className="encounter-fold" onClick={() => setFolded(true)} />
+      </div>
       <div className="encounter-row">
         <button type="button" className="encounter-small" onClick={rollD20} title="Roll a d20">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
