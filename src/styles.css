@@ -410,6 +410,9 @@ input, select {
   color: #e5a3a3;
 }
 .btn-danger:hover { background: rgba(178, 58, 58, 0.15); }
+/* On the Grimoire's parchment the pale pink label washes out: red instead. */
+:root[data-theme='grimoire'] .btn-danger { color: var(--danger); }
+:root[data-theme='grimoire'] .btn-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 .btn-block { width: 100%; min-height: 50px; font-size: 16px; }
 .btn-sm { padding: 7px 12px; font-size: 12.5px; min-height: 0; }
@@ -1633,6 +1636,10 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .btn-icon { width: 34px; height: 34px; padding: 0; }
 .btn-icon.active { background: var(--ink-700); border-color: var(--gold-hi); color: var(--gold-hi); }
 .btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Delete, as an icon: red in every palette, and not faded to pink when it
+   can't be pressed (the base map) — the cursor and its tooltip say why. */
+.btn-danger.btn-icon { color: var(--danger); }
+.btn-danger.btn-icon:disabled { opacity: 1; }
 /* A parent map's name: the button that folds its sub maps in and out. */
 .island-expand { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0; background: none; border: 0; font-family: inherit; text-align: left; cursor: pointer; }
 .island-expand svg { flex-shrink: 0; color: var(--gold-hi); transition: transform 0.15s; }
@@ -1644,6 +1651,37 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .island-settings { margin: 2px 6px 10px; padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
 .island-settings .field-row .btn { flex: 1; }
 .island-settings-confirm { margin-top: 10px; }
+/* Grid lines: how heavy, which colour, and a strip showing the result. */
+.grid-lines-label { margin-top: 12px; }
+.grid-lines-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.grid-lines-strength { flex: 1 1 200px; margin-bottom: 0; }
+.grid-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.grid-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--ink-900);
+  border-radius: 50%;
+  background: var(--swatch, #17140f);
+  box-shadow: 0 0 0 1px var(--ink-600, var(--ink-700));
+  cursor: pointer;
+}
+.grid-swatch:hover { box-shadow: 0 0 0 1px var(--gold-line); }
+.grid-swatch.active { box-shadow: 0 0 0 2px var(--gold-hi); }
+.grid-swatch:focus-visible, .grid-swatch:focus-within { outline: 2px solid var(--parchment-300); outline-offset: 3px; }
+.grid-swatch.custom { background: var(--swatch, conic-gradient(#e03131, #f2c14e, #51cf66, #3fa7ff, #b46bff, #e03131)); overflow: hidden; }
+.grid-swatch.custom input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.grid-preview {
+  height: 78px;
+  margin-top: 10px;
+  border: 1px solid var(--gold-line);
+  border-radius: 8px;
+  background: var(--parchment-100) center / cover;
+  overflow: hidden;
+}
+.grid-preview svg { display: block; }
 .island-new { margin: 10px 0 8px; }
 .island-settings .island-row-note { padding: 4px 0 0; }
 .island-row-conditions { display: flex; flex-direction: column; gap: 2px; padding: 0 6px; }
@@ -4428,7 +4466,10 @@ button.card-notes { border-style: solid; }
   pointer-events: none;
 }
 :root[data-theme='grimoire'] .island-canvas:not(.tool-play) .grid-wrap.active { box-shadow: 0 0 0 2.5px var(--ember); }
-:root[data-theme='grimoire'] .grid-wrap .grid-svg line { stroke: rgba(42, 32, 24, 0.4); stroke-width: 1; stroke-dasharray: 1 5; }
+/* A map with its own grid lines (its Settings) keeps them as it set them. */
+:root[data-theme='grimoire'] .grid-wrap .grid-svg:not(.grid-custom) line,
+:root[data-theme='grimoire'] .grid-preview:not(.grid-custom) line { stroke: rgba(42, 32, 24, 0.4); stroke-width: 1; stroke-dasharray: 1 5; }
+:root[data-theme='grimoire'] .grid-preview { background-color: #f6eedb; }
 
 /* Tokens as ink roundels: a double ring drawn around the art. */
 :root[data-theme='grimoire'] .token { border: 2px solid #2a2018; box-shadow: 0 0 0 2px #f3e9d0, 0 0 0 3.5px #2a2018, 0 3px 6px rgba(40, 25, 10, 0.35); }
@@ -5637,3 +5678,129 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .side-panel .dm-left { flex-basis: 100%; border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--gold-line) 35%, transparent); }
 .side-panel .dm-right { flex-basis: 100%; }
 .side-panel .dm-hist { max-height: none; }
+
+/* ---------- The compendium drawer (desktop rail) ----------
+   The Compendium tab's side panel: its three books lying in the drawer, then
+   Storage. A book is its cover seen from above — leather, a spine, a gilt
+   line and the page edges under it — in its own colours under every
+   palette, like the open book it turns into (.cbook-*). */
+.side-panel-menu.book-drawer { flex-direction: column; flex-wrap: nowrap; gap: 14px; }
+.book-drawer-note { margin: 0; font-size: 13px; color: var(--parchment-300); }
+.drawer-book {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 96px;
+  padding: 0 18px 0 38px;
+  border: 0;
+  border-radius: 4px 10px 10px 4px;
+  background: var(--book, #4a2c1d);
+  color: #f2e9d4;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35), 0 3px 0 #d8c8a2, 0 4px 0 #b9a87e, 0 10px 16px -8px rgba(0, 0, 0, 0.7);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.drawer-book.monsters { --book: #3c4a2f; }
+.drawer-book.items { --book: #4a2c1d; }
+.drawer-book.weapons { --book: #6b2a22; }
+.drawer-book::after {
+  content: '';
+  position: absolute;
+  inset: 7px 7px 7px 28px;
+  border: 1px solid rgba(201, 160, 84, 0.55);
+  border-radius: 3px 6px 6px 3px;
+  pointer-events: none;
+}
+.drawer-book-spine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 21px;
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.12));
+  box-shadow: inset -1px 0 0 rgba(201, 160, 84, 0.45), inset 0 14px 0 -12px rgba(201, 160, 84, 0.6), inset 0 -14px 0 -12px rgba(201, 160, 84, 0.6);
+}
+.drawer-book:hover { transform: translateX(5px); filter: brightness(1.14); }
+.drawer-book:focus-visible, .drawer-storage:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.drawer-book-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.drawer-book-title { font-family: var(--font-display-caps); font-size: 20px; font-weight: 600; letter-spacing: 0.05em; }
+.drawer-book-sub { font-size: 12.5px; line-height: 1.35; color: rgba(242, 233, 212, 0.78); }
+.drawer-book-icon { flex-shrink: 0; color: #e0c27a; }
+.drawer-book-icon .tool-icon { width: 28px; height: 28px; }
+.drawer-storage {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  margin-top: 6px;
+  padding: 0 14px;
+  border: 1px dashed var(--gold-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-storage > .tool-icon { flex-shrink: 0; width: 24px; height: 24px; color: var(--gold-hi); }
+.drawer-storage:hover, .drawer-storage.active { border-style: solid; background: color-mix(in srgb, var(--gold-hi) 10%, transparent); }
+.drawer-storage-title { font-family: var(--font-display-caps); font-size: 16px; font-weight: 600; letter-spacing: 0.04em; }
+.drawer-storage-sub { font-size: 12.5px; color: var(--parchment-300); }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-book { transition: none; }
+}
+
+/* The Tools drawer: each tool with what it does. The Mapping drawer's switch
+   between World maps and Layers. */
+.drawer-tool {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: 10px 14px;
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  background: var(--ink-800);
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-tool:hover { border-color: var(--gold-line); }
+.drawer-tool.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-800)); }
+.drawer-tool:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.drawer-tool-icon { flex-shrink: 0; color: var(--gold-hi); }
+.drawer-tool-icon .tool-icon { width: 26px; height: 26px; }
+.drawer-tool-name { font-family: var(--font-display-caps); font-size: 16px; font-weight: 600; letter-spacing: 0.04em; }
+.drawer-tool.active .drawer-tool-name { color: var(--gold-hi); }
+.drawer-tool-sub { font-size: 12.5px; line-height: 1.4; color: var(--parchment-300); }
+.side-panel-menu.tools-drawer { gap: 8px; }
+.side-tabs.drawer-tabs { margin-bottom: 14px; }
+
+/* The World drawer: the clock, day / night and ambience, one under another. */
+.drawer-section { display: flex; flex-direction: column; gap: 8px; }
+.drawer-section + .drawer-section { padding-top: 14px; border-top: 1px solid var(--ink-700); }
+.drawer-section > .section-label { margin: 0; }
+
+/* A side panel's footer (ModalShell `footer`): pinned under the scrolling
+   body. The Mapping drawer keeps + New map there, and the form it opens;
+   Initiative and Dice keep their roll buttons there. */
+.side-panel-footer {
+  flex-shrink: 0;
+  max-height: 60%;
+  overflow-y: auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--gold-line);
+  background: color-mix(in srgb, var(--ink-950) 55%, transparent);
+}
+.side-panel-footer .island-new { margin: 0; }
+.side-panel-footer button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+
+/* The Configurations drawer: cards under headings; Leave reads as the way out. */
+.side-panel-menu.config-drawer { gap: 14px; }
+.drawer-tool.danger .drawer-tool-icon, .drawer-tool.danger .drawer-tool-name { color: var(--danger); }
+.drawer-tool.danger:hover { border-color: var(--danger); }

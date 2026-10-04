@@ -46,6 +46,8 @@ export function mapDbIsland(row) {
     // Null for islands from before each island had its own scale — they
     // follow their layer's (utils/grid.js islandFeet).
     feetPerSquare: row.feet_per_square ?? null,
+    // How its grid is drawn (utils/grid.js gridLineStyle); null is the default.
+    gridLines: row.grid_lines || null,
   };
 }
 
@@ -61,6 +63,7 @@ export function mapClientIslandPatchToDb(patch) {
   if ('conditions' in patch) db.conditions = patch.conditions;
   if ('dayNight' in patch) db.day_night = patch.dayNight;
   if ('feetPerSquare' in patch && patch.feetPerSquare != null) db.feet_per_square = patch.feetPerSquare;
+  if ('gridLines' in patch) db.grid_lines = patch.gridLines || null;
   return db;
 }
 

@@ -129,3 +129,53 @@ export function feetAlongLine(p1, p2, areas) {
   });
   return feet;
 }
+
+// A map's grid lines (Mapping → World maps → a map's Settings). The default
+// ink is faint on purpose, which leaves it nearly invisible over a dark or
+// busy background image, so each map can draw its lines heavier and in a
+// colour that shows. Kept on the island as
+// gridLines: { strength: 'light' | 'strong' | 'bold', color: '#rrggbb' | null },
+// or null for the default.
+export const GRID_LINE_STRENGTHS = [
+  { key: 'light', label: 'Light' },
+  { key: 'strong', label: 'Strong' },
+  { key: 'bold', label: 'Bold' },
+];
+
+// `value: null` is the default ink.
+export const GRID_LINE_COLORS = [
+  { value: null, label: 'Ink (default)' },
+  { value: '#000000', label: 'Black' },
+  { value: '#ffffff', label: 'White' },
+  { value: '#e03131', label: 'Red' },
+  { value: '#f2c14e', label: 'Gold' },
+  { value: '#3fa7ff', label: 'Blue' },
+  { value: '#51cf66', label: 'Green' },
+];
+
+const GRID_DEFAULT_INK = '#17140f';
+const GRID_LINE_LEVELS = {
+  light: { opacity: 0.28, minor: 0.7, major: 1.4 },
+  strong: { opacity: 0.6, minor: 1.1, major: 2 },
+  bold: { opacity: 0.95, minor: 1.7, major: 2.8 },
+};
+
+// A form's strength and colour as what is stored: null when both are the default.
+export function normalizeGridLines({ strength, color } = {}) {
+  const s = GRID_LINE_LEVELS[strength] ? strength : 'light';
+  const c = /^#[0-9a-f]{6}$/i.test(color || '') ? color.toLowerCase() : null;
+  return s === 'light' && !c ? null : { strength: s, color: c };
+}
+
+// How to stroke an island's grid: every line gets `stroke`; `major` is the
+// width of every fifth line and `minor` of the rest. `custom` is false for
+// the default, which a palette may restyle (the Grimoire's dotted ink).
+export function gridLineStyle(island) {
+  const lines = normalizeGridLines(island?.gridLines || {});
+  const level = GRID_LINE_LEVELS[lines?.strength || 'light'];
+  const hex = lines?.color || GRID_DEFAULT_INK;
+  // A colour picked on purpose is never left as faint as the default ink.
+  const opacity = lines?.color ? Math.max(level.opacity, 0.5) : level.opacity;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return { custom: Boolean(lines), stroke: `rgba(${r},${g},${b},${opacity})`, minor: level.minor, major: level.major };
+}

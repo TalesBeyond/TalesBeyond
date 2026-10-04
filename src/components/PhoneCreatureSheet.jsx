@@ -3,7 +3,7 @@ import { useFx } from '../lib/fx.js';
 import { ABILITIES, abilityModifier, formatModifier, defaultCharacterSheet } from '../data/characterSheet.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
-import { acOf } from '../utils/combat.js';
+import { acOf, defaultMobAttacks } from '../utils/combat.js';
 import { Editable, RemoveTokenButton } from './CreatureCard.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab } from './RightPanel.jsx';
@@ -262,7 +262,16 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
               <section aria-label="Attacks">
                 <span className="phone-label">{isHero ? 'Attacks' : 'Battle'}</span>
                 {paper(
-                  <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={targets} onAttackTarget={onUpdate} playSoundOnHit={isHero} attackerName={entity.name} />,
+                  <BattleEquipmentTab
+                    sheet={sheet}
+                    updateSheet={updateSheet}
+                    targets={targets}
+                    onAttackTarget={onUpdate}
+                    playSoundOnHit={isHero}
+                    attackerName={entity.name}
+                    ownAttacks={!isHero}
+                    defaultAttacks={isHero ? [] : defaultMobAttacks(entity.name)}
+                  />,
                   canEditOwnTabs
                 )}
               </section>

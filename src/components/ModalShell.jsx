@@ -11,7 +11,9 @@ import ModalIcon from './ModalIcon.jsx';
 // the toolbar rail, over the left of the map, with no backdrop. It stays open
 // while the table is played (a click on the map doesn't close it, nor does
 // Escape) until its tab or its close button is pressed. `width` is its width.
-export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth = 480, flush = false, side = false, width = 340, onClose, children }) {
+// `footer`: a side panel's foot, pinned under the scrolling body — for the
+// one action that should stay in reach however long the list above it grows.
+export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth = 480, flush = false, side = false, width = 340, footer = null, onClose, children }) {
   useEffect(() => {
     if (side) return undefined;
     function onKeyDown(e) {
@@ -40,6 +42,7 @@ export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth
         <div className="side-panel-body" style={{ padding: flush ? 0 : 16 }}>
           {children}
         </div>
+        {footer && <div className="side-panel-footer">{footer}</div>}
       </aside>,
       document.body
     );

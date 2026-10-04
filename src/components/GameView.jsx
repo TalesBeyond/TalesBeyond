@@ -18,6 +18,7 @@ import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor } from '../data/droppables.js';
+import { mobSheetWithAttacks } from '../utils/combat.js';
 import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
 import { renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl } from '../data/defaultTokens.js';
@@ -1385,7 +1386,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       targetRow,
       conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
       dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
-      mobSheet: draft.kind === 'mob' ? draft.mobSheet : undefined,
+      // Every monster is placed with something to attack with.
+      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,

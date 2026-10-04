@@ -27,7 +27,7 @@ import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import CreatureCard, { Editable } from './CreatureCard.jsx';
 import SoundField from './SoundField.jsx';
-import { totalToHit, totalDamageLabel, acOf, weaponStatsFor, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
+import { totalToHit, totalDamageLabel, acOf, attackWeapon, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 
 export default function RightPanel({
   audio,
@@ -550,7 +550,8 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
   const droppables = entity.droppables || [];
   const sheet = entity.mobSheet || defaultCharacterSheet();
   // A monster's Battle Equipment attacks heroes, mirroring how a hero's
-  // attacks monsters.
+  // attacks monsters. It is the monster's own attacks (it has no bag), set
+  // when it was placed and the DM's to change.
   const heroTargets = Object.values(entities || {}).filter((e) => e.kind === 'hero');
 
   function updateSheet(patch) {
@@ -562,7 +563,17 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
         {
           key: 'battle',
           label: 'Battle',
-          content: <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={heroTargets} onAttackTarget={onUpdate} attackerName={entity.name} />,
+          content: (
+            <BattleEquipmentTab
+              sheet={sheet}
+              updateSheet={updateSheet}
+              targets={heroTargets}
+              onAttackTarget={onUpdate}
+              attackerName={entity.name}
+              ownAttacks
+              defaultAttacks={defaultMobAttacks(entity.name)}
+            />
+          ),
         },
         {
           key: 'loot',
@@ -807,7 +818,13 @@ export function SavesSkillsTab({ sheet, updateSheet }) {
 }
 
 
-export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName }) {
+// The dice a monster's own attack can roll.
+const ATTACK_DICE = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+
+// `ownAttacks`: a monster's tab. Its attacks aren't weapons out of a bag but
+// its own — a name, dice and bonuses the DM can edit — and `defaultAttacks`
+// are the ones a monster of its kind starts with, to put back in one press.
+export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName, ownAttacks = false, defaultAttacks = [] }) {
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
@@ -816,6 +833,10 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
   const [results, setResults] = useState({});
 
   function addItem() {
+    if (ownAttacks) {
+      updateSheet({ attacks: [...items, { weaponName: 'Attack', numberOfDice: 1, diceType: 'd6', additionalModifier: 0, additionalDamage: 0 }] });
+      return;
+    }
     if (bagWeapons.length === 0) return;
     updateSheet({ attacks: [...items, { weaponName: bagWeapons[0].name, additionalModifier: 0, additionalDamage: 0 }] });
   }
@@ -877,13 +898,25 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
     <div style={{ marginTop: 10 }}>
       {items.length === 0 && (
         <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-          {bagWeapons.length === 0
-            ? 'No battle equipment added yet — add a weapon under the Bag tab first.'
-            : 'No battle equipment added yet.'}
+          {ownAttacks
+            ? 'No attacks yet.'
+            : bagWeapons.length === 0
+              ? 'No battle equipment added yet — add a weapon under the Bag tab first.'
+              : 'No battle equipment added yet.'}
         </p>
       )}
+      {ownAttacks && items.length === 0 && defaultAttacks.length > 0 && (
+        <button
+          type="button"
+          className="btn btn-primary btn-block"
+          title={defaultAttacks.map((a) => `${a.weaponName} ${formatModifier(a.additionalModifier)}, ${totalDamageLabel(attackWeapon(a), a.additionalDamage)}`).join(' · ')}
+          onClick={() => updateSheet({ attacks: defaultAttacks })}
+        >
+          Give {attackerName || 'it'} its usual attacks
+        </button>
+      )}
       {items.map((it, i) => {
-        const weapon = weaponStatsFor(it.weaponName);
+        const weapon = attackWeapon(it);
         // Keep the currently-equipped weapon selectable even if it's since
         // been removed from the bag, so an existing attack never silently
         // jumps to a different weapon out from under the player.
@@ -894,13 +927,18 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
         return (
           <div className="attack-item" key={i}>
             <div className="attack-head">
-              <select className="field" aria-label="Weapon" value={weapon.name} onChange={(e) => updateItem(i, { weaponName: e.target.value })}>
-                {weaponOptions.map((w) => (
-                  <option key={w.id} value={w.name}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
+              {ownAttacks ? (
+                <input className="field" aria-label="Attack name" value={it.weaponName ?? ''} placeholder="Attack name" onChange={(e) => updateItem(i, { weaponName: e.target.value })} />
+              ) : (
+                // Picking a weapon takes its dice from the catalog again.
+                <select className="field" aria-label="Weapon" value={weapon.name} onChange={(e) => updateItem(i, { weaponName: e.target.value, numberOfDice: undefined, diceType: undefined })}>
+                  {weaponOptions.map((w) => (
+                    <option key={w.id} value={w.name}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button type="button" className="icon-btn" aria-label="Remove this attack" onClick={() => removeItem(i)}>
                 ×
               </button>
@@ -915,23 +953,49 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
                 <span>Damage</span>
               </div>
             </div>
+            {ownAttacks && (
+              <div className="field-row">
+                <div>
+                  <label className="field-label">Dice</label>
+                  <input
+                    type="number"
+                    className="field"
+                    min="1"
+                    max="20"
+                    title="How many dice the attack rolls for damage"
+                    value={weapon.numberOfDice}
+                    onChange={(e) => updateItem(i, { numberOfDice: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1)), diceType: weapon.diceType })}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Die</label>
+                  <select className="field" aria-label="Damage die" value={weapon.diceType} onChange={(e) => updateItem(i, { numberOfDice: weapon.numberOfDice, diceType: e.target.value })}>
+                    {ATTACK_DICE.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="field-row">
               <div>
-                <label className="field-label">Extra to hit</label>
+                <label className="field-label">{ownAttacks ? 'To hit bonus' : 'Extra to hit'}</label>
                 <input
                   type="number"
                   className="field"
-                  title="Stacks on top of the weapon's own bonus for the attack roll"
+                  title={ownAttacks ? 'Added to the d20 of the attack roll' : "Stacks on top of the weapon's own bonus for the attack roll"}
                   value={it.additionalModifier ?? 0}
                   onChange={(e) => updateItem(i, { additionalModifier: parseInt(e.target.value, 10) || 0 })}
                 />
               </div>
               <div>
-                <label className="field-label">Extra damage</label>
+                <label className="field-label">{ownAttacks ? 'Damage bonus' : 'Extra damage'}</label>
                 <input
                   type="number"
                   className="field"
-                  title="Stacks on top of the weapon's own damage"
+                  title={ownAttacks ? 'Added to the damage dice' : "Stacks on top of the weapon's own damage"}
                   value={it.additionalDamage ?? 0}
                   onChange={(e) => updateItem(i, { additionalDamage: parseInt(e.target.value, 10) || 0 })}
                 />
@@ -980,13 +1044,13 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
         type="button"
         className="btn btn-secondary btn-block"
         style={{ marginTop: 8 }}
-        disabled={bagWeapons.length === 0}
-        title={bagWeapons.length === 0 ? 'Add a weapon under the Bag tab first' : 'Equip a weapon from your bag'}
+        disabled={!ownAttacks && bagWeapons.length === 0}
+        title={ownAttacks ? 'Add another attack of its own' : bagWeapons.length === 0 ? 'Add a weapon under the Bag tab first' : 'Equip a weapon from your bag'}
         onClick={addItem}
       >
-        + Add battle equipment
+        {ownAttacks ? '+ Add attack' : '+ Add battle equipment'}
       </button>
-      {bagWeapons.length === 0 && (
+      {!ownAttacks && bagWeapons.length === 0 && (
         <Hint className="hint-tight" action="Open the Bag" onAction={() => emitFx({ type: 'cardTab', key: 'bag' })}>
           Equipment comes from the bag. Add a weapon under the <b>Bag</b> tab, then equip it here.
         </Hint>

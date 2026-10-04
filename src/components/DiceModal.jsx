@@ -152,8 +152,21 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
     });
   }
 
+  // Clear dice and Roll. In the side panel they are its footer, so the roll
+  // button stays put while the dice, the result and the history scroll.
+  const rollRow = (
+    <div className="dm-row" style={side ? undefined : { marginTop: 'auto' }}>
+      <button type="button" className="btn btn-secondary" style={{ minHeight: side ? 56 : 44 }} onClick={() => { setPool({}); setModifier(0); setMode('normal'); setName(''); }}>
+        Clear dice
+      </button>
+      <button type="button" className="dm-roll" onClick={roll} disabled={!canRoll}>
+        {canRoll ? `Roll ${label}` : 'Pick a die to roll'}
+      </button>
+    </div>
+  );
+
   return (
-    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} width={400} onClose={onClose}>
+    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} width={400} footer={side ? rollRow : null} onClose={onClose}>
       <div className="dm-main">
         <div className="dm-left">
           <div>
@@ -243,14 +256,7 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
             ))}
           </div>
 
-          <div className="dm-row" style={{ marginTop: 'auto' }}>
-            <button type="button" className="btn btn-secondary" style={{ minHeight: 44 }} onClick={() => { setPool({}); setModifier(0); setMode('normal'); setName(''); }}>
-              Clear dice
-            </button>
-            <button type="button" className="dm-roll" onClick={roll} disabled={!canRoll}>
-              {canRoll ? `Roll ${label}` : 'Pick a die to roll'}
-            </button>
-          </div>
+          {!side && rollRow}
         </div>
 
         <div className="dm-right">

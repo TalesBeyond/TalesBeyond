@@ -1,6 +1,8 @@
 import { getCatalog } from '../lib/catalog.js';
 import { playSfx } from '../lib/sfx.js';
 import { emitFx, markCrit } from '../lib/fx.js';
+import { parseMonsterAttacks } from '../data/monsters.js';
+import { defaultCharacterSheet } from '../data/characterSheet.js';
 
 // Attack math shared by the hero sheet's Battle Equipment tab (RightPanel.jsx)
 // and the inspector's creature card (CreatureCard.jsx), so the attack preview
@@ -36,11 +38,39 @@ export function weaponStatsFor(name) {
   return { name, numberOfDice: 1, diceType: 'd4', modifier: 0 };
 }
 
+// The weapon behind one Battle Equipment entry. A monster's attack carries
+// its own dice (data/monsters.js parseMonsterAttacks), with its whole to-hit
+// and damage bonus in the entry's additionalModifier / additionalDamage; a
+// hero's names a weapon and takes the catalog's dice.
+export function attackWeapon(attack) {
+  if (attack?.diceType) return { name: attack.weaponName, numberOfDice: attack.numberOfDice || 1, diceType: attack.diceType, modifier: 0 };
+  return weaponStatsFor(attack?.weaponName);
+}
+
+// The attacks a monster of this name starts with: the compendium entry's own
+// (a "Goblin 2" is still a goblin), else one plain strike, so no enemy is
+// ever placed with nothing to attack with.
+export function defaultMobAttacks(name) {
+  const wanted = (name || '').trim().toLowerCase();
+  const match = getCatalog()
+    .monsters.filter((m) => wanted === m.name.toLowerCase() || wanted.startsWith(`${m.name.toLowerCase()} `))
+    .sort((a, b) => b.name.length - a.name.length)[0];
+  const attacks = match ? parseMonsterAttacks(match.attack) : [];
+  return attacks.length ? attacks : [{ weaponName: 'Strike', numberOfDice: 1, diceType: 'd6', additionalModifier: 3, additionalDamage: 1 }];
+}
+
+// A monster's sheet as it is placed: its own attacks if the draft brought
+// any, else the defaults above.
+export function mobSheetWithAttacks(sheet, name) {
+  const base = sheet || defaultCharacterSheet();
+  return base.attacks?.length ? base : { ...base, attacks: defaultMobAttacks(name) };
+}
+
 // What an attack would likely do: the chance its d20 + bonus meets the
 // target's AC (a hit is total >= AC, as resolveAttack rolls it), and the
 // average damage on a hit.
 export function attackPreview(attack, target) {
-  const weapon = weaponStatsFor(attack.weaponName);
+  const weapon = attackWeapon(attack);
   const toHit = totalToHit(weapon, attack.additionalModifier);
   const ac = acOf(target);
   const hitChance = Math.max(0, Math.min(1, (21 - (ac - toHit)) / 20));
@@ -64,7 +94,7 @@ export const ATTACK_BEAT_MS = 700;
 // hit points soak it first, 51_temp_hp.sql) handed to applyDamage as an
 // entity patch. Returns what happened, for the sheet to show.
 export function resolveAttackRoll(attack, target, { attackerName, playSounds = false, applyDamage }) {
-  const weapon = weaponStatsFor(attack.weaponName);
+  const weapon = attackWeapon(attack);
   const toHitMod = totalToHit(weapon, attack.additionalModifier);
   const d20 = rollDie(20);
   const attackTotal = d20 + toHitMod;

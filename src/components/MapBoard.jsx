@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
-import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds } from '../utils/grid.js';
+import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
@@ -873,6 +873,8 @@ export default function MapBoard({
         const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
         const fillColour = fill && islandFillColour(fill.style);
         const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, resolveImage(island.backgroundImage) && `url(${resolveImage(island.backgroundImage)})`].filter(Boolean);
+        // The map's own grid lines, if its settings ask for heavier or coloured ones.
+        const gridLines = gridLineStyle(island);
 
         return (
           <div
@@ -911,12 +913,12 @@ export default function MapBoard({
                   style={{ left: c.col * cellPx, top: c.row * cellPx, width: cellPx, height: cellPx }}
                 />
               ))}
-            <svg className="grid-svg" width={w} height={h}>
+            <svg className={`grid-svg${gridLines.custom ? ' grid-custom' : ''}`} width={w} height={h}>
               {Array.from({ length: island.cols + 1 }).map((_, v) => (
-                <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke="rgba(23,20,15,0.28)" strokeWidth={v % 5 === 0 ? 1.4 : 0.7} />
+                <line key={'v' + v} x1={v * cellPx} y1={0} x2={v * cellPx} y2={h} stroke={gridLines.stroke} strokeWidth={v % 5 === 0 ? gridLines.major : gridLines.minor} />
               ))}
               {Array.from({ length: island.rows + 1 }).map((_, hh) => (
-                <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke="rgba(23,20,15,0.28)" strokeWidth={hh % 5 === 0 ? 1.4 : 0.7} />
+                <line key={'h' + hh} x1={0} y1={hh * cellPx} x2={w} y2={hh * cellPx} stroke={gridLines.stroke} strokeWidth={hh % 5 === 0 ? gridLines.major : gridLines.minor} />
               ))}
             </svg>
             {/* Dusk/night/dawn tint - over the map art and grid, under the tokens. */}
