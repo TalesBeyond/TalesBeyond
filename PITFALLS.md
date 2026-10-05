@@ -40,7 +40,8 @@ hero tokens to their owner" setting. You asked for something stricter:
 **the DM is the only one editing any information — players only move
 their own token, open doors, and open chests.** That's now implemented,
 superseding SPEC §2/§13's original plan. **Update:** a player can also now
-use their own hero's Battle Equipment, Spells, and Bag tabs — see below.
+use their own hero's Battle Equipment, Spells, Bag, and Skills tabs — see
+below.
 
 **What a player can still do:**
 1. Drag their own hero token around (col/row/island — not other players'
@@ -48,15 +49,26 @@ use their own hero's Battle Equipment, Spells, and Bag tabs — see below.
    hero the DM has linked to them via the new **Owner** field on that
    hero's inspector — a freshly placed hero starts unassigned, since
    placing is host-only now, so this is a required setup step per player.
-2. Click a door to walk through it.
-3. Click "Open chest" / "Close chest" on a chest's inspector.
+2. Click a door to walk through it — unless the DM has locked it
+   (`src/data/visibility.js`), in which case it can't be clicked at all.
+3. Click "Ask the DM to open it" / "Close chest" on a chest's inspector.
+   Opening is the DM's call: the ask sits on the chest (`openRequestBy`),
+   the DM gets an Allow / Deny card, and only the DM's client ever opens
+   it (`60_chest_open_requests.sql` enforces that in cloud mode).
 4. On their own hero's **Battle Equipment** tab: add/remove equipment,
    change weapon, add modifiers, and roll an attack — including applying
    the resulting damage to whichever monster they targeted.
 5. On their own hero's **Spells** tab: add/edit spells and spell slots.
 6. On their own hero's **Bag** tab: add/remove/edit equipment and
-   currency. Every other tab on the sheet (Overview, Abilities, Saves &
-   Skills) stays read-only for a player, same as before.
+   currency.
+7. On their own hero's **Skills** tab: saving throws, skills and the
+   proficiency bonus (`62_player_hero_skills.sql`). The rest of the card
+   (level, ability scores, armor class, speed) stays read-only for a
+   player, same as before.
+8. Take a stack of loot from a defeated monster (0 HP) into their own
+   hero's Bag. The loot is rolled once by the DM's client when the monster
+   goes down and kept on the monster as `loot`
+   (`63_monster_loot.sql`); a player can only take from it, never add.
 
 **Everything else is DM-only**, including: placing or removing any
 token, renaming/resizing/HP/AC/conditions on anything, the rest of a
@@ -72,9 +84,10 @@ the whole shared state). A monster stays DM-only too, except that its
   `removeEntity`/layer/island mutators are `if (!isHost) return;` outright.
   This is the single choke point every UI action already funnels through.
   `canUpdateEntity` allows a non-host exactly three patch shapes: a
-  chest's opened/imageUrl toggle, a `sheet` patch on their own hero where
+  chest's close / ask-to-open / loot-once-open patches, a `sheet` patch on their own hero where
   every key except `HERO_OWNER_SHEET_KEYS` (`attacks`, `spellcasting`,
-  `equipment`, `currency`) is unchanged (`isHeroOwnerSheetPatch`), and an
+  `equipment`, `currency`, `savingThrows`, `skills`, `proficiencyBonus`)
+  is unchanged (`isHeroOwnerSheetPatch`), and an
   hp-only decrease on a mob (`canDamageMob`, for applying attack damage).
   The same rule (as `canPlayerUpdateEntity`) is what the guest-table
   peer-sync path (`applyValidatedIntent`, for a table with no Postgres
@@ -86,7 +99,7 @@ the whole shared state). A monster stays DM-only too, except that its
 - `RightPanel.jsx` — read-only fields (`disabled`) for non-host, tab
   content wrapped in `<fieldset disabled>` per tab (one native HTML
   disable instead of touching every individual input): the Battle
-  Equipment, Spells, and Bag tabs' fieldset is enabled for
+  Equipment, Spells, Bag, and Skills tabs' fieldset is enabled for
   `isHost || isOwner`, every other tab's stays `isHost`-only. Remove/Give
   buttons hidden entirely for non-host.
 - `TokenSidebar.jsx` — the whole panel is host-only now; a player sees
@@ -99,9 +112,10 @@ the whole shared state). A monster stays DM-only too, except that its
   except the cases above, checked field-by-field (RLS alone can't express
   "these columns, only on this row" — hence the trigger). The hero-owner
   case uses
-  `(sheet - array['attacks','spellcasting','equipment','currency'])`
-  jsonb-key-removal equality to allow only the Battle Equipment/Spells/Bag
-  tabs' slice of the sheet to change; the mob case requires every column
+  `(sheet - array['attacks','spellcasting','equipment','currency',
+  'savingThrows','skills','proficiencyBonus'])`
+  jsonb-key-removal equality to allow only the Battle
+  Equipment/Spells/Bag/Skills tabs' slice of the sheet to change; the mob case requires every column
   but `hp` to be unchanged and `hp` to only move down, never up.
 
 **Caveat:** in local mode, this is a UX guardrail, not real security — a

@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import { playDiceSound, playSfx, getSfxVolume, setSfxVolume, isDeviceMuted, setDeviceMuted } from '../lib/sfx.js';
 import { emitFx, useFx, takeCrit } from '../lib/fx.js';
@@ -10,18 +10,21 @@ import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import { islandConditionKeys } from '../data/islandConditions.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
-import { RollToasts, RollLog, CharacterLog } from './RollFeed.jsx';
+import { RollToasts, ChestAsks, RollLog, CharacterLog } from './RollFeed.jsx';
 import { diffHero, mergeActivity } from '../utils/heroActivity.js';
 import { ModeBar, EmptyState, useTourState } from './Hints.jsx';
 import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
-import { defaultDroppablesFor } from '../data/droppables.js';
+import { defaultDroppablesFor, rollDroppables } from '../data/droppables.js';
 import { mobSheetWithAttacks } from '../utils/combat.js';
-import { isHiddenTrap, clampTrapSize } from '../data/traps.js';
+import { clampTrapSize } from '../data/traps.js';
+import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
+import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
+import { uniqueTokenName } from '../utils/tokenNames.js';
 import { renderIslandsTemplateToDataUrl } from '../utils/image.js';
-import { iconRefForUrl } from '../data/defaultTokens.js';
+import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resolveImage, storeImage } from '../lib/imageCache.js';
 import {
   saveSession,
@@ -107,7 +110,7 @@ import {
   PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
-import { DoorInspector, TrapInspector } from './RightPanel.jsx';
+import { DoorInspector, TrapInspector, AmbushInspector } from './RightPanel.jsx';
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
@@ -217,19 +220,21 @@ function arrivalCellNearDoor(state, doorEntity, destinationLayerId) {
   return { islandId, col: free.col, row: free.row };
 }
 
-function entitiesVisibleOnLayer(state, layerId, showHiddenTraps) {
+function entitiesVisibleOnLayer(state, layerId, showHidden) {
   const result = {};
   const targetLayer = state.layers[layerId];
   const targetBaseIslandId = targetLayer?.islandOrder[0];
   for (const id of state.entityOrder) {
     const entity = state.entities[id];
     if (!entity) continue;
-    // An unrevealed trap does not exist for anyone but the DM. In cloud mode
-    // and guest mode a player's client never receives it at all (see
-    // 20250101000028_traps.sql and toGuestBroadcastAction below); this is
-    // the matching filter for local mode, where every tab shares one
-    // localStorage copy of the table and nothing else can keep it apart.
-    if (isHiddenTrap(entity) && !showHiddenTraps) continue;
+    // An unrevealed trap, or a monster, chest or door the DM has hidden
+    // (data/visibility.js), does not exist for anyone but the DM. In cloud
+    // mode and guest mode a player's client never receives it at all (see
+    // 20250101000028_traps.sql, 20250101000059_hidden_tokens_locked_doors
+    // .sql and toGuestBroadcastAction below); this is the matching filter
+    // for local mode, where every tab shares one localStorage copy of the
+    // table and nothing else can keep it apart.
+    if (isHiddenFromPlayers(entity) && !showHidden) continue;
     if (entity.layerId === layerId) {
       result[id] = entity;
     } else if (entity.kind === 'door' && entity.targetLayerId === layerId) {
@@ -317,10 +322,11 @@ function withoutDmOnlyKeys(obj) {
   return copy;
 }
 
-// The same filter keeps an unrevealed trap off a guest table's wire. To
-// players a trap does not exist until revealed, so revealing one is sent as
-// an ADD_ENTITY, hiding it again as a REMOVE_ENTITY, and anything that
-// touches a still-hidden trap (moves, edits, its own removal) is not sent
+// The same filter keeps an unrevealed trap, and a monster, chest or door
+// the DM has hidden (data/visibility.js), off a guest table's wire. To
+// players a hidden token does not exist until shown, so showing one is sent
+// as an ADD_ENTITY, hiding it again as a REMOVE_ENTITY, and anything that
+// touches a still-hidden token (moves, edits, its own removal) is not sent
 // at all. `prevState` is the state from *before* the action was applied,
 // which is what stateRef holds at every call site (they dispatch and then
 // broadcast within the same event, before React re-renders).
@@ -329,17 +335,17 @@ function withoutDmOnlyKeys(obj) {
 function toGuestBroadcastAction(action, prevState) {
   switch (action.type) {
     case 'ADD_ENTITY': {
-      if (isHiddenTrap(action.entity)) return null;
+      if (isHiddenFromPlayers(action.entity)) return null;
       return { ...action, entity: withoutDmOnlyKeys(action.entity) };
     }
     case 'UPDATE_ENTITY': {
       const before = prevState.entities[action.id];
-      if (before?.kind === 'trap') {
+      if (before) {
         const after = { ...before, ...action.patch };
-        const wasHidden = isHiddenTrap(before);
-        const nowHidden = isHiddenTrap(after);
+        const wasHidden = isHiddenFromPlayers(before);
+        const nowHidden = isHiddenFromPlayers(after);
         if (wasHidden && nowHidden) return null;
-        if (wasHidden) return { type: 'ADD_ENTITY', entity: after };
+        if (wasHidden) return { type: 'ADD_ENTITY', entity: withoutDmOnlyKeys(after) };
         if (nowHidden) return { type: 'REMOVE_ENTITY', id: action.id };
       }
       const patch = withoutDmOnlyKeys(action.patch);
@@ -349,7 +355,7 @@ function toGuestBroadcastAction(action, prevState) {
     }
     case 'MOVE_ENTITY':
     case 'REMOVE_ENTITY':
-      return isHiddenTrap(prevState.entities[action.id]) ? null : action;
+      return isHiddenFromPlayers(prevState.entities[action.id]) ? null : action;
     default:
       return action;
   }
@@ -358,7 +364,7 @@ function toGuestBroadcastAction(action, prevState) {
 function toGuestSnapshot(fullState) {
   const entities = {};
   for (const [id, entity] of Object.entries(fullState.entities)) {
-    if (isHiddenTrap(entity)) continue;
+    if (isHiddenFromPlayers(entity)) continue;
     entities[id] = withoutDmOnlyKeys(entity);
   }
   // A guest DM's audio never leaves their browser (files are local blob URLs
@@ -715,6 +721,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   const layerEntities = entitiesVisibleOnLayer(state, currentLayerId, isHost);
   const layerEntityOrder = state.entityOrder.filter((id) => layerEntities[id]);
+  // Every token this viewer may know about, across every layer — all of them
+  // for the DM, none of the hidden ones for a player. Only local mode needs
+  // the filter (a cloud or guest player's state never holds a hidden token),
+  // but anything a player's screen draws straight from `state.entities`
+  // should read from here instead.
+  const visibleEntities = useMemo(() => entitiesShownTo(state.entities, isHost), [state.entities, isHost]);
 
   const layerPlayerCounts = {};
   for (const id of state.layerOrder) layerPlayerCounts[id] = 0;
@@ -730,7 +742,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // same encounter; only the DM and the acting hero's owner can end a turn.
   const encounter = state.encounter || null;
   const actorId = currentActorId(encounter);
-  const actor = actorId ? state.entities[actorId] || null : null;
+  const actor = actorId ? visibleEntities[actorId] || null : null;
   const isMyTurn = Boolean(actor && actor.kind === 'hero' && actor.ownerId === me.id);
   const canEndTurn = Boolean(encounter && actor && (isHost || isMyTurn));
   let moveRange = null;
@@ -749,6 +761,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     movement = { total: speed, left: moved == null ? 0 : Math.max(0, speed - moved) };
   }
 
+  // A cloud player's client never receives a hidden monster, so when that
+  // player ends their turn it works out who is next without it and steps
+  // straight past the monster's turn (end_encounter_turn trusts the client
+  // for that — 49_encounter.sql). The DM's client knows better: when someone
+  // else's turn change skipped a hidden creature, it puts the turn on it.
+  const encounterBeforeRef = useRef(encounter);
+  const ownEncounterEditRef = useRef(false); // set in setEncounter
+  useEffect(() => {
+    const before = encounterBeforeRef.current;
+    encounterBeforeRef.current = encounter;
+    const own = ownEncounterEditRef.current;
+    ownEncounterEditRef.current = false;
+    if (!isHost || !isRemote || own || !before || !encounter) return;
+    if (before.turn === encounter.turn && before.round === encounter.round) return;
+    if (JSON.stringify(before.order) !== JSON.stringify(encounter.order)) return;
+    const expected = advanceEncounter(before, state.entities);
+    const expectedId = currentActorId(expected);
+    if (expectedId === currentActorId(encounter) || !isHiddenFromPlayers(state.entities[expectedId])) return;
+    setEncounter(expected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounter]);
+
   // Every hero token across every layer — the Buy/Give compendium controls
   // need to reach a hero regardless of which layer the host is currently
   // viewing.
@@ -762,7 +796,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // There's no separate "NPC" kind in this app (see mob), so a "monster or
   // NPC" token is just any mob-kind entity — a DM already renames/reskins
   // one for either purpose via Asset Storage.
-  const initiativeHeroes = Object.values(layerEntities).filter((e) => e.kind === 'hero');
+  const initiativeHeroes = Object.values(layerEntities)
+    .filter((e) => e.kind === 'hero')
+    .map((e) => ({ ...e, ownerName: state.players[e.ownerId]?.name }));
   const initiativeMobs = Object.values(layerEntities).filter((e) => e.kind === 'mob');
 
   // In cloud mode, subscribe to live changes from every other connected
@@ -856,7 +892,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       (roll) => receiveRollRef.current(roll),
       (message) => receiveAreaRef.current(message)
     );
-    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll, sendArea: unsubscribe.sendArea };
+    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll, sendArea: unsubscribe.sendArea, sendConceal: unsubscribe.sendConceal };
     return () => {
       tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
@@ -923,7 +959,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.entities, isHost]);
   const [rollToasts, setRollToasts] = useState([]);
-  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea }
+  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea, sendConceal }
   function addRoll(entry) {
     setRollLog((prev) => [entry, ...prev].slice(0, 100));
     if (entry.mine) return;
@@ -1076,10 +1112,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const seen = {};
     // Temporary HP counts: a blow they soak up still shows its damage number.
     const life = (e) => (typeof e.hp === 'number' ? e.hp + (e.tempHp || 0) : e.hp);
-    for (const e of Object.values(state.entities)) seen[e.id] = { hp: life(e), opened: e.opened };
+    for (const e of Object.values(visibleEntities)) seen[e.id] = { hp: life(e), opened: e.opened, looted: Array.isArray(e.loot) };
     seenEntitiesRef.current = seen;
     if (!prev) return;
-    for (const e of Object.values(state.entities)) {
+    for (const e of Object.values(visibleEntities)) {
       const before = prev[e.id];
       if (!before) continue;
       if (e.kind !== 'door' && e.maxHp && typeof before.hp === 'number' && typeof e.hp === 'number' && life(e) !== before.hp) {
@@ -1104,8 +1140,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       if (e.kind === 'chest' && before.opened === false && e.opened === true && e.layerId === currentLayerId) {
         emitFx({ type: 'loot', title: e.name || 'Chest', items: e.items || [] });
       }
+      // A monster just went down and its loot was rolled.
+      if (e.kind === 'mob' && before.looted === false && Array.isArray(e.loot)) {
+        emitFx({ type: 'log', text: e.loot.length ? `${e.name} was defeated and dropped ${e.loot.map((it) => (it.qty > 1 ? `${it.name} ×${it.qty}` : it.name)).join(', ')}` : `${e.name} was defeated and dropped nothing` });
+        if (e.loot.length && e.layerId === currentLayerId) emitFx({ type: 'loot', title: `${e.name} dropped`, items: e.loot });
+      }
     }
-  }, [state.entities, currentLayerId]);
+  }, [visibleEntities, currentLayerId]);
   useEffect(() => () => Object.values(pendingHpRef.current).forEach((p) => clearTimeout(p.timer)), []);
 
   // The turn banner, once per new turn (not on first load — joining a fight
@@ -1302,11 +1343,30 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // skip the check. Mirrored server-side for cloud mode by
   // 35_player_battle_equipment.sql's trigger.
   const CHEST_TOGGLE_KEYS = ['opened', 'imageUrl'];
-  // Sheet keys a hero's own owner may change — Battle Equipment writes
-  // `attacks`, Spells writes `spellcasting`, Bag writes
-  // `equipment`/`currency`. Every other key (level, abilities, saves, ...)
-  // stays DM-only.
-  const HERO_OWNER_SHEET_KEYS = ['attacks', 'spellcasting', 'equipment', 'currency'];
+
+  // A player may close a chest, never open one: opening is the DM's call.
+  function isCloseChestPatch(patch) {
+    return patch.opened === false && Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
+  }
+
+  // What a player does instead: ask the DM to open it (`openRequestBy` =
+  // their own id, while nobody else is asking), or withdraw their own ask.
+  // An ask left behind by someone no longer at the table doesn't count.
+  // Mirrored server-side by 60_chest_open_requests.sql.
+  function isChestOpenRequestPatch(entity, patch, playerId) {
+    const keys = Object.keys(patch);
+    if (keys.length !== 1 || keys[0] !== 'openRequestBy') return false;
+    const asker = stateRef.current.players[entity.openRequestBy] ? entity.openRequestBy : null;
+    if (patch.openRequestBy == null) return asker === playerId;
+    return patch.openRequestBy === playerId && !asker && !entity.opened;
+  }
+  // Sheet keys a hero's own owner may change — everything its Battle,
+  // Spells, Bag and Skills tabs write: Battle Equipment writes `attacks`,
+  // Spells writes `spellcasting`, Bag writes `equipment`/`currency`, Skills
+  // writes `savingThrows`/`skills`/`proficiencyBonus`. Every other key
+  // (level, ability scores, armor class, speed, ...) stays DM-only.
+  // Mirrored server-side by 62_player_hero_skills.sql.
+  const HERO_OWNER_SHEET_KEYS = ['attacks', 'spellcasting', 'equipment', 'currency', 'savingThrows', 'skills', 'proficiencyBonus'];
   // A hero's own owner may also set its hit points and temporary hit
   // points: whole numbers, never below 0, and hit points never above the
   // hero's maximum. Maximum HP and armor class stay the DM's. The DM sees
@@ -1361,8 +1421,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function isTakeChestItemPatch(entity, patch) {
     const keys = Object.keys(patch);
     if (keys.length !== 1 || keys[0] !== 'items') return false;
-    const oldItems = entity.items || [];
-    const newItems = patch.items || [];
+    if (!entity.opened) return false; // nothing comes out of a chest the DM hasn't let open
+    return isTakeOneStack(entity.items, patch.items);
+  }
+
+  // The same for what a defeated monster dropped (`loot`, rolled by the
+  // DM's client when its hit points reached 0): a player takes one whole
+  // stack, and only once the monster is down.
+  function isTakeMobLootPatch(entity, patch) {
+    const keys = Object.keys(patch);
+    if (keys.length !== 1 || keys[0] !== 'loot') return false;
+    if (entity.hp !== 0 || !Array.isArray(entity.loot)) return false;
+    return isTakeOneStack(entity.loot, patch.loot);
+  }
+
+  function isTakeOneStack(before, after) {
+    const oldItems = before || [];
+    const newItems = after || [];
     if (newItems.length !== oldItems.length - 1) return false;
     const removed = oldItems.filter((it) => !newItems.some((n) => n.id === it.id));
     if (removed.length !== 1) return false;
@@ -1394,14 +1469,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // can never be trusted to equal `me.id`/`isHost`).
   function canPlayerUpdateEntity(entity, patch, playerId) {
     if (!entity) return false;
+    // A hidden token doesn't exist for players, and hiding a token or
+    // locking a door is never theirs to do.
+    if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch) return false;
     if (entity.kind === 'chest') {
-      return Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key)) || isTakeChestItemPatch(entity, patch);
+      return isCloseChestPatch(patch) || isChestOpenRequestPatch(entity, patch, playerId) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
     }
     if (entity.kind === 'mob') {
-      return canDamageMob(entity, patch);
+      return canDamageMob(entity, patch) || isTakeMobLootPatch(entity, patch);
     }
     return false;
   }
@@ -1423,14 +1501,80 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     alert('Could not keep that image in this browser — try a different file.');
   }
 
+  // A draft (what the token sidebar, the compendium or an ambush hands over)
+  // made into a token standing at `place`: { layerId, islandId, col, row,
+  // size, targetCol?, targetRow? }.
+  function entityFromDraft(draft, place) {
+    return {
+      id: generateEntityId(),
+      kind: draft.kind,
+      name: draft.name,
+      imageUrl: draft.imageUrl,
+      color: draft.color,
+      col: place.col,
+      row: place.row,
+      size: place.size,
+      hp: draft.maxHp,
+      maxHp: draft.maxHp,
+      armorClass: draft.kind === 'mob' ? draft.armorClass ?? 10 : undefined,
+      // Left unassigned (rather than defaulting to the placing DM) since
+      // only the DM places tokens now — the DM assigns a hero to whichever
+      // player controls it afterward, via the Owner field on its inspector.
+      ownerId: null,
+      layerId: place.layerId,
+      islandId: place.islandId,
+      targetLayerId: draft.kind === 'door' ? draft.targetLayerId ?? null : null,
+      targetCol: place.targetCol ?? null,
+      targetRow: place.targetRow ?? null,
+      conditions: draft.kind === 'hero' || draft.kind === 'mob' ? [] : undefined,
+      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
+      // Every monster is placed with something to attack with.
+      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
+      droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
+      sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
+      chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
+      opened: draft.kind === 'chest' ? false : undefined,
+      items: draft.kind === 'chest' ? draft.items || [] : undefined,
+      ambushMonsters: draft.kind === 'ambush' ? draft.ambushMonsters || [] : undefined,
+      // A trap always starts hidden - the DM reveals it deliberately from
+      // its inspector.
+      ...(draft.kind === 'trap'
+        ? {
+            trapDescription: draft.trapDescription ?? '',
+            trapSave: draft.trapSave ?? null,
+            trapFail: draft.trapFail ?? null,
+            trapDice: draft.trapDice ?? '',
+            trapDamage: draft.trapDamage ?? '',
+            trapDamageType: draft.trapDamageType ?? 'none',
+            trapRevealed: false,
+          }
+        : {}),
+    };
+  }
+
+  // On a cloud or guest table, the pictures of the monsters an ambush holds
+  // are swapped for their fingerprints too, before they enter shared state.
+  function shareAmbushMonsters(monsters) {
+    return Promise.all(monsters.map((m) => (needsSharing(m.imageUrl) ? storeImage(m.imageUrl).then((imageUrl) => ({ ...m, imageUrl })) : m)));
+  }
+
   function addEntity(draft) {
     if (!isHost) return;
+    if (draft.kind === 'ambush' && (draft.ambushMonsters || []).some((m) => needsSharing(m.imageUrl))) {
+      shareAmbushMonsters(draft.ambushMonsters)
+        .then((ambushMonsters) => addEntity({ ...draft, ambushMonsters }))
+        .catch(shareImageFailed);
+      return;
+    }
     if (needsSharing(draft.imageUrl)) {
       storeImage(draft.imageUrl)
         .then((imageUrl) => addEntity({ ...draft, imageUrl }))
         .catch(shareImageFailed);
       return;
     }
+    // A second token of the same name on this layer is numbered: "Goblin",
+    // "Goblin (1)", "Goblin (2)" (utils/tokenNames.js).
+    draft = { ...draft, name: uniqueTokenName(draft.name, Object.values(layerEntities).map((e) => e.name)) };
     const targetIsland = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
     const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
     // Only a trap can be sized at placement (1 to 5 squares wide); everything
@@ -1458,50 +1602,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       targetCol = free.col;
       targetRow = free.row;
     }
-    const entity = {
-      id: generateEntityId(),
-      kind: draft.kind,
-      name: draft.name,
-      imageUrl: draft.imageUrl,
-      color: draft.color,
-      col,
-      row,
-      size,
-      hp: draft.maxHp,
-      maxHp: draft.maxHp,
-      armorClass: draft.kind === 'mob' ? draft.armorClass ?? 10 : undefined,
-      // Left unassigned (rather than defaulting to the placing DM) since
-      // only the DM places tokens now — the DM assigns a hero to whichever
-      // player controls it afterward, via the Owner field on its inspector.
-      ownerId: null,
-      layerId: currentLayerId,
-      islandId: targetIsland.id,
-      targetLayerId: draft.kind === 'door' ? draft.targetLayerId ?? null : null,
-      targetCol,
-      targetRow,
-      conditions: draft.kind !== 'door' && draft.kind !== 'chest' && draft.kind !== 'trap' ? [] : undefined,
-      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
-      // Every monster is placed with something to attack with.
-      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
-      droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
-      sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
-      chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
-      opened: draft.kind === 'chest' ? false : undefined,
-      items: draft.kind === 'chest' ? draft.items || [] : undefined,
-      // A trap always starts hidden - the DM reveals it deliberately from
-      // its inspector.
-      ...(draft.kind === 'trap'
-        ? {
-            trapDescription: draft.trapDescription ?? '',
-            trapSave: draft.trapSave ?? null,
-            trapFail: draft.trapFail ?? null,
-            trapDice: draft.trapDice ?? '',
-            trapDamage: draft.trapDamage ?? '',
-            trapDamageType: draft.trapDamageType ?? 'none',
-            trapRevealed: false,
-          }
-        : {}),
-    };
+    const entity = entityFromDraft(draft, { layerId: currentLayerId, islandId: targetIsland.id, col, row, size, targetCol, targetRow });
     dispatch({ type: 'ADD_ENTITY', entity });
     setSelectedId(entity.id);
     if (isRemote) {
@@ -1549,6 +1650,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function updateEntity(id, patch) {
     const entity = state.entities[id];
     if (!canUpdateEntity(entity, patch)) return;
+    if (isHost && (patch.ambushMonsters || []).some((m) => needsSharing(m.imageUrl))) {
+      shareAmbushMonsters(patch.ambushMonsters)
+        .then((ambushMonsters) => updateEntity(id, { ...patch, ambushMonsters }))
+        .catch(shareImageFailed);
+      return;
+    }
+    if (entity.kind === 'chest') {
+      // The DM opening a chest answers whoever was asking to open it.
+      if (isHost && patch.opened && entity.openRequestBy) patch = { ...patch, openRequestBy: null };
+      // A player taking their own ask back isn't a "no" from the DM.
+      if (!isHost && 'openRequestBy' in patch && patch.openRequestBy == null) myChestAsksRef.current.delete(id);
+    }
     // REQ-008: same host-authoritative split as moveEntity — a guest
     // player's only reachable use of this (a chest toggle, per
     // canUpdateEntity above) is an intent, never a local dispatch.
@@ -1567,6 +1680,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // hideTrapRemote for why it is a delete + re-insert instead.
       if (entity.kind === 'trap' && entity.trapRevealed && patch.trapRevealed === false) {
         hideTrapRemote(state.session.tableId, { ...entity, ...patch }).catch(reportError);
+      } else if (patch.hidden === true && !entity.hidden) {
+        // Hiding a monster, chest or door: players get no event when its row
+        // stops being visible to them, so tell their clients to look again
+        // once it has (lib/realtime.js's 'conceal').
+        updateEntityRemote(id, patch)
+          .then(() => tableChannelRef.current?.sendConceal(id))
+          .catch(reportError);
       } else {
         updateEntityRemote(id, patch).catch(reportError);
       }
@@ -1584,6 +1704,140 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
     if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
+
+  // Springing an ambush (data/ambush.js): every monster the token holds lands
+  // on the free squares around it, and the token itself comes off the map.
+  // The monsters are ordinary monster tokens from then on.
+  function revealAmbush(id) {
+    if (!isHost) return;
+    const ambush = state.entities[id];
+    if (ambush?.kind !== 'ambush') return;
+    const island = state.layers[ambush.layerId]?.islands[ambush.islandId];
+    const drafts = ambushDrafts(ambush);
+    if (!island || !drafts.length) return;
+    const onLayer = Object.values(entitiesVisibleOnLayer(state, ambush.layerId, true)).filter((e) => e.id !== id);
+    const others = onLayer.filter((e) => e.islandId === ambush.islandId);
+    // Numbered like any other token of a name already on the layer —
+    // including the ones coming out of this same ambush.
+    const names = onLayer.map((e) => e.name);
+    const spawned = placeAroundAmbush(ambush, drafts, island, cellsCoveredBy(others)).map(({ draft, col, row, size }) => {
+      const name = uniqueTokenName(draft.name, names);
+      names.push(name);
+      return entityFromDraft({ ...draft, name }, { layerId: ambush.layerId, islandId: ambush.islandId, col, row, size });
+    });
+    for (const entity of spawned) dispatch({ type: 'ADD_ENTITY', entity });
+    dispatch({ type: 'REMOVE_ENTITY', id });
+    if (selectedId === id) setSelectedId(null);
+    emitFx({ type: 'log', text: `${ambush.name || 'Ambush'} sprung: ${spawned.length} monster${spawned.length === 1 ? '' : 's'} appeared` });
+    if (isRemote) {
+      // The monsters first and the marker last, so a write that fails part
+      // way leaves the ambush in the database rather than losing it.
+      (async () => {
+        for (const entity of spawned) await addEntityRemote(state.session.tableId, entity);
+        await removeEntityRemote(id);
+      })().catch(reportError);
+    } else if (isGuestHost) {
+      // Players never had the marker, so only the monsters are news to them.
+      for (const entity of spawned) broadcastGuestChange({ type: 'ADD_ENTITY', entity });
+    } else {
+      const { [id]: _sprung, ...rest } = state.entities;
+      saveOrWarn(state.session.code, {
+        ...state,
+        entities: { ...rest, ...Object.fromEntries(spawned.map((e) => [e.id, e])) },
+        entityOrder: [...state.entityOrder.filter((entityId) => entityId !== id), ...spawned.map((e) => e.id)],
+      });
+    }
+  }
+
+  // ---- Loot from a defeated monster ----
+  // When a monster's hit points reach 0 its loot table is rolled, once, and
+  // what dropped goes onto the token as `loot` for anyone to take. Only the
+  // DM's client can do it — a monster's loot table never leaves it — so it
+  // watches every monster rather than rolling where the blow was struck (a
+  // player's attack lands on the player's client). A short settle keeps a DM
+  // typing a new HP value from rolling loot as the number passes through 0.
+  // `loot` stays null until rolled, so a monster is never rolled twice, even
+  // if it is healed and brought down again.
+  const updateEntityRef = useRef(null);
+  updateEntityRef.current = updateEntity;
+  const pendingLootRef = useRef({});
+  useEffect(() => {
+    if (!isHost) return;
+    const isDown = (e) => e?.kind === 'mob' && e.maxHp > 0 && e.hp === 0 && e.loot == null;
+    for (const e of Object.values(state.entities)) {
+      if (!isDown(e) || pendingLootRef.current[e.id]) continue;
+      pendingLootRef.current[e.id] = setTimeout(() => {
+        delete pendingLootRef.current[e.id];
+        const now = stateRef.current.entities[e.id];
+        if (isDown(now)) updateEntityRef.current(e.id, { loot: rollDroppables(now.droppables) });
+      }, 700);
+    }
+  }, [state.entities, isHost]);
+  useEffect(() => () => Object.values(pendingLootRef.current).forEach(clearTimeout), []);
+
+  // ---- Asking to open a chest ----
+  // A player can't open a chest: their "Ask the DM to open it" puts their id
+  // on the chest (`openRequestBy`), which reaches the DM like any other
+  // token change. The DM gets a card per ask (RollFeed.jsx's ChestAsks) and
+  // either opens the chest or clears the ask.
+  const chestAsks = isHost
+    ? Object.values(state.entities)
+        .filter((e) => e.kind === 'chest' && !e.opened && state.players[e.openRequestBy])
+        .map((e) => {
+          const player = state.players[e.openRequestBy];
+          return {
+            chestId: e.id,
+            chestName: e.name || 'Chest',
+            playerName: player.name,
+            color: player.color,
+            where: e.layerId !== currentLayerId ? state.layers[e.layerId]?.name || null : null,
+          };
+        })
+    : [];
+
+  function allowChestOpen(chestId) {
+    const chest = state.entities[chestId];
+    if (!chest) return;
+    updateEntity(chestId, { opened: true, imageUrl: makeIconDataUrl('chest-open', chest.color) });
+  }
+
+  function denyChestOpen(chestId) {
+    updateEntity(chestId, { openRequestBy: null });
+  }
+
+  // The DM hears each new ask and gets it in the log.
+  const chestAskKey = chestAsks.map((ask) => `${ask.chestId}:${ask.playerName}`).join('|');
+  const heardChestAsksRef = useRef(new Set());
+  useEffect(() => {
+    const heard = heardChestAsksRef.current;
+    heardChestAsksRef.current = new Set(chestAsks.map((ask) => ask.chestId));
+    const fresh = chestAsks.filter((ask) => !heard.has(ask.chestId));
+    if (!fresh.length) return;
+    for (const ask of fresh) emitFx({ type: 'log', text: `${ask.playerName} asks to open ${ask.chestName}` });
+    playSfx('page');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chestAskKey]);
+
+  // The player hears back: an ask of theirs that went away without the chest
+  // opening was turned down. (One they cancelled is dropped from the set in
+  // updateEntity first; one the DM allowed shows the loot reveal instead.)
+  const myChestAsksRef = useRef(new Set());
+  useEffect(() => {
+    if (isHost) return;
+    const mine = myChestAsksRef.current;
+    for (const e of Object.values(visibleEntities)) {
+      if (e.kind === 'chest' && e.openRequestBy === me.id) mine.add(e.id);
+    }
+    for (const id of [...mine]) {
+      const chest = visibleEntities[id];
+      if (chest?.openRequestBy === me.id) continue;
+      mine.delete(id);
+      if (!chest || chest.opened) continue;
+      emitFx({ type: 'banner', title: 'Still shut', sub: `The DM didn’t let you open ${chest.name || 'the chest'}`, tone: 'enemy' });
+      emitFx({ type: 'log', text: `The DM didn’t let you open ${chest.name || 'the chest'}` });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleEntities]);
 
   // Roll for Initiative: DM-only, rolls a d20 for every selected hero/mob
   // and stamps entity.initiativeRoll/initiativeTurn via the same updateEntity
@@ -1616,6 +1870,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // ends it; written the same way as the clock.
   function setEncounter(next) {
     if (!isHost) return;
+    if (next !== encounter) ownEncounterEditRef.current = true;
     dispatch({ type: 'SET_ENCOUNTER', encounter: next });
     if (isRemote) {
       updateTableEncounterRemote(state.session.tableId, next).catch(reportError);
@@ -1623,6 +1878,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       broadcastGuestChange({ type: 'SET_ENCOUNTER', encounter: next });
     } else {
       saveOrWarn(state.session.code, { ...state, encounter: next });
+    }
+  }
+
+  // "End encounter": the fight is over, so its initiative goes with it —
+  // every token's initiative badge is cleared and the initiative bar empties,
+  // ready for a fresh roll next time. (Unticking "Start encounter" in the
+  // roller, below, is different: that keeps the roll and just doesn't run it
+  // as an encounter.)
+  function endEncounter() {
+    if (!isHost) return;
+    setEncounter(null);
+    for (const entity of Object.values(state.entities)) {
+      if (entity.initiativeTurn != null || entity.initiativeRoll != null) {
+        updateEntity(entity.id, { initiativeRoll: null, initiativeTurn: null });
+      }
     }
   }
 
@@ -1859,7 +2129,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const equipment = normalizeEquipment(sheet.equipment);
     const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
     updateEntity(hero.id, { sheet: { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } } });
-    updateEntity(chestEntity.id, { items: (chestEntity.items || []).filter((it) => it.id !== item.id) });
+    // A defeated monster's loot is given and taken the same way as a
+    // chest's contents; it just lives under `loot`.
+    const key = chestEntity.kind === 'mob' ? 'loot' : 'items';
+    updateEntity(chestEntity.id, { [key]: (chestEntity[key] || []).filter((it) => it.id !== item.id) });
   }
 
   // The player-facing counterpart to giveChestItemToHero above: a player
@@ -2401,37 +2674,31 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
 
-  function enterDoor(doorEntity) {
-    if (isHost || !doorEntity.targetLayerId) return;
+  // Walking through a door. A player gets here by clicking a door or
+  // landing their own hero on one. The DM gets here by dropping a hero or
+  // monster on a door (`traveller`): the same prompt, but it is that token
+  // that goes through — and a lock, which is the DM's own, doesn't stop it.
+  function enterDoor(doorEntity, traveller) {
+    if (!doorEntity.targetLayerId) return;
+    if (isHost && !traveller) return;
+    // A locked door stays shut for players until the DM unlocks it.
+    if (!isHost && isLockedDoor(doorEntity)) {
+      emitFx({ type: 'log', text: `${doorEntity.name || 'The door'} is locked` });
+      return;
+    }
     // Bidirectional: travel to whichever end of the door isn't the layer
     // currently being viewed from, so the same door works walking in from
     // either side.
     const destinationLayerId = currentLayerId === doorEntity.layerId ? doorEntity.targetLayerId : doorEntity.layerId;
-    setPendingDoor({ door: doorEntity, destinationLayerId });
+    setPendingDoor({ door: doorEntity, destinationLayerId, travellerId: isHost ? traveller.id : null });
   }
 
-  function confirmEnterDoor() {
-    const pending = pendingDoor;
-    setPendingDoor(null);
-    if (!pending) return;
-    // Move the player's own hero off the square it was standing on and
-    // onto the new layer, one square clear of the door rather than sitting
-    // on top of it — the door itself is always the raw entity (never the
-    // target-side view-resolved copy MapBoard's onEnterDoor handed
-    // enterDoor), so arrivalCellNearDoor sees its true home/target
-    // col/row regardless of which side was clicked.
-    const myHero = heroes.find((h) => h.ownerId === me.id);
-    if (myHero) {
-      const rawDoor = state.entities[pending.door.id];
-      if (rawDoor) {
-        const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
-        moveEntity(myHero.id, arrival.col, arrival.row, arrival.islandId, pending.destinationLayerId);
-      }
-    }
-    const patch = { currentLayerId: pending.destinationLayerId };
-    // REQ-008: only a player ever reaches this (enterDoor excludes the
-    // host), so this is always the guest-player intent branch, never the
-    // guest-host broadcast one — mirrors moveEntity/updateEntity's split.
+  // Moves this player's own view to another layer.
+  // REQ-008: only a player ever reaches this, so on a guest table it is
+  // always the guest-player intent branch, never the guest-host broadcast
+  // one — mirrors moveEntity/updateEntity's split.
+  function goToLayer(layerId) {
+    const patch = { currentLayerId: layerId };
     if (isGuest) {
       guestChannelRef.current?.sendIntent({ type: 'PATCH_PLAYER', id: me.id, patch }, me.id);
       setSelectedId(null);
@@ -2439,12 +2706,72 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
     dispatch({ type: 'PATCH_PLAYER', id: me.id, patch });
     setSelectedId(null);
-    if (isRemote) setPlayerCurrentLayerRemote(me.id, pending.destinationLayerId).catch(reportError);
+    if (isRemote) setPlayerCurrentLayerRemote(me.id, layerId).catch(reportError);
+  }
+
+  function confirmEnterDoor() {
+    const pending = pendingDoor;
+    setPendingDoor(null);
+    if (!pending) return;
+    // The DM may have locked, hidden or removed the door while this was open.
+    const rawDoor = state.entities[pending.door.id];
+    if (!rawDoor) return;
+    // Move the token off the square it was standing on and onto the new
+    // layer, one square clear of the door rather than sitting on top of it
+    // — the door itself is always the raw entity (never the target-side
+    // view-resolved copy MapBoard's onEnterDoor handed enterDoor), so
+    // arrivalCellNearDoor sees its true home/target col/row regardless of
+    // which side was clicked.
+    if (isHost) {
+      // The DM's own view stays put; a hero's player follows it through
+      // (the effect below, on that player's client).
+      const traveller = state.entities[pending.travellerId];
+      if (!traveller) return;
+      const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
+      moveEntity(traveller.id, arrival.col, arrival.row, arrival.islandId, pending.destinationLayerId);
+      setSelectedId(null);
+      return;
+    }
+    if (isLockedDoor(rawDoor) || isHiddenFromPlayers(rawDoor)) return;
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    if (myHero) {
+      const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
+      moveEntity(myHero.id, arrival.col, arrival.row, arrival.islandId, pending.destinationLayerId);
+    }
+    goToLayer(pending.destinationLayerId);
   }
 
   function cancelEnterDoor() {
     setPendingDoor(null);
   }
+
+  // The token the DM dropped on the door, for the prompt's wording.
+  const pendingDoorTraveller = pendingDoor?.travellerId ? state.entities[pendingDoor.travellerId] || null : null;
+
+  // The "Open the door?" prompt closes by itself if the DM locks, hides or
+  // removes that door while it is up (the DM's own prompt only if the door
+  // or the token they dropped on it is gone).
+  const pendingDoorNow = pendingDoor ? visibleEntities[pendingDoor.door.id] : null;
+  const pendingDoorShut =
+    Boolean(pendingDoor) &&
+    (!pendingDoorNow || (isHost ? !visibleEntities[pendingDoor.travellerId] : isLockedDoor(pendingDoorNow)));
+  useEffect(() => {
+    if (pendingDoorShut) setPendingDoor(null);
+  }, [pendingDoorShut]);
+
+  // When the DM sends a player's hero through a door, that player's view
+  // goes with it. Only the player can move their own view (a cloud player's
+  // seat is theirs alone to update), so it is their client that follows.
+  const myHeroLayerId = isHost ? null : heroes.find((h) => h.ownerId === me.id)?.layerId || null;
+  const myHeroLayerRef = useRef(myHeroLayerId);
+  useEffect(() => {
+    const before = myHeroLayerRef.current;
+    myHeroLayerRef.current = myHeroLayerId;
+    if (!before || !myHeroLayerId || before === myHeroLayerId) return;
+    if (myHeroLayerId === currentLayerId || !state.layers[myHeroLayerId]) return;
+    goToLayer(myHeroLayerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myHeroLayerId]);
 
   // Always the latest regenerateCode, for the delayed call after a kick.
   const regenerateCodeRef = useRef(null);
@@ -2948,9 +3275,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
   function commitMove(entity, islandId, col, row) {
     moveEntity(entity.id, col, row, islandId);
-    // Landing a hero on a door's square offers to walk through it, as a drag does.
-    const door = entity.kind === 'hero' && !isHost ? doorAt(islandId, col, row) : null;
-    if (door) enterDoor(door);
+    // Landing a hero on a door's square offers to walk through it, as a drag
+    // does — and so does the DM landing a hero or monster on one.
+    const canUseDoor = isHost ? entity.kind === 'hero' || entity.kind === 'mob' : entity.kind === 'hero';
+    const door = canUseDoor ? doorAt(islandId, col, row) : null;
+    if (door) enterDoor(door, entity);
   }
   function handleTapCell(islandId, col, row) {
     const entity = selectedEntity;
@@ -3180,6 +3509,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         />
   );
 
+  // This table's own monsters (Asset Storage), for an ambush's monster picker.
+  const customMonsters = Object.values(state.customAssets || {})
+    .filter((item) => item.assetType === 'monster')
+    .map((item) => ({ id: item.id, ...item.data }));
+
   const rightPanelEl = (
         <RightPanel
           audio={audioApi}
@@ -3197,6 +3531,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           heroes={heroes}
           onGiveChestItem={giveChestItemToHero}
           onTakeChestItem={takeChestItem}
+          customMonsters={customMonsters}
+          onRevealAmbush={revealAmbush}
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
@@ -3328,9 +3664,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </>
           )}
           {encounter && !isPhone ? (
-            <TurnOrderRibbon encounter={encounter} entities={state.entities} meId={me.id} />
+            <TurnOrderRibbon encounter={encounter} entities={visibleEntities} meId={me.id} />
           ) : (
-            <InitiativeBar entities={encounter ? state.entities : layerEntities} encounter={encounter} />
+            <InitiativeBar entities={encounter ? visibleEntities : layerEntities} encounter={encounter} />
           )}
           {encounter && (
             <EncounterActions
@@ -3339,7 +3675,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               isMyTurn={isMyTurn}
               onEndTurn={endTurn}
               isHost={isHost}
-              onEndEncounter={() => setEncounter(null)}
+              onEndEncounter={endEncounter}
               movement={movement}
               log={combatLog}
             />
@@ -3352,7 +3688,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
+          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))}>
+            {chestAsks.length > 0 && <ChestAsks asks={chestAsks} onAllow={allowChestOpen} onDeny={denyChestOpen} />}
+          </RollToasts>
           {/* While a tool changes what a press does, say so across the top of
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
@@ -3487,8 +3825,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
               <h4><ModalIcon name="door" />Open the door?</h4>
               <p>
-                Step through <strong>{pendingDoor.door.name}</strong> to{' '}
+                {pendingDoorTraveller ? (
+                  <>
+                    Send <strong>{pendingDoorTraveller.name}</strong> through <strong>{pendingDoor.door.name}</strong> to{' '}
+                  </>
+                ) : (
+                  <>
+                    Step through <strong>{pendingDoor.door.name}</strong> to{' '}
+                  </>
+                )}
                 <strong>{state.layers[pendingDoor.destinationLayerId]?.name || 'the other layer'}</strong>?
+                {pendingDoorTraveller && pendingDoor.door.locked ? ' It stays locked for players.' : ''}
               </p>
               <div className="door-confirm-actions">
                 <button className="btn btn-secondary" onClick={cancelEnterDoor}>
@@ -3582,6 +3929,26 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               {areaPickerEl}
             </PhoneSheet>
           )}
+          {phoneSheet === 'inspect' && selectedEntity?.kind === 'ambush' && (
+            <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
+              <div className="phone-sheet-pad">
+                <AmbushInspector
+                  entity={selectedEntity}
+                  customMonsters={customMonsters}
+                  isHost={isHost}
+                  onUpdate={updateEntity}
+                  onRemove={(id) => {
+                    removeEntity(id);
+                    setPhoneSheet(null);
+                  }}
+                  onReveal={(id) => {
+                    revealAmbush(id);
+                    setPhoneSheet(null);
+                  }}
+                />
+              </div>
+            </PhoneSheet>
+          )}
           {phoneSheet === 'inspect' && (selectedEntity?.kind === 'door' || selectedEntity?.kind === 'trap') && (
             <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
               <div className="phone-sheet-pad">
@@ -3620,6 +3987,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               peopleThere={Object.values(state.players)
                 .filter((p) => p.id !== me.id && (p.currentLayerId || baseLayerId) === pendingDoor.destinationLayerId)
                 .map((p) => p.name)}
+              travellerName={pendingDoorTraveller?.name || null}
               onWalk={confirmEnterDoor}
               onCancel={cancelEnterDoor}
             />
@@ -3631,6 +3999,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               isHost={isHost}
               heroes={heroes}
               meId={me.id}
+              players={state.players}
               onUpdate={updateEntity}
               onGive={giveChestItemToHero}
               onTake={takeChestItem}
@@ -3644,9 +4013,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               meId={me.id}
               players={state.players}
               entities={layerEntities}
+              heroes={heroes}
               audio={audioApi}
               onUpdate={updateEntity}
               onRemove={removeEntity}
+              onGiveItem={giveChestItemToHero}
+              onTakeItem={takeChestItem}
               onClose={() => setPhoneSheet(null)}
             />
           )}
@@ -3760,7 +4132,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             <PhoneRunTable
               encounter={encounter}
               actorName={actor?.name}
-              onEndEncounter={() => setEncounter(null)}
+              onEndEncounter={endEncounter}
               onShowLog={() => setPhoneSheet('log')}
               onShowRolls={() => setPhoneSheet('rolls')}
               rollCount={rollLog.length}

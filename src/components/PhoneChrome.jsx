@@ -3,10 +3,10 @@ import { getIslandCondition, islandConditionKeys } from '../data/islandCondition
 import { PALETTES } from '../state/theme.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { attackPreview, resolveAttackRoll, weaponStatsFor, ATTACK_BEAT_MS } from '../utils/combat.js';
+import RollModeTabs from './RollModeTabs.jsx';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
-import { makeIconDataUrl } from '../data/defaultTokens.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
-import { GiveChestItemButton, TakeChestItemButton } from './RightPanel.jsx';
+import { GiveChestItemButton, TakeChestItemButton, ChestOpenButton } from './RightPanel.jsx';
 import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
@@ -407,6 +407,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
   useImageCacheVersion(); // redraw when a shared picture arrives
   const attacks = (actor?.sheet?.attacks || []).filter((a) => a.weaponName);
   const [index, setIndex] = useState(0);
+  const [mode, setMode] = useState('normal'); // disadvantage · normal · advantage
   const [rolling, setRolling] = useState(false);
   const [result, setResult] = useState(null);
   const timers = useRef([]);
@@ -414,7 +415,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
   if (!actor || !target) return null;
 
   const attack = attacks[Math.min(index, attacks.length - 1)];
-  const preview = attack ? attackPreview(attack, target) : null;
+  const preview = attack ? attackPreview(attack, target, mode) : null;
   const hp = Math.max(0, target.hp ?? target.maxHp ?? 0);
   const pct = target.maxHp ? Math.max(0, Math.min(1, hp / target.maxHp)) : 0;
   const hpLeft = preview ? Math.max(0, Math.round(hp - preview.averageDamage)) : null;
@@ -430,7 +431,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
         setRolling(false);
         const latest = getTarget(target.id);
         if (!latest) return;
-        setResult(resolveAttackRoll(attack, latest, { attackerName: actor.name, playSounds: true, applyDamage: onDamage }));
+        setResult(resolveAttackRoll(attack, latest, { attackerName: actor.name, playSounds: true, applyDamage: onDamage, mode }));
       }, ATTACK_BEAT_MS * 2),
     ];
   }
@@ -467,6 +468,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
                   </button>
                 ))}
               </div>
+              <RollModeTabs mode={mode} onChange={setMode} disabled={rolling} className="phone-segment" />
               {preview && (
                 <div className="phone-target-stats">
                   <div>
@@ -491,7 +493,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
           {rolling
             ? 'Rolling…'
             : result
-              ? `${result.hit ? 'Hit' : 'Miss'} — ${result.attackTotal} vs AC ${result.targetAC}${result.hit ? ` · ${result.damageTotal} damage` : ''}`
+              ? `${result.hit ? 'Hit' : 'Miss'} — ${result.attackTotal} vs AC ${result.targetAC}${result.hit ? ` · ${result.damageTotal} damage` : ''}${result.throws ? ` · ${result.mode} (${result.throws.join(', ')})` : ''}`
               : ''}
         </p>
         <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={attackNow} disabled={!attack || rolling}>
@@ -504,7 +506,9 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
 
 // ---------- doors ----------
 
-export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIslandName, peopleThere, onWalk, onCancel }) {
+// `travellerName` is set when the DM is sending a token through (they
+// dropped it on the door); otherwise it is a player walking their own hero.
+export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIslandName, peopleThere, travellerName = null, onWalk, onCancel }) {
   return (
     <PhoneSheet title={door.name || 'Door'} onClose={onCancel}>
       <div className="phone-sheet-pad">
@@ -520,12 +524,16 @@ export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIsland
           </span>
         </div>
         <button type="button" className="phone-btn-primary phone-btn-block-primary" onClick={onWalk}>
-          Walk through
+          {travellerName ? `Send ${travellerName} through` : 'Walk through'}
         </button>
         <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onCancel}>
           Stay here
         </button>
-        <p className="phone-caption phone-caption-flush">Your hero steps through to the other side. Everyone else stays here until they walk through too.</p>
+        <p className="phone-caption phone-caption-flush">
+          {travellerName
+            ? `${travellerName} steps through to the other side${door.locked ? ' — the door stays locked for players' : ''}. Everyone else stays here.`
+            : 'Your hero steps through to the other side. Everyone else stays here until they walk through too.'}
+        </p>
       </div>
     </PhoneSheet>
   );
@@ -533,7 +541,7 @@ export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIsland
 
 // ---------- chests ----------
 
-export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUpdate, onGive, onTake, onClose }) {
+export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, players, onUpdate, onGive, onTake, onClose }) {
   const [editing, setEditing] = useState(false);
   if (!entity) return null;
   const items = entity.items || [];
@@ -542,11 +550,6 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
   const myHero = (heroes || []).find((h) => h.ownerId === meId);
   const showItems = isHost || entity.opened;
 
-  function toggleOpen() {
-    const opened = !entity.opened;
-    onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
-  }
-
   return (
     <PhoneSheet title={entity.name || 'Chest'} onClose={onClose}>
       <div className="phone-sheet-pad">
@@ -554,10 +557,17 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
           {sizeLabel} chest · {capacity} {capacity === 1 ? 'slot' : 'slots'}
           {islandName ? ` · ${islandName}` : ''}
         </p>
-        <button type="button" className={entity.opened ? 'phone-btn-ghost phone-btn-full' : 'phone-btn-primary phone-btn-block-primary'} onClick={toggleOpen}>
-          {entity.opened ? 'Close chest' : 'Open chest'}
-        </button>
-        {!showItems && <p className="phone-caption phone-caption-flush">Anyone at the table can open or close a chest. Open it to see what’s inside.</p>}
+        <ChestOpenButton
+          entity={entity}
+          isHost={isHost}
+          meId={meId}
+          players={players}
+          onUpdate={onUpdate}
+          primaryClass="phone-btn-primary phone-btn-block-primary"
+          secondaryClass="phone-btn-ghost phone-btn-full"
+          quietClass="phone-btn-ghost phone-btn-full"
+        />
+        {!showItems && <p className="phone-caption phone-caption-flush">The DM decides whether it opens. Ask, and you’ll see what’s inside once they allow it.</p>}
         {showItems && (
           <section className="phone-chest-items" aria-label="Inside">
             <span className="phone-label">
@@ -587,6 +597,12 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
         )}
         {isHost && (
           <>
+            <PhoneSwitch
+              label="Hidden from players"
+              caption="Gone from every player’s map until you show it again."
+              checked={Boolean(entity.hidden)}
+              onChange={(hidden) => onUpdate(entity.id, { hidden })}
+            />
             <button type="button" className="phone-btn-ghost phone-btn-full" aria-expanded={editing} onClick={() => setEditing((e) => !e)}>
               {editing ? 'Done editing contents' : 'Edit contents'}
             </button>

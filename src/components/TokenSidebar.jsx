@@ -5,6 +5,8 @@ import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
+import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
+import { AMBUSH_ICON, AMBUSH_COLOR, clampAmbushQty } from '../data/ambush.js';
 import { emptyTrapDraft, parseTrapNumber, normalizeDice, clampTrapSize, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import DiceInput from './DiceInput.jsx';
@@ -47,6 +49,12 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   const [pendingChestItems, setPendingChestItems] = useState([]);
   const [showTrapModal, setShowTrapModal] = useState(false);
   const [trapDraft, setTrapDraft] = useState(emptyTrapDraft);
+  const [ambushName, setAmbushName] = useState('Ambush');
+  const [showAmbushModal, setShowAmbushModal] = useState(false);
+  const [pendingAmbushMonsters, setPendingAmbushMonsters] = useState([]);
+  const customMonsters = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'monster')
+    .map((item) => ({ id: item.id, ...item.data }));
   const [phoneTab, setPhoneTab] = useState('heroes');
   // A door needs a second map: the hint's "Create a layer" opens this form
   // right here, and the door form then picks the new map.
@@ -111,6 +119,22 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
       items: pendingChestItems,
     });
     setShowChestModal(false);
+  }
+
+  function openAmbushModal() {
+    setPendingAmbushMonsters([]);
+    setShowAmbushModal(true);
+  }
+
+  function confirmPlaceAmbush() {
+    onAddEntity({
+      kind: 'ambush',
+      name: ambushName.trim() || 'Ambush',
+      imageUrl: makeIconDataUrl(AMBUSH_ICON, AMBUSH_COLOR),
+      color: AMBUSH_COLOR,
+      ambushMonsters: pendingAmbushMonsters,
+    });
+    setShowAmbushModal(false);
   }
 
   function openTrapModal() {
@@ -277,6 +301,19 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
               </button>
             </>
           )}
+
+          {placeableKind === 'ambush' && (
+            <>
+              <label className="field-label">Ambush name</label>
+              <input className="field" value={ambushName} onChange={(e) => setAmbushName(e.target.value)} />
+              <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+                An ambush holds a band of monsters and stays hidden from players. &ldquo;Reveal the ambush&rdquo; on its inspector puts them all around it.
+              </p>
+              <button className="btn btn-secondary btn-block" style={{ marginTop: 8 }} onClick={openAmbushModal}>
+                Choose monsters &amp; place ambush
+              </button>
+            </>
+          )}
     </>
   );
   const ownImageBody = (
@@ -390,6 +427,38 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         </div>
       )}
 
+      {showAmbushModal && (
+        <div className="book-backdrop" onClick={() => setShowAmbushModal(false)}>
+          <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="book-card-header">
+              <span className="book-title">
+                <ModalIcon name="warn" />Set the ambush
+              </span>
+              <button className="popover-close" onClick={() => setShowAmbushModal(false)} aria-label="Close" title="Close">
+                ×
+              </button>
+            </div>
+            <div style={{ padding: 16, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              <AmbushMonstersEditor
+                monsters={pendingAmbushMonsters}
+                customMonsters={customMonsters}
+                onAdd={(monster) => setPendingAmbushMonsters((prev) => [...prev, monster])}
+                onRemove={(id) => setPendingAmbushMonsters((prev) => prev.filter((m) => m.id !== id))}
+                onUpdateQty={(id, qty) => setPendingAmbushMonsters((prev) => prev.map((m) => (m.id === id ? { ...m, qty: clampAmbushQty(qty) } : m)))}
+              />
+              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowAmbushModal(false)}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmPlaceAmbush}>
+                  Place ambush
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showChestModal && (
         <div className="book-backdrop" onClick={() => setShowChestModal(false)}>
           <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
@@ -433,9 +502,10 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
       ['door', 'Doors'],
       ['chest', 'Chests'],
       ['trap', 'Traps'],
+      ['ambush', 'Ambushes'],
       ['own', 'Your own'],
     ];
-    const isPlaceable = (key) => key === 'door' || key === 'chest' || key === 'trap';
+    const isPlaceable = (key) => key === 'door' || key === 'chest' || key === 'trap' || key === 'ambush';
     const tabIsOn = (key) => (isPlaceable(key) ? phoneTab === 'place' && placeableKind === key : phoneTab === key);
     return (
       <div className="phone-add">
@@ -499,7 +569,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         </SidebarSection>
 
         <SidebarSection title="Placeable" tour="side-placeable">
-          <div className="side-btn-row">
+          <div className="side-btn-row two">
             <button className={`side-btn${placeableKind === 'door' ? ' active' : ''}`} aria-pressed={placeableKind === 'door'} onClick={() => setPlaceableKind('door')}>
               Door
             </button>
@@ -508,6 +578,9 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
             </button>
             <button className={`side-btn${placeableKind === 'trap' ? ' active' : ''}`} aria-pressed={placeableKind === 'trap'} onClick={() => setPlaceableKind('trap')}>
               Trap
+            </button>
+            <button className={`side-btn${placeableKind === 'ambush' ? ' active' : ''}`} aria-pressed={placeableKind === 'ambush'} onClick={() => setPlaceableKind('ambush')}>
+              Ambush
             </button>
           </div>
           {placeableBody}

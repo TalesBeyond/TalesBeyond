@@ -67,6 +67,17 @@ export function mapClientIslandPatchToDb(patch) {
   return db;
 }
 
+// The monsters an ambush token holds (61_ambush_tokens.sql) are drafts with a
+// picture each, which goes through the same "reference, never the image"
+// rule as a token's own (lib/storedImages.js).
+function ambushMonstersToDb(monsters) {
+  return (monsters || []).map((m) => ({ ...m, imageUrl: toStoredImage(m.imageUrl) }));
+}
+
+function ambushMonstersFromDb(monsters) {
+  return (monsters || []).map((m) => ({ ...m, imageUrl: fromStoredImage(m.imageUrl, { kind: 'mob', color: m.color }) }));
+}
+
 export function mapDbEntity(row) {
   return {
     id: row.id,
@@ -92,6 +103,13 @@ export function mapDbEntity(row) {
     chestSize: row.chest_size ?? undefined,
     opened: row.kind === 'chest' ? row.opened ?? false : undefined,
     items: row.kind === 'chest' ? row.chest_items ?? [] : undefined,
+    // 59_hidden_tokens_locked_doors.sql — absent (so false) before it is applied.
+    hidden: row.hidden ?? false,
+    locked: row.kind === 'door' ? row.locked ?? false : undefined,
+    // 60_chest_open_requests.sql — the player asking the DM to open this chest.
+    openRequestBy: row.kind === 'chest' ? row.open_request_by ?? null : undefined,
+    // 63_monster_loot.sql — what a defeated monster dropped; null until rolled.
+    loot: row.kind === 'mob' ? row.loot ?? null : undefined,
     ...(row.kind === 'trap'
       ? {
           trapDescription: row.trap_description ?? '',
@@ -103,6 +121,7 @@ export function mapDbEntity(row) {
           trapRevealed: row.trap_revealed ?? false,
         }
       : {}),
+    ...(row.kind === 'ambush' ? { ambushMonsters: ambushMonstersFromDb(row.ambush_monsters) } : {}),
   };
 }
 
@@ -134,6 +153,11 @@ export function mapClientEntityToDb(entity, tableId) {
     chest_size: entity.chestSize ?? null,
     opened: entity.opened ?? false,
     chest_items: entity.items ?? [],
+    // Only when set, so placing tokens keeps working on a project that
+    // hasn't run 59_hidden_tokens_locked_doors.sql yet.
+    ...(entity.hidden ? { hidden: true } : {}),
+    ...(entity.locked ? { locked: true } : {}),
+    ...(entity.loot != null ? { loot: entity.loot } : {}),
     ...(entity.kind === 'trap'
       ? {
           trap_description: entity.trapDescription ?? '',
@@ -145,6 +169,7 @@ export function mapClientEntityToDb(entity, tableId) {
           trap_revealed: entity.trapRevealed ?? false,
         }
       : {}),
+    ...(entity.kind === 'ambush' ? { ambush_monsters: ambushMonstersToDb(entity.ambushMonsters) } : {}),
   };
 }
 
@@ -171,6 +196,10 @@ export function mapClientEntityPatchToDb(patch) {
   if ('chestSize' in patch) db.chest_size = patch.chestSize;
   if ('opened' in patch) db.opened = patch.opened;
   if ('items' in patch) db.chest_items = patch.items;
+  if ('hidden' in patch) db.hidden = Boolean(patch.hidden);
+  if ('locked' in patch) db.locked = Boolean(patch.locked);
+  if ('openRequestBy' in patch) db.open_request_by = patch.openRequestBy || null;
+  if ('loot' in patch) db.loot = patch.loot ?? null;
   if ('trapDescription' in patch) db.trap_description = patch.trapDescription;
   if ('trapSave' in patch) db.trap_save = patch.trapSave;
   if ('trapFail' in patch) db.trap_fail = patch.trapFail;
@@ -178,6 +207,7 @@ export function mapClientEntityPatchToDb(patch) {
   if ('trapDamage' in patch) db.trap_damage = patch.trapDamage;
   if ('trapDamageType' in patch) db.trap_damage_type = patch.trapDamageType;
   if ('trapRevealed' in patch) db.trap_revealed = patch.trapRevealed;
+  if ('ambushMonsters' in patch) db.ambush_monsters = ambushMonstersToDb(patch.ambushMonsters);
   return db;
 }
 

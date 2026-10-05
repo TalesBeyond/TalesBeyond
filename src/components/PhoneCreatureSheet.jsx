@@ -6,8 +6,8 @@ import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import { acOf, defaultMobAttacks } from '../utils/combat.js';
 import { Editable, RemoveTokenButton } from './CreatureCard.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
-import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab } from './RightPanel.jsx';
-import { PhoneSheet } from './PhoneChrome.jsx';
+import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab, MobLoot } from './RightPanel.jsx';
+import { PhoneSheet, PhoneSwitch } from './PhoneChrome.jsx';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 
@@ -17,7 +17,7 @@ import { entityImageSrc } from '../lib/storedImages.js';
 // edits everything; a hero's own player edits its attacks, spells and bag;
 // everyone else looks. A player sees a monster's name, AC, HP, size and
 // conditions only.
-export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, audio, onUpdate, onRemove, onClose }) {
+export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, heroes, audio, onUpdate, onRemove, onGiveItem, onTakeItem, onClose }) {
   useImageCacheVersion(); // redraw when a shared picture arrives
   const isHero = entity.kind === 'hero';
   const isOwner = isHero && !!meId && entity.ownerId === meId;
@@ -141,6 +141,15 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
 
         {(tab === 'fight' || !showSheet) && (
           <div className="phone-creature-body">
+            <MobLoot entity={entity} isHost={isHost} heroes={heroes} meId={meId} onGive={onGiveItem} onTake={onTakeItem} phone />
+            {isHost && !isHero && (
+              <PhoneSwitch
+                label="Hidden from players"
+                caption="Gone from every player’s map until you show it again."
+                checked={Boolean(entity.hidden)}
+                onChange={(hidden) => onUpdate(entity.id, { hidden })}
+              />
+            )}
             <section className="phone-hp" aria-label="Hit points">
               <span className="phone-label">Hit points</span>
               <div className="phone-hp-row">
@@ -311,8 +320,12 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
                 );
               })}
             </section>
-            {paper(<SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />, canEdit)}
-            {!canEdit && <p className="phone-caption phone-caption-flush">Only the DM edits abilities, saves and skills.</p>}
+            {paper(<SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />, isHero ? canEditOwnTabs : canEdit)}
+            {!canEdit && (
+              <p className="phone-caption phone-caption-flush">
+                {isHero && canEditOwnTabs ? 'Saves and skills are yours to manage. Only the DM edits ability scores.' : 'Only the DM edits abilities, saves and skills.'}
+              </p>
+            )}
           </div>
         )}
         {tab === 'dm' && isHost && (

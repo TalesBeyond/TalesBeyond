@@ -1,5 +1,5 @@
 // The character log: what each player changed on their own hero this
-// session (hit points, bag, coins, weapons, spells). Worked out on the DM's
+// session (hit points, bag, coins, weapons, spells, saves and skills). Worked out on the DM's
 // browser by comparing a hero before and after a change it didn't make
 // itself, so nothing extra is sent and a player can't leave an edit out.
 // Like the roll log it is never stored — it lives in the DM's browser.
@@ -9,7 +9,7 @@
 // run of edits to the same thing (typing a name letter by letter) folds
 // into a single log line (mergeActivity).
 
-import { CURRENCIES, SPELL_LEVELS, normalizeCurrency, normalizeSpellcasting } from '../data/characterSheet.js';
+import { ABILITIES, SKILLS, CURRENCIES, SPELL_LEVELS, normalizeCurrency, normalizeSpellcasting, normalizeCheckEntry, formatModifier } from '../data/characterSheet.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const num = (n) => String(n ?? 0);
@@ -30,6 +30,13 @@ function describeAttack(attack) {
 function describeSpell(spell) {
   const name = (spell.name || '').trim() || 'unnamed spell';
   return spell.prepared ? `${name} (prepared)` : name;
+}
+
+// A saving throw or skill: its bonus, and whether the hero is proficient.
+function describeCheck(raw) {
+  const entry = normalizeCheckEntry(raw, null);
+  const bonus = entry.value == null || entry.value === '' ? '—' : formatModifier(Number(entry.value) || 0);
+  return entry.proficient ? `${bonus} (proficient)` : bonus;
 }
 
 // Two lists of things with ids: what was added, removed, or edited.
@@ -103,6 +110,24 @@ export function diffHero(before, after) {
       if (x.slotsTotal !== y.slotsTotal) out.push({ key: `slots:${lvl}:total`, noun: `${tier} spell slots`, from: num(x.slotsTotal), to: num(y.slotsTotal) });
       if (x.slotsExpended !== y.slotsExpended) out.push({ key: `slots:${lvl}:used`, noun: `${tier} slots used`, from: num(x.slotsExpended), to: num(y.slotsExpended) });
       diffById(x.spells, y.spells, `spellname:${lvl}`, lvl === 0 ? 'Cantrip' : `${tier} spell`, describeSpell, out);
+    }
+  }
+
+  if ((a.proficiencyBonus ?? 2) !== (b.proficiencyBonus ?? 2)) {
+    out.push({ key: 'proficiency', noun: 'Proficiency bonus', from: formatModifier(a.proficiencyBonus ?? 2), to: formatModifier(b.proficiencyBonus ?? 2) });
+  }
+  if (!same(a.savingThrows, b.savingThrows)) {
+    for (const ability of ABILITIES) {
+      const was = describeCheck(a.savingThrows?.[ability.key]);
+      const now = describeCheck(b.savingThrows?.[ability.key]);
+      if (was !== now) out.push({ key: `save:${ability.key}`, noun: `${ability.label} save`, from: was, to: now });
+    }
+  }
+  if (!same(a.skills, b.skills)) {
+    for (const skill of SKILLS) {
+      const was = describeCheck(a.skills?.[skill.key]);
+      const now = describeCheck(b.skills?.[skill.key]);
+      if (was !== now) out.push({ key: `skill:${skill.key}`, noun: skill.label, from: was, to: now });
     }
   }
 

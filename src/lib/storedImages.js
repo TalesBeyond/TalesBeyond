@@ -16,6 +16,7 @@ const FALLBACK = {
   door: ['door', '#5c4a2e'],
   chest: ['chest', '#c98a3b'],
   trap: ['trap', '#8f1f1f'],
+  ambush: ['skull', '#7a1f2b'],
 };
 
 export function toStoredImage(url) {

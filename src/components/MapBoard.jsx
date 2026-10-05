@@ -1,6 +1,8 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
+import { isHiddenFromPlayers, isLockedDoor } from '../data/visibility.js';
+import { ambushMonsterCount } from '../data/ambush.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
 import { useFx } from '../lib/fx.js';
@@ -267,6 +269,7 @@ export default function MapBoard({
   function handleTokenPointerDown(e, entity) {
     if (tool !== 'play') return; // token dragging/selection only applies in the Play tool
     e.stopPropagation();
+    if (!isHost && isLockedDoor(entity)) return; // a locked door isn't a player's to click: no selection, no "Open the door?"
     onSelectEntity(entity.id);
     const p = getRelativePoint(e.clientX, e.clientY);
     const locked = entity.kind === 'door' && isDoorOccupied(entity);
@@ -357,12 +360,14 @@ export default function MapBoard({
     holdDragAt(current.id, size, col, row, found.island.id, found);
     onMoveEntity(current.id, col, row, found.island.id);
     // Landing a hero token on a door's square (via an actual drag, not a
-    // bare click/reselect) offers to walk through it.
-    if (current.entity.kind === 'hero' && !isHost && !isClick) {
+    // bare click/reselect) offers to walk through it. The DM gets the same
+    // offer for any hero or monster they drop on a door.
+    const canUseDoor = isHost ? current.entity.kind === 'hero' || current.entity.kind === 'mob' : current.entity.kind === 'hero';
+    if (canUseDoor && !isClick) {
       const door = findDoorAt(found.island.id, col, row);
       if (door) {
         console.log(`${current.entity.name} landed on door "${door.name}" at (${col}, ${row})`);
-        onEnterDoor?.(door);
+        onEnterDoor?.(door, current.entity);
       }
     }
   }
@@ -1151,11 +1156,15 @@ export default function MapBoard({
           const size = r.cellSize * (entity.size || 1) - 6;
           const cx = isDragging ? dragPos.x : islandLeft + entity.col * r.cellSize + (r.cellSize * (entity.size || 1)) / 2;
           const cy = isDragging ? dragPos.y : islandTop + entity.row * r.cellSize + (r.cellSize * (entity.size || 1)) / 2;
+          // Only the DM's client ever holds a hidden token, so this is the
+          // DM's own reminder that players can't see it.
+          const concealed = isHiddenFromPlayers(entity);
+          const locked = isLockedDoor(entity);
 
           return (
             <div
               key={id}
-              className={`token${entity.kind === 'door' ? ' door' : ''}${entity.kind === 'trap' && !entity.trapRevealed ? ' trap-hidden' : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
+              className={`token${entity.kind === 'door' ? ' door' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
               style={{
                 width: size,
                 height: size,
@@ -1166,9 +1175,24 @@ export default function MapBoard({
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
               onClick={(e) => e.stopPropagation()}
-              title={entity.kind === 'trap' && !entity.trapRevealed ? `${entity.name} (hidden from players)` : entity.name}
+              title={`${entity.name}${locked ? ' (locked)' : ''}${concealed ? ' (hidden from players)' : ''}`}
             >
               <span className="token-label">{entity.name}</span>
+              {locked && (
+                <span className="token-lock" aria-label="Locked" style={{ fontSize: Math.max(7, Math.min(12, size * 0.4)) }}>
+                  🔒
+                </span>
+              )}
+              {entity.kind === 'mob' && entity.hp === 0 && entity.loot?.length > 0 && (
+                <span className="token-lock" aria-label="Has loot to take" title="Defeated — has loot to take" style={{ fontSize: Math.max(7, Math.min(12, size * 0.4)) }}>
+                  💰
+                </span>
+              )}
+              {entity.kind === 'ambush' && (
+                <span className="token-count" title={`${ambushMonsterCount(entity)} monsters waiting`}>
+                  {ambushMonsterCount(entity)}
+                </span>
+              )}
               {entity.kind !== 'door' && entity.initiativeTurn != null && (
                 <span className="token-initiative" title={`Initiative: rolled ${entity.initiativeRoll}, turn ${entity.initiativeTurn}`}>
                   👢{entity.initiativeTurn}

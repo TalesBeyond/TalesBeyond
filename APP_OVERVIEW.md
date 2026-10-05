@@ -357,7 +357,8 @@ Players roll in the open; the DM's own rolls stay on the DM's screen unless
 they choose otherwise.
 
 - Every roll — the dice window, Roll d20 in a fight, attack rolls (with the
-  target and hit or miss) — announces itself on `lib/fx.js` as
+  target, hit or miss, and whether it was rolled normally, with advantage or
+  with disadvantage — both d20s shown) — announces itself on `lib/fx.js` as
   `{ type: 'rolled', what, dice, detail, total, flag }`. `GameView` sends a
   player's roll to the whole table; a DM's roll only when **Reveal rolls to
   players** is on (Configurations; the Dice section of the phone's DM table
