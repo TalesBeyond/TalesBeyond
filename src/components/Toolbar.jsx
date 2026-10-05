@@ -2181,14 +2181,57 @@ function GridLinesPreview({ lines, image }) {
   );
 }
 
-// DM-only: pick which hero and monster/NPC tokens on the current layer are
-// in this encounter, then roll a d20 for each at once. The actual roll +
+// DM-only: tick which hero and monster/NPC tokens on the current layer are
+// in this encounter — only the ticked ones roll — then roll a d20 for each
+// at once. The actual roll +
 // per-entity `initiativeRoll`/`initiativeTurn` stamping (rendered as the
 // boot badge on the token, see MapBoard.jsx) lives in GameView's
 // rollInitiative — this component is just the picker + results readout.
 // `side`: on the rail it stands in a drawer beside it instead of a dialog.
+// One list of the roller: every hero, or every monster/NPC, on the layer with
+// a checkbox each, and All / None for a crowded map.
+function InitiativeGroup({ title, entities, checkedIds, onToggle, onSetAll, empty, style }) {
+  const picked = entities.filter((e) => checkedIds.has(e.id)).length;
+  return (
+    <div style={style}>
+      <div className="initiative-group-head">
+        <span className="field-label" style={{ margin: 0 }}>
+          {title} · {picked} of {entities.length}
+        </span>
+        {entities.length > 1 && (
+          <span className="initiative-group-all">
+            <button type="button" className="btn btn-quiet btn-sm" disabled={picked === entities.length} onClick={() => onSetAll(entities, true)}>
+              All
+            </button>
+            <button type="button" className="btn btn-quiet btn-sm" disabled={picked === 0} onClick={() => onSetAll(entities, false)}>
+              None
+            </button>
+          </span>
+        )}
+      </div>
+      {entities.length === 0 ? (
+        <p className="footer-note" style={{ border: 'none', padding: '4px 0', margin: 0 }}>
+          {empty}
+        </p>
+      ) : (
+        <div className="initiative-pick-list">
+          {entities.map((e) => (
+            <label className={`initiative-pick${checkedIds.has(e.id) ? ' checked' : ''}`} key={e.id}>
+              <input type="checkbox" checked={checkedIds.has(e.id)} onChange={() => onToggle(e.id)} />
+              <span>{e.name}</span>
+              {(e.ownerName || e.hidden) && <small>{e.ownerName || 'hidden from players'}</small>}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncounter, onClose, side = false }) {
-  const [participantIds, setParticipantIds] = useState([]);
+  // Who is ticked. It opens with whoever already carries an initiative badge
+  // ticked, so re-rolling the fight on the map is one press.
+  const [checkedIds, setCheckedIds] = useState(() => new Set([...heroes, ...mobs].filter((e) => e.initiativeTurn != null).map((e) => e.id)));
   const [results, setResults] = useState(null);
   // "Start encounter": ticked by default, so rolling starts the fight — the
   // turn order, turn banner, movement range and End turn (EncounterHud.jsx).
@@ -2206,16 +2249,28 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
   for (const e of heroes) byId[e.id] = e;
   for (const e of mobs) byId[e.id] = e;
 
-  const availableHeroes = heroes.filter((h) => !participantIds.includes(h.id));
-  const availableMobs = mobs.filter((m) => !participantIds.includes(m.id));
+  // Only ticked tokens that are still on the map roll: heroes first, then
+  // monsters, each in map order (which is also who wins a tied roll).
+  const participantIds = [...heroes, ...mobs].filter((e) => checkedIds.has(e.id)).map((e) => e.id);
 
-  function addParticipant(id) {
-    if (!id || participantIds.includes(id)) return;
-    setParticipantIds((prev) => [...prev, id]);
+  function toggleParticipant(id) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  function removeParticipant(id) {
-    setParticipantIds((prev) => prev.filter((pid) => pid !== id));
+  function setAll(entities, checked) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      for (const e of entities) {
+        if (checked) next.add(e.id);
+        else next.delete(e.id);
+      }
+      return next;
+    });
   }
 
   function handleRoll() {
@@ -2225,7 +2280,7 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
 
   function handleClear() {
     onRoll([]);
-    setParticipantIds([]);
+    setCheckedIds(new Set());
     setResults([]);
   }
 
@@ -2244,49 +2299,30 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
 
   return (
     <ModalShell title="Roll for Initiative" icon="bolt" closeLabel="Close initiative roller" maxWidth={440} side={side} width={380} footer={side ? rollRow : null} onClose={onClose}>
-          <label className="field-label">Add player</label>
-          <select className="field" value="" onChange={(e) => addParticipant(e.target.value)}>
-            <option value="">Choose a hero…</option>
-            {availableHeroes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-                {h.ownerName ? ` (${h.ownerName})` : ''}
-              </option>
-            ))}
-          </select>
-
-          <label className="field-label" style={{ marginTop: 10 }}>
-            Add monster / NPC
-          </label>
-          <select className="field" value="" onChange={(e) => addParticipant(e.target.value)}>
-            <option value="">Choose a monster or NPC…</option>
-            {availableMobs.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+          <InitiativeGroup
+            title="Players"
+            entities={heroes}
+            checkedIds={checkedIds}
+            onToggle={toggleParticipant}
+            onSetAll={setAll}
+            empty="No heroes in this world yet."
+          />
+          <InitiativeGroup
+            title="Monsters / NPCs"
+            entities={mobs}
+            checkedIds={checkedIds}
+            onToggle={toggleParticipant}
+            onSetAll={setAll}
+            empty="No monsters in this world yet."
+            style={{ marginTop: 12 }}
+          />
 
           {participantIds.length === 0 && (
             <Hint className="hint-tight">
               {heroes.length + mobs.length === 0
                 ? 'Nobody to roll for yet. Place heroes and monsters in this world first.'
-                : 'Pick who joins from the two lists above, then roll.'}
+                : 'Tick who joins the fight, then roll. Only ticked players and monsters get an initiative.'}
             </Hint>
-          )}
-          {participantIds.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              {participantIds.map((id) => (
-                <div className="dice-set-header" key={id}>
-                  <span className="dice-set-title" style={{ flex: 1 }}>
-                    {byId[id]?.name || 'Unknown'}
-                  </span>
-                  <button type="button" className="btn btn-danger btn-sm" title="Remove" onClick={() => removeParticipant(id)}>
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
           )}
 
           {!side && rollRow}

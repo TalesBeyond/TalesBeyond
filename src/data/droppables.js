@@ -62,3 +62,18 @@ export function defaultDroppablesFor(mobKey) {
 export function dropThreshold(dropChance) {
   return Math.round((Math.max(0, Math.min(100, dropChance)) / 100) * 20);
 }
+
+// What a monster actually drops when it is defeated: every entry of its loot
+// table gets its own d20 against its drop chance (the same roll the DM can
+// make by hand in DroppablesEditor), and what drops comes out as plain
+// chest-style items — the drop chance stays behind with the DM's table.
+export function rollDroppables(droppables) {
+  const dropped = [];
+  for (const entry of droppables || []) {
+    const roll = 1 + Math.floor(Math.random() * 20);
+    if (roll > dropThreshold(entry.dropChance)) continue;
+    const { dropChance: _chance, ...item } = entry;
+    dropped.push({ ...item, id: `loot_${Date.now()}_${dropped.length}_${Math.random().toString(36).slice(2, 7)}` });
+  }
+  return dropped;
+}

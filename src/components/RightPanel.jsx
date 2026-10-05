@@ -27,7 +27,10 @@ import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import CreatureCard, { Editable } from './CreatureCard.jsx';
 import SoundField from './SoundField.jsx';
+import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
+import { ambushMonsterCount } from '../data/ambush.js';
 import { totalToHit, totalDamageLabel, acOf, attackWeapon, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
+import RollModeTabs from './RollModeTabs.jsx';
 
 export default function RightPanel({
   audio,
@@ -45,6 +48,8 @@ export default function RightPanel({
   heroes,
   onGiveChestItem,
   onTakeChestItem,
+  customMonsters,
+  onRevealAmbush,
   collapsed,
   onToggleCollapsed,
   encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
@@ -115,6 +120,7 @@ export default function RightPanel({
             heroes={heroes}
             isHost={isHost}
             meId={meId}
+            players={players}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             onGiveItem={onGiveChestItem}
@@ -122,14 +128,27 @@ export default function RightPanel({
           />
         ) : selectedEntity.kind === 'trap' ? (
           <TrapInspector entity={selectedEntity} isHost={isHost} onUpdate={onUpdateEntity} onRemove={onRemoveEntity} />
+        ) : selectedEntity.kind === 'ambush' ? (
+          <AmbushInspector
+            entity={selectedEntity}
+            customMonsters={customMonsters}
+            isHost={isHost}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            onReveal={onRevealAmbush}
+          />
         ) : (
           <MobInspector
             key={selectedEntity.id}
             entity={selectedEntity}
             isHost={isHost}
             audio={audio}
+            meId={meId}
+            heroes={heroes}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
+            onGiveItem={onGiveChestItem}
+            onTakeItem={onTakeChestItem}
             entities={entities}
             encounterActor={encounterActor}
           />
@@ -185,6 +204,18 @@ function SizeField({ entity, onUpdate, disabled, maxSize }) {
   );
 }
 
+// The DM's "players can't see this" switch on a monster, chest or door
+// (data/visibility.js). Hidden, the token is gone from every player's map
+// until the DM shows it again.
+export function HiddenField({ entity, onUpdate, style }) {
+  return (
+    <label className="checkbox-row" style={style}>
+      <input type="checkbox" checked={Boolean(entity.hidden)} onChange={(e) => onUpdate(entity.id, { hidden: e.target.checked })} />
+      Hidden from players
+    </label>
+  );
+}
+
 // ---------- door ----------
 
 export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
@@ -193,8 +224,20 @@ export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, on
       <h4>{entity.name}</h4>
       <div className="section-label" style={{ margin: '0 0 8px' }}>
         Door · square ({entity.col}, {entity.row})
+        {entity.locked ? ' · locked' : ''}
+        {isHost && entity.hidden ? ' · hidden from players' : ''}
       </div>
       <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+
+      {isHost && (
+        <>
+          <label className="checkbox-row" style={{ marginTop: 10, marginBottom: 6 }}>
+            <input type="checkbox" checked={Boolean(entity.locked)} onChange={(e) => onUpdate(entity.id, { locked: e.target.checked })} />
+            Locked — players can’t open it
+          </label>
+          <HiddenField entity={entity} onUpdate={onUpdate} style={{ marginBottom: 0 }} />
+        </>
+      )}
 
       <label className="field-label" style={{ marginTop: 10 }}>
         Linked layer {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
@@ -322,6 +365,49 @@ export function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
   );
 }
 
+// ---------- ambush ----------
+
+// Only the DM ever gets here: an ambush token never reaches a player's
+// client (data/visibility.js). Revealing it puts its monsters on the map
+// around it and removes the token (GameView.jsx's revealAmbush).
+export function AmbushInspector({ entity, customMonsters, isHost, onUpdate, onRemove, onReveal }) {
+  if (!isHost) return null;
+  const monsters = entity.ambushMonsters || [];
+  const count = ambushMonsterCount(entity);
+
+  return (
+    <div className="inspector-card">
+      <h4>{entity.name}</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Ambush &middot; square ({entity.col}, {entity.row}) &middot; hidden from players
+      </div>
+      <NameField entity={entity} onUpdate={onUpdate} />
+
+      <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 12 }} disabled={count === 0} onClick={() => onReveal(entity.id)}>
+        Reveal the ambush
+      </button>
+      <p className="footer-note" style={{ border: 'none', padding: '6px 0 0' }}>
+        {count === 0
+          ? 'Add monsters below, then reveal it when the trap is sprung.'
+          : `Puts ${count === 1 ? 'its monster' : `all ${count} monsters`} on the squares around this token, then takes the token off the map.`}
+      </p>
+
+      <label className="field-label" style={{ marginTop: 14 }}>
+        Monsters in the ambush
+      </label>
+      <AmbushMonstersEditor
+        monsters={monsters}
+        customMonsters={customMonsters}
+        onAdd={(monster) => onUpdate(entity.id, { ambushMonsters: [...monsters, monster] })}
+        onRemove={(id) => onUpdate(entity.id, { ambushMonsters: monsters.filter((m) => m.id !== id) })}
+        onUpdateQty={(id, qty) => onUpdate(entity.id, { ambushMonsters: monsters.map((m) => (m.id === id ? { ...m, qty } : m)) })}
+      />
+
+      <RemoveButton entity={entity} onRemove={onRemove} />
+    </div>
+  );
+}
+
 // ---------- chest ----------
 
 function chestCostLabel(gp) {
@@ -416,31 +502,73 @@ export function TakeChestItemButton({ disabled, onTake }) {
   );
 }
 
-function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove, onGiveItem, onTakeItem }) {
-  const items = entity.items || [];
-  const capacity = chestSlotCount(entity.chestSize);
-  const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
-  const myHero = (heroes || []).find((h) => h.ownerId === meId);
-
+// Opening a chest is the DM's call: a player asks, the DM allows it or not
+// (GameView.jsx's chestAsks). Shared by the phone chest sheet, which passes
+// its own button classes.
+export function ChestOpenButton({
+  entity,
+  isHost,
+  meId,
+  players,
+  onUpdate,
+  primaryClass = 'btn btn-block btn-primary',
+  secondaryClass = 'btn btn-block btn-secondary',
+  quietClass = 'btn btn-block btn-quiet',
+}) {
   function toggleOpen() {
     const opened = !entity.opened;
     onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
   }
+  if (isHost || entity.opened) {
+    return (
+      <button type="button" className={entity.opened ? secondaryClass : primaryClass} onClick={toggleOpen}>
+        {entity.opened ? 'Close chest' : 'Open chest'}
+      </button>
+    );
+  }
+  const asker = players?.[entity.openRequestBy] || null;
+  if (!asker) {
+    return (
+      <button type="button" className={primaryClass} onClick={() => onUpdate(entity.id, { openRequestBy: meId })}>
+        Ask the DM to open it
+      </button>
+    );
+  }
+  const mine = asker.id === meId;
+  return (
+    <>
+      <button type="button" className={secondaryClass} disabled>
+        {mine ? 'Waiting for the DM…' : `${asker.name} is asking the DM…`}
+      </button>
+      {mine && (
+        <button type="button" className={quietClass} style={{ marginTop: 6 }} onClick={() => onUpdate(entity.id, { openRequestBy: null })}>
+          Cancel
+        </button>
+      )}
+    </>
+  );
+}
+
+function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate, onRemove, onGiveItem, onTakeItem }) {
+  const items = entity.items || [];
+  const capacity = chestSlotCount(entity.chestSize);
+  const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
+  const myHero = (heroes || []).find((h) => h.ownerId === meId);
 
   return (
     <div className="inspector-card">
       <h4>{entity.name}</h4>
       <div className="section-label" style={{ margin: '0 0 8px' }}>
         {sizeLabel} chest · square ({entity.col}, {entity.row})
+        {isHost && entity.hidden ? ' · hidden from players' : ''}
       </div>
       <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+      {isHost && <HiddenField entity={entity} onUpdate={onUpdate} style={{ marginTop: 10, marginBottom: 0 }} />}
 
       <label className="field-label" style={{ marginTop: 10 }}>
         State
       </label>
-      <button type="button" className={`btn btn-block ${entity.opened ? 'btn-secondary' : 'btn-primary'}`} onClick={toggleOpen}>
-        {entity.opened ? 'Close chest' : 'Open chest'}
-      </button>
+      <ChestOpenButton entity={entity} isHost={isHost} meId={meId} players={players} onUpdate={onUpdate} />
 
       {isHost && entity.opened && (
         <>
@@ -493,7 +621,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
             Contents
           </label>
           <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-            Open the chest to see what's inside.
+            The DM decides whether it opens. Ask, and you’ll see what’s inside once they allow it.
           </p>
         </>
       ) : (
@@ -546,7 +674,71 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
 // `droppables` and `dmNotes`, which live in entity_dm_data's host-only RLS in
 // cloud mode and are stripped from a guest table's broadcasts, so they never
 // reach a player's client.
-function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, encounterActor }) {
+// What a defeated monster dropped. Its loot is rolled once, the moment its
+// hit points reach 0 (GameView.jsx's loot roll), and from then on anyone can
+// see it: a player takes a stack into their own hero's Bag, the DM hands one
+// to any hero — the same Take and Give a chest has. `phone` swaps in the
+// phone sheet's rows.
+export function MobLoot({ entity, isHost, heroes, meId, onGive, onTake, phone = false }) {
+  if (entity.kind !== 'mob' || entity.hp !== 0 || !Array.isArray(entity.loot)) return null;
+  const loot = entity.loot;
+  const myHero = (heroes || []).find((h) => h.ownerId === meId);
+  const needsHero = !isHost && !myHero && loot.length > 0;
+  const label = (item) => `${item.name}${item.qty > 1 ? ` × ${item.qty}` : ''}`;
+  const action = (item) =>
+    isHost ? (
+      <GiveChestItemButton item={item} heroes={heroes || []} onGive={(heroId) => onGive(entity, item, heroId)} />
+    ) : (
+      <TakeChestItemButton disabled={!myHero} onTake={() => onTake(entity, item)} />
+    );
+
+  if (phone) {
+    return (
+      <section className="phone-chest-items" aria-label="Loot">
+        <span className="phone-label">Loot · dropped when defeated</span>
+        {loot.length === 0 ? (
+          <p className="phone-caption phone-caption-flush">Nothing to loot.</p>
+        ) : (
+          loot.map((item) => (
+            <div className="phone-chest-row" key={item.id}>
+              <span>{label(item)}</span>
+              {action(item)}
+            </div>
+          ))
+        )}
+        {needsHero && <p className="phone-caption phone-caption-flush">You need a hero to carry loot. Ask your DM to link one to you.</p>}
+      </section>
+    );
+  }
+
+  return (
+    <div className="inspector-card" style={{ marginBottom: 12 }}>
+      <h4>Loot</h4>
+      <div className="section-label" style={{ margin: '0 0 8px' }}>
+        Dropped by {entity.name} when defeated
+      </div>
+      {loot.length === 0 ? (
+        <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
+          Nothing to loot.
+        </p>
+      ) : (
+        <div className="chest-item-list">
+          {needsHero && <Hint className="hint-tight">You need a hero to carry loot. Ask your DM to link one to you.</Hint>}
+          {loot.map((item) => (
+            <div className="chest-item-row" key={item.id} style={{ gridTemplateColumns: '1fr auto' }}>
+              <div className="chest-item-info">
+                <span className="chest-item-name">{label(item)}</span>
+              </div>
+              {action(item)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobInspector({ entity, isHost, audio, meId, heroes, onUpdate, onRemove, onGiveItem, onTakeItem, entities, encounterActor }) {
   const droppables = entity.droppables || [];
   const sheet = entity.mobSheet || defaultCharacterSheet();
   // A monster's Battle Equipment attacks heroes, mirroring how a hero's
@@ -599,6 +791,8 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
     : [];
 
   return (
+    <>
+    <MobLoot entity={entity} isHost={isHost} heroes={heroes} meId={meId} onGive={onGiveItem} onTake={onTakeItem} />
     <CreatureCard
       entity={entity}
       sheet={sheet}
@@ -607,18 +801,20 @@ function MobInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
       canEdit={isHost}
       onRemove={isHost ? onRemove : null}
       showStats={isHost}
-      typeLine={`Monster · square (${entity.col}, ${entity.row})`}
+      typeLine={`Monster · square (${entity.col}, ${entity.row})${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      notice={isHost ? <HiddenField entity={entity} onUpdate={onUpdate} style={{ margin: 0 }} /> : null}
       actor={encounterActor}
       tabs={tabs}
     />
+    </>
   );
 }
 
 // ---------- hero ----------
 
-// The DM edits the whole card. A hero's own player edits just the Battle,
-// Spells and Bag tabs (see PITFALLS.md #1); everyone else can look through
-// every tab but change nothing.
+// The DM edits the whole card. A hero's own player edits everything in the
+// Battle, Spells, Bag and Skills tabs (see PITFALLS.md #1); everyone else can
+// look through every tab but change nothing.
 function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entities, players, encounterActor }) {
   const sheet = entity.sheet || defaultCharacterSheet();
   const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
@@ -646,7 +842,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
     },
     { key: 'spells', label: 'Spells', content: locked(canEditOwnTabs, <SpellsTab sheet={sheet} updateSheet={updateSheet} />) },
     { key: 'bag', label: 'Bag', content: locked(canEditOwnTabs, <BagTab sheet={sheet} updateSheet={updateSheet} />) },
-    { key: 'skills', label: 'Skills', content: locked(isHost, <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />) },
+    { key: 'skills', label: 'Skills', content: locked(canEditOwnTabs, <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} />) },
     ...(isHost
       ? [{ key: 'dm', label: 'DM', content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this player…" /> }]
       : []),
@@ -694,7 +890,7 @@ function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entiti
         isHost
           ? null
           : canEditOwnTabs
-            ? 'Battle, Spells and Bag are yours to manage — the DM edits the rest.'
+            ? 'Battle, Spells, Bag and Skills are yours to manage — the DM edits the rest.'
             : 'Only the DM can edit this sheet — you can still look through every tab.'
       }
     />
@@ -828,9 +1024,21 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
-  const [pickingIndex, setPickingIndex] = useState(null);
-  const [pickTargetId, setPickTargetId] = useState('');
+  // Each attack keeps its own target and roll mode in view, ready to roll:
+  // index -> { targetId, mode }. Until a target is picked (or once the picked
+  // one has left the map) it aims at the first creature in the list, and it
+  // rolls normally unless advantage or disadvantage is picked for that roll.
+  const [picks, setPicks] = useState({});
   const [results, setResults] = useState({});
+
+  function pickFor(index) {
+    const pick = picks[index] || {};
+    const targetId = targets.some((t) => t.id === pick.targetId) ? pick.targetId : (targets[0] && targets[0].id) || '';
+    return { targetId, mode: pick.mode || 'normal' };
+  }
+  function setPick(index, patch) {
+    setPicks((prev) => ({ ...prev, [index]: { ...prev[index], ...patch } }));
+  }
 
   function addItem() {
     if (ownAttacks) {
@@ -845,16 +1053,10 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
   }
   function removeItem(index) {
     updateSheet({ attacks: items.filter((_, i) => i !== index) });
-    setResults((prev) => {
-      const { [index]: _drop, ...rest } = prev;
-      return rest;
-    });
-    if (pickingIndex === index) setPickingIndex(null);
-  }
-
-  function openTargetPicker(index) {
-    setPickingIndex(index);
-    setPickTargetId((targets[0] && targets[0].id) || '');
+    // The attacks after it move up one, so what was picked and rolled by
+    // position no longer lines up.
+    setResults({});
+    setPicks({});
   }
 
   // An attack plays out in beats: a pause, the dice sound, another pause,
@@ -868,9 +1070,10 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   function confirmAttack(index) {
-    const targetId = pickTargetId;
+    const { targetId, mode } = pickFor(index);
     if (!targets.some((t) => t.id === targetId)) return;
-    setPickingIndex(null);
+    // Advantage and disadvantage are for this one roll; the target stays.
+    setPick(index, { mode: 'normal' });
     setRollingIndex(index);
     setResults((prev) => {
       const { [index]: _drop, ...rest } = prev;
@@ -880,17 +1083,17 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
       setTimeout(playDiceSound, ATTACK_BEAT_MS),
       setTimeout(() => {
         setRollingIndex(null);
-        resolveAttack(index, targetId);
+        resolveAttack(index, targetId, mode);
       }, ATTACK_BEAT_MS * 2),
     ];
   }
 
-  function resolveAttack(index, targetId) {
+  function resolveAttack(index, targetId, mode) {
     const { items, targets } = latest.current;
     const target = targets.find((t) => t.id === targetId);
     const it = items[index];
     if (!target || !it) return;
-    const result = resolveAttackRoll(it, target, { attackerName, playSounds: playSoundOnHit, applyDamage: onAttackTarget });
+    const result = resolveAttackRoll(it, target, { attackerName, playSounds: playSoundOnHit, applyDamage: onAttackTarget, mode });
     setResults((prev) => ({ ...prev, [index]: result }));
   }
 
@@ -924,6 +1127,7 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
           ? bagWeapons
           : [{ id: 'current', name: it.weaponName }, ...bagWeapons];
         const result = results[i];
+        const pick = pickFor(i);
         return (
           <div className="attack-item" key={i}>
             <div className="attack-head">
@@ -1001,36 +1205,36 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
                 />
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-primary btn-block"
-              disabled={targets.length === 0 || rollingIndex !== null}
-              title={targets.length === 0 ? 'No creatures in this world to attack' : 'Pick a creature and roll this attack'}
-              onClick={() => openTargetPicker(i)}
-            >
-              {rollingIndex === i ? 'Rolling…' : 'Roll attack'}
-            </button>
-
-            {pickingIndex === i && (
+            {targets.length > 0 && (
               <div className="attack-target-picker">
-                <select className="field" value={pickTargetId} onChange={(e) => setPickTargetId(e.target.value)}>
+                <RollModeTabs mode={pick.mode} onChange={(mode) => setPick(i, { mode })} disabled={rollingIndex !== null} />
+                <select
+                  className="field"
+                  aria-label="Target"
+                  title="Who this attack is aimed at"
+                  value={pick.targetId}
+                  disabled={rollingIndex !== null}
+                  onChange={(e) => setPick(i, { targetId: e.target.value })}
+                >
                   {targets.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} — {m.hp}/{m.maxHp} HP, AC {acOf(m)}
                     </option>
                   ))}
                 </select>
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => confirmAttack(i)}>
-                  Roll d20
-                </button>
-                <button type="button" className="btn btn-quiet btn-sm" onClick={() => setPickingIndex(null)}>
-                  Cancel
+                <button type="button" className="btn btn-primary btn-block" disabled={rollingIndex !== null} onClick={() => confirmAttack(i)}>
+                  {rollingIndex === i ? 'Rolling…' : pick.mode === 'normal' ? 'Roll d20' : 'Roll 2d20'}
                 </button>
               </div>
             )}
 
             {result && (
               <div className={`attack-result ${result.hit ? 'hit' : 'miss'}`}>
+                {result.throws && (
+                  <b className="attack-result-mode">
+                    {result.mode === 'advantage' ? 'Advantage' : 'Disadvantage'}: rolled {result.throws.join(' and ')}, kept {result.d20}.{' '}
+                  </b>
+                )}
                 {result.hit
                   ? `Hit! d20 ${result.d20} + ${result.toHitMod} = ${result.attackTotal} vs AC ${result.targetAC} on ${result.targetName}. ` +
                     `Damage ${result.damageTotal} → ${result.targetName} now ${result.newHp}/${result.maxHp} HP.`

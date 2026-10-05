@@ -41,10 +41,38 @@ function whatLabel(roll) {
 }
 
 // The cards for rolls that just arrived; each fades after a few seconds.
-export function RollToasts({ toasts, onDismiss }) {
-  if (!toasts.length) return null;
+// The DM's "may they open it?" cards, at the top of the toast stack: a player
+// asked to open a chest (GameView.jsx's chestAsks) and only the DM can say
+// yes. They stay until answered.
+export function ChestAsks({ asks, onAllow, onDeny }) {
+  return asks.map((ask) => (
+    <div key={ask.chestId} className="roll-toast chest-ask" role="group" aria-label={`${ask.playerName} wants to open ${ask.chestName}`}>
+      <span className="roll-avatar" style={{ background: ask.color || 'var(--ember)' }} aria-hidden="true">
+        {(ask.playerName || '?').charAt(0).toUpperCase()}
+      </span>
+      <span className="roll-toast-text">
+        <span>
+          <b>{ask.playerName}</b> wants to open <b>{ask.chestName}</b>
+        </span>
+        {ask.where && <span className="roll-toast-dice">{ask.where}</span>}
+        <span className="chest-ask-actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onDeny(ask.chestId)}>
+            Deny
+          </button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => onAllow(ask.chestId)}>
+            Allow
+          </button>
+        </span>
+      </span>
+    </div>
+  ));
+}
+
+export function RollToasts({ toasts, onDismiss, children = null }) {
+  if (!toasts.length && !children) return null;
   return (
     <div className="roll-toasts" aria-live="polite">
+      {children}
       {toasts.map((r) => (
         <button key={r.id} type="button" className="roll-toast" onClick={() => onDismiss(r.id)} title="Dismiss">
           <span className="roll-avatar" style={{ background: r.color || 'var(--ember)' }} aria-hidden="true">

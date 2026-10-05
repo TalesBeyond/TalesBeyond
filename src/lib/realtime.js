@@ -11,6 +11,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { attachImageExchange } from './imageExchange.js';
+import { canBeHidden } from '../data/visibility.js';
 import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
@@ -37,6 +38,17 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
   if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
+  // The DM just hid a monster, chest or door. Realtime sends no event when a
+  // row stops being visible to a subscriber, so the DM's client names the
+  // token here (`sendConceal`, below) once the row is hidden. The row stays
+  // the authority: the token is only dropped if this client really can no
+  // longer read it, so a made-up 'conceal' from another player does nothing
+  // (and neither does this one on the DM's own second tab).
+  channel.on('broadcast', { event: 'conceal' }, async ({ payload }) => {
+    if (!payload?.id) return;
+    const { data, error } = await supabase.from('entities').select('id').eq('id', payload.id).maybeSingle();
+    if (!error && !data) dispatch({ type: 'REMOVE_ENTITY', id: payload.id });
+  });
   // DM-uploaded pictures travel between browsers on this same channel.
   const images = attachImageExchange(channel);
 
@@ -65,12 +77,13 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
         if (payload.eventType === 'INSERT') {
           dispatch({ type: 'ADD_ENTITY', entity: mapDbEntity(payload.new) });
         } else if (payload.eventType === 'UPDATE') {
-          // A trap the DM just revealed reaches a player as an UPDATE for a
-          // row their client has never seen (it was invisible to them until
-          // now — 20250101000028_traps.sql). ADD_ENTITY upserts, so use it
-          // for traps; every other kind's UPDATE targets an entity the
-          // client already has.
-          const type = payload.new.kind === 'trap' ? 'ADD_ENTITY' : 'UPDATE_ENTITY';
+          // A trap the DM just revealed, or a hidden monster, chest or door
+          // the DM just showed, reaches a player as an UPDATE for a row
+          // their client has never seen (it was invisible to them until
+          // now — 20250101000028_traps.sql, 20250101000059_hidden_tokens_
+          // locked_doors.sql). ADD_ENTITY upserts, so use it for those
+          // kinds; a hero's UPDATE targets an entity the client already has.
+          const type = payload.new.kind === 'trap' || canBeHidden(payload.new) ? 'ADD_ENTITY' : 'UPDATE_ENTITY';
           dispatch(
             type === 'ADD_ENTITY'
               ? { type, entity: mapDbEntity(payload.new) }
@@ -196,5 +209,6 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   };
   unsubscribe.sendRoll = (roll) => channel.send({ type: 'broadcast', event: 'roll', payload: roll });
   unsubscribe.sendArea = (message) => channel.send({ type: 'broadcast', event: 'area', payload: message });
+  unsubscribe.sendConceal = (id) => channel.send({ type: 'broadcast', event: 'conceal', payload: { id } });
   return unsubscribe;
 }

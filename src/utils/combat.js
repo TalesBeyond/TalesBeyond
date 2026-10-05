@@ -66,14 +66,24 @@ export function mobSheetWithAttacks(sheet, name) {
   return base.attacks?.length ? base : { ...base, attacks: defaultMobAttacks(name) };
 }
 
+// How an attack's d20 is thrown: once (normal), or twice keeping the higher
+// (advantage) or the lower (disadvantage). In the order the tabs show them.
+export const ROLL_MODES = [
+  ['disadvantage', 'Disadvantage'],
+  ['normal', 'Normal'],
+  ['advantage', 'Advantage'],
+];
+
 // What an attack would likely do: the chance its d20 + bonus meets the
-// target's AC (a hit is total >= AC, as resolveAttack rolls it), and the
-// average damage on a hit.
-export function attackPreview(attack, target) {
+// target's AC (a hit is total >= AC, as resolveAttack rolls it) — with
+// advantage either of two throws may hit, with disadvantage both must — and
+// the average damage on a hit.
+export function attackPreview(attack, target, mode = 'normal') {
   const weapon = attackWeapon(attack);
   const toHit = totalToHit(weapon, attack.additionalModifier);
   const ac = acOf(target);
-  const hitChance = Math.max(0, Math.min(1, (21 - (ac - toHit)) / 20));
+  const once = Math.max(0, Math.min(1, (21 - (ac - toHit)) / 20));
+  const hitChance = mode === 'advantage' ? 1 - (1 - once) ** 2 : mode === 'disadvantage' ? once ** 2 : once;
   const sides = parseInt(String(weapon.diceType).slice(1), 10) || 4;
   const flat = (weapon.modifier || 0) + (attack.additionalDamage || 0);
   const averageDamage = Math.max(0, (weapon.numberOfDice * (sides + 1)) / 2 + flat);
@@ -93,21 +103,27 @@ export const ATTACK_BEAT_MS = 700;
 // or critical float, the combat-log line, and on a hit the damage (temporary
 // hit points soak it first, 51_temp_hp.sql) handed to applyDamage as an
 // entity patch. Returns what happened, for the sheet to show.
-export function resolveAttackRoll(attack, target, { attackerName, playSounds = false, applyDamage }) {
+// `mode` (ROLL_MODES): with advantage or disadvantage the d20 is thrown twice
+// and the higher or lower one counts; both throws go in `throws`, and every
+// log line says which way the attack was rolled.
+export function resolveAttackRoll(attack, target, { attackerName, playSounds = false, applyDamage, mode = 'normal' }) {
   const weapon = attackWeapon(attack);
   const toHitMod = totalToHit(weapon, attack.additionalModifier);
-  const d20 = rollDie(20);
+  const twice = mode === 'advantage' || mode === 'disadvantage';
+  const throws = twice ? [rollDie(20), rollDie(20)] : [rollDie(20)];
+  const d20 = mode === 'advantage' ? Math.max(...throws) : Math.min(...throws);
   const attackTotal = d20 + toHitMod;
   const targetAC = acOf(target);
   const hit = attackTotal >= targetAC;
-  let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit };
+  const rollMode = twice ? mode : 'normal';
+  let result = { targetName: target.name, d20, toHitMod, attackTotal, targetAC, hit, mode: rollMode, throws: twice ? throws : null };
 
   if (playSounds) playSfx(hit ? 'hit' : 'miss');
 
   emitFx({
     type: 'die',
     value: d20,
-    detail: `${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} = ${attackTotal} vs AC ${targetAC}`,
+    detail: `${twice ? `${rollMode} ${throws.join(' / ')} · ` : ''}${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} = ${attackTotal} vs AC ${targetAC}`,
     caption: hit ? 'Hit' : 'Miss',
   });
   if (hit && d20 === 20) markCrit(target.id);
@@ -115,14 +131,14 @@ export function resolveAttackRoll(attack, target, { attackerName, playSounds = f
   emitFx({
     type: 'log',
     tone: hit ? 'hit' : 'miss',
-    text: `${attackerName || 'Attack'} → ${target.name}: ${attackTotal} vs AC ${targetAC}, ${hit ? 'hit' : 'miss'}${d20 === 20 ? ' (natural 20)' : d20 === 1 ? ' (natural 1)' : ''}`,
+    text: `${attackerName || 'Attack'} → ${target.name} (${twice ? `${rollMode}, ${throws.join(' and ')}` : 'normal'}): ${attackTotal} vs AC ${targetAC}, ${hit ? 'hit' : 'miss'}${d20 === 20 ? ' (natural 20)' : d20 === 1 ? ' (natural 1)' : ''}`,
   });
 
   emitFx({
     type: 'rolled',
     what: `an attack on ${target.name}`,
-    dice: `1d20${toHitMod < 0 ? '−' : '+'}${Math.abs(toHitMod)}`,
-    detail: `${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} · ${hit ? 'hit' : 'miss'} vs AC ${targetAC}`,
+    dice: `1d20${toHitMod < 0 ? '−' : '+'}${Math.abs(toHitMod)} (${rollMode})`,
+    detail: `${twice ? `[${throws.join(' / ')}] keep ` : ''}${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} · ${hit ? 'hit' : 'miss'} vs AC ${targetAC}`,
     total: attackTotal,
     flag: d20 === 20 ? 'Natural 20' : d20 === 1 ? 'Natural 1' : null,
   });
