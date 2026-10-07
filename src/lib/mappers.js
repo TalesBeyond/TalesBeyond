@@ -109,6 +109,8 @@ export function mapDbEntity(row) {
     locked: row.kind === 'door' || row.kind === 'chest' ? row.locked ?? false : undefined,
     // 63_monster_loot.sql — what a defeated monster dropped; null until rolled.
     loot: row.kind === 'mob' ? row.loot ?? null : undefined,
+    // 67_merchant_npcs.sql — a shopkeeper's shelves (data/merchants.js).
+    shop: row.shop ?? undefined,
     ...(row.kind === 'trap'
       ? {
           trapDescription: row.trap_description ?? '',
@@ -157,6 +159,9 @@ export function mapClientEntityToDb(entity, tableId) {
     ...(entity.hidden ? { hidden: true } : {}),
     ...(entity.locked ? { locked: true } : {}),
     ...(entity.loot != null ? { loot: entity.loot } : {}),
+    // Only when set, so placing tokens keeps working on a project that
+    // hasn't run 67_merchant_npcs.sql yet.
+    ...(entity.shop ? { shop: entity.shop } : {}),
     ...(entity.kind === 'trap'
       ? {
           trap_description: entity.trapDescription ?? '',
@@ -198,6 +203,7 @@ export function mapClientEntityPatchToDb(patch) {
   if ('hidden' in patch) db.hidden = Boolean(patch.hidden);
   if ('locked' in patch) db.locked = Boolean(patch.locked);
   if ('loot' in patch) db.loot = patch.loot ?? null;
+  if ('shop' in patch) db.shop = patch.shop ?? null;
   if ('trapDescription' in patch) db.trap_description = patch.trapDescription;
   if ('trapSave' in patch) db.trap_save = patch.trapSave;
   if ('trapFail' in patch) db.trap_fail = patch.trapFail;

@@ -10,6 +10,9 @@ compendium book. Entries without a picture are left as they are.
 weapons/longsword.png      (also used by "+1 Longsword", "+2 Longsword", ...)
 items/rope-hempen-50-feet.png
 monsters/giant-spider.png
+tomes/the-fall-of-the-nine-crowns.png
+foods/bread-loaf.png
+spells/fireball.png
 ```
 
 The file name is the entry's name in lower case, with every run of other

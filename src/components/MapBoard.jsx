@@ -437,10 +437,9 @@ export default function MapBoard({
       }
     }
 
-    // Selecting the "active" island (for placing new tokens) works in any
-    // tool that reaches here — only the drag-to-reposition part below is
-    // restricted to the Edit tool.
-    onSelectIsland(current.id);
+    // Selecting the "active" island (for placing new tokens) is the Edit
+    // tool's: a click on the map during play must not change it.
+    if (tool !== 'play') onSelectIsland(current.id);
     if (!isClick && tool === 'edit' && isHost) {
       // Rounded to whole pixels — see the matching comment in
       // onIslandDragMove; this is the value that actually gets persisted

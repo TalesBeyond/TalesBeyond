@@ -10,6 +10,8 @@ import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab, MobLoot }
 import { PhoneSheet, PhoneSwitch } from './PhoneChrome.jsx';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
+import { ShopTab } from './MerchantShop.jsx';
+import { merchantRole } from '../data/merchants.js';
 
 // A hero's or monster's card on a phone (MOBILE_DESIGN.md): the numbers a
 // turn needs up top — hit points, armor, initiative, speed, conditions, death
@@ -17,8 +19,10 @@ import { entityImageSrc } from '../lib/storedImages.js';
 // edits everything; a hero's own player edits its attacks, spells and bag;
 // everyone else looks. A player sees a monster's name, AC, HP, size and
 // conditions only — and an NPC's the same: the DM runs it with a hero's
-// sections (data/tokenKinds.js), kept where a monster's sheet is.
-export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, heroes, audio, onUpdate, onRemove, onGiveItem, onTakeItem, onClose }) {
+// sections (data/tokenKinds.js), kept where a monster's sheet is. A
+// shopkeeper (data/merchants.js) opens on its Shop, for the DM and for a
+// player alike.
+export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, heroes, customAssets, audio, onUpdate, onRemove, onGiveItem, onTakeItem, onClose }) {
   useImageCacheVersion(); // redraw when a shared picture arrives
   const isHero = entity.kind === 'hero';
   const isNpc = entity.kind === 'npc';
@@ -33,9 +37,11 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
   const sheet = (isHero ? entity.sheet : entity.mobSheet) || defaultCharacterSheet();
   const sheetKey = isHero ? 'sheet' : 'mobSheet';
   const showSheet = isHero || isHost;
+  const role = isNpc ? merchantRole(entity) : null;
 
   const tabs = heroSections
     ? [
+        ...(role ? [{ key: 'shop', label: 'Shop' }] : []),
         { key: 'fight', label: 'Fight' },
         { key: 'magic', label: 'Magic' },
         { key: 'bag', label: 'Bag' },
@@ -49,8 +55,13 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           { key: 'stats', label: 'Stats' },
           { key: 'dm', label: 'DM' },
         ]
-      : [];
-  const [tab, setTab] = useState('fight');
+      : role
+        ? [
+            { key: 'shop', label: 'Shop' },
+            { key: 'fight', label: 'Card' },
+          ]
+        : [];
+  const [tab, setTab] = useState(role ? 'shop' : 'fight');
   // A hint's "Open the Bag" switches to that tab here too.
   useFx((event) => {
     if (event.type === 'cardTab' && tabs.some((t) => t.key === event.key)) setTab(event.key);
@@ -95,8 +106,10 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
     ? `Level ${sheet.level ?? 1} hero${owner ? ` · played by ${owner.id === meId ? 'you' : owner.name}` : ' · no player yet'}`
     : isNpc
       ? isHost
-        ? `Level ${sheet.level ?? 1} NPC${entity.hidden ? ' · hidden from players' : ''}`
-        : 'NPC'
+        ? `Level ${sheet.level ?? 1} ${role ? role.name : 'NPC'}${entity.hidden ? ' · hidden from players' : ''}`
+        : role
+          ? role.name
+          : 'NPC'
       : 'Monster';
 
   return (
@@ -148,7 +161,10 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           </div>
         )}
 
-        {(tab === 'fight' || !showSheet) && (
+        {tab === 'shop' && role && (
+          <div className="phone-creature-body">{paper(<ShopTab entity={entity} isHost={isHost} meId={meId} heroes={heroes} customAssets={customAssets} onUpdate={onUpdate} />)}</div>
+        )}
+        {(tab === 'fight' || (!showSheet && tab !== 'shop')) && (
           <div className="phone-creature-body">
             <MobLoot entity={entity} isHost={isHost} heroes={heroes} meId={meId} onGive={onGiveItem} onTake={onTakeItem} phone />
             {isHost && !isHero && (

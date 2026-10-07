@@ -34,6 +34,8 @@ import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { ambushMonsterCount } from '../data/ambush.js';
 import { totalToHit, totalDamageLabel, acOf, attackWeapon, attackTargetsFor, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 import RollModeTabs from './RollModeTabs.jsx';
+import { ShopTab } from './MerchantShop.jsx';
+import { merchantRole } from '../data/merchants.js';
 
 export default function RightPanel({
   audio,
@@ -52,6 +54,7 @@ export default function RightPanel({
   onGiveChestItem,
   onTakeChestItem,
   customMonsters,
+  customAssets,
   onRevealAmbush,
   collapsed,
   onToggleCollapsed,
@@ -113,6 +116,9 @@ export default function RightPanel({
             entity={selectedEntity}
             isHost={isHost}
             audio={audio}
+            meId={meId}
+            heroes={heroes}
+            customAssets={customAssets}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             entities={entities}
@@ -911,16 +917,24 @@ function MobInspector({ entity, isHost, audio, meId, heroes, onUpdate, onRemove,
 // (`mobSheet`, which players never receive), so a player sees an NPC's public
 // face alone: name, AC, HP, size and conditions. The DM can hide it from
 // players altogether.
-function NpcInspector({ entity, isHost, audio, onUpdate, onRemove, entities, encounterActor }) {
+//
+// A shopkeeper (data/merchants.js) is an NPC with a Shop tab in front of the
+// rest, and it is the one tab a player gets: that is where they buy.
+function NpcInspector({ entity, isHost, audio, meId, heroes, customAssets, onUpdate, onRemove, entities, encounterActor }) {
   const sheet = entity.mobSheet || defaultCharacterSheet();
   const targets = attackTargetsFor(entity, entities);
+  const role = merchantRole(entity);
 
   function updateSheet(patch) {
     onUpdate(entity.id, { mobSheet: { ...sheet, ...patch } });
   }
 
+  const shopTab = role
+    ? [{ key: 'shop', label: 'Shop', content: <ShopTab entity={entity} isHost={isHost} meId={meId} heroes={heroes} customAssets={customAssets} onUpdate={onUpdate} /> }]
+    : [];
   const tabs = isHost
     ? [
+        ...shopTab,
         {
           key: 'battle',
           label: 'Battle',
@@ -931,7 +945,7 @@ function NpcInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
         { key: 'skills', label: 'Skills', content: <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} /> },
         { key: 'dm', label: 'DM', content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this NPC…" /> },
       ]
-    : [];
+    : shopTab;
 
   return (
     <CreatureCard
@@ -943,7 +957,7 @@ function NpcInspector({ entity, isHost, audio, onUpdate, onRemove, entities, enc
       onRemove={isHost ? onRemove : null}
       showStats={isHost}
       showDeathSaves={isHost}
-      typeLine={`NPC · square (${entity.col}, ${entity.row})${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      typeLine={`${role ? role.name : 'NPC'} · square (${entity.col}, ${entity.row})${isHost && entity.hidden ? ' · hidden from players' : ''}`}
       notice={isHost ? <HiddenField entity={entity} onUpdate={onUpdate} style={{ margin: 0 }} /> : null}
       actor={encounterActor}
       tabs={tabs}
@@ -1658,6 +1672,14 @@ function EquipmentCategory({ hint, items, onAdd, onUpdate, onRemove }) {
           <button type="button" className="btn btn-danger btn-sm" onClick={() => onRemove(item.id)}>
             ×
           </button>
+          {/* A tome, a map or a shop's own ware comes with something to
+              read (data/merchants.js's sheetWithGoods). */}
+          {item.description && (
+            <details className="equipment-read">
+              <summary>Read</summary>
+              <p>{item.description}</p>
+            </details>
+          )}
         </div>
       ))}
       <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 4 }} onClick={onAdd}>

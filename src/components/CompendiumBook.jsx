@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CLASSES } from '../data/weapons.js';
 import { ITEM_CATEGORIES } from '../data/items.js';
+import { TOME_CATEGORIES } from '../data/tomes.js';
+import { spellLevelLabel } from '../data/spells.js';
+import { SPELL_LEVELS } from '../data/characterSheet.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
@@ -30,13 +33,30 @@ function saveMonsterImages(images) {
   }
 }
 
-// The weapon, item, and monster compendiums, drawn as one open book. Weapons,
-// Items, and Monsters are the tabs on its fore edge. The left page is the
-// index: the search, the filters and every entry, in a list that scrolls. The
-// right page is the chosen entry, with what the DM can do with it at its
-// foot: Buy or Give it to a hero — the same onGive(hero, item, isBuy) contract
-// the old modals used — or, for a monster, place it on the map. Nothing sits
-// beside the book. (A phone gets one scrolling page instead, see below.)
+// The compendiums, drawn as one open book. Its chapters (CHAPTERS below) are
+// the tabs on its fore edge. The left page is the index: the search, the
+// filters and every entry, in a list that scrolls. The right page is the
+// chosen entry, with what the DM can do with it at its foot: Buy or Give it
+// to a hero — onGiveItem(hero, item, isBuy, kind) — or, for a monster, place
+// it on the map. A spell given to a hero is written into its Spells tab; a
+// tome, food or drink goes in its Bag. Nothing sits beside the book. (A phone
+// gets one scrolling page instead, see below.)
+
+// `tab` is the name on the fore edge, `one` the heading over a single entry.
+const CHAPTERS = [
+  { kind: 'weapons', tab: 'Weapons', chapter: 'Weapons Compendium', noun: 'weapons', one: 'Weapon' },
+  { kind: 'items', tab: 'Items', chapter: 'Item Compendium', noun: 'items', one: 'Item' },
+  { kind: 'monsters', tab: 'Monsters', chapter: 'Monster Compendium', noun: 'monsters', one: 'Monster' },
+  { kind: 'tomes', tab: 'Tomes', chapter: 'Tomes Compendium', noun: 'tomes', one: 'Tome' },
+  { kind: 'foods', tab: 'Food', chapter: 'Food & Drink Compendium', noun: 'food and drink', one: 'Food & Drink' },
+  { kind: 'spells', tab: 'Spells', chapter: 'Spells Compendium', noun: 'spells', one: 'Spell' },
+];
+
+const FOOD_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'food', label: 'Food' },
+  { key: 'drink', label: 'Drink' },
+];
 
 const WEAPON_TYPE_FILTERS = [
   { key: 'all', label: 'All' },
@@ -94,11 +114,14 @@ function shortName(name) {
   return name.split(' ')[0];
 }
 
-export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, onGiveItem, customWeapons, customItems, customMonsters, onAddMonster }) {
+export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, onGiveItem, customWeapons, customItems, customMonsters, customTomes, onAddMonster, onWriteTome }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [crFilter, setCrFilter] = useState('all');
+  const [tomeFilter, setTomeFilter] = useState('all');
+  const [foodFilter, setFoodFilter] = useState('all');
+  const [spellFilter, setSpellFilter] = useState('all');
   const [monsterImages, setMonsterImages] = useState(loadMonsterImages);
   const imageInputRef = useRef(null);
   const [selectedKey, setSelectedKey] = useState(null);
@@ -108,11 +131,21 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const timers = useRef([]);
   const isPhone = usePhoneLayout();
 
-  const { weapons, items, monsters } = useCatalog();
+  const { weapons, items, monsters, tomes, foods, spells } = useCatalog();
   const isWeapons = kind === 'weapons';
   const isMonsters = kind === 'monsters';
-  const chapter = isWeapons ? 'Weapons Compendium' : isMonsters ? 'Monster Compendium' : 'Item Compendium';
-  const noun = isWeapons ? 'weapons' : isMonsters ? 'monsters' : 'items';
+  const { chapter, noun, one } = CHAPTERS.find((c) => c.kind === kind) || CHAPTERS[0];
+
+  // Each chapter's own filter beside the search: a row of chips, or a list
+  // to pick from when there are too many for chips.
+  const filter = {
+    weapons: { chips: WEAPON_TYPE_FILTERS, value: typeFilter, set: setTypeFilter },
+    monsters: { chips: MONSTER_CR_FILTERS, value: crFilter, set: setCrFilter },
+    foods: { chips: FOOD_FILTERS, value: foodFilter, set: setFoodFilter },
+    items: { label: 'Category', all: 'All categories', options: ITEM_CATEGORIES.map((c) => [c, cap(c)]), value: categoryFilter, set: setCategoryFilter },
+    tomes: { label: 'Category', all: 'All categories', options: TOME_CATEGORIES.map((c) => [c, cap(c)]), value: tomeFilter, set: setTomeFilter },
+    spells: { label: 'Level', all: 'All levels', options: SPELL_LEVELS.map((l) => [String(l), spellLevelLabel(l)]), value: spellFilter, set: setSpellFilter },
+  }[kind];
 
   // The DM's custom assets sit alongside the built-in catalog, never instead of it.
   const entries = useMemo(() => {
@@ -174,6 +207,68 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
           image: w.id ? null : entryImage('weapons', w.name, baseWeaponName(w.name)),
         }));
     }
+    if (kind === 'tomes') {
+      return [...tomes, ...(customTomes || [])]
+        .filter((t) => (tomeFilter === 'all' || t.category === tomeFilter) && (!q || t.name.toLowerCase().includes(q) || (t.author || '').toLowerCase().includes(q)))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((t) => ({
+          key: t.id || `t:${t.name}`,
+          name: t.name + (t.id ? ' (Custom)' : ''),
+          sub: `${cap(t.category)}${t.author ? ` · ${t.author}` : ''}`,
+          big: formatCost(t.cost),
+          small: '',
+          detail: t.description,
+          // A DM's own tome can run to pages, with its line breaks kept.
+          lore: true,
+          facts: [
+            ['Category', cap(t.category)],
+            ['Author', t.author || 'Unknown'],
+            ['Cost', formatCost(t.cost)],
+          ],
+          item: t,
+          image: t.id ? null : entryImage('tomes', t.name),
+        }));
+    }
+    if (kind === 'foods') {
+      return foods
+        .filter((f) => (foodFilter === 'all' || f.category === foodFilter) && (!q || f.name.toLowerCase().includes(q)))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((f) => ({
+          key: `f:${f.name}`,
+          name: f.name,
+          sub: cap(f.category),
+          big: formatCost(f.cost),
+          small: '',
+          detail: f.description,
+          facts: [
+            ['Kind', cap(f.category)],
+            ['Cost', formatCost(f.cost)],
+          ],
+          item: f,
+          image: entryImage('foods', f.name),
+        }));
+    }
+    if (kind === 'spells') {
+      return spells
+        .filter((s) => (spellFilter === 'all' || String(s.level) === spellFilter) && (!q || s.name.toLowerCase().includes(q)))
+        .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+        .map((s) => ({
+          key: `s:${s.name}`,
+          name: s.name,
+          sub: `${spellLevelLabel(s.level)} · ${cap(s.school)}`,
+          big: s.level === 0 ? 'Cantrip' : `Lv ${s.level}`,
+          small: formatCost(s.cost),
+          detail: s.description,
+          note: 'Given or bought, it is written into the hero’s Spells tab.',
+          facts: [
+            ['Level', spellLevelLabel(s.level)],
+            ['School', cap(s.school)],
+            ['Cost', formatCost(s.cost)],
+          ],
+          item: s,
+          image: entryImage('spells', s.name),
+        }));
+    }
     const all = [...items, ...(customItems || [])];
     return all
       .filter((it) => (categoryFilter === 'all' || it.category === categoryFilter) && (!q || it.name.toLowerCase().includes(q)))
@@ -193,13 +288,16 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         item: it,
         image: it.id ? null : entryImage('items', it.name),
       }));
-  }, [isWeapons, isMonsters, weapons, items, monsters, customWeapons, customItems, customMonsters, monsterImages, search, typeFilter, categoryFilter, crFilter]);
+  }, [kind, isWeapons, isMonsters, weapons, items, monsters, tomes, foods, spells, customWeapons, customItems, customMonsters, customTomes, monsterImages, search, typeFilter, categoryFilter, crFilter, tomeFilter, foodFilter, spellFilter]);
 
-  const totalCount = isWeapons
-    ? weapons.length + (customWeapons || []).length
-    : isMonsters
-      ? monsters.length + (customMonsters || []).length
-      : items.length + (customItems || []).length;
+  const totalCount = {
+    weapons: weapons.length + (customWeapons || []).length,
+    items: items.length + (customItems || []).length,
+    monsters: monsters.length + (customMonsters || []).length,
+    tomes: tomes.length + (customTomes || []).length,
+    foods: foods.length,
+    spells: spells.length,
+  }[kind];
   const picked = entries.find((e) => e.key === selectedKey) || null;
   // The book opens ready to read: until an entry is picked, the first one in
   // the index is on the right page. (A phone's detail panel stays shut.)
@@ -209,7 +307,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   // A new search or filter starts the index from the top.
   useEffect(() => {
     if (rowsRef.current) rowsRef.current.scrollTop = 0;
-  }, [kind, search, typeFilter, categoryFilter, crFilter]);
+  }, [kind, search, filter.value]);
 
   useEffect(() => {
     rowsRef.current?.querySelector('.cbook-row.selected')?.scrollIntoView({ block: 'nearest' });
@@ -248,8 +346,9 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   function give(isBuy) {
     const hero = heroes.find((h) => h.id === heroId);
     if (!hero || !selected) return;
-    onGiveItem(hero, selected.item, isBuy);
-    setFeedback(`${isBuy ? 'Sold to' : 'Given to'} ${hero.name}`);
+    // False when there was nothing to hand over: the hero knows the spell.
+    const done = onGiveItem(hero, selected.item, isBuy, kind);
+    setFeedback(done === false ? `${hero.name} already knows it` : `${isBuy ? 'Sold to' : kind === 'spells' ? 'Taught to' : 'Given to'} ${hero.name}`);
     timers.current.push(setTimeout(() => setFeedback(''), 2000));
   }
 
@@ -286,7 +385,6 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   // tabs and filters above it, and the chosen entry's details and actions
   // in a panel along the bottom.
   if (isPhone) {
-    const filters = isMonsters ? MONSTER_CR_FILTERS : isWeapons ? WEAPON_TYPE_FILTERS : null;
     return (
       <div className="cphone" role="dialog" aria-modal="true" aria-label={chapter}>
         <header className="cphone-head">
@@ -296,11 +394,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
           </button>
         </header>
         <div className="cphone-tabs" role="tablist" aria-label="Compendium">
-          {[
-            ['weapons', 'Weapons'],
-            ['items', 'Items'],
-            ['monsters', 'Monsters'],
-          ].map(([k, label]) => (
+          {CHAPTERS.map(({ kind: k, tab: label }) => (
             <button
               key={k}
               type="button"
@@ -327,29 +421,23 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
             onChange={(e) => setSearch(e.target.value)}
           />
           <div className="cphone-filter-row">
-            {filters ? (
+            {filter.chips ? (
               <div className="cphone-chips">
-                {filters.map((t) => {
-                  const on = (isMonsters ? crFilter : typeFilter) === t.key;
+                {filter.chips.map((t) => {
+                  const on = filter.value === t.key;
                   return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      aria-pressed={on}
-                      className={on ? 'active' : ''}
-                      onClick={() => (isMonsters ? setCrFilter(t.key) : setTypeFilter(t.key))}
-                    >
+                    <button key={t.key} type="button" aria-pressed={on} className={on ? 'active' : ''} onClick={() => filter.set(t.key)}>
                       {t.label}
                     </button>
                   );
                 })}
               </div>
             ) : (
-              <select className="cphone-select" aria-label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="all">All categories</option>
-                {ITEM_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {cap(c)}
+              <select className="cphone-select" aria-label={filter.label} value={filter.value} onChange={(e) => filter.set(e.target.value)}>
+                <option value="all">{filter.all}</option>
+                {filter.options.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
                   </option>
                 ))}
               </select>
@@ -358,6 +446,11 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
               {entries.length} of {totalCount}
             </span>
           </div>
+          {kind === 'tomes' && onWriteTome && (
+            <button type="button" className="cphone-btn" onClick={onWriteTome}>
+              + Write your own tome
+            </button>
+          )}
         </div>
 
         <div className="cphone-list" role="list">
@@ -407,8 +500,9 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
                   ))}
                 </div>
               )}
-              {selected.detail && <p className="cphone-detail-text">{selected.detail}</p>}
+              {selected.detail && <p className={`cphone-detail-text${selected.lore ? ' lore' : ''}`}>{selected.detail}</p>}
               {selected.monster && <p className="cphone-detail-text cphone-attack">{selected.monster.attack}</p>}
+              {selected.note && <p className="cphone-detail-text cphone-attack">{selected.note}</p>}
               {isMonsters ? (
                 <div className="cphone-actions">
                   {selected.monster && (
@@ -473,7 +567,6 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     );
   }
 
-  const filters = isMonsters ? MONSTER_CR_FILTERS : isWeapons ? WEAPON_TYPE_FILTERS : null;
   const picture = selected ? selected.draft?.imageUrl || selected.image : null;
 
   return (
@@ -504,26 +597,31 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
-                {filters ? (
+                {filter.chips ? (
                   <div className="cbook-filter">
-                    {filters.map((t) => {
-                      const on = (isMonsters ? crFilter : typeFilter) === t.key;
+                    {filter.chips.map((t) => {
+                      const on = filter.value === t.key;
                       return (
-                        <button key={t.key} type="button" aria-pressed={on} className={on ? 'active' : ''} onClick={() => (isMonsters ? setCrFilter(t.key) : setTypeFilter(t.key))}>
+                        <button key={t.key} type="button" aria-pressed={on} className={on ? 'active' : ''} onClick={() => filter.set(t.key)}>
                           {t.label}
                         </button>
                       );
                     })}
                   </div>
                 ) : (
-                  <select className="cbook-select" aria-label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                    <option value="all">All categories</option>
-                    {ITEM_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {cap(c)}
+                  <select className="cbook-select" aria-label={filter.label} value={filter.value} onChange={(e) => filter.set(e.target.value)}>
+                    <option value="all">{filter.all}</option>
+                    {filter.options.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
                       </option>
                     ))}
                   </select>
+                )}
+                {kind === 'tomes' && onWriteTome && (
+                  <button type="button" className="cbook-btn" title="Write a tome of your own, with its story or lore, in Asset Storage" onClick={onWriteTome}>
+                    + Write your own
+                  </button>
                 )}
               </div>
               <div className="cbook-rows" ref={rowsRef}>
@@ -551,7 +649,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
 
             <div className="cbook-page right">
               <div className="cbook-page-head">
-                <span className="cbook-chapter">{isWeapons ? 'Weapon' : isMonsters ? 'Monster' : 'Item'}</span>
+                <span className="cbook-chapter">{one}</span>
                 <span className="cbook-range">{selected ? `${selectedAt + 1} of ${entries.length}` : ''}</span>
               </div>
               {!selected ? (
@@ -588,8 +686,9 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
                     )}
                     {/* A weapon's own line only repeats the boxes above, so it
                         prints who can use it instead. */}
-                    {(selected.text || selected.detail) && <p className="cbook-entry-text">{selected.text || selected.detail}</p>}
+                    {(selected.text || selected.detail) && <p className={`cbook-entry-text${selected.lore ? ' lore' : ''}`}>{selected.text || selected.detail}</p>}
                     {selected.monster && <p className="cbook-entry-text cbook-attack">{selected.monster.attack}</p>}
+                    {selected.note && <p className="cbook-entry-text cbook-attack">{selected.note}</p>}
                   </div>
 
                   {isMonsters ? (
@@ -657,11 +756,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         </div>
 
         <div className="cbook-tabs" role="tablist" aria-label="Compendium">
-          {[
-            ['weapons', 'Weapons'],
-            ['items', 'Items'],
-            ['monsters', 'Monsters'],
-          ].map(([k, label]) => (
+          {CHAPTERS.map(({ kind: k, tab: label }) => (
             <button key={k} type="button" role="tab" aria-selected={kind === k} className={`cbook-tab${kind === k ? ' active' : ''}`} onClick={() => kind !== k && onSwitchKind(k)}>
               {label}
             </button>

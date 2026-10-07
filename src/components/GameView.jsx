@@ -17,6 +17,7 @@ import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
+import { entryGoods, sheetWithGoods, sourceEntries } from '../data/merchants.js';
 import { defaultDroppablesFor, rollDroppables } from '../data/droppables.js';
 import { mobSheetWithAttacks } from '../utils/combat.js';
 import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js';
@@ -588,6 +589,22 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [rulerFeet, setRulerFeet] = useState(null); // live distance from MapBoard's ruler, for the HUD readout
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
+  // What is being typed or picked in a map's settings and not saved yet (the
+  // settings save themselves a moment later), drawn on this screen meanwhile:
+  // { [islandId]: { cols, rows, gridLines } }.
+  const [islandPreviews, setIslandPreviews] = useState(null);
+  // Saved background images still being put away (updateIsland), shown
+  // meanwhile so the map does not flash its old picture: { [islandId]: dataUrl }.
+  const [storingBackgrounds, setStoringBackgrounds] = useState({});
+  const boardIslands = useMemo(() => {
+    let islands = currentLayer.islands;
+    for (const id of new Set([...Object.keys(storingBackgrounds), ...Object.keys(islandPreviews || {})])) {
+      if (!currentLayer.islands[id]) continue;
+      if (islands === currentLayer.islands) islands = { ...islands };
+      islands[id] = { ...islands[id], ...(storingBackgrounds[id] ? { backgroundImage: storingBackgrounds[id] } : null), ...islandPreviews?.[id] };
+    }
+    return islands;
+  }, [currentLayer.islands, islandPreviews, storingBackgrounds]);
 
   // REQ-009 Synced Table Audio. Cloud tables sync audio through Storage. A
   // guest DM keeps their files on their own device only (nothing is uploaded
@@ -1536,6 +1553,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       opened: draft.kind === 'chest' ? false : undefined,
       items: draft.kind === 'chest' ? draft.items || [] : undefined,
       ambushMonsters: draft.kind === 'ambush' ? draft.ambushMonsters || [] : undefined,
+      // A shopkeeper's shelves (data/merchants.js). A plain NPC has none.
+      shop: draft.kind === 'npc' && draft.shop ? draft.shop : undefined,
       // A trap always starts hidden - the DM reveals it deliberately from
       // its inspector.
       ...(draft.kind === 'trap'
@@ -2063,9 +2082,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const hero = state.entities[heroId];
     if (!hero) return;
     const sheet = hero.sheet || defaultCharacterSheet();
-    const equipment = normalizeEquipment(sheet.equipment);
-    const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
-    updateEntity(hero.id, { sheet: { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } } });
+    let nextSheet = sheet;
+    if (item.source === 'tomes' || item.source === 'foods') {
+      // Put in from the Tomes or Food chapter (ChestContentsEditor): it goes
+      // under Other items, the way a shop hands it over, a tome with its
+      // text to read (data/merchants.js).
+      const description = sourceEntries(item.source, catalog, state.customAssets).find((entry) => entry.name === item.name)?.description || '';
+      const goods = entryGoods(item.source, { name: item.name, description });
+      for (let i = 0; i < Math.max(1, item.qty || 1); i++) nextSheet = sheetWithGoods(nextSheet, goods);
+    } else {
+      const equipment = normalizeEquipment(sheet.equipment);
+      const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
+      nextSheet = { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } };
+    }
+    updateEntity(hero.id, { sheet: nextSheet });
     // A defeated monster's loot is given and taken the same way as a
     // chest's contents; it just lives under `loot`.
     const key = chestEntity.kind === 'mob' ? 'loot' : 'items';
@@ -2185,7 +2215,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // island's settings (Mapping → Islands) as its background.
   // An island in a group downloads the whole group as one picture, each
   // island where it sits; uploading that picture back spreads it across the
-  // group the same way (Toolbar's uploadIslandBackground).
+  // group the same way (Toolbar's prepareIslandBackground).
   async function downloadIslandImage(islandId = activeIslandId) {
     const island = currentLayer.islands[islandId];
     if (!island) return;
@@ -2205,9 +2235,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function updateIsland(islandId, patch) {
     if (!isHost) return;
     if (needsSharing(patch.backgroundImage)) {
-      storeImage(patch.backgroundImage)
+      const picked = patch.backgroundImage;
+      setStoringBackgrounds((all) => ({ ...all, [islandId]: picked }));
+      storeImage(picked)
         .then((backgroundImage) => updateIsland(islandId, { ...patch, backgroundImage }))
-        .catch(shareImageFailed);
+        .catch(shareImageFailed)
+        .finally(() =>
+          setStoringBackgrounds((all) => {
+            if (all[islandId] !== picked) return all;
+            const { [islandId]: _stored, ...rest } = all;
+            return rest;
+          }),
+        );
       return;
     }
     dispatch({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
@@ -2232,7 +2271,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   // ---- Synced Table Audio (REQ-009): the DM alone uploads, plays, pauses ----
 
-  const { audio: catalogSongs } = useCatalog();
+  const catalog = useCatalog();
+  const { audio: catalogSongs } = catalog;
   const audioTracks = state.audio?.tracks || {};
   const audioPlayback = state.audio?.playback || { nowPlaying: null, resume: {} };
   const audioUsedBytes = Object.values(audioTracks).reduce((sum, t) => sum + (t.sizeBytes || 0), 0);
@@ -3408,6 +3448,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onRemoveIsland={removeIsland}
         onDownloadIslandImage={downloadIslandImage}
         onUpdateIsland={updateIsland}
+        onPreviewIslands={isHost ? setIslandPreviews : null}
         onDetachIsland={detachIslandFromGroup}
         onRenameGroup={renameGroup}
         onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}
@@ -3469,6 +3510,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           onGiveChestItem={giveChestItemToHero}
           onTakeChestItem={takeChestItem}
           customMonsters={customMonsters}
+          customAssets={state.customAssets}
           onRevealAmbush={revealAmbush}
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
@@ -3526,7 +3568,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           <div className="stage-wrap">
           <div className="stage" ref={stageRef}>
             <MapBoard
-              islands={currentLayer.islands}
+              islands={boardIslands}
               islandOrder={currentLayer.islandOrder}
               islandGroups={currentLayer.islandGroups || {}}
               dayPhase={tablePhase}
@@ -3948,6 +3990,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               players={state.players}
               entities={layerEntities}
               heroes={heroes}
+              customAssets={state.customAssets}
               audio={audioApi}
               onUpdate={updateEntity}
               onRemove={removeEntity}
