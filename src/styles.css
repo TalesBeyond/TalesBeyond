@@ -1531,8 +1531,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 }
 @keyframes roll-toast-in { from { opacity: 0; transform: translateY(-8px); } }
 /* The DM's "may they open this chest?" card: a toast that waits for an answer. */
-.roll-toast.chest-ask { align-items: flex-start; cursor: default; border-color: var(--gold-hi); }
-.chest-ask-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .roll-avatar { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display-caps); font-size: 17px; font-weight: 700; color: #fff; }
 .roll-toast-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.3; }
 .roll-toast-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
@@ -1917,6 +1915,9 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 }
 
 .chest-item-list { margin-bottom: 8px; }
+/* An ambush's waiting monsters: five rows, then it scrolls (AmbushMonstersEditor.jsx sets the height). */
+.ambush-waiting-list { overflow-y: auto; overscroll-behavior: contain; }
+.ambush-waiting-list[style] { padding-right: 6px; }
 /* The chest editor's two ways to add an item, and the placement modal's footer. */
 .chest-add-tabs { margin: 14px 0 10px; }
 .chest-modal-actions { display: flex; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ink-700); }

@@ -542,7 +542,7 @@ export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIsland
 
 // ---------- chests ----------
 
-export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, players, onUpdate, onGive, onTake, onClose }) {
+export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUpdate, onGive, onTake, onClose }) {
   const [editing, setEditing] = useState(false);
   if (!entity) return null;
   const items = entity.items || [];
@@ -561,14 +561,13 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, play
         <ChestOpenButton
           entity={entity}
           isHost={isHost}
-          meId={meId}
-          players={players}
           onUpdate={onUpdate}
           primaryClass="phone-btn-primary phone-btn-block-primary"
           secondaryClass="phone-btn-ghost phone-btn-full"
-          quietClass="phone-btn-ghost phone-btn-full"
         />
-        {!showItems && <p className="phone-caption phone-caption-flush">The DM decides whether it opens. Ask, and you’ll see what’s inside once they allow it.</p>}
+        {!showItems && (
+          <p className="phone-caption phone-caption-flush">{entity.locked ? 'It’s locked. Only the DM can unlock it.' : 'Open it to see what’s inside.'}</p>
+        )}
         {showItems && (
           <section className="phone-chest-items" aria-label="Inside">
             <span className="phone-label">
@@ -600,7 +599,7 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, play
           <>
             <PhoneSwitch
               label="Locked"
-              caption="Players can’t ask to open it until you unlock it."
+              caption="Players can’t open it until you unlock it."
               checked={Boolean(entity.locked)}
               onChange={(locked) => onUpdate(entity.id, { locked })}
             />

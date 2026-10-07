@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useCatalog } from '../lib/catalog.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { newAmbushMonster, clampAmbushQty, MAX_AMBUSH_QTY } from '../data/ambush.js';
@@ -8,6 +8,10 @@ import { newAmbushMonster, clampAmbushQty, MAX_AMBUSH_QTY } from '../data/ambush
 // on a placed ambush's inspector (RightPanel), the way ChestContentsEditor is
 // for a chest. Monsters come from the compendium's bestiary and from this
 // table's own custom monsters (Asset Storage).
+
+// How many waiting monsters show before their list scrolls.
+const VISIBLE_ROWS = 5;
+
 export default function AmbushMonstersEditor({ monsters, customMonsters = [], onAdd, onRemove, onUpdateQty }) {
   const [search, setSearch] = useState('');
   const { monsters: catalogMonsters } = useCatalog();
@@ -28,6 +32,16 @@ export default function AmbushMonstersEditor({ monsters, customMonsters = [], on
 
   const total = monsters.reduce((sum, m) => sum + clampAmbushQty(m.qty), 0);
 
+  // Past VISIBLE_ROWS the waiting list scrolls instead of pushing "Add
+  // monsters" down. Its height is measured (to the top of the first row that
+  // doesn't fit) rather than fixed, since a row is taller on a phone.
+  const listRef = useRef(null);
+  const [listHeight, setListHeight] = useState(null);
+  useLayoutEffect(() => {
+    const rows = listRef.current?.children;
+    setListHeight(rows && rows.length > VISIBLE_ROWS ? rows[VISIBLE_ROWS].offsetTop - rows[0].offsetTop : null);
+  }, [monsters.length]);
+
   return (
     <div className="chest-editor">
       <div className="chest-capacity">
@@ -35,7 +49,7 @@ export default function AmbushMonstersEditor({ monsters, customMonsters = [], on
       </div>
 
       {monsters.length > 0 && (
-        <div className="chest-item-list">
+        <div className="chest-item-list ambush-waiting-list" ref={listRef} style={listHeight ? { maxHeight: listHeight } : undefined}>
           {monsters.map((m) => (
             <div className="chest-item-row" key={m.id}>
               <div className="chest-item-info">

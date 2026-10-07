@@ -30,8 +30,9 @@ export function isLockedDoor(entity) {
 }
 
 // A chest can be locked too. Players still see it and can look at its card,
-// but can't ask the DM to open it until it is unlocked; a locked chest is
-// always a shut one (GameView.jsx's updateEntity keeps the two in step).
+// but can't open it until it is unlocked (an unlocked one they open
+// themselves); a locked chest is always a shut one (GameView.jsx's
+// updateEntity keeps the two in step).
 export function isLockedChest(entity) {
   return entity?.kind === 'chest' && Boolean(entity.locked);
 }

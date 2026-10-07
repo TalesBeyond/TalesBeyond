@@ -134,7 +134,6 @@ export default function RightPanel({
             heroes={heroes}
             isHost={isHost}
             meId={meId}
-            players={players}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             onGiveItem={onGiveChestItem}
@@ -610,65 +609,33 @@ export function TakeChestItemButton({ disabled, onTake }) {
   );
 }
 
-// Opening a chest is the DM's call: a player asks, the DM allows it or not
-// (GameView.jsx's chestAsks). Shared by the phone chest sheet, which passes
-// its own button classes.
-export function ChestOpenButton({
-  entity,
-  isHost,
-  meId,
-  players,
-  onUpdate,
-  primaryClass = 'btn btn-block btn-primary',
-  secondaryClass = 'btn btn-block btn-secondary',
-  quietClass = 'btn btn-block btn-quiet',
-}) {
+// Opens or closes a chest. Anyone may, unless the DM has locked it
+// (data/visibility.js): a locked chest shows players a dead "Locked", and
+// the DM's own button unlocks it as it opens. Shared by the phone chest
+// sheet, which passes its own button classes.
+export function ChestOpenButton({ entity, isHost, onUpdate, primaryClass = 'btn btn-block btn-primary', secondaryClass = 'btn btn-block btn-secondary' }) {
   function toggleOpen() {
     const opened = !entity.opened;
     onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
   }
-  if (isHost || entity.opened) {
-    return (
-      <button type="button" className={entity.opened ? secondaryClass : primaryClass} onClick={toggleOpen}>
-        {entity.opened ? 'Close chest' : entity.locked ? 'Unlock and open chest' : 'Open chest'}
-      </button>
-    );
-  }
-  // Locked (data/visibility.js): there is nothing for a player to ask yet.
-  if (entity.locked) {
+  if (!isHost && !entity.opened && entity.locked) {
     return (
       <button type="button" className={secondaryClass} disabled>
         Locked
       </button>
     );
   }
-  const asker = players?.[entity.openRequestBy] || null;
-  if (!asker) {
-    return (
-      <button type="button" className={primaryClass} onClick={() => onUpdate(entity.id, { openRequestBy: meId })}>
-        Ask the DM to open it
-      </button>
-    );
-  }
-  const mine = asker.id === meId;
   return (
-    <>
-      <button type="button" className={secondaryClass} disabled>
-        {mine ? 'Waiting for the DM…' : `${asker.name} is asking the DM…`}
-      </button>
-      {mine && (
-        <button type="button" className={quietClass} style={{ marginTop: 6 }} onClick={() => onUpdate(entity.id, { openRequestBy: null })}>
-          Cancel
-        </button>
-      )}
-    </>
+    <button type="button" className={entity.opened ? secondaryClass : primaryClass} onClick={toggleOpen}>
+      {entity.opened ? 'Close chest' : entity.locked ? 'Unlock and open chest' : 'Open chest'}
+    </button>
   );
 }
 
 // A chest's inspector, on the same card (PlaceableCard above): whether it is
 // open, its picture, its size and how full it is, then opening it and what
 // is inside.
-function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate, onRemove, onGiveItem, onTakeItem }) {
+function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove, onGiveItem, onTakeItem }) {
   const items = entity.items || [];
   const capacity = chestSlotCount(entity.chestSize);
   const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
@@ -701,7 +668,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate,
         { label: seesInside ? 'Slots filled' : 'Inside', value: seesInside ? `${items.length}/${capacity}` : '?' },
       ]}
     >
-      <ChestOpenButton entity={entity} isHost={isHost} meId={meId} players={players} onUpdate={onUpdate} />
+      <ChestOpenButton entity={entity} isHost={isHost} onUpdate={onUpdate} />
 
       {isHost && entity.opened && (
         <>
@@ -750,9 +717,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate,
         </>
       ) : !isHost && !entity.opened ? (
         <p className="card-tab-note" style={{ margin: '12px 0 0' }}>
-          {locked
-            ? 'It’s locked. Only the DM can unlock it.'
-            : 'The DM decides whether it opens. Ask, and you’ll see what’s inside once they allow it.'}
+          {locked ? 'It’s locked. Only the DM can unlock it.' : 'Open it to see what’s inside.'}
         </p>
       ) : (
         <>

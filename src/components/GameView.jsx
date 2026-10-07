@@ -10,7 +10,7 @@ import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import { islandConditionKeys } from '../data/islandConditions.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
-import { RollToasts, ChestAsks, RollLog, CharacterLog } from './RollFeed.jsx';
+import { RollToasts, RollLog, CharacterLog } from './RollFeed.jsx';
 import { diffHero, mergeActivity } from '../utils/heroActivity.js';
 import { ModeBar, EmptyState, useTourState } from './Hints.jsx';
 import Tour from './Tour.jsx';
@@ -1344,21 +1344,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // 35_player_battle_equipment.sql's trigger.
   const CHEST_TOGGLE_KEYS = ['opened', 'imageUrl'];
 
-  // A player may close a chest, never open one: opening is the DM's call.
-  function isCloseChestPatch(patch) {
-    return patch.opened === false && Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
-  }
-
-  // What a player does instead: ask the DM to open it (`openRequestBy` =
-  // their own id, while nobody else is asking), or withdraw their own ask.
-  // An ask left behind by someone no longer at the table doesn't count.
-  // Mirrored server-side by 60_chest_open_requests.sql.
-  function isChestOpenRequestPatch(entity, patch, playerId) {
-    const keys = Object.keys(patch);
-    if (keys.length !== 1 || keys[0] !== 'openRequestBy') return false;
-    const asker = stateRef.current.players[entity.openRequestBy] ? entity.openRequestBy : null;
-    if (patch.openRequestBy == null) return asker === playerId;
-    return patch.openRequestBy === playerId && !asker && !entity.opened && !entity.locked;
+  // A player opens and closes a chest themselves — it just swings its
+  // `opened` flag and its picture — unless the DM has locked it
+  // (data/visibility.js): a locked chest stays shut for players. Mirrored
+  // server-side by 66_players_open_chests.sql.
+  function isChestTogglePatch(entity, patch) {
+    if (typeof patch.opened !== 'boolean' || !Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key))) return false;
+    return !patch.opened || !entity.locked;
   }
   // Sheet keys a hero's own owner may change — everything its Battle,
   // Spells, Bag and Skills tabs write: Battle Equipment writes `attacks`,
@@ -1473,7 +1465,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // locking a door is never theirs to do.
     if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch) return false;
     if (entity.kind === 'chest') {
-      return isCloseChestPatch(patch) || isChestOpenRequestPatch(entity, patch, playerId) || isTakeChestItemPatch(entity, patch);
+      return isChestTogglePatch(entity, patch) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
@@ -1665,19 +1657,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       return;
     }
     if (entity.kind === 'chest') {
-      // The DM opening a chest answers whoever was asking to open it, and
-      // unlocks it: an open chest is never a locked one.
-      if (isHost && patch.opened) {
-        if (entity.openRequestBy) patch = { ...patch, openRequestBy: null };
-        if (entity.locked && !('locked' in patch)) patch = { ...patch, locked: false };
-      }
-      // Locking a chest shuts it and turns away whoever was asking.
-      if (isHost && patch.locked) {
-        if (entity.opened) patch = { ...patch, opened: false, imageUrl: makeIconDataUrl('chest', entity.color) };
-        if (entity.openRequestBy) patch = { ...patch, openRequestBy: null };
-      }
-      // A player taking their own ask back isn't a "no" from the DM.
-      if (!isHost && 'openRequestBy' in patch && patch.openRequestBy == null) myChestAsksRef.current.delete(id);
+      // The DM opening a locked chest unlocks it: an open chest is never a
+      // locked one.
+      if (isHost && patch.opened && entity.locked && !('locked' in patch)) patch = { ...patch, locked: false };
+      // Locking a chest shuts it.
+      if (isHost && patch.locked && entity.opened) patch = { ...patch, opened: false, imageUrl: makeIconDataUrl('chest', entity.color) };
     }
     // REQ-008: same host-authoritative split as moveEntity — a guest
     // player's only reachable use of this (a chest toggle, per
@@ -1791,70 +1775,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }, [state.entities, isHost]);
   useEffect(() => () => Object.values(pendingLootRef.current).forEach(clearTimeout), []);
-
-  // ---- Asking to open a chest ----
-  // A player can't open a chest: their "Ask the DM to open it" puts their id
-  // on the chest (`openRequestBy`), which reaches the DM like any other
-  // token change. The DM gets a card per ask (RollFeed.jsx's ChestAsks) and
-  // either opens the chest or clears the ask.
-  const chestAsks = isHost
-    ? Object.values(state.entities)
-        .filter((e) => e.kind === 'chest' && !e.opened && state.players[e.openRequestBy])
-        .map((e) => {
-          const player = state.players[e.openRequestBy];
-          return {
-            chestId: e.id,
-            chestName: e.name || 'Chest',
-            playerName: player.name,
-            color: player.color,
-            where: e.layerId !== currentLayerId ? state.layers[e.layerId]?.name || null : null,
-          };
-        })
-    : [];
-
-  function allowChestOpen(chestId) {
-    const chest = state.entities[chestId];
-    if (!chest) return;
-    updateEntity(chestId, { opened: true, imageUrl: makeIconDataUrl('chest-open', chest.color) });
-  }
-
-  function denyChestOpen(chestId) {
-    updateEntity(chestId, { openRequestBy: null });
-  }
-
-  // The DM hears each new ask and gets it in the log.
-  const chestAskKey = chestAsks.map((ask) => `${ask.chestId}:${ask.playerName}`).join('|');
-  const heardChestAsksRef = useRef(new Set());
-  useEffect(() => {
-    const heard = heardChestAsksRef.current;
-    heardChestAsksRef.current = new Set(chestAsks.map((ask) => ask.chestId));
-    const fresh = chestAsks.filter((ask) => !heard.has(ask.chestId));
-    if (!fresh.length) return;
-    for (const ask of fresh) emitFx({ type: 'log', text: `${ask.playerName} asks to open ${ask.chestName}` });
-    playSfx('page');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chestAskKey]);
-
-  // The player hears back: an ask of theirs that went away without the chest
-  // opening was turned down. (One they cancelled is dropped from the set in
-  // updateEntity first; one the DM allowed shows the loot reveal instead.)
-  const myChestAsksRef = useRef(new Set());
-  useEffect(() => {
-    if (isHost) return;
-    const mine = myChestAsksRef.current;
-    for (const e of Object.values(visibleEntities)) {
-      if (e.kind === 'chest' && e.openRequestBy === me.id) mine.add(e.id);
-    }
-    for (const id of [...mine]) {
-      const chest = visibleEntities[id];
-      if (chest?.openRequestBy === me.id) continue;
-      mine.delete(id);
-      if (!chest || chest.opened) continue;
-      emitFx({ type: 'banner', title: 'Still shut', sub: `The DM didn’t let you open ${chest.name || 'the chest'}`, tone: 'enemy' });
-      emitFx({ type: 'log', text: `The DM didn’t let you open ${chest.name || 'the chest'}` });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleEntities]);
 
   // Roll for Initiative: DM-only, rolls a d20 for every selected hero/mob
   // and stamps entity.initiativeRoll/initiativeTurn via the same updateEntity
@@ -3705,9 +3625,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))}>
-            {chestAsks.length > 0 && <ChestAsks asks={chestAsks} onAllow={allowChestOpen} onDeny={denyChestOpen} />}
-          </RollToasts>
+          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
           {/* While a tool changes what a press does, say so across the top of
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
@@ -4016,7 +3934,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               isHost={isHost}
               heroes={heroes}
               meId={me.id}
-              players={state.players}
               onUpdate={updateEntity}
               onGive={giveChestItemToHero}
               onTake={takeChestItem}

@@ -107,8 +107,6 @@ export function mapDbEntity(row) {
     hidden: row.hidden ?? false,
     // A door or a chest can be locked (65_locked_chests.sql for the chest).
     locked: row.kind === 'door' || row.kind === 'chest' ? row.locked ?? false : undefined,
-    // 60_chest_open_requests.sql — the player asking the DM to open this chest.
-    openRequestBy: row.kind === 'chest' ? row.open_request_by ?? null : undefined,
     // 63_monster_loot.sql — what a defeated monster dropped; null until rolled.
     loot: row.kind === 'mob' ? row.loot ?? null : undefined,
     ...(row.kind === 'trap'
@@ -199,7 +197,6 @@ export function mapClientEntityPatchToDb(patch) {
   if ('items' in patch) db.chest_items = patch.items;
   if ('hidden' in patch) db.hidden = Boolean(patch.hidden);
   if ('locked' in patch) db.locked = Boolean(patch.locked);
-  if ('openRequestBy' in patch) db.open_request_by = patch.openRequestBy || null;
   if ('loot' in patch) db.loot = patch.loot ?? null;
   if ('trapDescription' in patch) db.trap_description = patch.trapDescription;
   if ('trapSave' in patch) db.trap_save = patch.trapSave;
