@@ -105,7 +105,8 @@ export function mapDbEntity(row) {
     items: row.kind === 'chest' ? row.chest_items ?? [] : undefined,
     // 59_hidden_tokens_locked_doors.sql — absent (so false) before it is applied.
     hidden: row.hidden ?? false,
-    locked: row.kind === 'door' ? row.locked ?? false : undefined,
+    // A door or a chest can be locked (65_locked_chests.sql for the chest).
+    locked: row.kind === 'door' || row.kind === 'chest' ? row.locked ?? false : undefined,
     // 60_chest_open_requests.sql — the player asking the DM to open this chest.
     openRequestBy: row.kind === 'chest' ? row.open_request_by ?? null : undefined,
     // 63_monster_loot.sql — what a defeated monster dropped; null until rolled.

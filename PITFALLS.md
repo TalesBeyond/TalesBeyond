@@ -76,7 +76,9 @@ hero's character sheet (level/abilities/saves/skills), chest contents and
 "Give to a player," DM notes and mob droppables (already were),
 layers/islands (already were), and importing a `.json` table (overwrites
 the whole shared state). A monster stays DM-only too, except that its
-`hp` can be reduced by a player's attack roll.
+`hp` can be reduced by a player's attack roll — and so does an NPC
+(`64_npc_tokens.sql`), whose hero-style sheet lives in the DM-only
+`mobSheet` like a monster's, never in `sheet`.
 
 **Where it's enforced:**
 - `GameView.jsx` — `canMoveEntity(entity)` and `canUpdateEntity(entity,

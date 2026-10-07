@@ -408,6 +408,10 @@ input, select {
 }
 
 .btn:active { transform: translateY(1px); }
+/* A button that can't be pressed right now looks it. */
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled:hover { filter: none; }
+.btn:disabled:active { transform: none; }
 
 .btn-primary {
   background: var(--ember);
@@ -1913,6 +1917,10 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 }
 
 .chest-item-list { margin-bottom: 8px; }
+/* The chest editor's two ways to add an item, and the placement modal's footer. */
+.chest-add-tabs { margin: 14px 0 10px; }
+.chest-modal-actions { display: flex; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ink-700); }
+.chest-modal-pending { margin: 8px 0 0; font-size: 12px; line-height: 1.4; color: var(--gold-hi); }
 
 .chest-item-row {
   display: grid;
@@ -4156,8 +4164,7 @@ button.card-plaque-value { border-style: solid; }
 }
 button.card-notes { border-style: solid; }
 .card-notes-input { width: 100%; min-height: 96px; padding: 8px 10px; font-family: var(--font-display); font-size: 15px; font-style: italic; resize: vertical; }
-/* Remove from the table: a trash icon at the top of the card, then a
-   "Remove" to confirm. */
+/* Remove from the table: a trash icon at the top of the card. */
 .card-remove-icon {
   flex-shrink: 0;
   width: 32px;
@@ -4173,33 +4180,8 @@ button.card-notes { border-style: solid; }
 }
 .card-remove-icon:hover,
 .card-remove-icon:focus-visible { border-color: #c0392b; background: #9b2d20; color: #fbeccb; }
-.card-remove-ask { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
-.card-remove-yes {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: #9b2d20;
-  color: #fbeccb;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.card-remove-no {
-  width: 32px;
-  height: 32px;
-  border: 1px solid rgba(201, 162, 74, 0.45);
-  border-radius: 999px;
-  background: transparent;
-  color: #f2e9d4;
-  font-size: 16px;
-  cursor: pointer;
-}
 .phone-creature-remove { align-self: flex-start; margin-left: auto; }
-.phone-creature-remove.card-remove-icon,
-.phone-creature-remove .card-remove-no { width: 44px; height: 44px; }
-.phone-creature-remove .card-remove-yes { min-height: 44px; padding: 0 16px; font-size: 14px; }
+.phone-creature-remove.card-remove-icon { width: 44px; height: 44px; }
 
 .target-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; background: var(--ink-950); border: 1px solid var(--ink-700); border-radius: 12px; }
 .target-preview div { display: flex; flex-direction: column; gap: 2px; }
@@ -5278,6 +5260,22 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 }
 .hint-tight { margin-top: 8px; padding: 8px 10px; }
 .card-notice { margin: 4px 12px 8px; }
+
+/* ---- Placeable card: a door's, chest's, trap's or ambush's inspector on the creature card (RightPanel.jsx's PlaceableCard) ---- */
+.placeable-card .target-card-type { padding-top: 10px; }
+.placeable-card-art { height: 170px; background-color: #2f2318; }
+/* A picture (data/placeableArt.js) fills the frame; the token icon doesn't. */
+.placeable-card-art.painted { background-size: cover; }
+/* The lock and visibility icons on its title bar: lit when locked / hidden. */
+.card-toggle-icon { flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(201, 162, 74, 0.45); border-radius: 999px; background: transparent; color: #bfae86; cursor: pointer; }
+button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-color: #f2c14e; color: #f1e7cf; outline: none; }
+.card-toggle-icon.on { border-color: #f2c14e; background: rgba(242, 193, 78, 0.18); color: #f2c14e; }
+.card-toggle-icon.static { cursor: default; }
+.game-screen.phone .card-toggle-icon { width: 44px; height: 44px; }
+/* A plaque holding words (a size, where a door leads) rather than a number. */
+.placeable-plaque-text { font-size: 15px; line-height: 1.2; overflow-wrap: anywhere; }
+.placeable-card-body { min-height: 0; border-top: 1px solid var(--card-rule); }
+.placeable-card-body .field-label:first-child { margin-top: 0; }
 /* The DM's "Hidden from players" tick on a monster's card, in the card's ink. */
 .target-card .checkbox-row { justify-content: center; color: var(--card-ink); }
 /* On the paper creature cards, a hint reads in the card's own ink. */

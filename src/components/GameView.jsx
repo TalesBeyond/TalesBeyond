@@ -19,6 +19,7 @@ import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, i
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
 import { defaultDroppablesFor, rollDroppables } from '../data/droppables.js';
 import { mobSheetWithAttacks } from '../utils/combat.js';
+import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js';
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
@@ -793,13 +794,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Roll for Initiative's participant pools — unlike `heroes` above, scoped
   // to whatever the host is currently looking at: an encounter roll is for
   // the scene in front of them, not every hero/monster across every layer.
-  // There's no separate "NPC" kind in this app (see mob), so a "monster or
-  // NPC" token is just any mob-kind entity — a DM already renames/reskins
-  // one for either purpose via Asset Storage.
+  // Monsters and NPCs (data/tokenKinds.js) share the second pool: both are
+  // the DM's to run.
   const initiativeHeroes = Object.values(layerEntities)
     .filter((e) => e.kind === 'hero')
     .map((e) => ({ ...e, ownerName: state.players[e.ownerId]?.name }));
-  const initiativeMobs = Object.values(layerEntities).filter((e) => e.kind === 'mob');
+  const initiativeMobs = Object.values(layerEntities).filter(isDmCreature);
 
   // In cloud mode, subscribe to live changes from every other connected
   // browser for as long as this screen is mounted (SPEC.md §9.5). One
@@ -1040,7 +1040,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // (the DM for any creature, a player for their own hero); otherwise the
   // template starts wherever it is first aimed.
   function openAreaPicker(entity) {
-    const caster = entity && (entity.kind === 'hero' || entity.kind === 'mob') && canMoveEntity(entity) ? entity : null;
+    const caster = isCreature(entity) && canMoveEntity(entity) ? entity : null;
     setAreaPicker({ entityId: caster?.id || null });
   }
   function startArea(choice) {
@@ -1358,7 +1358,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (keys.length !== 1 || keys[0] !== 'openRequestBy') return false;
     const asker = stateRef.current.players[entity.openRequestBy] ? entity.openRequestBy : null;
     if (patch.openRequestBy == null) return asker === playerId;
-    return patch.openRequestBy === playerId && !asker && !entity.opened;
+    return patch.openRequestBy === playerId && !asker && !entity.opened && !entity.locked;
   }
   // Sheet keys a hero's own owner may change — everything its Battle,
   // Spells, Bag and Skills tabs write: Battle Equipment writes `attacks`,
@@ -1478,7 +1478,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
     }
-    if (entity.kind === 'mob') {
+    // A monster or an NPC takes the damage of a player's attack; only a
+    // monster drops loot.
+    if (isDmCreature(entity)) {
       return canDamageMob(entity, patch) || isTakeMobLootPatch(entity, patch);
     }
     return false;
@@ -1516,7 +1518,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       size: place.size,
       hp: draft.maxHp,
       maxHp: draft.maxHp,
-      armorClass: draft.kind === 'mob' ? draft.armorClass ?? 10 : undefined,
+      armorClass: draft.kind === 'mob' || draft.kind === 'npc' ? draft.armorClass ?? 10 : undefined,
       // Left unassigned (rather than defaulting to the placing DM) since
       // only the DM places tokens now — the DM assigns a hero to whichever
       // player controls it afterward, via the Owner field on its inspector.
@@ -1526,10 +1528,16 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       targetLayerId: draft.kind === 'door' ? draft.targetLayerId ?? null : null,
       targetCol: place.targetCol ?? null,
       targetRow: place.targetRow ?? null,
-      conditions: draft.kind === 'hero' || draft.kind === 'mob' ? [] : undefined,
-      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
-      // Every monster is placed with something to attack with.
-      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
+      conditions: isCreatureKind(draft.kind) ? [] : undefined,
+      dmNotes: isCreatureKind(draft.kind) ? draft.dmNotes ?? '' : undefined,
+      // Every monster is placed with something to attack with. An NPC gets a
+      // hero's blank sheet, kept where a monster's is (data/tokenKinds.js).
+      mobSheet:
+        draft.kind === 'mob'
+          ? mobSheetWithAttacks(draft.mobSheet, draft.name)
+          : draft.kind === 'npc'
+            ? draft.mobSheet || defaultCharacterSheet()
+            : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
@@ -1657,8 +1665,17 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       return;
     }
     if (entity.kind === 'chest') {
-      // The DM opening a chest answers whoever was asking to open it.
-      if (isHost && patch.opened && entity.openRequestBy) patch = { ...patch, openRequestBy: null };
+      // The DM opening a chest answers whoever was asking to open it, and
+      // unlocks it: an open chest is never a locked one.
+      if (isHost && patch.opened) {
+        if (entity.openRequestBy) patch = { ...patch, openRequestBy: null };
+        if (entity.locked && !('locked' in patch)) patch = { ...patch, locked: false };
+      }
+      // Locking a chest shuts it and turns away whoever was asking.
+      if (isHost && patch.locked) {
+        if (entity.opened) patch = { ...patch, opened: false, imageUrl: makeIconDataUrl('chest', entity.color) };
+        if (entity.openRequestBy) patch = { ...patch, openRequestBy: null };
+      }
       // A player taking their own ask back isn't a "no" from the DM.
       if (!isHost && 'openRequestBy' in patch && patch.openRequestBy == null) myChestAsksRef.current.delete(id);
     }
@@ -3277,13 +3294,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     moveEntity(entity.id, col, row, islandId);
     // Landing a hero on a door's square offers to walk through it, as a drag
     // does — and so does the DM landing a hero or monster on one.
-    const canUseDoor = isHost ? entity.kind === 'hero' || entity.kind === 'mob' : entity.kind === 'hero';
+    const canUseDoor = isHost ? isCreature(entity) : entity.kind === 'hero';
     const door = canUseDoor ? doorAt(islandId, col, row) : null;
     if (door) enterDoor(door, entity);
   }
   function handleTapCell(islandId, col, row) {
     const entity = selectedEntity;
-    if (!entity || (entity.kind !== 'hero' && entity.kind !== 'mob') || !canMoveEntity(entity)) return false;
+    if (!isCreature(entity) || !canMoveEntity(entity)) return false;
     if (entity.islandId === islandId && entity.col === col && entity.row === row) return false;
     if (encounter && actor?.id === entity.id) {
       setPlannedMove({ entityId: entity.id, islandId, col, row });
@@ -3319,7 +3336,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
   // On the acting hero's turn, a creature they could attack gets a Target button.
   const canTargetSelected = Boolean(
-    encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && selectedEntity.kind === 'mob'
+    encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && isDmCreature(selectedEntity)
   );
 
   const plannedMoveForMap =
@@ -3346,13 +3363,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const entity = selectedEntity;
     const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
     const canEditLife = isHost || (entity.kind === 'hero' && entity.ownerId === me.id);
-    const sheet = entity.kind === 'chest' ? 'chest' : entity.kind === 'hero' || entity.kind === 'mob' ? 'creature' : 'inspect';
+    const sheet = entity.kind === 'chest' ? 'chest' : isCreature(entity) ? 'creature' : 'inspect';
     tokenActions = [
       { id: 'open', label: `${entity.name}. Open its card`, icon: <PhoneIcon name="sheet" size={20} />, onPress: () => setPhoneSheet(sheet) },
       canTargetSelected && { id: 'target', label: `Target ${entity.name}`, icon: <PhoneIcon name="sword" size={20} strokeWidth={2} />, primary: true, onPress: () => setPhoneSheet('target') },
       canEditLife && hasHp && { id: 'hp-down', label: `${entity.name} loses 1 hit point`, icon: <PhoneIcon name="minus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.max(0, entity.hp - 1) }) },
       canEditLife && hasHp && { id: 'hp-up', label: `${entity.name} gains 1 hit point`, icon: <PhoneIcon name="plus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.min(entity.maxHp, entity.hp + 1) }) },
-      (entity.kind === 'hero' || entity.kind === 'mob') && canMoveEntity(entity) && { id: 'area', label: `Area of effect from ${entity.name}`, icon: <PhoneIcon name="area" size={20} />, onPress: () => openAreaPicker(entity) },
+      isCreature(entity) && canMoveEntity(entity) && { id: 'area', label: `Area of effect from ${entity.name}`, icon: <PhoneIcon name="area" size={20} />, onPress: () => openAreaPicker(entity) },
     ].filter(Boolean);
   }
 
@@ -4006,7 +4023,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onClose={() => setPhoneSheet(null)}
             />
           )}
-          {phoneSheet === 'creature' && selectedEntity && (selectedEntity.kind === 'hero' || selectedEntity.kind === 'mob') && (
+          {phoneSheet === 'creature' && isCreature(selectedEntity) && (
             <PhoneCreatureSheet
               entity={selectedEntity}
               isHost={isHost}

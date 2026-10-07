@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getIslandCondition, islandConditionKeys } from '../data/islandConditions.js';
 import { PALETTES } from '../state/theme.js';
 import { CONDITIONS } from '../data/conditions.js';
-import { attackPreview, resolveAttackRoll, weaponStatsFor, ATTACK_BEAT_MS } from '../utils/combat.js';
+import { attackPreview, resolveAttackRoll, weaponStatsFor, acOf, ATTACK_BEAT_MS } from '../utils/combat.js';
+import { isCreature } from '../data/tokenKinds.js';
 import RollModeTabs from './RollModeTabs.jsx';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
@@ -64,9 +65,9 @@ export function PhoneIcon({ name, size = 22, strokeWidth = 1.8 }) {
   );
 }
 
-// Heroes and monsters standing on an island, for the chips and the atlas.
+// Heroes, monsters and NPCs standing on an island, for the chips and the atlas.
 function occupantsOf(entities, islandId) {
-  return Object.values(entities || {}).filter((e) => e.islandId === islandId && (e.kind === 'hero' || e.kind === 'mob'));
+  return Object.values(entities || {}).filter((e) => e.islandId === islandId && isCreature(e));
 }
 
 function islandBounds(layer) {
@@ -309,7 +310,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
         })}
         {Object.values(entities || {}).map((e) => {
           const i = layer.islands[e.islandId];
-          if (!i || (e.kind !== 'hero' && e.kind !== 'mob')) return null;
+          if (!i || !isCreature(e)) return null;
           const p = place(i.x + (e.col + 0.5) * i.cellSize, i.y + (e.row + 0.5) * i.cellSize);
           return (
             <span
@@ -449,7 +450,7 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
               <span className="phone-token-hp">
                 {hp}/{target.maxHp}
               </span>
-              <span className="phone-token-ac">AC {target.kind === 'hero' ? target.sheet?.armorClass ?? 10 : target.armorClass ?? 10}</span>
+              <span className="phone-token-ac">AC {acOf(target)}</span>
             </span>
             <span className="phone-token-hint">{conditions.length ? conditions.join(' · ') : 'No conditions'}</span>
           </div>
@@ -597,6 +598,12 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, play
         )}
         {isHost && (
           <>
+            <PhoneSwitch
+              label="Locked"
+              caption="Players can’t ask to open it until you unlock it."
+              checked={Boolean(entity.locked)}
+              onChange={(locked) => onUpdate(entity.id, { locked })}
+            />
             <PhoneSwitch
               label="Hidden from players"
               caption="Gone from every player’s map until you show it again."

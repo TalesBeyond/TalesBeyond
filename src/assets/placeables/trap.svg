@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" role="img" aria-label="Iron spikes rising from a pit in a stone floor">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="70%" r="80%">
+      <stop offset="0" stop-color="#5a2a22"/>
+      <stop offset="0.5" stop-color="#2c1a17"/>
+      <stop offset="1" stop-color="#100c0b"/>
+    </radialGradient>
+    <radialGradient id="pit" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#000"/>
+      <stop offset="0.75" stop-color="#140806"/>
+      <stop offset="1" stop-color="#3a1712"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff6a3d" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ff6a3d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b3d42"/>
+      <stop offset="0.45" stop-color="#d7dbe2"/>
+      <stop offset="1" stop-color="#4a4d53"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f4a44"/>
+      <stop offset="1" stop-color="#7a746a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="200" fill="url(#bg)"/>
+
+  <!-- flagstone floor, seen from above and a little ahead -->
+  <path d="M0 200 L60 112 H340 L400 200 Z" fill="url(#floor)" stroke="#1b1917" stroke-width="2"/>
+  <g stroke="#2b2825" stroke-width="2" opacity="0.8">
+    <line x1="34" y1="150" x2="366" y2="150"/>
+    <line x1="14" y1="180" x2="386" y2="180"/>
+    <line x1="120" y1="112" x2="84" y2="200"/>
+    <line x1="280" y1="112" x2="316" y2="200"/>
+    <line x1="200" y1="112" x2="200" y2="124"/>
+    <line x1="200" y1="182" x2="200" y2="200"/>
+  </g>
+
+  <ellipse cx="200" cy="150" rx="150" ry="52" fill="url(#glow)"/>
+  <!-- the pit -->
+  <ellipse cx="200" cy="152" rx="112" ry="30" fill="url(#pit)" stroke="#120a08" stroke-width="3"/>
+
+  <!-- spikes, back row then front -->
+  <g fill="url(#steel)" stroke="#17181a" stroke-width="2" stroke-linejoin="round">
+    <path d="M128 148 L138 74 L148 148 Z"/>
+    <path d="M176 144 L188 52 L200 144 Z"/>
+    <path d="M226 144 L236 62 L246 144 Z"/>
+    <path d="M262 150 L272 84 L282 150 Z"/>
+  </g>
+  <g fill="url(#steel)" stroke="#17181a" stroke-width="2" stroke-linejoin="round">
+    <path d="M104 162 L116 96 L128 162 Z"/>
+    <path d="M148 168 L162 70 L176 168 Z"/>
+    <path d="M196 172 L210 42 L224 172 Z"/>
+    <path d="M240 168 L254 78 L268 168 Z"/>
+    <path d="M276 162 L288 100 L300 162 Z"/>
+  </g>
+  <!-- the pit's near lip, over the spikes' feet -->
+  <path d="M88 152 A112 30 0 0 0 312 152 L312 160 A112 30 0 0 1 88 160 Z" fill="#5d574f" stroke="#1b1917" stroke-width="2"/>
+
+  <!-- blood on the tallest -->
+  <path d="M207 62 L210 42 L213 62 Q215 78 210 84 Q205 78 207 62 Z" fill="#a3211a"/>
+  <path d="M209 84 Q211 96 210 104" fill="none" stroke="#a3211a" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

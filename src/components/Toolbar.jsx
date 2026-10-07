@@ -2219,7 +2219,9 @@ function InitiativeGroup({ title, entities, checkedIds, onToggle, onSetAll, empt
             <label className={`initiative-pick${checkedIds.has(e.id) ? ' checked' : ''}`} key={e.id}>
               <input type="checkbox" checked={checkedIds.has(e.id)} onChange={() => onToggle(e.id)} />
               <span>{e.name}</span>
-              {(e.ownerName || e.hidden) && <small>{e.ownerName || 'hidden from players'}</small>}
+              {(e.ownerName || e.hidden || e.kind === 'npc') && (
+                <small>{e.ownerName || [e.kind === 'npc' && 'NPC', e.hidden && 'hidden from players'].filter(Boolean).join(' · ')}</small>
+              )}
             </label>
           ))}
         </div>

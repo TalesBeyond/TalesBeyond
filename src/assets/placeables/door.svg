@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" role="img" aria-label="An arched wooden door in a stone wall">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="55%" r="75%">
+      <stop offset="0" stop-color="#4b4741"/>
+      <stop offset="0.6" stop-color="#2a2723"/>
+      <stop offset="1" stop-color="#121110"/>
+    </radialGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8d877b"/>
+      <stop offset="1" stop-color="#5c574e"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6d421f"/>
+      <stop offset="0.5" stop-color="#a8703a"/>
+      <stop offset="1" stop-color="#6d421f"/>
+    </linearGradient>
+    <linearGradient id="iron" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7d7a74"/>
+      <stop offset="1" stop-color="#34322f"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="200" fill="url(#bg)"/>
+  <!-- wall courses -->
+  <g stroke="#0d0c0b" stroke-width="2" opacity="0.5">
+    <line x1="0" y1="50" x2="400" y2="50"/><line x1="0" y1="96" x2="400" y2="96"/><line x1="0" y1="142" x2="400" y2="142"/>
+    <line x1="60" y1="50" x2="60" y2="96"/><line x1="100" y1="96" x2="100" y2="142"/><line x1="40" y1="142" x2="40" y2="186"/>
+    <line x1="340" y1="50" x2="340" y2="96"/><line x1="300" y1="96" x2="300" y2="142"/><line x1="360" y1="142" x2="360" y2="186"/>
+    <line x1="90" y1="4" x2="90" y2="50"/><line x1="310" y1="4" x2="310" y2="50"/>
+  </g>
+  <rect x="0" y="184" width="400" height="16" fill="#1a1816"/>
+  <ellipse cx="200" cy="188" rx="96" ry="8" fill="#000" opacity="0.5"/>
+
+  <!-- stone arch -->
+  <path d="M134 186 V88 Q134 18 200 18 Q266 18 266 88 V186 Z" fill="url(#stone)" stroke="#1c1a17" stroke-width="3" stroke-linejoin="round"/>
+  <g stroke="#3d3a34" stroke-width="2">
+    <line x1="134" y1="120" x2="150" y2="120"/><line x1="134" y1="152" x2="150" y2="152"/>
+    <line x1="250" y1="120" x2="266" y2="120"/><line x1="250" y1="152" x2="266" y2="152"/>
+    <line x1="139" y1="64" x2="154" y2="72"/><line x1="261" y1="64" x2="246" y2="72"/>
+    <line x1="166" y1="27" x2="174" y2="42"/><line x1="234" y1="27" x2="226" y2="42"/>
+    <line x1="200" y1="18" x2="200" y2="34"/>
+  </g>
+
+  <!-- door -->
+  <path d="M150 186 V90 Q150 34 200 34 Q250 34 250 90 V186 Z" fill="url(#wood)" stroke="#2a1a0d" stroke-width="3" stroke-linejoin="round"/>
+  <g stroke="#4a2c14" stroke-width="2" opacity="0.8">
+    <line x1="175" y1="42" x2="175" y2="186"/>
+    <line x1="200" y1="34" x2="200" y2="186"/>
+    <line x1="225" y1="42" x2="225" y2="186"/>
+  </g>
+  <!-- hinge straps -->
+  <g fill="url(#iron)" stroke="#161514" stroke-width="2">
+    <path d="M150 78 H202 L208 83 L202 88 H150 Z"/>
+    <path d="M150 150 H202 L208 155 L202 160 H150 Z"/>
+  </g>
+  <g fill="#cfcabd">
+    <circle cx="160" cy="83" r="2.2"/><circle cx="180" cy="83" r="2.2"/><circle cx="196" cy="83" r="2.2"/>
+    <circle cx="160" cy="155" r="2.2"/><circle cx="180" cy="155" r="2.2"/><circle cx="196" cy="155" r="2.2"/>
+  </g>
+  <!-- ring handle -->
+  <circle cx="232" cy="112" r="4" fill="#34322f" stroke="#161514" stroke-width="1.5"/>
+  <circle cx="232" cy="122" r="8" fill="none" stroke="#d9b45a" stroke-width="3.5"/>
+</svg>

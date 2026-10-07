@@ -237,7 +237,7 @@ export async function fetchTableSnapshot(tableId) {
       ...mapDbEntity(row),
       dmNotes: dmData?.dmNotes ?? '',
       droppables: row.kind === 'mob' ? dmData?.droppables ?? [] : undefined,
-      mobSheet: row.kind === 'mob' ? dmData?.mobSheet : undefined,
+      mobSheet: row.kind === 'mob' || row.kind === 'npc' ? dmData?.mobSheet : undefined,
     };
     entityOrder.push(row.id);
   }
@@ -364,7 +364,7 @@ export async function removeIslandRemote(islandId) {
 export async function addEntityRemote(tableId, entity) {
   const db = mapClientEntityToDb(entity, tableId);
   must(await supabase.from('entities').insert(db), 'addEntity');
-  if (entity.kind === 'hero' || entity.kind === 'mob') {
+  if (entity.kind === 'hero' || entity.kind === 'mob' || entity.kind === 'npc') {
     must(
       await supabase.from('entity_dm_data').insert({
         entity_id: entity.id,

@@ -22,9 +22,18 @@ export function rollDie(sides) {
   return 1 + Math.floor(Math.random() * sides);
 }
 
-// A hero's AC lives on its sheet; a monster's on the entity itself.
+// A hero's AC lives on its sheet; a monster's or an NPC's on the entity
+// itself, where players can read it (their sheets are the DM's alone).
 export function acOf(target) {
   return target.kind === 'hero' ? target.sheet?.armorClass ?? 10 : target.armorClass ?? 10;
+}
+
+// Who a creature's attacks can be aimed at: a hero's at the monsters and
+// NPCs, a monster's at the heroes and NPCs, and an NPC's — friend or foe is
+// the DM's call — at everyone else.
+export function attackTargetsFor(attacker, entities) {
+  const kinds = attacker.kind === 'hero' ? ['mob', 'npc'] : attacker.kind === 'mob' ? ['hero', 'npc'] : ['hero', 'mob', 'npc'];
+  return Object.values(entities || {}).filter((e) => e.id !== attacker.id && kinds.includes(e.kind));
 }
 
 // Battle Equipment only offers weapons the hero already carries (Bag's

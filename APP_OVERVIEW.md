@@ -80,7 +80,8 @@ Every placeable thing on the map is an **entity**, keyed by id, carrying a
 | Kind | What it is | Kind-specific fields |
 |---|---|---|
 | `hero` | A player character | `sheet` (full D&D 5e character sheet, see §4), `ownerId`, `dmNotes` |
-| `mob` | A monster/NPC | `armorClass`, `conditions`, `droppables` (loot list), `dmNotes` |
+| `mob` | A monster | `armorClass`, `conditions`, `droppables` (loot list), `dmNotes` |
+| `npc` | A character the DM runs, with a hero's sheet | `armorClass`, `conditions`, `mobSheet` (the hero-style sheet, DM-only), `hidden`, `dmNotes` |
 | `door` | A bidirectional portal between two layers | `targetLayerId`, `targetCol`/`targetRow` (independent placement on the far side) |
 | `chest` | A lootable container | `chestSize`, `opened`, `items` |
 

@@ -7,6 +7,7 @@ import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { AMBUSH_ICON, AMBUSH_COLOR, clampAmbushQty } from '../data/ambush.js';
+import { NPC_ICON, NPC_COLOR, NPC_MAX_HP } from '../data/tokenKinds.js';
 import { emptyTrapDraft, parseTrapNumber, normalizeDice, clampTrapSize, MAX_TRAP_SIZE, DAMAGE_TYPES } from '../data/traps.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import DiceInput from './DiceInput.jsx';
@@ -47,6 +48,8 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   const [chestSize, setChestSize] = useState('small');
   const [showChestModal, setShowChestModal] = useState(false);
   const [pendingChestItems, setPendingChestItems] = useState([]);
+  // A custom item typed into the chest modal but not added yet (ChestContentsEditor).
+  const [pendingCustomItem, setPendingCustomItem] = useState('');
   const [showTrapModal, setShowTrapModal] = useState(false);
   const [trapDraft, setTrapDraft] = useState(emptyTrapDraft);
   const [ambushName, setAmbushName] = useState('Ambush');
@@ -73,7 +76,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
     );
   }
 
-  // Placing tokens (heroes, monsters, doors, chests, traps) is DM-only — a player
+  // Placing tokens (heroes, NPCs, monsters, doors, chests, traps) is DM-only — a player
   // only moves their own hero, opens doors, and opens chests (see
   // GameView.jsx's canMoveEntity/canUpdateEntity, and PITFALLS.md #1).
   // GameView doesn't show this panel to players at all; this is a fallback.
@@ -106,10 +109,12 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
 
   function openChestModal() {
     setPendingChestItems([]);
+    setPendingCustomItem('');
     setShowChestModal(true);
   }
 
   function confirmPlaceChest() {
+    if (pendingCustomItem) return;
     onAddEntity({
       kind: 'chest',
       name: chestName.trim() || 'Chest',
@@ -119,6 +124,13 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
       items: pendingChestItems,
     });
     setShowChestModal(false);
+  }
+
+  // An NPC (data/tokenKinds.js): a character the DM runs, with a hero's
+  // sheet. Placed from a tile like a hero's, in grey; it is named on its card.
+  const npcImage = makeIconDataUrl(NPC_ICON, NPC_COLOR);
+  function placeNpc() {
+    onAddEntity({ kind: 'npc', name: 'NPC', imageUrl: npcImage, color: NPC_COLOR, maxHp: NPC_MAX_HP });
   }
 
   function openAmbushModal() {
@@ -173,7 +185,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         kind: pendingKind,
         name: file.name.replace(/\.[^/.]+$/, '').slice(0, 24) || 'New token',
         imageUrl,
-        color: pendingKind === 'mob' ? '#762f2f' : '#4c7a86',
+        color: pendingKind === 'mob' ? '#762f2f' : pendingKind === 'npc' ? NPC_COLOR : '#4c7a86',
         maxHp: pendingKind === 'mob' ? 15 : 20,
       });
     } catch (err) {
@@ -193,6 +205,11 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
               />
             ))}
           </div>
+  );
+  const npcBody = (
+    <div className="token-grid">
+      <TokenCard name="NPC" imageUrl={npcImage} shape="round" onPlace={placeNpc} />
+    </div>
   );
   const placeableBody = (
     <>
@@ -318,9 +335,12 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   );
   const ownImageBody = (
     <>
-          <div className="side-btn-row two">
+          <div className="side-btn-row">
             <button type="button" className={`side-btn${pendingKind === 'hero' ? ' active' : ''}`} aria-pressed={pendingKind === 'hero'} onClick={() => setPendingKind('hero')}>
               Hero
+            </button>
+            <button type="button" className={`side-btn${pendingKind === 'npc' ? ' active' : ''}`} aria-pressed={pendingKind === 'npc'} onClick={() => setPendingKind('npc')}>
+              NPC
             </button>
             <button type="button" className={`side-btn${pendingKind === 'mob' ? ' active' : ''}`} aria-pressed={pendingKind === 'mob'} onClick={() => setPendingKind('mob')}>
               Monster
@@ -477,15 +497,27 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
                 onAddItem={(item) => setPendingChestItems((prev) => [...prev, item])}
                 onRemoveItem={(id) => setPendingChestItems((prev) => prev.filter((it) => it.id !== id))}
                 onUpdateQty={(id, qty) => setPendingChestItems((prev) => prev.map((it) => (it.id === id ? { ...it, qty } : it)))}
+                onPendingCustomChange={setPendingCustomItem}
               />
-              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <div className="chest-modal-actions">
                 <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowChestModal(false)}>
                   Cancel
                 </button>
-                <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmPlaceChest}>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  disabled={Boolean(pendingCustomItem)}
+                  title={pendingCustomItem ? 'Add the custom item first, or clear its name' : undefined}
+                  onClick={confirmPlaceChest}
+                >
                   Place chest
                 </button>
               </div>
+              {pendingCustomItem && (
+                <p className="chest-modal-pending" role="status">
+                  <b>{pendingCustomItem}</b> isn’t in the chest yet. Press <b>Add custom item</b>, or clear its name, before placing the chest.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -498,6 +530,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   if (layout === 'phone') {
     const tabs = [
       ['heroes', 'Heroes'],
+      ['npc', 'NPCs'],
       ['monsters', 'Monsters'],
       ['door', 'Doors'],
       ['chest', 'Chests'],
@@ -535,6 +568,12 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
               {heroesBody}
             </>
           )}
+          {phoneTab === 'npc' && (
+            <>
+              <p className="phone-caption phone-caption-flush">Tap the NPC to place it on the map you’re viewing. Name it on its card.</p>
+              {npcBody}
+            </>
+          )}
           {phoneTab === 'monsters' && (
             <>
               <p className="phone-caption phone-caption-flush">Monsters come from the compendium’s bestiary, or from the ones you saved in asset storage.</p>
@@ -567,6 +606,8 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         <SidebarSection title="Default heroes" tour="side-heroes">
           {heroesBody}
         </SidebarSection>
+
+        <SidebarSection title="NPC">{npcBody}</SidebarSection>
 
         <SidebarSection title="Placeable" tour="side-placeable">
           <div className="side-btn-row two">

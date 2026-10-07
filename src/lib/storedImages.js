@@ -13,6 +13,7 @@ import { isImageRef, resolveImage } from './imageCache.js';
 const FALLBACK = {
   hero: ['shield', '#3a3226'],
   mob: ['fangs', '#45573f'],
+  npc: ['npc', '#6f6f6f'],
   door: ['door', '#5c4a2e'],
   chest: ['chest', '#c98a3b'],
   trap: ['trap', '#8f1f1f'],

@@ -212,34 +212,15 @@ function sizeName(size) {
 }
 
 // The DM's "remove this token from the table", a trash icon at the top of
-// the card. Removing can't be undone, so the first press asks and the
-// second removes; it stands down on its own after a few seconds.
+// the card. One press removes it — there is no second step to confirm.
 export function RemoveTokenButton({ name, onRemove, className = '' }) {
-  const [asking, setAsking] = useState(false);
-  useEffect(() => {
-    if (!asking) return undefined;
-    const timer = setTimeout(() => setAsking(false), 4000);
-    return () => clearTimeout(timer);
-  }, [asking]);
-  if (asking) {
-    return (
-      <span className={`card-remove-ask ${className}`} role="group" aria-label={`Remove ${name} from the table?`}>
-        <button type="button" className="card-remove-yes" onClick={onRemove}>
-          Remove
-        </button>
-        <button type="button" className="card-remove-no" aria-label="Keep it" title="Keep it" onClick={() => setAsking(false)}>
-          ×
-        </button>
-      </span>
-    );
-  }
   return (
     <button
       type="button"
       className={`card-remove-icon ${className}`}
       aria-label={`Remove ${name} from the table`}
       title="Remove from the table"
-      onClick={() => setAsking(true)}
+      onClick={onRemove}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
@@ -297,9 +278,10 @@ export default function CreatureCard({
   const leaves = preview ? Math.max(0, Math.round(Math.max(0, hp) - Math.max(0, preview.averageDamage - temp))) : null;
   const pct = (n) => `${max ? Math.max(0, Math.min(100, (n / max) * 100)) : 0}%`;
 
+  // A hero's AC is on its sheet; a monster's or an NPC's on the token.
   function setAc(n) {
-    if (isMob) onUpdate(entity.id, { armorClass: n });
-    else updateSheet({ armorClass: n });
+    if (entity.kind === 'hero') updateSheet({ armorClass: n });
+    else onUpdate(entity.id, { armorClass: n });
   }
   function stepHp(delta) {
     const next = Math.max(0, (entity.hp || 0) + delta);
@@ -378,7 +360,7 @@ export default function CreatureCard({
             inputClassName="card-name-input"
             onCommit={(name) => onUpdate(entity.id, { name })}
           />
-          {!isMob && (
+          {!isMob && showStats && (
             <Editable
               label="Level"
               value={sheet.level ?? 1}

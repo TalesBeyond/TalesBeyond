@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" role="img" aria-label="Glowing eyes watching from dark undergrowth">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1830"/>
+      <stop offset="0.6" stop-color="#14121f"/>
+      <stop offset="1" stop-color="#08070c"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#e9e4c8"/>
+      <stop offset="0.7" stop-color="#cfc8a2"/>
+      <stop offset="1" stop-color="#cfc8a2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="red" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff5a3c" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#ff5a3c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="amber" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffc24a" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#ffc24a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="400" height="200" fill="url(#sky)"/>
+  <circle cx="318" cy="42" r="34" fill="url(#moon)" opacity="0.55"/>
+  <circle cx="318" cy="42" r="17" fill="#e9e4c8" opacity="0.9"/>
+
+  <!-- trees -->
+  <g fill="#0b0a12">
+    <path d="M40 200 L46 60 L34 20 L52 52 L58 0 L64 56 L84 26 L70 70 L76 200 Z"/>
+    <path d="M352 200 L356 80 L342 40 L360 70 L366 18 L372 74 L392 46 L378 90 L384 200 Z"/>
+    <path d="M120 200 L124 96 L114 70 L128 88 L132 50 L138 92 L152 76 L142 104 L146 200 Z" opacity="0.8"/>
+    <path d="M268 200 L272 104 L262 82 L276 98 L280 62 L286 100 L298 88 L290 112 L292 200 Z" opacity="0.8"/>
+  </g>
+
+  <!-- undergrowth -->
+  <path d="M0 200 V150 Q20 118 44 142 Q60 106 92 132 Q112 96 146 128 Q172 100 200 126 Q230 94 258 128 Q290 100 312 134 Q340 108 362 140 Q384 120 400 148 V200 Z" fill="#07060a"/>
+  <path d="M0 200 V172 Q30 150 60 168 Q96 144 130 166 Q168 146 200 164 Q236 144 270 166 Q306 148 340 168 Q372 152 400 172 V200 Z" fill="#030304"/>
+
+  <!-- eyes in the dark -->
+  <g>
+    <ellipse cx="110" cy="148" rx="34" ry="16" fill="url(#red)"/>
+    <path d="M92 148 Q100 140 108 148 Q100 153 92 148 Z" fill="#ff5a3c"/>
+    <path d="M114 148 Q122 140 130 148 Q122 153 114 148 Z" fill="#ff5a3c"/>
+    <ellipse cx="100" cy="148" rx="1.4" ry="3.6" fill="#1a0503"/>
+    <ellipse cx="122" cy="148" rx="1.4" ry="3.6" fill="#1a0503"/>
+  </g>
+  <g>
+    <ellipse cx="204" cy="136" rx="40" ry="18" fill="url(#amber)"/>
+    <path d="M182 136 Q192 126 202 136 Q192 142 182 136 Z" fill="#ffc24a"/>
+    <path d="M208 136 Q218 126 228 136 Q218 142 208 136 Z" fill="#ffc24a"/>
+    <ellipse cx="192" cy="136" rx="1.6" ry="4.4" fill="#1f1402"/>
+    <ellipse cx="218" cy="136" rx="1.6" ry="4.4" fill="#1f1402"/>
+  </g>
+  <g>
+    <ellipse cx="296" cy="152" rx="30" ry="14" fill="url(#red)"/>
+    <path d="M280 152 Q287 145 294 152 Q287 156 280 152 Z" fill="#ff5a3c"/>
+    <path d="M299 152 Q306 145 313 152 Q306 156 299 152 Z" fill="#ff5a3c"/>
+    <ellipse cx="287" cy="152" rx="1.2" ry="3.2" fill="#1a0503"/>
+    <ellipse cx="306" cy="152" rx="1.2" ry="3.2" fill="#1a0503"/>
+  </g>
+  <g opacity="0.75">
+    <ellipse cx="158" cy="170" rx="20" ry="9" fill="url(#amber)"/>
+    <path d="M148 170 Q153 165 158 170 Q153 173 148 170 Z" fill="#ffc24a"/>
+    <path d="M161 170 Q166 165 171 170 Q166 173 161 170 Z" fill="#ffc24a"/>
+  </g>
+  <g opacity="0.7">
+    <ellipse cx="250" cy="174" rx="18" ry="8" fill="url(#red)"/>
+    <path d="M241 174 Q245.500 170 250 174 Q245.500 177 241 174 Z" fill="#ff5a3c"/>
+    <path d="M253 174 Q257.500 170 262 174 Q257.500 177 253 174 Z" fill="#ff5a3c"/>
+  </g>
+
+  <!-- a blade catching the moon -->
+  <path d="M236 122 L262 70 L266 72 L242 126 Z" fill="#c9ced6" stroke="#0b0a12" stroke-width="1"/>
+  <path d="M258 78 l1.2 3.6 3.6 1.2 -3.6 1.2 -1.2 3.6 -1.2 -3.6 -3.6 -1.2 3.6 -1.2z" fill="#fff"/>
+</svg>

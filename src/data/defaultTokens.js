@@ -21,6 +21,8 @@ const ICONS = {
   bow: '<path d="M20 14 C34 24 34 40 20 50" fill="none" stroke="#f2e9d4" stroke-width="3"/><line x1="20" y1="14" x2="44" y2="46" stroke="#f2e9d4" stroke-width="2"/>',
   skull: '<ellipse cx="32" cy="28" rx="16" ry="14" fill="#f2e9d4"/><rect x="24" y="38" width="16" height="10" fill="#f2e9d4"/><circle cx="26" cy="27" r="4" fill="#17140f"/><circle cx="38" cy="27" r="4" fill="#17140f"/>',
   fangs: '<path d="M16 20 L48 20 L40 44 L32 34 L24 44 Z" fill="#f2e9d4"/>',
+  // An NPC's default face (data/tokenKinds.js): head and shoulders.
+  npc: '<circle cx="32" cy="23" r="9" fill="#f2e9d4"/><path d="M14 52 C14 41 22 36 32 36 C42 36 50 41 50 52 Z" fill="#f2e9d4"/>',
   claw: '<path d="M16 46 L26 16 L32 16 L24 46 Z" fill="#f2e9d4"/><path d="M26 46 L34 14 L40 14 L30 46 Z" fill="#f2e9d4"/><path d="M36 46 L42 18 L48 18 L40 46 Z" fill="#f2e9d4"/>',
   wing: '<path d="M12 40 C24 16 44 16 52 32 C40 28 30 30 24 40 C20 34 16 34 12 40 Z" fill="#f2e9d4"/>',
   eye: '<ellipse cx="32" cy="32" rx="18" ry="10" fill="#f2e9d4"/><circle cx="32" cy="32" r="6" fill="#17140f"/>',

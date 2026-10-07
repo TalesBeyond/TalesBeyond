@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DICE_TYPES } from '../data/weapons.js';
 import { useCatalog } from '../lib/catalog.js';
 import { newChestItem } from '../data/chests.js';
@@ -15,14 +15,19 @@ function diceLabel(item) {
   return `${item.numberOfDice}${item.diceType}${mod}`;
 }
 
-// The searchable "pick from a compendium" + "type a custom one" item
-// picker, plus the running list of what's already in the chest — shared
-// between the placement modal (TokenSidebar) and the in-place editor shown
-// on an existing chest's inspector while the Edit tool is active
-// (RightPanel), so both stay identical instead of drifting apart.
-export default function ChestContentsEditor({ items, capacity, onAddItem, onRemoveItem, onUpdateQty }) {
+// The running list of what's already in the chest, then two tabs for adding
+// to it: search the compendium, or type a custom item — shared between the
+// placement modal (TokenSidebar) and the in-place editor shown on an existing
+// chest's inspector while the Edit tool is active (RightPanel), so both stay
+// identical instead of drifting apart.
+//
+// onPendingCustomChange (optional): told the name of a custom item that has
+// been typed but not added yet ('' when there is none), so the placement
+// modal can hold "Place chest" back until it is added or cleared — a typed
+// item is easy to lose by placing the chest first.
+export default function ChestContentsEditor({ items, capacity, onAddItem, onRemoveItem, onUpdateQty, onPendingCustomChange }) {
   const [search, setSearch] = useState('');
-  const [showCustom, setShowCustom] = useState(false);
+  const [tab, setTab] = useState('compendium'); // 'compendium' | 'custom'
   const [customName, setCustomName] = useState('');
   const [customDice, setCustomDice] = useState(0);
   const [customDiceType, setCustomDiceType] = useState('d6');
@@ -30,6 +35,14 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
   const [customCost, setCustomCost] = useState(0);
 
   const full = items.length >= capacity;
+
+  // A named custom item still waiting for "Add custom item". Not while the
+  // chest is full: nothing can be added then, so there is nothing to wait for.
+  const pendingCustom = tab === 'custom' && !full ? customName.trim() : '';
+  useEffect(() => {
+    onPendingCustomChange?.(pendingCustom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCustom]);
 
   const { weapons, items: catalogItems } = useCatalog();
   const results = useMemo(() => {
@@ -107,11 +120,17 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
         </div>
       )}
 
-      {!showCustom && (
-        <>
-          <div className="section-label" style={{ marginTop: 14 }}>
-            Add from compendium
-          </div>
+      <div className="dm-seg chest-add-tabs" role="tablist" aria-label="Add an item">
+        <button type="button" role="tab" aria-selected={tab === 'compendium'} className={tab === 'compendium' ? 'on' : ''} onClick={() => setTab('compendium')}>
+          From the compendium
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'custom'} className={tab === 'custom' ? 'on' : ''} onClick={() => setTab('custom')}>
+          Custom item
+        </button>
+      </div>
+
+      {tab === 'compendium' && (
+        <div role="tabpanel" aria-label="From the compendium">
           <input
             className="field"
             placeholder={full ? 'Chest is full' : 'Search weapons & items…'}
@@ -135,22 +154,13 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
               ))}
             </div>
           )}
-        </>
+        </div>
       )}
 
-      <div className="section-label" style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>Add a custom item</span>
-        <label
-          style={{ display: 'flex', alignItems: 'center', gap: 6, textTransform: 'none', letterSpacing: 'normal', opacity: 1, cursor: 'pointer', fontSize: 12 }}
-        >
-          <input type="checkbox" checked={showCustom} onChange={(e) => setShowCustom(e.target.checked)} />
-          Custom
-        </label>
-      </div>
-
-      {showCustom && (
-        <>
-          <input className="field" placeholder="Item name" value={customName} onChange={(e) => setCustomName(e.target.value)} disabled={full} />
+      {tab === 'custom' && (
+        <div role="tabpanel" aria-label="Custom item">
+          <label className="field-label">Item name</label>
+          <input className="field" placeholder={full ? 'Chest is full' : 'e.g. Rusty key'} value={customName} onChange={(e) => setCustomName(e.target.value)} disabled={full} />
           <div className="field-row">
             <div>
               <label className="field-label">Number of dice</label>
@@ -198,10 +208,17 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
               />
             </div>
           </div>
-          <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 4 }} disabled={full || !customName.trim()} onClick={addCustom}>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            style={{ marginTop: 4 }}
+            disabled={full || !customName.trim()}
+            title={full ? 'The chest is full' : !customName.trim() ? 'Give the item a name first' : 'Put this item in the chest'}
+            onClick={addCustom}
+          >
             + Add custom item
           </button>
-        </>
+        </div>
       )}
     </div>
   );
