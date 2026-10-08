@@ -17,7 +17,7 @@ import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
-import { entryGoods, sheetWithGoods, sourceEntries } from '../data/merchants.js';
+import { entryGoods, landsInOtherItems, sheetWithGoods, sourceEntries } from '../data/merchants.js';
 import { defaultDroppablesFor, rollDroppables } from '../data/droppables.js';
 import { mobSheetWithAttacks } from '../utils/combat.js';
 import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js';
@@ -2316,10 +2316,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!hero) return;
     const sheet = hero.sheet || defaultCharacterSheet();
     let nextSheet = sheet;
-    if (item.source === 'tomes' || item.source === 'foods') {
-      // Put in from the Tomes or Food chapter (ChestContentsEditor): it goes
-      // under Other items, the way a shop hands it over, a tome with its
-      // text to read (data/merchants.js).
+    if (landsInOtherItems(item.source)) {
+      // Put in from the Tomes, Food or Potions chapter (ChestContentsEditor):
+      // it goes under Other items, the way a shop hands it over, a tome or a
+      // potion with its text to read (data/merchants.js).
       const description = sourceEntries(item.source, catalog, state.customAssets).find((entry) => entry.name === item.name)?.description || '';
       const goods = entryGoods(item.source, { name: item.name, description });
       for (let i = 0; i < Math.max(1, item.qty || 1); i++) nextSheet = sheetWithGoods(nextSheet, goods);

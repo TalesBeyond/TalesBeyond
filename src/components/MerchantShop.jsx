@@ -6,10 +6,13 @@ import {
   MAX_SHOP_WARES,
   WARE_SOURCES,
   WARE_TEXT_MAX,
+  bagCount,
   goldOf,
+  hasIngredients,
   knowsSpell,
   merchantRole,
   newWare,
+  sheetAfterMaking,
   sheetAfterPurchase,
   sheetWithGoods,
   shopWares,
@@ -18,6 +21,7 @@ import {
   wareFromEntry,
   wareGoods,
   warePrice,
+  wareRecipe,
 } from '../data/merchants.js';
 
 // How many compendium entries the stocking list shows at once. The rest are
@@ -271,6 +275,11 @@ export function ShopWaresEditor({ role, wares, customAssets, onChange, onPending
 // hero's Bag, Spells and gold, which its player may already write (GameView's
 // isHeroOwnerSheetPatch), and never the shop.
 //
+// A shopkeeper that makes what it sells (`role.makes`: the Potion Brewer, the
+// Food Salesman) also shows each ware's recipe, and Brew or Make makes it
+// from the customer's own ingredients for no gold: the same kind of write as
+// a purchase, since only that hero's Bag changes.
+//
 // `heroes` is every hero at the table (GameView's `heroes`); `onUpdate` is
 // GameView's updateEntity.
 export function ShopTab({ entity, isHost, meId, heroes, customAssets, onUpdate }) {
@@ -302,6 +311,14 @@ export function ShopTab({ entity, isHost, meId, heroes, customAssets, onUpdate }
     onUpdate(hero.id, { sheet: next });
     const taught = ware.spellLevel != null;
     say(ware.id, isHost ? `${taught ? 'Taught to' : paid ? 'Sold to' : 'Given to'} ${hero.name}` : taught ? 'Written into your Spells' : 'Added to your Bag');
+  }
+
+  function make(ware, recipe) {
+    if (!hero) return;
+    const next = sheetAfterMaking(sheet, ware, recipe, wareDescription(ware, catalog, customAssets));
+    if (!next) return;
+    onUpdate(hero.id, { sheet: next });
+    say(ware.id, isHost ? `${role.makes.done} for ${hero.name}` : `${role.makes.done} and added to your Bag`);
   }
 
   if (isHost && stocking) {
@@ -346,6 +363,7 @@ export function ShopTab({ entity, isHost, meId, heroes, customAssets, onUpdate }
       </div>
 
       {wares.length === 0 && <p className="shop-note">{isHost ? 'The shelves are empty. Stock the shop below.' : 'Nothing for sale just now.'}</p>}
+      {role.makes && wares.length > 0 && <p className="shop-note">Bring everything in a recipe and the {role.name} makes it for no gold.</p>}
 
       <div className="shop-ware-list">
         {wares.map((ware) => {
@@ -354,6 +372,8 @@ export function ShopTab({ entity, isHost, meId, heroes, customAssets, onUpdate }
           const known = sheet ? knowsSpell(sheet, wareGoods(ware, '')) : false;
           const short = gold < price;
           const open = openId === ware.id;
+          const recipe = role.makes ? wareRecipe(ware, catalog, customAssets) : [];
+          const canMake = sheet ? hasIngredients(sheet, recipe) : false;
           return (
             <div className="shop-ware" key={ware.id}>
               <div className="shop-ware-head">
@@ -386,6 +406,32 @@ export function ShopTab({ entity, isHost, meId, heroes, customAssets, onUpdate }
                   )}
                 </span>
               </div>
+              {recipe.length > 0 && (
+                <div className="shop-recipe">
+                  <span className="shop-recipe-parts">
+                    <span className="shop-recipe-label">Recipe</span>
+                    {recipe.map((part) => {
+                      const held = sheet ? bagCount(sheet, part.name) : 0;
+                      const enough = Boolean(hero) && held >= part.qty;
+                      return (
+                        <span key={part.name} className={`shop-recipe-part${enough ? ' have' : ''}`} title={hero ? `${hero.name} has ${held}` : undefined}>
+                          {enough ? '✓ ' : ''}
+                          {part.qty} × {part.name}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!canMake}
+                    title={!hero ? 'Nobody to make it for' : canMake ? `Made from ${hero.name}’s ingredients, for no gold` : `${hero.name} doesn’t carry everything in the recipe`}
+                    onClick={() => make(ware, recipe)}
+                  >
+                    {role.makes.verb}
+                  </button>
+                </div>
+              )}
               {feedback?.id === ware.id && (
                 <span className="shop-feedback" role="status">
                   {feedback.text}

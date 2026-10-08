@@ -1255,7 +1255,7 @@ export default function MapBoard({
             {/* The DM's drawings — chalk on the floor, still under the tokens. */}
             <IslandDrawings drawings={drawingsByIsland.get(id) || []} draft={draft?.islandId === id ? draft : null} cellPx={cellPx} width={w} height={h} />
             {/* Fog of war — over all of the above, still under the tokens:
-                an opaque cover for players, a tint for the DM. */}
+                an opaque cover of mist for players, a tint for the DM. */}
             <IslandFogOfWar
               chunks={islandFog}
               island={island}

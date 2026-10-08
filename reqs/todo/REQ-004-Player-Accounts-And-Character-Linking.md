@@ -119,7 +119,7 @@ unaffected.
 |  | S005 | P | Host-remove-seat policy | New migration: `my_hosted_table_ids()` (`SECURITY DEFINER`, mirroring `my_table_ids()`) plus a second `players` DELETE policy using it, additive alongside the existing self-only Leave policy. | — | `supabase/migrations/`, `supabase/00_combined_all_migrations.sql` |
 |  | S006 | S | Host-remove-seat wiring | Add a host-only removal function in `GameView.jsx` mirroring `leaveTable`'s shape (dispatch `REMOVE_PLAYER` + call `removePlayerRemote`), passed down to `RightPanel`. | S005 | `src/components/GameView.jsx` |
 |  | S007 | U | Roster "Remove" control | Add a host-only, per-row "Remove" control to the player roster (excluding the host's own row), wired to S006. The roster is now the toolbar's Players dropdown (`PlayerList`) on desktop and the Party sheet on phones, so it goes in both. | S006 | `src/components/Toolbar.jsx`, `src/components/PhoneChrome.jsx` |
-|  | S008 | D | Thesaurus + Pitfalls update | Add "Guest" and "Player account" to `THESAURUS.md`; update `PITFALLS.md` #6 to reflect that players now have the same account-based recovery path hosts already got in REQ-003. | S007 | `THESAURUS.md`, `PITFALLS.md` |
+|  | S008 | D | Thesaurus + Pitfalls update | Add "Guest" and "Player account" to `reqs/GLOSSARY.md`; update `PITFALLS.md` #6 to reflect that players now have the same account-based recovery path hosts already got in REQ-003. | S007 | `reqs/GLOSSARY.md`, `PITFALLS.md` |
 
 ### Dependency graph
 
@@ -177,3 +177,4 @@ S005 → S006 → S007 → S008
 | ---- | ------ | ----------------- |
 | 2026-09-09 | Blaxine | Initial plan. |
 | 2026-09-30 | Claude | Status review against the code. Not started: `signUpHost`/`signInHost` are unchanged, and neither `listMyJoinedTablesRemote` nor `my_hosted_table_ids()` exists. Brought the plan up to date with changes since it was written: the `join_table` upsert rewrite (`020`); guest DM tables and the join probe (REQ-008); the roster moving to the toolbar's Players dropdown and the phone Party sheet, so S007 now targets `Toolbar.jsx` and `PhoneChrome.jsx`; the Owner control is now "Played by"; the anonymous-upload block (`048`). Refreshed line numbers and the next migration number. |
+| 2026-10-08 | Claude | Paths updated for the reqs/ rename. |

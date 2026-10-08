@@ -2031,6 +2031,15 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .shop-ware-text, .equipment-read p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--parchment-200); white-space: pre-line; overflow-wrap: anywhere; }
 .shop-ware-text { max-height: 220px; overflow-y: auto; }
 .game-screen.phone .shop-ware-head .btn-sm { min-height: 40px; }
+/* A ware of a shopkeeper that makes what it sells: what it is made from,
+   ticked where the customer carries enough, and Brew or Make once they carry
+   it all. */
+.shop-recipe { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 6px; }
+.shop-recipe-parts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.shop-recipe-label { margin-right: 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-300); }
+.shop-recipe-part { padding: 1px 7px; border: 1px solid var(--ink-700); border-radius: 999px; font-size: 11.5px; color: var(--parchment-300); }
+.shop-recipe-part.have { border-color: var(--moss-dim); color: var(--parchment-100); }
+.game-screen.phone .shop-recipe .btn-sm { min-height: 40px; }
 
 /* Something to read on a Bag row: a tome's text, a map's, a shop's own ware. */
 .equipment-read { grid-column: 1 / -1; font-size: 12px; color: var(--parchment-300); }
@@ -2356,10 +2365,46 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   box-sizing: border-box;
   pointer-events: none;
 }
-/* What players see: opaque, and one flat colour on purpose — a texture would
-   start again at every chunk's edge and draw the rooms under the fog. */
-.fog-of-war-cover { background: #12100c; }
-:root[data-theme='grimoire'] .fog-of-war-cover { background: #3d2f22; }
+/* What players see: one opaque cover the size of the island, cut to its
+   fogged chunks (clip-path, set inline), with two sheets of the same mist
+   picture sliding across it. One cover and not one per chunk, so the mist
+   never starts again at a chunk's edge and draws the rooms under the fog.
+   --fog-tile (inline) is one repeat of the picture, which follows the zoom. */
+.fog-of-war-cover {
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  /* Under the mist until the picture has loaded. */
+  background: #dfdfdd;
+}
+/* Each sheet overhangs the cover by one repeat on the side it comes from and
+   slides exactly one repeat, so the loop has no jump. Only transform moves:
+   nothing is painted again while it drifts. */
+.fog-of-war-mist {
+  position: absolute;
+  inset: calc(-1 * var(--fog-tile)) 0 0 calc(-1 * var(--fog-tile));
+  background: url('./assets/fog-of-war.png') 0 0 / var(--fog-tile) var(--fog-tile);
+  animation: fog-of-war-drift 90s linear infinite;
+  will-change: transform;
+}
+/* The upper sheet: half as big again, half as solid, and going the other
+   way, so the two never line up and the mist keeps changing shape. */
+.fog-of-war-mist.over {
+  --fog-over: calc(var(--fog-tile) * 1.5);
+  inset: calc(-1 * var(--fog-over)) calc(-1 * var(--fog-over)) 0 0;
+  background-size: var(--fog-over) var(--fog-over);
+  opacity: 0.5;
+  animation: fog-of-war-drift-over 140s linear infinite;
+}
+@keyframes fog-of-war-drift {
+  to { transform: translate(var(--fog-tile), var(--fog-tile)); }
+}
+@keyframes fog-of-war-drift-over {
+  to { transform: translate(calc(-1 * var(--fog-over)), var(--fog-over)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fog-of-war-mist { animation: none; }
+}
 /* What the DM sees: a tint with the map still showing through, and a dashed
    outline once the chunk is revealed. */
 .fog-of-war-chunk {
@@ -2987,7 +3032,7 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .cphone-head { display: flex; align-items: center; gap: 8px; padding: 12px 8px 8px 16px; }
 .cphone-head h2 { flex: 1; margin: 0; font-family: var(--font-display-caps); font-size: 20px; font-weight: 600; letter-spacing: 0.04em; }
 .cphone-close { width: 44px; height: 44px; border: 1px solid var(--gold-line); border-radius: 999px; background: transparent; color: var(--parchment-100); font-size: 24px; line-height: 1; cursor: pointer; }
-.cphone-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0 16px; padding: 4px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-900); }
+.cphone-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 16px; padding: 4px; border: 1px solid var(--ink-700); border-radius: 14px; background: var(--ink-900); }
 .cphone-tabs button { min-height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--parchment-300); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .cphone-tabs button.active { background: var(--ember); color: #fff; }
 .cphone-controls { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 12px; }
@@ -3304,6 +3349,13 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .cbook-entry-text.lore, .cphone-detail-text.lore { white-space: pre-line; overflow-wrap: anywhere; }
 .cbook-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .cbook-chips span { padding: 3px 10px; border: 1px solid var(--pg-line); border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--pg-soft); }
+/* One line of a recipe being written in Asset Storage: how many, of what. */
+.recipe-edit-row { display: grid; grid-template-columns: 68px minmax(0, 1fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.recipe-edit-row .field { margin-bottom: 0; }
+/* What a potion or a dish is made from (the Potions and Food & Drink chapters). */
+.cbook-recipe { display: flex; flex-direction: column; gap: 8px; }
+.cbook-recipe-title { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pg-soft); }
+.cbook-recipe .cbook-chips span { font-size: 13px; color: var(--pg-ink); }
 .rules-list { padding-left: 18px; }
 .rules-list li + li { margin-top: 4px; }
 .rules-list b { color: var(--parchment-100); }
@@ -5992,6 +6044,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .drawer-book.tomes { --book: #33425c; }
 .drawer-book.foods { --book: #7a4f24; }
 .drawer-book.spells { --book: #43346e; }
+.drawer-book.potions { --book: #6a2b4c; }
 .drawer-book::after {
   content: '';
   position: absolute;

@@ -68,8 +68,8 @@ export const HOST_TOUR = [
     title: 'Compendium',
     text: 'Things ready to drop into the game. The tab opens a drawer of books.',
     items: [
-      ['Monsters, Items, Weapons, Tomes, Food & Drink, Spells', 'books of ready-made content. Click one to open it.'],
-      ['Storage', 'make your own monsters, weapons, items and tomes for this table.'],
+      ['Monsters, Items, Weapons, Tomes, Food & Drink, Spells, Potions', 'books of ready-made content. Click one to open it.'],
+      ['Storage', 'make your own monsters, weapons, items, tomes, food, spells and potions for this table.'],
     ],
   },
   {

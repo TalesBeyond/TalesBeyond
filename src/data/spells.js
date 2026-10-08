@@ -12,7 +12,7 @@ export function spellLevelLabel(level) {
 
 // What it costs to be taught a spell or buy its scroll, in gold pieces, by
 // spell level (0 is a cantrip). The SRD sets no price, so these are our own.
-const SPELL_COST = [15, 50, 150, 300, 600, 1200, 2500, 5000, 10000, 25000];
+export const SPELL_COST = [15, 50, 150, 300, 600, 1200, 2500, 5000, 10000, 25000];
 
 const S = (level, school, name, description) => ({ level, school, name, cost: SPELL_COST[level], description });
 

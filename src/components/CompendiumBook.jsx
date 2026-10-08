@@ -3,6 +3,8 @@ import { CLASSES } from '../data/weapons.js';
 import { ITEM_CATEGORIES } from '../data/items.js';
 import { TOME_CATEGORIES } from '../data/tomes.js';
 import { spellLevelLabel } from '../data/spells.js';
+import { POTION_CATEGORIES, INGREDIENT_CATEGORY } from '../data/potions.js';
+import { recipesUsing } from '../data/merchants.js';
 import { SPELL_LEVELS } from '../data/characterSheet.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
@@ -39,8 +41,13 @@ function saveMonsterImages(images) {
 // chosen entry, with what the DM can do with it at its foot: Buy or Give it
 // to a hero — onGiveItem(hero, item, isBuy, kind) — or, for a monster, place
 // it on the map. A spell given to a hero is written into its Spells tab; a
-// tome, food or drink goes in its Bag. Nothing sits beside the book. (A phone
-// gets one scrolling page instead, see below.)
+// tome, food, drink, potion or ingredient goes in its Bag. Nothing sits
+// beside the book. (A phone gets one scrolling page instead, see below.)
+// The Potions and Food & Drink chapters also hold what their entries are
+// made from: a potion's or a dish's page prints its recipe, an ingredient's
+// what it goes into (recipeChapterEntries below).
+// Tomes, Food & Drink, Spells and Potions each have a button that opens
+// Asset Storage on that chapter's own tab: onAddOwn(kind).
 
 // `tab` is the name on the fore edge, `one` the heading over a single entry.
 const CHAPTERS = [
@@ -50,12 +57,19 @@ const CHAPTERS = [
   { kind: 'tomes', tab: 'Tomes', chapter: 'Tomes Compendium', noun: 'tomes', one: 'Tome' },
   { kind: 'foods', tab: 'Food', chapter: 'Food & Drink Compendium', noun: 'food and drink', one: 'Food & Drink' },
   { kind: 'spells', tab: 'Spells', chapter: 'Spells Compendium', noun: 'spells', one: 'Spell' },
+  { kind: 'potions', tab: 'Potions', chapter: 'Potions Compendium', noun: 'potions and ingredients', one: 'Potion' },
 ];
+
+// The chapters a table can add entries of its own to from the book.
+const OWN_CHAPTERS = { tomes: 'Write your own', foods: 'Add your own', spells: 'Add your own', potions: 'Add your own' };
+
+const POTION_KIND_LABELS = { potion: 'Potions', elixir: 'Elixirs', 'magic potion': 'Magic potions', venom: 'Venoms', [INGREDIENT_CATEGORY]: 'Ingredients' };
 
 const FOOD_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'food', label: 'Food' },
   { key: 'drink', label: 'Drink' },
+  { key: INGREDIENT_CATEGORY, label: 'Ingredients' },
 ];
 
 const WEAPON_TYPE_FILTERS = [
@@ -114,7 +128,46 @@ function shortName(name) {
   return name.split(' ')[0];
 }
 
-export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, onGiveItem, customWeapons, customItems, customMonsters, customTomes, onAddMonster, onWriteTome }) {
+const isIngredient = (entry) => entry.category === INGREDIENT_CATEGORY;
+
+// The index of a chapter whose entries are made from a recipe (Potions, Food
+// & Drink): what is `made`, then the `larder` it is made from, with this
+// table's `own` of either sort among them. A search also
+// finds something by what goes into it. `filter` is the kind picked ('all'
+// for every one), `q` the search in lower case, `folder` the chapter's
+// picture folder, `maker` the shopkeeper who makes these, and `one` the
+// heading over a made thing's page.
+function recipeChapterEntries({ made, larder, own = [], filter, q, keyPrefix, folder, maker, one }) {
+  const makeable = [...made, ...own.filter((e) => !isIngredient(e))];
+  const found = (e) => e.name.toLowerCase().includes(q) || (e.recipe || []).some((part) => part.name.toLowerCase().includes(q));
+  return [...made, ...larder, ...own]
+    .filter((e) => (filter === 'all' || e.category === filter) && (!q || found(e)))
+    .sort((a, b) => isIngredient(a) - isIngredient(b) || a.name.localeCompare(b.name))
+    .map((e) => {
+      const recipe = e.recipe || [];
+      // A dish can go into another one: a mug of cider into hot spiced cider.
+      const goesInto = recipesUsing(e.name, makeable);
+      return {
+        key: e.id || `${keyPrefix}:${e.category}:${e.name}`,
+        name: e.name + (e.id ? ' (Custom)' : ''),
+        sub: cap(e.category),
+        big: formatCost(e.cost),
+        small: '',
+        detail: e.description,
+        one: isIngredient(e) ? 'Ingredient' : one,
+        recipe,
+        note: [recipe.length ? `A ${maker} makes it for a hero who carries every ingredient.` : '', goesInto.length ? `Goes into: ${goesInto.join(', ')}.` : ''].filter(Boolean).join(' '),
+        facts: [
+          ['Kind', cap(e.category)],
+          ['Cost', formatCost(e.cost)],
+        ],
+        item: e,
+        image: e.id ? null : entryImage(folder, e.name),
+      };
+    });
+}
+
+export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, onGiveItem, customWeapons, customItems, customMonsters, customTomes, customFoods, customSpells, customPotions, onAddMonster, onAddOwn }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -122,6 +175,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const [tomeFilter, setTomeFilter] = useState('all');
   const [foodFilter, setFoodFilter] = useState('all');
   const [spellFilter, setSpellFilter] = useState('all');
+  const [potionFilter, setPotionFilter] = useState('all');
   const [monsterImages, setMonsterImages] = useState(loadMonsterImages);
   const imageInputRef = useRef(null);
   const [selectedKey, setSelectedKey] = useState(null);
@@ -131,7 +185,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const timers = useRef([]);
   const isPhone = usePhoneLayout();
 
-  const { weapons, items, monsters, tomes, foods, spells } = useCatalog();
+  const { weapons, items, monsters, tomes, foods, foodIngredients, spells, potions, ingredients } = useCatalog();
   const isWeapons = kind === 'weapons';
   const isMonsters = kind === 'monsters';
   const { chapter, noun, one } = CHAPTERS.find((c) => c.kind === kind) || CHAPTERS[0];
@@ -145,6 +199,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
     items: { label: 'Category', all: 'All categories', options: ITEM_CATEGORIES.map((c) => [c, cap(c)]), value: categoryFilter, set: setCategoryFilter },
     tomes: { label: 'Category', all: 'All categories', options: TOME_CATEGORIES.map((c) => [c, cap(c)]), value: tomeFilter, set: setTomeFilter },
     spells: { label: 'Level', all: 'All levels', options: SPELL_LEVELS.map((l) => [String(l), spellLevelLabel(l)]), value: spellFilter, set: setSpellFilter },
+    potions: { label: 'Kind', all: 'All kinds', options: [...POTION_CATEGORIES, INGREDIENT_CATEGORY].map((c) => [c, POTION_KIND_LABELS[c]]), value: potionFilter, set: setPotionFilter },
   }[kind];
 
   // The DM's custom assets sit alongside the built-in catalog, never instead of it.
@@ -230,31 +285,15 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         }));
     }
     if (kind === 'foods') {
-      return foods
-        .filter((f) => (foodFilter === 'all' || f.category === foodFilter) && (!q || f.name.toLowerCase().includes(q)))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((f) => ({
-          key: `f:${f.name}`,
-          name: f.name,
-          sub: cap(f.category),
-          big: formatCost(f.cost),
-          small: '',
-          detail: f.description,
-          facts: [
-            ['Kind', cap(f.category)],
-            ['Cost', formatCost(f.cost)],
-          ],
-          item: f,
-          image: entryImage('foods', f.name),
-        }));
+      return recipeChapterEntries({ made: foods, larder: foodIngredients, own: customFoods || [], filter: foodFilter, q, keyPrefix: 'f', folder: 'foods', maker: 'Food Salesman', one: 'Food & Drink' });
     }
     if (kind === 'spells') {
-      return spells
+      return [...spells, ...(customSpells || [])]
         .filter((s) => (spellFilter === 'all' || String(s.level) === spellFilter) && (!q || s.name.toLowerCase().includes(q)))
         .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
         .map((s) => ({
-          key: `s:${s.name}`,
-          name: s.name,
+          key: s.id || `s:${s.name}`,
+          name: s.name + (s.id ? ' (Custom)' : ''),
           sub: `${spellLevelLabel(s.level)} · ${cap(s.school)}`,
           big: s.level === 0 ? 'Cantrip' : `Lv ${s.level}`,
           small: formatCost(s.cost),
@@ -266,8 +305,11 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
             ['Cost', formatCost(s.cost)],
           ],
           item: s,
-          image: entryImage('spells', s.name),
+          image: s.id ? null : entryImage('spells', s.name),
         }));
+    }
+    if (kind === 'potions') {
+      return recipeChapterEntries({ made: potions, larder: ingredients, own: customPotions || [], filter: potionFilter, q, keyPrefix: 'p', folder: 'potions', maker: 'Potion Brewer', one: 'Potion' });
     }
     const all = [...items, ...(customItems || [])];
     return all
@@ -288,15 +330,16 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         item: it,
         image: it.id ? null : entryImage('items', it.name),
       }));
-  }, [kind, isWeapons, isMonsters, weapons, items, monsters, tomes, foods, spells, customWeapons, customItems, customMonsters, customTomes, monsterImages, search, typeFilter, categoryFilter, crFilter, tomeFilter, foodFilter, spellFilter]);
+  }, [kind, isWeapons, isMonsters, weapons, items, monsters, tomes, foods, foodIngredients, spells, potions, ingredients, customWeapons, customItems, customMonsters, customTomes, customFoods, customSpells, customPotions, monsterImages, search, typeFilter, categoryFilter, crFilter, tomeFilter, foodFilter, spellFilter, potionFilter]);
 
   const totalCount = {
     weapons: weapons.length + (customWeapons || []).length,
     items: items.length + (customItems || []).length,
     monsters: monsters.length + (customMonsters || []).length,
     tomes: tomes.length + (customTomes || []).length,
-    foods: foods.length,
-    spells: spells.length,
+    foods: foods.length + foodIngredients.length + (customFoods || []).length,
+    spells: spells.length + (customSpells || []).length,
+    potions: potions.length + ingredients.length + (customPotions || []).length,
   }[kind];
   const picked = entries.find((e) => e.key === selectedKey) || null;
   // The book opens ready to read: until an entry is picked, the first one in
@@ -446,9 +489,9 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
               {entries.length} of {totalCount}
             </span>
           </div>
-          {kind === 'tomes' && onWriteTome && (
-            <button type="button" className="cphone-btn" onClick={onWriteTome}>
-              + Write your own tome
+          {OWN_CHAPTERS[kind] && onAddOwn && (
+            <button type="button" className="cphone-btn" onClick={() => onAddOwn(kind)}>
+              + {OWN_CHAPTERS[kind]}
             </button>
           )}
         </div>
@@ -502,6 +545,11 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
               )}
               {selected.detail && <p className={`cphone-detail-text${selected.lore ? ' lore' : ''}`}>{selected.detail}</p>}
               {selected.monster && <p className="cphone-detail-text cphone-attack">{selected.monster.attack}</p>}
+              {selected.recipe?.length > 0 && (
+                <p className="cphone-detail-text">
+                  <b>Recipe:</b> {selected.recipe.map((part) => `${part.qty} × ${part.name}`).join(', ')}
+                </p>
+              )}
               {selected.note && <p className="cphone-detail-text cphone-attack">{selected.note}</p>}
               {isMonsters ? (
                 <div className="cphone-actions">
@@ -618,9 +666,14 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
                     ))}
                   </select>
                 )}
-                {kind === 'tomes' && onWriteTome && (
-                  <button type="button" className="cbook-btn" title="Write a tome of your own, with its story or lore, in Asset Storage" onClick={onWriteTome}>
-                    + Write your own
+                {OWN_CHAPTERS[kind] && onAddOwn && (
+                  <button
+                    type="button"
+                    className="cbook-btn"
+                    title={kind === 'tomes' ? 'Write a tome of your own, with its story or lore, in Asset Storage' : `Add ${noun} of your own to this table, in Asset Storage`}
+                    onClick={() => onAddOwn(kind)}
+                  >
+                    + {OWN_CHAPTERS[kind]}
                   </button>
                 )}
               </div>
@@ -649,7 +702,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
 
             <div className="cbook-page right">
               <div className="cbook-page-head">
-                <span className="cbook-chapter">{one}</span>
+                <span className="cbook-chapter">{selected?.one || one}</span>
                 <span className="cbook-range">{selected ? `${selectedAt + 1} of ${entries.length}` : ''}</span>
               </div>
               {!selected ? (
@@ -688,6 +741,18 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
                         prints who can use it instead. */}
                     {(selected.text || selected.detail) && <p className={`cbook-entry-text${selected.lore ? ' lore' : ''}`}>{selected.text || selected.detail}</p>}
                     {selected.monster && <p className="cbook-entry-text cbook-attack">{selected.monster.attack}</p>}
+                    {selected.recipe?.length > 0 && (
+                      <div className="cbook-recipe">
+                        <h4 className="cbook-recipe-title">Recipe</h4>
+                        <div className="cbook-chips">
+                          {selected.recipe.map((part) => (
+                            <span key={part.name}>
+                              {part.qty} × {part.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {selected.note && <p className="cbook-entry-text cbook-attack">{selected.note}</p>}
                   </div>
 

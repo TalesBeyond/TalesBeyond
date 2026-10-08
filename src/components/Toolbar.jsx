@@ -10,9 +10,13 @@ import MapImageFit, { defaultImagePlacement } from './MapImageFit.jsx';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
-import { defaultCharacterSheet, normalizeEquipment, normalizeCurrency, newEquipmentItem } from '../data/characterSheet.js';
+import { defaultCharacterSheet, normalizeEquipment, normalizeCurrency, newEquipmentItem, SPELL_LEVELS } from '../data/characterSheet.js';
 import { TOME_CATEGORIES, TOME_TEXT_MAX } from '../data/tomes.js';
-import { shopPrice, entryGoods, knowsSpell, sheetWithGoods } from '../data/merchants.js';
+import { FOOD_CATEGORIES } from '../data/foods.js';
+import { POTION_CATEGORIES, INGREDIENT_CATEGORY } from '../data/potions.js';
+import { SPELL_SCHOOLS, SPELL_COST, spellLevelLabel } from '../data/spells.js';
+import { useCatalog } from '../lib/catalog.js';
+import { shopPrice, entryGoods, knowsSpell, sheetWithGoods, sourceEntries, cleanRecipe, RECIPE_MAX_PARTS, WARE_TEXT_MAX } from '../data/merchants.js';
 import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
@@ -131,6 +135,7 @@ const ICON_PATHS = {
   tomes: 'M5 3h9a1 1 0 0 1 1 1v13H6a1 1 0 0 1-1-1zM5 14h10M8 3v6l1.500-1.500L11 9V3',
   foods: 'M4 7h9v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM13 9h2a2 2 0 0 1 0 5h-2M7 4v1M10 3v2',
   spells: 'M9 2l1.800 5.200L16 9l-5.200 1.800L9 16l-1.800-5.200L2 9l5.200-1.800zM16 13v4M14 15h4',
+  potions: 'M8 3h4M9 3v5l-4 7.500a1.300 1.300 0 0 0 1.200 2h7.600a1.300 1.300 0 0 0 1.200-2L11 8V3M6.500 13h7',
   initiative: 'M4 5h12M4 10h12M4 15h8',
   music: 'M8 15V4l8-2v11M8 15a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 13a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
   dice: 'M4 4h12v12H4zM7.5 7.5h.01M12.5 12.5h.01M12.5 7.5h.01M7.5 12.5h.01',
@@ -170,9 +175,13 @@ const COMPENDIUM_BOOKS = [
   { kind: 'tomes', label: 'Tomes', sub: 'Books to give or sell, and the ones you write', icon: 'tomes' },
   { kind: 'foods', label: 'Food & Drink', sub: 'Tavern fare and trail food to give or sell', icon: 'foods' },
   { kind: 'spells', label: 'Spells', sub: 'A hundred spells to teach a hero', icon: 'spells' },
+  { kind: 'potions', label: 'Potions', sub: 'Potions, elixirs and venoms, each with its recipe', icon: 'potions' },
 ];
 // The books opened through `extraBook` below, not a boolean of their own.
-const EXTRA_BOOKS = ['tomes', 'foods', 'spells'];
+const EXTRA_BOOKS = ['tomes', 'foods', 'spells', 'potions'];
+// The Asset Storage tab behind each chapter's "your own" button
+// (CompendiumBook's onAddOwn).
+const OWN_ASSET_TAB = { tomes: 'tome', foods: 'food', spells: 'spell', potions: 'potion' };
 
 // A card in a rail drawer: its icon, its name and a line saying what it does.
 function DrawerCard({ icon, label, text, title, active = false, danger = false, onClick }) {
@@ -609,7 +618,8 @@ export default function Toolbar({
 
   // Used by every chapter of the compendium but Monsters. A weapon or an item
   // (they share the same hero-equipment shape) always drops into Bag >
-  // Weapons & gear; a tome, food or drink goes to Bag > Other items, and a
+  // Weapons & gear; a tome, food, drink, potion or ingredient goes to Bag >
+  // Other items (a tome and a potion with their text to read), and a
   // spell is written into the Spells tab (data/merchants.js's
   // sheetWithGoods). "Buy" also deducts its cost (rounded up to the nearest
   // gold piece, since hero currency is tracked as whole gold/silver/bronze)
@@ -681,6 +691,15 @@ export default function Toolbar({
     .map((item) => ({ id: item.id, ...item.data }));
   const customTomes = Object.values(customAssets || {})
     .filter((item) => item.assetType === 'tome')
+    .map((item) => ({ id: item.id, ...item.data }));
+  const customFoods = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'food')
+    .map((item) => ({ id: item.id, ...item.data }));
+  const customSpells = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'spell')
+    .map((item) => ({ id: item.id, ...item.data }));
+  const customPotions = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'potion')
     .map((item) => ({ id: item.id, ...item.data }));
   const bookOpen = showCompendium || showItemCompendium || showMonsterCompendium || Boolean(extraBook);
 
@@ -1027,7 +1046,7 @@ export default function Toolbar({
           icon={<Icon name="library" />}
           label="Compendium"
           tour="compendium"
-          title="The compendium, and your own monsters, weapons, items and tomes"
+          title="The compendium, and your own monsters, weapons, items, tomes, food, spells and potions"
           active={bookOpen || showAssetStorage}
           open={rail ? sidePanel === 'compendium' : openMenu === 'compendium'}
           onToggle={() => (rail ? openSide('compendium') : toggleMenu('compendium'))}
@@ -1057,12 +1076,12 @@ export default function Toolbar({
                   setShowMonsterCompendium(false);
                   togglePopover('assetStorage');
                 }}
-                title="Asset Storage — create custom monsters, weapons, items and tomes for this table"
+                title="Asset Storage — create custom monsters, weapons, items, tomes, food, spells and potions for this table"
               >
                 <Icon name="storage" />
                 <span className="drawer-book-text">
                   <span className="drawer-storage-title">Storage</span>
-                  <span className="drawer-storage-sub">Your own monsters, weapons, items and tomes</span>
+                  <span className="drawer-storage-sub">Your own monsters, gear, tomes, food, spells and potions</span>
                 </span>
               </button>
             </>
@@ -1080,7 +1099,7 @@ export default function Toolbar({
               setShowItemCompendium(false);
               setShowMonsterCompendium(false);
             }}
-            title="Open the compendium of weapons, items, monsters, tomes, food and spells"
+            title="Open the compendium of weapons, items, monsters, tomes, food, spells and potions"
           />
           <ToolCard
             icon={<Icon name="storage" />}
@@ -1090,7 +1109,7 @@ export default function Toolbar({
               setShowMonsterCompendium(false);
               togglePopover('assetStorage');
             }}
-            title="Asset Storage — create custom monsters, weapons, items and tomes for this table"
+            title="Asset Storage — create custom monsters, weapons, items, tomes, food, spells and potions for this table"
           />
             </>
           )}
@@ -1264,9 +1283,12 @@ export default function Toolbar({
           customWeapons={customWeapons}
           customItems={customItems}
           customTomes={customTomes}
-          onWriteTome={() => {
+          customFoods={customFoods}
+          customSpells={customSpells}
+          customPotions={customPotions}
+          onAddOwn={(chapter) => {
             showBook(null);
-            setAssetStorageTab('tome');
+            setAssetStorageTab(OWN_ASSET_TAB[chapter] || 'monster');
             setShowAssetStorage(true);
           }}
         />
@@ -2514,6 +2536,9 @@ const ASSET_STORAGE_TABS = [
   { key: 'weapon', label: 'Weapons' },
   { key: 'item', label: 'Items' },
   { key: 'tome', label: 'Tomes' },
+  { key: 'food', label: 'Food & Drink' },
+  { key: 'spell', label: 'Spells' },
+  { key: 'potion', label: 'Potions' },
 ];
 // Where each kind of custom asset turns up once it is saved.
 const ASSET_SHOWS_UP_IN = {
@@ -2521,7 +2546,13 @@ const ASSET_SHOWS_UP_IN = {
   weapon: 'the Weapons Compendium',
   item: 'the Item Compendium',
   tome: 'the Tomes Compendium, and a Librarian’s shelves',
+  food: 'the Food & Drink Compendium, and a Food Salesman’s shelves',
+  spell: 'the Spells Compendium, and a Wizard’s shelves',
+  potion: 'the Potions Compendium, and a Potion Brewer’s shelves',
 };
+
+// What the Kind list of the Food & Drink and Potions tabs calls each kind.
+const OWN_KIND_LABELS = { food: 'Food', drink: 'Drink', potion: 'Potion', elixir: 'Elixir', 'magic potion': 'Magic potion', venom: 'Venom', [INGREDIENT_CATEGORY]: 'Ingredient' };
 
 // A modest, hand-drawn subset of defaultTokens.js's icon set that reads as
 // "creature" rather than "hero" or "object" — full parity with every icon
@@ -2540,10 +2571,57 @@ function emptyItemDraft() {
 function emptyTomeDraft() {
   return { name: '', author: '', category: 'tales', cost: 5, description: '' };
 }
+function emptyFoodDraft() {
+  return { name: '', category: 'food', cost: 0.1, description: '', recipe: [] };
+}
+function emptySpellDraft() {
+  return { name: '', level: 1, school: SPELL_SCHOOLS[0], cost: SPELL_COST[1], description: '' };
+}
+function emptyPotionDraft() {
+  return { name: '', category: 'potion', cost: 25, description: '', recipe: [] };
+}
 
-// DM-only: authors custom monsters/weapons/items/tomes and drops them into
+// The recipe of a dish or a potion being written in Asset Storage: how many
+// of what. `options` are the names offered as you type (any name is allowed:
+// a recipe is matched against the Bag by name), `maker` the shopkeeper who
+// makes it.
+function RecipeEditor({ parts, onChange, options, maker }) {
+  const listId = useId();
+  const setPart = (at, patch) => onChange(parts.map((part, i) => (i === at ? { ...part, ...patch } : part)));
+  return (
+    <>
+      <label className="field-label" style={{ marginTop: 8 }}>
+        Recipe
+      </label>
+      <p className="footer-note" style={{ border: 'none', padding: 0, margin: '0 0 6px' }}>
+        What it is made from. A {maker} makes it for a hero who carries all of it. Leave the recipe empty for something that is only sold.
+      </p>
+      {parts.map((part, i) => (
+        <div className="recipe-edit-row" key={i}>
+          <input className="field" type="number" min={1} max={99} aria-label="How many" value={part.qty} onChange={(e) => setPart(i, { qty: e.target.value })} />
+          <input className="field" list={listId} maxLength={60} aria-label="Ingredient" placeholder="Ingredient" value={part.name} onChange={(e) => setPart(i, { name: e.target.value })} />
+          <button type="button" className="btn btn-danger btn-sm" aria-label={`Remove ${part.name || 'this ingredient'} from the recipe`} onClick={() => onChange(parts.filter((_, at) => at !== i))}>
+            ×
+          </button>
+        </div>
+      ))}
+      <datalist id={listId}>
+        {options.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <button type="button" className="btn btn-secondary btn-sm" disabled={parts.length >= RECIPE_MAX_PARTS} onClick={() => onChange([...parts, { name: '', qty: 1 }])}>
+        + Add ingredient
+      </button>
+    </>
+  );
+}
+
+// DM-only: authors custom monsters/weapons/items/tomes, food and drink,
+// spells and potions, and drops them into
 // this table's compendiums / monster token list, alongside — never instead
-// of — the app's built-in defaults. A tome is the one with room to write: its
+// of — the app's built-in defaults. A dish or a potion can have a recipe, and
+// either tab also takes an ingredient of the table's own. A tome is the one with room to write: its
 // description is the book's own text (a story, a piece of the world's lore),
 // and a hero who is given or sold it can read that in their bag. See
 // 36_custom_assets.sql and GameView.jsx's addCustomAsset/removeCustomAsset.
@@ -2553,6 +2631,14 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
   const [weaponDraft, setWeaponDraft] = useState(emptyWeaponDraft);
   const [itemDraft, setItemDraft] = useState(emptyItemDraft);
   const [tomeDraft, setTomeDraft] = useState(emptyTomeDraft);
+  const [foodDraft, setFoodDraft] = useState(emptyFoodDraft);
+  const [spellDraft, setSpellDraft] = useState(emptySpellDraft);
+  const [potionDraft, setPotionDraft] = useState(emptyPotionDraft);
+  const catalog = useCatalog();
+  // What a recipe row offers as you type: every ingredient, the table's own
+  // included, and for a dish the other dishes too.
+  const ingredientNames = useMemo(() => sourceEntries('ingredients', catalog, customAssets).map((entry) => entry.name).sort((a, b) => a.localeCompare(b)), [catalog, customAssets]);
+  const dishNames = useMemo(() => sourceEntries('foods', catalog, customAssets).map((entry) => entry.name).sort((a, b) => a.localeCompare(b)), [catalog, customAssets]);
 
   const activeTab = ASSET_STORAGE_TABS.find((t) => t.key === tab);
   const ownEntries = Object.values(customAssets || {}).filter((item) => item.assetType === tab);
@@ -2612,6 +2698,80 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
     setTomeDraft(emptyTomeDraft());
   }
 
+  // A dish or a potion, or an ingredient of either chapter (which has no
+  // recipe of its own).
+  function addMade(assetType, draft, reset) {
+    const name = draft.name.trim();
+    if (!name) return;
+    onAddAsset(assetType, {
+      category: draft.category,
+      name,
+      cost: Math.max(0, parseFloat(draft.cost) || 0),
+      description: draft.description.trim().slice(0, WARE_TEXT_MAX),
+      ...(draft.category === INGREDIENT_CATEGORY ? {} : { recipe: cleanRecipe(draft.recipe) }),
+    });
+    reset();
+  }
+
+  function addSpell() {
+    const name = spellDraft.name.trim();
+    if (!name) return;
+    onAddAsset('spell', {
+      level: spellDraft.level,
+      school: spellDraft.school,
+      name,
+      cost: Math.max(0, parseFloat(spellDraft.cost) || 0),
+      description: spellDraft.description.trim().slice(0, WARE_TEXT_MAX),
+    });
+    setSpellDraft(emptySpellDraft());
+  }
+
+  // The Food & Drink and Potions tabs are one form: a name, a kind, a cost,
+  // what it is, and a recipe unless it is an ingredient itself.
+  function madeForm({ assetType, draft, setDraft, reset, kinds, namePlaceholder, textLabel, textPlaceholder, maker, options, thing }) {
+    const isIngredient = draft.category === INGREDIENT_CATEGORY;
+    return (
+      <>
+        <label className="field-label">Name</label>
+        <input className="field" value={draft.name} maxLength={80} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} placeholder={namePlaceholder} />
+
+        <div className="field-row">
+          <div>
+            <label className="field-label">Kind</label>
+            <select className="field" value={draft.category} onChange={(e) => setDraft((p) => ({ ...p, category: e.target.value }))}>
+              {[...kinds, INGREDIENT_CATEGORY].map((c) => (
+                <option key={c} value={c}>
+                  {OWN_KIND_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Cost (gp)</label>
+            <input className="field" type="number" min={0} step="0.01" value={draft.cost} onChange={(e) => setDraft((p) => ({ ...p, cost: e.target.value }))} />
+          </div>
+        </div>
+
+        <label className="field-label">{isIngredient ? 'Description' : textLabel}</label>
+        <textarea
+          className="field"
+          rows={3}
+          style={{ resize: 'vertical' }}
+          maxLength={WARE_TEXT_MAX}
+          value={draft.description}
+          onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))}
+          placeholder={isIngredient ? 'What it is, and where it is found.' : textPlaceholder}
+        />
+
+        {!isIngredient && <RecipeEditor parts={draft.recipe} onChange={(recipe) => setDraft((p) => ({ ...p, recipe }))} options={options} maker={maker} />}
+
+        <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={() => addMade(assetType, draft, reset)}>
+          + Add {isIngredient ? 'ingredient' : thing}
+        </button>
+      </>
+    );
+  }
+
   function toggleWeaponClass(cls) {
     setWeaponDraft((prev) => ({
       ...prev,
@@ -2652,7 +2812,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
         <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
           {nothingSaved && (
             <Hint className="asset-empty-hint">
-              Nothing saved here yet. Make a monster, weapon, item or tome once below, then use it as often as you like at this table.
+              Nothing saved here yet. Make a monster, weapon, item, tome, dish, spell or potion once below, then use it as often as you like at this table.
             </Hint>
           )}
           {tab === 'monster' && (
@@ -2934,6 +3094,85 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
 
               <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addTome}>
                 + Add tome
+              </button>
+            </>
+          )}
+
+          {tab === 'food' &&
+            madeForm({
+              assetType: 'food',
+              draft: foodDraft,
+              setDraft: setFoodDraft,
+              reset: () => setFoodDraft(emptyFoodDraft()),
+              kinds: FOOD_CATEGORIES,
+              namePlaceholder: 'e.g. Grandmother’s plum dumplings',
+              textLabel: 'Description',
+              textPlaceholder: 'What it looks, smells and tastes like.',
+              maker: 'Food Salesman',
+              options: [...ingredientNames, ...dishNames],
+              thing: foodDraft.category === 'drink' ? 'drink' : 'dish',
+            })}
+
+          {tab === 'potion' &&
+            madeForm({
+              assetType: 'potion',
+              draft: potionDraft,
+              setDraft: setPotionDraft,
+              reset: () => setPotionDraft(emptyPotionDraft()),
+              kinds: POTION_CATEGORIES,
+              namePlaceholder: 'e.g. Draught of the Drowned Bell',
+              textLabel: 'What it does',
+              textPlaceholder: 'What happens to whoever drinks it, or is struck by it. The holder reads this from their Bag.',
+              maker: 'Potion Brewer',
+              options: ingredientNames,
+              thing: potionDraft.category,
+            })}
+
+          {tab === 'spell' && (
+            <>
+              <label className="field-label">Name</label>
+              <input className="field" value={spellDraft.name} maxLength={80} onChange={(e) => setSpellDraft((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Lantern of the Lost" />
+
+              <div className="field-row">
+                <div>
+                  <label className="field-label">Level</label>
+                  {/* A new level brings its usual price, which can still be changed. */}
+                  <select className="field" value={spellDraft.level} onChange={(e) => setSpellDraft((p) => ({ ...p, level: Number(e.target.value), cost: SPELL_COST[Number(e.target.value)] }))}>
+                    {SPELL_LEVELS.map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        {spellLevelLabel(lvl)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">School</label>
+                  <select className="field" value={spellDraft.school} onChange={(e) => setSpellDraft((p) => ({ ...p, school: e.target.value }))}>
+                    {SPELL_SCHOOLS.map((school) => (
+                      <option key={school} value={school}>
+                        {school[0].toUpperCase() + school.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <label className="field-label">Cost (gp)</label>
+              <input className="field" type="number" min={0} step="1" value={spellDraft.cost} onChange={(e) => setSpellDraft((p) => ({ ...p, cost: e.target.value }))} />
+
+              <label className="field-label">What it does</label>
+              <textarea
+                className="field"
+                rows={4}
+                style={{ resize: 'vertical' }}
+                maxLength={WARE_TEXT_MAX}
+                value={spellDraft.description}
+                onChange={(e) => setSpellDraft((p) => ({ ...p, description: e.target.value }))}
+                placeholder="Its range, what it does and for how long."
+              />
+
+              <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addSpell}>
+                + Add spell
               </button>
             </>
           )}

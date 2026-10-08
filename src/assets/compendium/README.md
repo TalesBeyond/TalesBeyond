@@ -13,6 +13,7 @@ monsters/giant-spider.png
 tomes/the-fall-of-the-nine-crowns.png
 foods/bread-loaf.png
 spells/fireball.png
+potions/healing-draught.png   (ingredients go here too: potions/heartleaf.png)
 ```
 
 The file name is the entry's name in lower case, with every run of other

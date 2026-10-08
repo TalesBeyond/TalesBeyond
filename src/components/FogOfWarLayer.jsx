@@ -6,11 +6,16 @@ import { clippedFogChunk } from '../utils/fogOfWar.js';
 // fogChunkGrabAt works out which one a press took).
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
+// How many squares one repeat of the mist picture (assets/fog-of-war.png)
+// spans, so the mist grows and shrinks with the map's zoom.
+const MIST_TILE_CELLS = 12;
+
 // One island's Fog of war, painted inside the island (MapBoard.jsx) over the
 // map art, grid, day/night tint and drawings, and under every token.
 //
-// Players get an opaque cover over each unrevealed chunk. The DM gets a tint
-// over an unrevealed chunk, with everything beneath still showing, and a
+// Players get one opaque cover of drifting mist, cut to the unrevealed
+// chunks. The DM gets a tint over an unrevealed chunk, with everything
+// beneath still showing, and a
 // dashed outline around a revealed one. `draft` is the rectangle the DM is
 // dragging out right now, and `edit` ({ id, x, y, w, h }) where the chunk
 // they are moving or resizing stands meanwhile. `editable`: the Fog of war
@@ -36,6 +41,28 @@ export default function IslandFogOfWar({ chunks, island, cellPx, isHost, selecte
       height: Math.min(height, Math.ceil(box.y1 * cellPx)) - top,
     };
   };
+  if (!isHost) {
+    // One cover the size of the island, cut to the fogged chunks, so the
+    // mist runs unbroken from one chunk into the next and its joins give
+    // nothing of the rooms beneath away.
+    const cut = chunks
+      .map((chunk) => (chunk.revealed ? null : clippedFogChunk(chunk, island)))
+      .filter(Boolean)
+      .map((box) => {
+        const at = boxStyle(box);
+        return `M${at.left} ${at.top}h${at.width}v${at.height}h${-at.width}z`;
+      })
+      .join('');
+    if (!cut) return null;
+    // An even number of pixels: the upper sheet of mist is half as big again.
+    const tile = Math.max(32, Math.round((cellPx * MIST_TILE_CELLS) / 2) * 2);
+    return (
+      <div className="fog-of-war-cover" style={{ width, height, clipPath: `path('${cut}')`, '--fog-tile': `${tile}px` }}>
+        <div className="fog-of-war-mist" />
+        <div className="fog-of-war-mist over" />
+      </div>
+    );
+  }
   const tags = [];
   return (
     <>
@@ -43,7 +70,6 @@ export default function IslandFogOfWar({ chunks, island, cellPx, isHost, selecte
         const chunk = edit?.id === stored.id ? { ...stored, x: edit.x, y: edit.y, w: edit.w, h: edit.h } : stored;
         const box = clippedFogChunk(chunk, island);
         if (!box) return null;
-        if (!isHost) return chunk.revealed ? null : <div key={chunk.id} className="fog-of-war-cover" style={boxStyle(box)} />;
         const selected = chunk.id === selectedId;
         if (chunk.revealed && onPickTag) tags.push({ chunk, box });
         return (

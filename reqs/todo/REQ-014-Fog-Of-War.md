@@ -274,7 +274,7 @@ Also depends on these migrations being applied: `20250101000059_hidden_tokens_lo
 
 ## Open Questions
 
-- [ ] **Q1 — Cover look.** Flat colour per theme, or a textured cover? Deferred until S005; decide with both themes on screen.
+- [x] **Q1 — Cover look resolved.** A textured cover: pale drifting mist, the same in both themes, as one cover per island cut to the fogged chunks so the texture never breaks at a chunk's edge. *(Blaxine)*
 - [ ] **Q2 — Reveal write volume.** One update per token per reveal: is it fast enough for a room of 30 or more tokens? Deferred until the Slice 2 smoke test; measure with 30 monsters in one chunk on a cloud table.
 - [x] **Q3 — Token privacy resolved.** A stored `fogged` flag written by the DM's client, treated like `hidden`. *(Blaxine)*
 - [x] **Q4 — Chunk scope resolved.** A chunk belongs to one island; "Fog whole island" covers the active island. *(Blaxine)*
