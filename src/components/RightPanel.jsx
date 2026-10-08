@@ -324,8 +324,11 @@ export function HiddenField({ entity, onUpdate, style }) {
 // ---------- fog of war ----------
 
 // The card for a fog chunk the DM has picked on the map (utils/fogOfWar.js):
-// open it for the whole table or fog it again, and take it off the map.
-export function FogChunkCard({ chunk, islandName, onReveal, onFogAgain, onDelete }) {
+// open it for the whole table or fog it again, choose whether a hero walking
+// in opens it, and take it off the map. `occupied`: a hero stands in it.
+export function FogChunkCard({ chunk, islandName, occupied = false, onReveal, onFogAgain, onRevealOnEnter, onDelete }) {
+  const switchId = React.useId();
+  const revealsOnEnter = chunk.revealOnEnter !== false;
   return (
     <div className="inspector-card fog-of-war-card">
       <h4>Fog of war</h4>
@@ -347,6 +350,31 @@ export function FogChunkCard({ chunk, islandName, onReveal, onFogAgain, onDelete
           ? 'Players see this area. Its dashed outline shows only to you.'
           : 'Players see an opaque cover here. The tint shows only to you.'}
       </p>
+      {/* The same switch the phone sheets use (PhoneChrome.jsx's PhoneSwitch,
+          which imports from this file). */}
+      <div className="phone-switch-row">
+        <span className="phone-switch-text">
+          <span id={switchId} className="phone-switch-label">
+            Reveals when entered
+          </span>
+          <span className="phone-caption phone-caption-flush">
+            {revealsOnEnter ? 'Opens for everyone when a hero steps in.' : 'Held back: players cannot enter. Only you open it.'}
+          </span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={revealsOnEnter}
+          aria-labelledby={switchId}
+          className={`phone-switch${revealsOnEnter ? ' on' : ''}`}
+          onClick={() => onRevealOnEnter(chunk.id, !revealsOnEnter)}
+        >
+          <span />
+        </button>
+      </div>
+      {occupied && (
+        <Hint>A hero is standing in this area. It stays shut only while "Reveals when entered" is off, and "Fog again" turns it off for you.</Hint>
+      )}
       <button type="button" className="btn btn-block btn-danger" title="Take this fog chunk off the map" onClick={() => onDelete(chunk.id)}>
         Delete
       </button>

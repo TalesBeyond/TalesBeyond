@@ -24,7 +24,7 @@ import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js'
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
-import { isEntityFogged, isDoorHomeSideFogged, isDoorTargetSideFogged } from '../utils/fogOfWar.js';
+import { isEntityFogged, isDoorHomeSideFogged, isDoorTargetSideFogged, isFogChunkOccupied, fogChunksToRevealOnEnter } from '../utils/fogOfWar.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
 import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
@@ -2148,17 +2148,45 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   // Laying a chunk: `rect` is { islandId, x, y, w, h } in whole squares,
   // already clipped to its island (MapBoard, or "Fog whole island").
+  //
+  // "Reveals when entered" is positional: a chunk with it on opens while a
+  // hero stands in it (the effect below). So a chunk laid over a hero starts
+  // with it off — held back — or it would open the moment it was drawn.
   function addFogChunk(rect) {
     if (!isHost) return;
-    writeFogChunk({ id: generateEntityId(), islandId: rect.islandId, x: rect.x, y: rect.y, w: rect.w, h: rect.h, revealed: false, revealOnEnter: true });
+    const chunk = { id: generateEntityId(), islandId: rect.islandId, x: rect.x, y: rect.y, w: rect.w, h: rect.h, revealed: false, revealOnEnter: true };
+    const current = stateRef.current;
+    writeFogChunk(isFogChunkOccupied(chunk, current, current.entities) ? { ...chunk, revealOnEnter: false } : chunk);
   }
 
-  // Reveal and "Fog again" are for the whole table: there is no per-player fog.
+  // Reveal and "Fog again" are for the whole table: there is no per-player
+  // fog. "Fog again" on a chunk a hero stands in turns "Reveals when entered"
+  // off, for the same reason a chunk laid over one starts that way.
   function setFogChunkRevealed(id, revealed) {
-    const chunk = stateRef.current.fogChunks?.[id];
+    const current = stateRef.current;
+    const chunk = current.fogChunks?.[id];
     if (!isHost || !chunk || Boolean(chunk.revealed) === revealed) return;
-    writeFogChunk({ ...chunk, revealed });
+    const heldBack = !revealed && isFogChunkOccupied(chunk, current, current.entities);
+    writeFogChunk({ ...chunk, revealed, ...(heldBack ? { revealOnEnter: false } : {}) });
   }
+
+  function setFogChunkRevealOnEnter(id, revealOnEnter) {
+    const chunk = stateRef.current.fogChunks?.[id];
+    if (!isHost || !chunk || (chunk.revealOnEnter !== false) === revealOnEnter) return;
+    writeFogChunk({ ...chunk, revealOnEnter });
+  }
+
+  // Reveals when entered. Only the DM's client does this, so nothing opens
+  // while the DM is away; it catches up when they are back, and after every
+  // HYDRATE (which replaces `entities` and `fogChunks`). It goes through the
+  // same path as the Reveal button, so the tokens inside are restamped by the
+  // effect below.
+  useEffect(() => {
+    if (!isHost) return;
+    const current = stateRef.current;
+    for (const id of fogChunksToRevealOnEnter(current, current.entities)) setFogChunkRevealed(id, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, state.entities, state.layers, state.fogChunks, state.fogChunkOrder]);
 
   // Which tokens the fog covers (`entity.fogged`) is derived data that only
   // the DM's client writes. A token's own placement or move carries it in the
@@ -2184,8 +2212,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   const fogOfWarApi = {
     islandName: selectedFogChunk ? currentLayer.islands[selectedFogChunk.islandId]?.name || null : null,
+    occupied: selectedFogChunk ? isFogChunkOccupied(selectedFogChunk, state, state.entities) : false,
     onReveal: (id) => setFogChunkRevealed(id, true),
     onFogAgain: (id) => setFogChunkRevealed(id, false),
+    onRevealOnEnter: setFogChunkRevealOnEnter,
     onDelete: deleteFogChunk,
   };
 

@@ -142,3 +142,34 @@ export function isEntityFogged(entity, world) {
   const target = doorTargetSide(world, entity);
   return !target || isFootprintFogged(world, target.islandId, target.col, target.row, entity.size || 1);
 }
+
+// ---- Reveals when entered, and held-back chunks ----
+// A chunk's `revealOnEnter` setting. On: the DM's client reveals the chunk
+// while any hero occupies one of its squares, whoever moved the hero and
+// however long ago. Off: the chunk is held back — it opens only by the DM's
+// hand, and a player may not move their own hero into it.
+
+function footprintTouches(box, col, row, size) {
+  return col < box.x1 && col + size > box.x0 && row < box.y1 && row + size > box.y0;
+}
+
+// Whether any hero occupies at least one of a chunk's squares.
+export function isFogChunkOccupied(chunk, world, entities) {
+  const box = clippedFogChunk(chunk, findIsland(world.layers, chunk?.islandId));
+  if (!box) return false;
+  return Object.values(entities || {}).some(
+    (entity) => entity.kind === 'hero' && entity.islandId === chunk.islandId && footprintTouches(box, entity.col, entity.row, entity.size || 1)
+  );
+}
+
+// The ids of the unrevealed chunks, setting on, that a hero stands in: the
+// ones the DM's client reveals.
+export function fogChunksToRevealOnEnter(world, entities) {
+  const ids = [];
+  for (const id of world.fogChunkOrder || []) {
+    const chunk = world.fogChunks?.[id];
+    if (!chunk || chunk.revealed || chunk.revealOnEnter === false) continue;
+    if (isFogChunkOccupied(chunk, world, entities)) ids.push(id);
+  }
+  return ids;
+}

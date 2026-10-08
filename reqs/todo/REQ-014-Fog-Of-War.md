@@ -199,9 +199,9 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S013 | U | Setting on the fog card | "Reveals when entered" switch on the fog card, writing `reveal_on_enter` through the S002 write function. | S006 | `src/components/RightPanel.jsx`, `src/components/GameView.jsx` |
-|  | S014 | S | Positional reveal on the DM's client | Pure function: the unrevealed chunks with the setting on that a hero occupies. On the DM's client, whenever heroes or chunks change and after each `HYDRATE`, reveal each such chunk through the same path as the Reveal button, so S011 restamps. | S011, S013 | the S003 module, `src/components/GameView.jsx` |
-|  | S015 | U | Occupied-chunk rule | Laying a chunk over a hero creates it with the setting off. "Fog again" on an occupied chunk also turns the setting off. A Hint on the card, shown while a hero stands in the chunk, explains it. | S014 | `src/components/GameView.jsx`, `src/components/RightPanel.jsx` |
+| ✅ | S013 | U | Setting on the fog card | "Reveals when entered" switch on the fog card, writing `reveal_on_enter` through the S002 write function. | S006 | `src/components/RightPanel.jsx`, `src/components/GameView.jsx` |
+| ✅ | S014 | S | Positional reveal on the DM's client | Pure function: the unrevealed chunks with the setting on that a hero occupies. On the DM's client, whenever heroes or chunks change and after each `HYDRATE`, reveal each such chunk through the same path as the Reveal button, so S011 restamps. | S011, S013 | the S003 module, `src/components/GameView.jsx` |
+| ✅ | S015 | U | Occupied-chunk rule | Laying a chunk over a hero creates it with the setting off. "Fog again" on an occupied chunk also turns the setting off. A Hint on the card, shown while a hero stands in the chunk, explains it. | S014 | `src/components/GameView.jsx`, `src/components/RightPanel.jsx` |
 
 ### Slice 4 — Held-back chunks block players
 
