@@ -173,3 +173,17 @@ export function fogChunksToRevealOnEnter(world, entities) {
   }
   return ids;
 }
+
+// Whether a hero moved to (col, row) on an island would stand on any square
+// of a held-back chunk: an unrevealed one with the setting off. A player may
+// not make that move with their own hero; the DM is never restricted. Only
+// the destination is tested, so a hero already inside can always walk out.
+export function isHeldBackDestination(world, islandId, col, row, size = 1) {
+  const island = findIsland(world.layers, islandId);
+  if (!island) return false;
+  return unrevealedOn(world, islandId).some((chunk) => {
+    if (chunk.revealOnEnter !== false) return false;
+    const box = clippedFogChunk(chunk, island);
+    return Boolean(box) && footprintTouches(box, col, row, size);
+  });
+}

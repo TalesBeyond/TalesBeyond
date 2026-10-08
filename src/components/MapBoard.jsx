@@ -379,8 +379,14 @@ export default function MapBoard({
       return;
     }
     const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+    // A move the table refuses outright (a player's hero into a held-back
+    // fog chunk) comes back false: the token never lands — it is not held at
+    // the drop square — and no door is offered.
+    if (onMoveEntity(current.id, col, row, found.island.id) === false) {
+      setDragPos(null);
+      return;
+    }
     holdDragAt(current.id, size, col, row, found.island.id, found);
-    onMoveEntity(current.id, col, row, found.island.id);
     // Landing a hero token on a door's square (via an actual drag, not a
     // bare click/reselect) offers to walk through it. The DM gets the same
     // offer for any hero, monster or NPC they drop on a door.

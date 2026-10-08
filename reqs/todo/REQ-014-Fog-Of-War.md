@@ -210,9 +210,9 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S016 | S | Held-back rule in the move path | Pure function: whether a hero's destination footprint touches an unrevealed chunk with the setting off. `moveEntity` refuses such a move for a non-host and emits the log line. `applyValidatedIntent`'s `MOVE_ENTITY` branch applies the same check against the DM's state. | S013 | the S003 module, `src/components/GameView.jsx` |
-|  | S017 | U | The hero never lands | The map knows a drop is refused before it holds the token at the drop square, so the token returns at once. `handleTapCell` and the planned-move confirm refuse the same destinations. | S016 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
-|  | S018 | S | Doors | For a player, `enterDoor` and `confirmEnterDoor` refuse when the arrival square is held back, with the log line and no prompt. Arrival into a chunk with the setting on needs no code beyond S014. | S016 | `src/components/GameView.jsx` |
+| ✅ | S016 | S | Held-back rule in the move path | Pure function: whether a hero's destination footprint touches an unrevealed chunk with the setting off. `moveEntity` refuses such a move for a non-host and emits the log line. `applyValidatedIntent`'s `MOVE_ENTITY` branch applies the same check against the DM's state. | S013 | the S003 module, `src/components/GameView.jsx` |
+| ✅ | S017 | U | The hero never lands | The map knows a drop is refused before it holds the token at the drop square, so the token returns at once. `handleTapCell` and the planned-move confirm refuse the same destinations. | S016 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
+| ✅ | S018 | S | Doors | For a player, `enterDoor` and `confirmEnterDoor` refuse when the arrival square is held back, with the log line and no prompt. Arrival into a chunk with the setting on needs no code beyond S014. | S016 | `src/components/GameView.jsx` |
 
 ### Slice 5 — Whole island, editing, phone, docs
 

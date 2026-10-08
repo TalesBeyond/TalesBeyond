@@ -24,7 +24,14 @@ import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js'
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
-import { isEntityFogged, isDoorHomeSideFogged, isDoorTargetSideFogged, isFogChunkOccupied, fogChunksToRevealOnEnter } from '../utils/fogOfWar.js';
+import {
+  isEntityFogged,
+  isDoorHomeSideFogged,
+  isDoorTargetSideFogged,
+  isFogChunkOccupied,
+  fogChunksToRevealOnEnter,
+  isHeldBackDestination,
+} from '../utils/fogOfWar.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
 import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
@@ -224,6 +231,20 @@ function arrivalCellNearDoor(state, doorEntity, destinationLayerId) {
   const free = findFreeCell(entitiesOnDestination, islandId, island.cols, island.rows);
   return { islandId, col: free.col, row: free.row };
 }
+
+// A held-back fog chunk (utils/fogOfWar.js) is shut to players: nobody may
+// move their own hero onto one of its squares. This is that test for one
+// move, shared by the player's own client (moveEntity, the door prompt) and
+// a guest table's DM validating a player's intent. `islandId` may be missing
+// (a move within the token's own island). A token left where it stands is not
+// a move, so a hero already inside can still be clicked and dragged in place.
+function isHeldBackMove(world, entity, islandId, col, row) {
+  const destinationIslandId = islandId || entity.islandId;
+  if (destinationIslandId === entity.islandId && col === entity.col && row === entity.row) return false;
+  return isHeldBackDestination(world, destinationIslandId, col, row, entity.size || 1);
+}
+
+const HELD_BACK_LOG = 'That area is not open yet';
 
 function entitiesVisibleOnLayer(state, layerId, showHidden) {
   const result = {};
@@ -1229,6 +1250,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       if (action.type === 'MOVE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
         if (!entity || entity.kind !== 'hero' || entity.ownerId !== senderId) return;
+        // The player's own client refuses this before sending it
+        // (moveEntity); this is the check that counts on a guest table.
+        if (isHeldBackMove(stateRef.current, entity, action.islandId, action.col, action.row)) return;
         applyAndBroadcast(action);
       } else if (action.type === 'UPDATE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
@@ -1663,13 +1687,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }
 
+  // A player's own hero does not go into a held-back fog chunk: the move is
+  // refused, with one line in the log saying why. The DM is never restricted.
+  function refusedAsHeldBack(entity, islandId, col, row) {
+    if (isHost || !isHeldBackMove(stateRef.current, entity, islandId, col, row)) return false;
+    emitFx({ type: 'log', text: HELD_BACK_LOG });
+    return true;
+  }
+
   // `layerId` is only ever passed by confirmEnterDoor, to carry a hero
   // across to the door's other side along with the col/row/islandId move —
   // every other caller (MapBoard's drag) leaves it undefined and this
   // behaves exactly as before.
+  //
+  // Returns false when the move was refused as held back, so the map can
+  // leave the token where it was rather than hold it at the drop square.
   function moveEntity(id, col, row, islandId, layerId) {
     const entity = state.entities[id];
     if (!canMoveEntity(entity)) return;
+    if (refusedAsHeldBack(entity, islandId, col, row)) return false;
     // Dragging a door while viewing it from its target-layer side repositions
     // only that side, independent of where it sits on its home layer. That
     // side isn't per-island, so only accept a drop that landed back on the
@@ -2822,7 +2858,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // currently being viewed from, so the same door works walking in from
     // either side.
     const destinationLayerId = currentLayerId === doorEntity.layerId ? doorEntity.targetLayerId : doorEntity.layerId;
+    // Nor does a player go through a door that comes out in a held-back fog
+    // chunk: the same log line as a refused move, and no prompt.
+    if (!isHost && doorArrivalHeldBack(doorEntity.id, destinationLayerId)) return;
     setPendingDoor({ door: doorEntity, destinationLayerId, travellerId: isHost ? traveller.id : null });
+  }
+
+  // For a player: whether walking through this door would land them in a
+  // held-back fog chunk (logging the refusal when it would). The arrival
+  // square is worked out from the raw door, as confirmEnterDoor does.
+  function doorArrivalHeldBack(doorId, destinationLayerId) {
+    const rawDoor = state.entities[doorId];
+    if (!rawDoor) return false;
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    const arrival = arrivalCellNearDoor(state, rawDoor, destinationLayerId);
+    if (!isHeldBackDestination(stateRef.current, arrival.islandId, arrival.col, arrival.row, myHero?.size || 1)) return false;
+    emitFx({ type: 'log', text: HELD_BACK_LOG });
+    return true;
   }
 
   // Moves this player's own view to another layer.
@@ -2865,6 +2917,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       return;
     }
     if (isLockedDoor(rawDoor) || isHiddenFromPlayers(rawDoor)) return;
+    // Or held back the far side while the prompt was up.
+    if (doorArrivalHeldBack(rawDoor.id, pending.destinationLayerId)) return;
     const myHero = heroes.find((h) => h.ownerId === me.id);
     if (myHero) {
       const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
@@ -3406,7 +3460,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return Object.values(layerEntities).find((e) => e.kind === 'door' && e.islandId === islandId && e.col === col && e.row === row) || null;
   }
   function commitMove(entity, islandId, col, row) {
-    moveEntity(entity.id, col, row, islandId);
+    if (moveEntity(entity.id, col, row, islandId) === false) return; // held back: no move, so no door either
     // Landing a hero on a door's square offers to walk through it, as a drag
     // does — and so does the DM landing a hero or monster on one.
     const canUseDoor = isHost ? isCreature(entity) : entity.kind === 'hero';
@@ -3417,6 +3471,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const entity = selectedEntity;
     if (!isCreature(entity) || !canMoveEntity(entity)) return false;
     if (entity.islandId === islandId && entity.col === col && entity.row === row) return false;
+    // A square in a held-back fog chunk is refused here, before it can become
+    // a planned move. The tap was still used: it selects nothing.
+    if (refusedAsHeldBack(entity, islandId, col, row)) return true;
     if (encounter && actor?.id === entity.id) {
       setPlannedMove({ entityId: entity.id, islandId, col, row });
       return true;
