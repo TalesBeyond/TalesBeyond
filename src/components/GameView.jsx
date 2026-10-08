@@ -122,7 +122,7 @@ import {
   PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
-import { DoorInspector, TrapInspector, AmbushInspector } from './RightPanel.jsx';
+import { DoorInspector, TrapInspector, AmbushInspector, FogChunkCard } from './RightPanel.jsx';
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
@@ -2151,9 +2151,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Only while its island is on the layer in view.
   const selectedFogChunk = selectedFogChunkStored && currentLayer.islands[selectedFogChunkStored.islandId] ? selectedFogChunkStored : null;
 
+  // On the phone there is no Fog of war tool and no side panel: a tap on a
+  // fogged chunk, or on a revealed one's corner tag, opens its card in a sheet.
   function selectFogChunk(id) {
     setSelectedFogChunkId(id || null);
-    if (id) setSelectedId(null);
+    if (!id) return;
+    setSelectedId(null);
+    if (isPhone) setPhoneSheet('fogofwar');
   }
   useEffect(() => {
     if (selectedId) setSelectedFogChunkId(null);
@@ -2206,6 +2210,43 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     writeFogChunk({ ...chunk, revealed, ...(heldBack ? { revealOnEnter: false } : {}) });
   }
 
+  // "Fog whole island": one chunk the size of the active island.
+  function fogWholeIsland() {
+    const island = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+    if (island) addFogChunk({ islandId: island.id, x: 0, y: 0, w: island.cols, h: island.rows });
+  }
+
+  // The picked chunk, moved or resized on the map (MapBoard): `rect` is
+  // { id, x, y, w, h } in whole squares, on its island. A fogged chunk that
+  // now covers a hero it did not cover before becomes held back, as one laid
+  // over a hero does: otherwise it would open the moment it was dropped.
+  function updateFogChunkRect(rect) {
+    const current = stateRef.current;
+    const chunk = current.fogChunks?.[rect.id];
+    if (!isHost || !chunk) return;
+    const next = { ...chunk, x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    const newlyOccupied = !next.revealed && !isFogChunkOccupied(chunk, current, current.entities) && isFogChunkOccupied(next, current, current.entities);
+    writeFogChunk(newlyOccupied ? { ...next, revealOnEnter: false } : next);
+  }
+
+  // In the Fog of war tool: Esc drops the selection, Delete or Backspace
+  // removes the picked chunk — never while typing in a field.
+  useEffect(() => {
+    if (!isHost || tool !== 'fogofwar') return undefined;
+    function onKey(e) {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === 'Escape') {
+        setSelectedFogChunkId(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFogChunkId) {
+        e.preventDefault();
+        deleteFogChunk(selectedFogChunkId);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   function setFogChunkRevealOnEnter(id, revealOnEnter) {
     const chunk = stateRef.current.fogChunks?.[id];
     if (!isHost || !chunk || (chunk.revealOnEnter !== false) === revealOnEnter) return;
@@ -2245,6 +2286,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, state.layers, state.fogChunks, state.fogChunkOrder]);
+
+  // The island "Fog whole island" would cover: the active one, which a
+  // press on a map with the Fog of war tool makes that map.
+  const fogWholeIslandName = (currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]])?.name || 'this map';
 
   const fogOfWarApi = {
     islandName: selectedFogChunk ? currentLayer.islands[selectedFogChunk.islandId]?.name || null : null,
@@ -3285,7 +3330,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     hostTour.finish();
     setTourOpen(false);
   }
-  const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
+  const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas' | 'fogofwar' | …
   // A hint's "Open Tokens": the Tokens panel on desktop, the Add sheet on a
   // phone.
   useFx((event) => {
@@ -3593,6 +3638,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   useEffect(() => {
     if (isPhone && tool === 'fogofwar') setTool('play');
   }, [isPhone, tool]);
+  // The phone's fog sheet closes with its chunk (deleted, or its map left).
+  useEffect(() => {
+    if (phoneSheet === 'fogofwar' && !selectedFogChunk) setPhoneSheet(null);
+  }, [phoneSheet, selectedFogChunk]);
 
   // A player has no Tokens panel (placing tokens is the DM's), so only the
   // right panel shares the room with the map.
@@ -3837,6 +3886,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               selectedFogChunkId={selectedFogChunk?.id || null}
               onSelectFogChunk={isHost ? selectFogChunk : null}
               onAddFogChunk={isHost && !isPhone ? addFogChunk : null}
+              onUpdateFogChunk={isHost && !isPhone ? updateFogChunkRect : null}
             />
           </div>
           {isPhone && (
@@ -3935,10 +3985,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               Everyone at the table sees what you draw. Right-drag moves the view.
             </ModeBar>
           )}
+          {/* Not a hint to dismiss, like the others: it carries the tool's
+              one action, so it stays for as long as the tool is in hand. */}
           {!isPhone && isHost && tool === 'fogofwar' && (
-            <ModeBar id="fogofwar" className="map-mode-bar" label="Fog of war." doneLabel="Done" onDone={() => setTool('play')}>
-              Drag on a map to cover it. Click a chunk to reveal it, fog it again or delete it.
-            </ModeBar>
+            <div role="status" className="mode-bar map-mode-bar fog-of-war-bar">
+              <span className="mode-bar-text">
+                <b>Fog of war.</b> Drag on a map to cover it. Click a chunk to pick it, then drag it or its handles.
+              </span>
+              <button type="button" className="mode-bar-done" title={`Cover all of ${fogWholeIslandName} with one fog chunk`} onClick={fogWholeIsland}>
+                Fog whole island
+              </button>
+              <button type="button" className="area-bar-place" onClick={() => setTool('play')}>
+                Done
+              </button>
+            </div>
           )}
           {isHost && !isPhone && tool === 'draw' && (
             <DrawingBar
@@ -4201,6 +4261,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onWalk={confirmEnterDoor}
               onCancel={cancelEnterDoor}
             />
+          )}
+          {phoneSheet === 'fogofwar' && isHost && selectedFogChunk && (
+            <PhoneSheet
+              title="Fog of war"
+              onClose={() => {
+                setPhoneSheet(null);
+                setSelectedFogChunkId(null);
+              }}
+            >
+              <div className="phone-sheet-pad">
+                <FogChunkCard chunk={selectedFogChunk} {...fogOfWarApi} />
+              </div>
+            </PhoneSheet>
           )}
           {phoneSheet === 'chest' && selectedEntity?.kind === 'chest' && (
             <PhoneChestSheet

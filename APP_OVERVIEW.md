@@ -164,7 +164,8 @@ reloads the full snapshot on mount).
 - **Tool select** (mutually exclusive): **Play** (select/drag tokens,
   walk through doors) · **Edit** (host-only: drag islands to reposition,
   edit chest contents) · **Pan** (click-drag to scroll) · **Ruler**
-  (click-drag to measure).
+  (click-drag to measure) · **Fog of war** (host-only, desktop: cover
+  parts of a map until the party explores them — see Fog of war below).
 - **Zoom**: −/Reset(shows current %)/+ /Recenter (scroll back to the
   currently active island). Mouse wheel also zooms in any tool. Zoom is
   a per-viewer preference, never persisted or synced.
@@ -214,6 +215,13 @@ Dragging a token resolves the drop point against *whichever island's
 rectangle contains it*, re-scoping the token to that island if it moved
 across a boundary. Distance is measured with D&D 5e's "5-10-5" diagonal
 rule (`src/utils/grid.js`'s `feetDistance`).
+
+Fog of war paints inside each island, over the map art, grid, day/night
+tint and drawings and under every token (`FogOfWarLayer.jsx`): an opaque
+cover for players, a tint for the DM. A player's encounter move range
+stops at the cover. A token dropped where the table refuses it (a
+player's hero into a held-back fog chunk) never lands: `onMoveEntity`
+returns `false` and the map does not hold it at the drop square.
 
 ### Token sidebar (`TokenSidebar.jsx`)
 
@@ -369,6 +377,50 @@ map; every seated player sees the result, and only the DM can draw.
   drawing preferences (tool, style, Snap, recent colours, Hide) are
   `hearthbound:drawprefs` in this browser only.
 
+### Fog of war (`FogOfWarLayer.jsx`, `utils/fogOfWar.js`)
+
+The DM's **Fog of war** tool (Tools menu, desktop only) covers parts of a
+map until the party explores them. It is not the Fog island condition.
+
+- **Fog chunks**: each is a rectangle on one island —
+  `{ id, islandId, x, y, w, h, revealed, revealOnEnter }` in
+  `state.fogChunks` / `state.fogChunkOrder`, in whole squares from the
+  island's top-left corner. Squares outside the island's current size are
+  ignored. A square is fogged while at least one unrevealed chunk covers
+  it. Chunks move with their island and are deleted with it (or its layer).
+- **What each side sees**: players get a flat opaque cover; the DM gets a
+  tint with the map showing through, and a dashed outline with a corner
+  tag once a chunk is revealed. There is no per-player fog.
+- **The tool**: drag on a map to lay a chunk; **Fog whole island** in the
+  bar lays one the size of the active island. Click a chunk to pick it
+  (the smallest, where several overlap), then drag it to move it or a
+  handle to resize it, in whole squares; Esc drops the selection, Delete
+  or Backspace removes the chunk. In Play, the DM's click on a fogged
+  square picks its chunk, and a revealed chunk is picked by its corner tag
+  only.
+- **The fog card** (right panel; a sheet on a phone): **Reveal** or **Fog
+  again**, the **Reveals when entered** switch, **Delete**.
+- **Tokens in fog**: a token that is not a hero and stands wholly on
+  fogged squares is fogged (`entity.fogged`) and does not exist for
+  players, the same three ways a hidden token doesn't (`data/visibility.js`).
+  A door needs both of its sides in fog; with one side clear, players see
+  it on that side only. Only the DM's client writes `fogged`: in the same
+  write that places or moves the token, again for every token whenever
+  chunks or islands change, and once more on load and after each resync.
+- **Reveals when entered**: with the setting on, the DM's client reveals
+  a chunk while any hero stands in it — whoever moved the hero. Nothing
+  opens while the DM's browser is closed. A chunk laid (or moved) over a
+  hero starts with the setting off, and so does one fogged again while a
+  hero stands in it.
+- **Held-back chunks** (setting off) open only by the DM's hand, and a
+  player cannot move their own hero into one — by drag, phone tap, planned
+  move or door. The hero stays where it was and the log says the area is
+  not open yet. The player's own client checks this on cloud and local
+  tables, the DM's client on a guest table; the database does not.
+- **Sync**: one write per finished action — the `fog_chunks` table in
+  cloud mode, the guest broadcast in a guest table, the saved state
+  locally.
+
 ### Dice rolls at the table (`RollFeed.jsx`)
 
 Players roll in the open; the DM's own rolls stay on the DM's screen unless
@@ -487,6 +539,8 @@ policy and RPC below keys off that session's `auth.uid()`.
 | `14_entity_ordering_and_player_leave.sql` | `entities.created_at` (real, reliable stacking-order timestamp — the pre-existing `z_order` column was declared but never actually written by the client); a self-only DELETE policy on `players` so **Leave** actually frees a seat in cloud mode instead of only flipping `connected` |
 | `15_entity_dm_data_privacy.sql` | Moves `dm_notes`/`drop_items` off `entities` into a new `entity_dm_data` table with host-only SELECT/UPDATE/DELETE — a non-host's query (or Realtime subscription) now returns zero rows instead of the raw value, so this data is actually private, not just UI-hidden |
 | `52_drawings.sql` | The Draw tool: a `drawings` table (one row per shape, `island_id` cascading from `islands`), members read, host writes; added to the realtime publication |
+| `68_fog_chunks.sql` | Fog of war: a `fog_chunks` table (one row per rectangle of fog in whole squares, `island_id` cascading from `islands`, with `revealed` and `reveal_on_enter`), members read, host writes; added to the realtime publication |
+| `69_fogged_tokens.sql` | Fog of war: `entities.fogged`, written only by the DM's client for a token standing wholly in fog. The `entities` read policy gains `and not fogged` for players, and `enforce_entity_write_permissions` keeps `fogged` the DM's, beside `hidden` and `locked` |
 | `16_dm_only_edits.sql` | The DM is the only one who edits information — INSERT/DELETE on `entities` becomes host-only, and a BEFORE UPDATE trigger (`enforce_entity_write_permissions`) restricts a non-host's UPDATE to exactly two cases: moving their own hero (col/row/island_id), or opening/closing a chest (opened/image_url) |
 
 Every table trusts "any seated member of this table" for reads and (for
@@ -513,10 +567,14 @@ migration 14, deleted by its own owner (leaving).
 
 One Postgres-changes subscription per open table, listening on
 `entities`, `players`, `layers`, `islands`, `tables` (open/close),
-`drawings`, and `invite_codes` (rotation) — every event is translated into the exact same
+`drawings`, `fog_chunks`, and `invite_codes` (rotation) — every event is translated into the exact same
 reducer action a local interaction would dispatch, so no component ever
 needs to know whether a change came from this browser or someone else's.
-Conflict handling is last-write-wins per row. This is already a working
+Conflict handling is last-write-wins per row. Realtime sends nothing when
+a row stops being readable, so a token the DM hides, or one the fog of war
+now covers, leaves players' maps through a `conceal` broadcast naming it
+(the row stays the authority: a client drops the token only if it really
+can no longer read it). This is already a working
 WebSocket-based live sync layer — `REALTIME_ROADMAP.md` lays out the
 step-by-step plan for hardening it (reconnect recovery, presence,
 ephemeral live-drag updates, load testing) into full live-service quality.

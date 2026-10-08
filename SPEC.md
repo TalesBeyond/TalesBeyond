@@ -311,6 +311,8 @@ create trigger trg_table_capacity
   for each row execute function enforce_table_capacity();
 ```
 
+**Fog of war (migrations 68–69).** `fog_chunks` holds one row per rectangle of fog: `id`, `table_id` and `island_id` (both `on delete cascade`), `x`, `y`, `w`, `h` in whole grid squares (`w >= 1`, `h >= 1`), `revealed boolean not null default false`, `reveal_on_enter boolean not null default true`, `created_at`, `updated_at`. `entities.fogged boolean not null default false` is derived data that only the DM's client writes: true while a token is not a hero and every square it occupies is covered by an unrevealed chunk (for a door, on both of its sides).
+
 ### 9.2 Row Level Security (RLS) — ✅ `supabase/02_policies.sql`
 
 RLS scopes every row to "am I a player at this table," using `auth.uid()` from Supabase Auth (anonymous sign-in, see §9.3):
@@ -346,6 +348,8 @@ create policy "members can read invite codes for their table"
 -- direct insert, so an unauthenticated visitor can look up a code without
 -- being able to read anyone else's table.
 ```
+
+**Fog of war.** Every seated member reads `fog_chunks`; only the host inserts, updates or deletes. The `entities` read policy's player branch carries `and not fogged`, so a fogged token's row is readable by the host alone, like a hidden one, and `enforce_entity_write_permissions()` keeps `fogged` the DM's beside `hidden` and `locked`. A held-back chunk (one with `reveal_on_enter` off) is not enforced by the database: the player's own client refuses the move, and on a guest table the DM's client does.
 
 ### 9.3 Auth strategy — ✅ `src/lib/auth.js`
 

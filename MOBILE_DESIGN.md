@@ -84,6 +84,12 @@ real-device pass and on REQ-008.
   grid, Clear this island / this map), Undo, Redo, Done. One finger draws; a
   second finger cancels the unfinished stroke, so two-finger pan and pinch
   still work. The encounter panel steps aside while drawing.
+- **Fog of war**: there is no Fog of war tool on a phone — chunks are laid,
+  moved and resized on desktop. A tap on a fogged chunk, or on a revealed
+  chunk's corner tag, when it was not used to move the selected token, opens
+  the fog card in a sheet: Reveal or Fog again, Reveals when entered, Delete.
+  A phone player sees the cover, the reveals and the blocked moves as on
+  desktop.
 - **Run the table** (`PhoneHostScreens.jsx`): encounter (round, turn, combat
   log, end) or Roll for initiative; compendiums and asset storage; clock and
   day/night; table music; dice; party.

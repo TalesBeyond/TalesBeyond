@@ -31,6 +31,7 @@ export const HOST_TOUR = [
       ['Play', 'select tokens and drag them around. The everyday tool.'],
       ['Ruler', 'drag across the map to measure a distance.'],
       ['Draw', 'sketch on the map. Everyone at the table sees it.'],
+      ['Fog of war', 'cover parts of a map until the party explores them.'],
       ['Edit', 'drag whole maps to rearrange the world.'],
     ],
   },

@@ -187,3 +187,52 @@ export function isHeldBackDestination(world, islandId, col, row, size = 1) {
     return Boolean(box) && footprintTouches(box, col, row, size);
   });
 }
+
+// ---- Moving and resizing a chunk (the Fog of war tool) ----
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+// The DM dragging the chunk they picked, from `from` to `to` (each [x, y] in
+// squares from the island's top-left corner, fractions included). `box` is
+// the chunk's clipped box when the drag began. `edges` names the sides a
+// handle moves ({ l, t, r, b }); null moves the whole chunk. The result is
+// { x, y, w, h } in whole squares, on the island, never under one square.
+export function fogChunkRectFromEdit(box, edges, from, to, island) {
+  if (!edges) {
+    const w = box.x1 - box.x0;
+    const h = box.y1 - box.y0;
+    return {
+      x: clamp(box.x0 + Math.round(to[0] - from[0]), 0, island.cols - w),
+      y: clamp(box.y0 + Math.round(to[1] - from[1]), 0, island.rows - h),
+      w,
+      h,
+    };
+  }
+  let { x0, y0, x1, y1 } = box;
+  if (edges.l) x0 = clamp(Math.round(to[0]), 0, x1 - 1);
+  if (edges.r) x1 = clamp(Math.round(to[0]), x0 + 1, island.cols);
+  if (edges.t) y0 = clamp(Math.round(to[1]), 0, y1 - 1);
+  if (edges.b) y1 = clamp(Math.round(to[1]), y0 + 1, island.rows);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+// What a press at `point` (in squares) takes hold of on a picked chunk's
+// clipped `box`: the sides a handle there moves ({ l, t, r, b } — a corner
+// moves two, the middle of a side one), null for the chunk's body, or
+// undefined for a press that misses it. `reach` is a handle's half-size in
+// squares.
+export function fogChunkGrabAt(box, point, reach) {
+  const [px, py] = point;
+  if (px < box.x0 - reach || px > box.x1 + reach || py < box.y0 - reach || py > box.y1 + reach) return undefined;
+  const near = (a, b) => Math.abs(a - b) <= reach;
+  const l = near(px, box.x0);
+  const r = !l && near(px, box.x1);
+  const t = near(py, box.y0);
+  const b = !t && near(py, box.y1);
+  if ((l || r) && (t || b)) return { l, r, t, b };
+  if ((l || r) && near(py, (box.y0 + box.y1) / 2)) return { l, r, t: false, b: false };
+  if ((t || b) && near(px, (box.x0 + box.x1) / 2)) return { l: false, r: false, t, b };
+  return px >= box.x0 && px < box.x1 && py >= box.y0 && py < box.y1 ? null : undefined;
+}

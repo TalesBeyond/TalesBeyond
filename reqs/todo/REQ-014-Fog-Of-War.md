@@ -221,12 +221,12 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S019 | U | Fog whole island | Mode-bar action creating one chunk the size of the active island, subject to S015. | S015 | `src/components/GameView.jsx` |
-|  | S020 | U | Move and resize a chunk | In the Fog of war tool, drag the selected chunk or its handles, in whole squares, with a live preview; the result is written once on release and restamped (S011). Delete and Backspace remove the selected chunk. | S011 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
-|  | S021 | U | Revealed-chunk corner tag | The tag on a revealed chunk's outline is the chunk's only click target in Play, for the DM. | S006 | `src/components/MapBoard.jsx`, `src/styles.css` |
-|  | S022 | U | Phone fog sheet | On the phone layout the DM's tap on a fogged chunk or a tag, when it was not used as a token move, opens the fog card in a Phone sheet. No tool entry on phones. | S015, S021 | `src/components/GameView.jsx`, `src/components/PhoneChrome.jsx` |
-|  | S023 | U | Tutorial and titles | Add the Fog of war line to the Tutorial's Tools step; check every new label against AC20. | S004 | `src/components/Tour.jsx`, `src/components/Toolbar.jsx` |
-|  | S024 | D | Glossary and docs | Add to `reqs/GLOSSARY.md`: Fog of war, Fog chunk, Held-back chunk, Reveals when entered; extend the Hidden token and Door entries with the fogged case. Update `APP_OVERVIEW.md` §4 (new Fog of war section; Toolbar; Map board) and §6 (schema, Realtime), `SPEC.md` §9.1–9.2, `PITFALLS.md` #1's list of what only the DM can do, and `MOBILE_DESIGN.md` §2. | S018, S022 | `reqs/GLOSSARY.md`, `APP_OVERVIEW.md`, `SPEC.md`, `PITFALLS.md`, `MOBILE_DESIGN.md` |
+| ✅ | S019 | U | Fog whole island | Mode-bar action creating one chunk the size of the active island, subject to S015. | S015 | `src/components/GameView.jsx` |
+| ✅ | S020 | U | Move and resize a chunk | In the Fog of war tool, drag the selected chunk or its handles, in whole squares, with a live preview; the result is written once on release and restamped (S011). Delete and Backspace remove the selected chunk. | S011 | `src/components/MapBoard.jsx`, `src/components/GameView.jsx` |
+| ✅ | S021 | U | Revealed-chunk corner tag | The tag on a revealed chunk's outline is the chunk's only click target in Play, for the DM. | S006 | `src/components/MapBoard.jsx`, `src/styles.css` |
+| ✅ | S022 | U | Phone fog sheet | On the phone layout the DM's tap on a fogged chunk or a tag, when it was not used as a token move, opens the fog card in a Phone sheet. No tool entry on phones. | S015, S021 | `src/components/GameView.jsx`, `src/components/PhoneChrome.jsx` |
+| ✅ | S023 | U | Tutorial and titles | Add the Fog of war line to the Tutorial's Tools step; check every new label against AC20. | S004 | `src/components/Tour.jsx`, `src/components/Toolbar.jsx` |
+| ✅ | S024 | D | Glossary and docs | Add to `reqs/GLOSSARY.md`: Fog of war, Fog chunk, Held-back chunk, Reveals when entered; extend the Hidden token and Door entries with the fogged case. Update `APP_OVERVIEW.md` §4 (new Fog of war section; Toolbar; Map board) and §6 (schema, Realtime), `SPEC.md` §9.1–9.2, `PITFALLS.md` #1's list of what only the DM can do, and `MOBILE_DESIGN.md` §2. | S018, S022 | `reqs/GLOSSARY.md`, `APP_OVERVIEW.md`, `SPEC.md`, `PITFALLS.md`, `MOBILE_DESIGN.md` |
 
 ### Dependency graph
 

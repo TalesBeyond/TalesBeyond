@@ -21,11 +21,12 @@ import {
 import { areaShape, areaLabel, areaOutline, outlineBounds, outlineContains } from '../utils/areaOfEffect.js';
 import IslandDrawings from './DrawingLayer.jsx';
 import IslandFogOfWar from './FogOfWarLayer.jsx';
-import { fogChunksOnIsland, fogChunkRectFromDrag, isSquareFogged, smallestFogChunkAt } from '../utils/fogOfWar.js';
+import { clippedFogChunk, fogChunksOnIsland, fogChunkRectFromDrag, fogChunkRectFromEdit, fogChunkGrabAt, isSquareFogged, smallestFogChunkAt } from '../utils/fogOfWar.js';
 import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
+const FOG_HANDLE_REACH_PX = 8; // how near a press must be to a picked fog chunk's handle to take it
 const FLOAT_MS = 1300; // how long a hit number drifts up over a token
 const ISLAND_SNAP_PX = 20; // un-zoomed pixels — how close an island's edge must get to another's to snap flush
 
@@ -82,6 +83,7 @@ export default function MapBoard({
   selectedFogChunkId = null, // the chunk the DM has picked
   onSelectFogChunk = null, // (id | null) => void — the DM only
   onAddFogChunk = null, // ({ islandId, x, y, w, h }) => void — the Fog of war tool, the DM only
+  onUpdateFogChunk = null, // ({ id, x, y, w, h }) => void — the picked chunk, moved or resized
 }) {
   const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
   useImageCacheVersion(); // redraw when a shared picture arrives
@@ -175,6 +177,9 @@ export default function MapBoard({
   // { islandId, x, y, w, h }, shown until the pointer lifts.
   const fogDragRef = useRef(null);
   const [fogDraft, setFogDraft] = useState(null);
+  // Where the picked chunk stands while the DM moves or resizes it:
+  // { id, islandId, x, y, w, h }. Written once, when the pointer lifts.
+  const [fogEdit, setFogEdit] = useState(null);
 
   // Padded generously beyond the islands' own bounding box (see
   // CANVAS_PAN_PADDING) so there's always room to pan in every direction —
@@ -813,6 +818,21 @@ export default function MapBoard({
   // squares, clipped to that island, saved when the pointer lifts. A press
   // that never became a drag picks the chunk under it instead (the smallest,
   // where several overlap), or drops the selection on empty ground.
+  //
+  // A drag that starts on the picked chunk edits it instead: a handle (a
+  // corner or the middle of a side) resizes it, its body moves it — in whole
+  // squares, previewed live, and written once when the pointer lifts.
+
+  // What a press at `point` took hold of on the picked chunk: { chunk, box,
+  // edges } (edges null for its body), or null when it missed.
+  function fogGrabAt(found, point) {
+    if (!onUpdateFogChunk || !selectedFogChunkId || !point) return null;
+    const chunk = (fogRef.current.get(found.island.id) || []).find((c) => c.id === selectedFogChunkId);
+    const box = chunk && clippedFogChunk(chunk, found.island);
+    if (!box) return null;
+    const edges = fogChunkGrabAt(box, point, FOG_HANDLE_REACH_PX / found.cellSize);
+    return edges === undefined ? null : { chunk, box, edges };
+  }
 
   function startFogOfWar(e) {
     if (!isHost || !onAddFogChunk) return;
@@ -828,7 +848,10 @@ export default function MapBoard({
       return;
     }
     e.preventDefault();
-    fogDragRef.current = { islandId: found.island.id, start: toIslandSquares(e, found.island.id), downX: p.x, downY: p.y, dragged: false, rect: null };
+    // The pressed map becomes the active one: the one "Fog whole island" covers.
+    onSelectIsland?.(found.island.id);
+    const start = toIslandSquares(e, found.island.id);
+    fogDragRef.current = { islandId: found.island.id, start, downX: p.x, downY: p.y, dragged: false, rect: null, grab: fogGrabAt(found, start) };
     window.addEventListener('pointermove', onFogMove);
     window.addEventListener('pointerup', onFogUp);
     window.addEventListener('pointercancel', cancelFogOfWar);
@@ -847,6 +870,11 @@ export default function MapBoard({
     const island = islandRects[d.islandId]?.island;
     const point = toIslandSquares(e, d.islandId);
     if (!island || !point) return;
+    if (d.grab) {
+      d.rect = fogChunkRectFromEdit(d.grab.box, d.grab.edges, d.start, point, island);
+      setFogEdit({ id: d.grab.chunk.id, islandId: d.islandId, ...d.rect });
+      return;
+    }
     d.rect = fogChunkRectFromDrag(d.start, point, island);
     setFogDraft(d.rect ? { islandId: d.islandId, ...d.rect } : null);
   }
@@ -862,11 +890,19 @@ export default function MapBoard({
     const d = fogDragRef.current;
     fogDragRef.current = null;
     setFogDraft(null);
+    setFogEdit(null);
     if (!d) return;
     if (!d.dragged) {
       const island = islandRects[d.islandId]?.island;
       const hit = island ? smallestFogChunkAt(fogRef.current.get(d.islandId) || [], island, Math.floor(d.start[0]), Math.floor(d.start[1])) : null;
       onSelectFogChunk?.(hit ? hit.id : null);
+      return;
+    }
+    if (d.grab) {
+      const { chunk, box } = d.grab;
+      const r = d.rect;
+      const changed = r && (r.x !== box.x0 || r.y !== box.y0 || r.w !== box.x1 - box.x0 || r.h !== box.y1 - box.y0);
+      if (changed) onUpdateFogChunk({ id: chunk.id, ...r });
       return;
     }
     if (d.rect) onAddFogChunk({ islandId: d.islandId, ...d.rect });
@@ -876,6 +912,16 @@ export default function MapBoard({
     stopFogListeners();
     fogDragRef.current = null;
     setFogDraft(null);
+    setFogEdit(null);
+  }
+
+  // The corner tag of a revealed chunk: the one thing of it the DM can click
+  // in Play. On the phone a tap with a movable token in hand is a move first
+  // (onTapCell), like a tap anywhere else on the map.
+  function handleFogTagPick(chunk, island, col, row) {
+    if (tool !== 'play' || gestureRef?.current?.panned) return;
+    if (onTapCell?.(island.id, col, row)) return;
+    onSelectFogChunk?.(chunk.id);
   }
 
   // ---- Ruler ----
@@ -1210,7 +1256,17 @@ export default function MapBoard({
             <IslandDrawings drawings={drawingsByIsland.get(id) || []} draft={draft?.islandId === id ? draft : null} cellPx={cellPx} width={w} height={h} />
             {/* Fog of war — over all of the above, still under the tokens:
                 an opaque cover for players, a tint for the DM. */}
-            <IslandFogOfWar chunks={islandFog} island={island} cellPx={cellPx} isHost={isHost} selectedId={selectedFogChunkId} draft={fogDraft?.islandId === id ? fogDraft : null} />
+            <IslandFogOfWar
+              chunks={islandFog}
+              island={island}
+              cellPx={cellPx}
+              isHost={isHost}
+              selectedId={selectedFogChunkId}
+              draft={fogDraft?.islandId === id ? fogDraft : null}
+              edit={fogEdit?.islandId === id ? fogEdit : null}
+              editable={isHost && tool === 'fogofwar' && Boolean(onUpdateFogChunk)}
+              onPickTag={isHost && onSelectFogChunk ? (chunk, col, row) => handleFogTagPick(chunk, island, col, row) : null}
+            />
           </div>
         );
       })}
