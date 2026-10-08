@@ -5,7 +5,8 @@ import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims, clampFeetPerSquare, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
 import { resolveImage } from '../lib/imageCache.js';
-import { resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
+import { islandsBounds, resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
+import MapImageFit, { defaultImagePlacement } from './MapImageFit.jsx';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
@@ -637,17 +638,21 @@ export default function Toolbar({
 
   // An island's background image, picked in its settings (World maps
   // dialog), made into the picture each map gets: { [islandId]: dataUrl },
-  // which the settings save at once.
+  // which the settings save once it has been laid where it belongs.
   // For an island in a group the picture belongs to the whole group: it is
   // laid over all of them together and each gets its own part — the shape
   // Download map exports (GameView's downloadIslandImage).
   // `size`: the { cols, rows } typed into those settings, perhaps not saved yet.
-  async function prepareIslandBackground(islandId, file, size = null) {
+  // `placement`: where the picture was laid by hand (MapImageFit). A map on
+  // its own, left where it was first laid, keeps the whole picture instead
+  // and lets the map crop it.
+  // `placements`: { [islandId]: the same }, the maps of a group that have the
+  // picture laid for them alone.
+  async function prepareIslandBackground(islandId, file, size = null, placement = null, placements = null) {
     const group = Object.values(layer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
-    const members = (group ? group.islandIds.map((id) => layer.islands[id]).filter(Boolean) : []).map((member) =>
-      member.id === islandId && size ? { ...member, ...size } : member,
-    );
-    if (members.length > 1) return sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78);
+    const grouped = group ? group.islandIds.map((id) => layer.islands[id]).filter(Boolean) : [];
+    const members = (grouped.length > 1 ? grouped : [layer.islands[islandId]]).map((member) => (member.id === islandId && size ? { ...member, ...size } : member));
+    if (members.length > 1 || placement) return sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78, placement, placements);
     return { [islandId]: await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78) };
   }
 
@@ -1982,12 +1987,12 @@ function IslandManagerPopover({
                 if (patch.name && group && !parentId) onRenameGroup?.(group.id, patch.name);
               }}
               onPreview={onPreviewIslands}
-              onPrepareBackground={(file, size) => onPrepareBackground(id, file, size)}
+              onPrepareBackground={(file, size, placement, placements) => onPrepareBackground(id, file, size, placement, placements)}
               onSaveBackground={(images) => {
                 for (const [islandId, backgroundImage] of Object.entries(images)) onUpdateIsland(islandId, { backgroundImage });
               }}
               groupName={group?.name || null}
-              groupIslandIds={(group ? group.islandIds : [id]).filter((memberId) => islands[memberId])}
+              groupIslands={(group ? group.islandIds : [id]).map((memberId) => islands[memberId]).filter(Boolean)}
               // A group is one picture, so taking it off takes it off them all.
               imageIslandIds={(group ? group.islandIds : [id]).filter((memberId) => islands[memberId]?.backgroundImage)}
             />
@@ -2046,16 +2051,20 @@ function IslandManagerPopover({
 // change, and at once on Enter, on leaving the field, or when the form is
 // folded away. Until then the new size and grid lines are drawn on the map
 // as a preview (`onPreview`, on this screen only:
-// { [islandId]: { cols, rows, gridLines } }, or null to end it).
+// { [islandId]: { cols, rows, gridLines, backgroundImage, backgroundFit } },
+// or null to end it).
+// A background image is the one thing with a step of its own: once picked it
+// is laid over the map with MapImageFit, shown on the map through the same
+// preview, and saved by Use this picture.
 // `groupName`: the island is in a group, so a background image is spread
 // over the whole group (prepareIslandBackground above), and
 // `onSaveBackground` is handed a picture for each of its maps.
-// `groupIslandIds`: the maps that share this one's grid lines (its group's,
-// or only itself).
+// `groupIslands`: this map, or every map of its group. They share their grid
+// lines and their picture.
 // `imageIslandIds`: the maps (this one, or its group's) that have a
 // background image now, the ones Remove image clears.
 const ISLAND_AUTOSAVE_MS = 500;
-function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, onPrepareBackground, onSaveBackground, groupName = null, groupIslandIds = [], imageIslandIds = [] }) {
+function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, onPrepareBackground, onSaveBackground, groupName = null, groupIslands = [], imageIslandIds = [] }) {
   const savedFeet = island.feetPerSquare || fallbackFeet;
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
@@ -2067,6 +2076,11 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
   const lines = normalizeGridLines({ strength: lineStrength, color: lineColor });
   const linesChanged = JSON.stringify(lines) !== JSON.stringify(savedLines);
   const [busy, setBusy] = useState(false); // a picked background image is being made ready
+  // A picked picture being laid over the map (MapImageFit), not saved yet:
+  // { file, url, imageWidth, imageHeight, place, placements, initial }.
+  // `place` is where it lies; `placements` the same for each map that has
+  // it laid for itself alone.
+  const [fit, setFit] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(false); // Remove image, pressed once
   const fileRef = useRef(null);
 
@@ -2078,6 +2092,8 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
   const nextRows = typed(rows, island.rows, clampGridDims);
   const nextFeet = typed(feet, savedFeet, clampFeetPerSquare);
   const sizeChanged = nextCols !== island.cols || nextRows !== island.rows;
+  // The maps a picture is spread over, this one at the size being typed.
+  const members = (groupIslands.length ? groupIslands : [island]).map((member) => (member.id === island.id ? { ...member, cols: nextCols, rows: nextRows } : member));
 
   const patch = {};
   if (nextName !== island.name) patch.name = nextName;
@@ -2108,10 +2124,24 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
     if (!onPreview) return;
     const previews = {};
     if (sizeChanged) previews[island.id] = { cols: nextCols, rows: nextRows };
-    if (linesChanged) for (const islandId of groupIslandIds) previews[islandId] = { ...previews[islandId], gridLines: lines };
+    if (linesChanged) for (const member of members) previews[member.id] = { ...previews[member.id], gridLines: lines };
+    if (fit) {
+      // The picture being laid: the whole of it on every map, each showing
+      // the part that falls on it (MapBoard's backgroundFit).
+      const { minX, minY } = islandsBounds(members);
+      for (const member of members) {
+        const at = fit.placements[member.id] || fit.place;
+        const backgroundFit = { x: at.x - ((member.x || 0) - minX), y: at.y - ((member.y || 0) - minY), width: at.width, height: at.height };
+        previews[member.id] = { ...previews[member.id], backgroundImage: fit.url, backgroundFit };
+      }
+    }
     onPreview(Object.keys(previews).length ? previews : null);
-  }, [sizeChanged, nextCols, nextRows, linesKey]);
+  }, [sizeChanged, nextCols, nextRows, linesKey, fit]);
   useEffect(() => () => onPreview?.(null), []);
+  // The picked picture is only held while it is being laid.
+  const fitRef = useRef(null);
+  fitRef.current = fit;
+  useEffect(() => () => fitRef.current && URL.revokeObjectURL(fitRef.current.url), []);
 
   // Enter, or leaving a field: save now, and tidy the fields to what was saved.
   function commit() {
@@ -2125,13 +2155,38 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
     if (e.key === 'Enter') commit();
   };
 
+  // A picked picture is laid over the map first (MapImageFit) and saved from there.
   async function pickFile(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const loading = new Image();
+        loading.onload = () => resolve(loading);
+        loading.onerror = reject;
+        loading.src = url;
+      });
+      const place = defaultImagePlacement(img.naturalWidth, img.naturalHeight, members);
+      if (fit) URL.revokeObjectURL(fit.url);
+      setFit({ file, url, imageWidth: img.naturalWidth, imageHeight: img.naturalHeight, place, placements: {}, initial: place });
+    } catch {
+      URL.revokeObjectURL(url);
+      alert('Could not read that image — try a different file.');
+    }
+  }
+  function closeFit() {
+    if (fit) URL.revokeObjectURL(fit.url);
+    setFit(null);
+  }
+  async function saveFit() {
+    if (!fit || busy) return;
     setBusy(true);
     try {
-      onSaveBackground(await onPrepareBackground(file, { cols: nextCols, rows: nextRows }));
+      const untouched = JSON.stringify(fit.place) === JSON.stringify(fit.initial) && !Object.keys(fit.placements).length;
+      onSaveBackground(await onPrepareBackground(fit.file, { cols: nextCols, rows: nextRows }, members.length < 2 && untouched ? null : fit.place, fit.placements));
+      closeFit();
     } catch {
       alert('Could not read that image — try a different file.');
     } finally {
@@ -2165,16 +2220,32 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
       <label className="field-label">Feet per square</label>
       <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
       <label className="field-label">Background image</label>
-      <div className="field-row">
-        <button className="btn btn-secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
-          {busy ? 'Adding image…' : island.backgroundImage ? 'Replace image' : 'Upload image'}
-        </button>
-        {imageIslandIds.length > 0 && (
-          <button className={`btn ${confirmRemove ? 'btn-danger' : 'btn-secondary'}`} disabled={busy} onClick={removeBackground} onBlur={() => setConfirmRemove(false)}>
-            {confirmRemove ? 'Click again to remove' : 'Remove image'}
+      {fit ? (
+        <MapImageFit
+          url={fit.url}
+          imageWidth={fit.imageWidth}
+          imageHeight={fit.imageHeight}
+          islands={members}
+          place={fit.place}
+          placements={fit.placements}
+          onChange={(place, placements) => setFit((current) => current && { ...current, place, placements })}
+          onCancel={closeFit}
+          onUse={saveFit}
+          busy={busy}
+          groupName={groupName}
+        />
+      ) : (
+        <div className="field-row">
+          <button className="btn btn-secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
+            {island.backgroundImage ? 'Replace image' : 'Upload image'}
           </button>
-        )}
-      </div>
+          {imageIslandIds.length > 0 && (
+            <button className={`btn ${confirmRemove ? 'btn-danger' : 'btn-secondary'}`} disabled={busy} onClick={removeBackground} onBlur={() => setConfirmRemove(false)}>
+              {confirmRemove ? 'Click again to remove' : 'Remove image'}
+            </button>
+          )}
+        </div>
+      )}
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
       {confirmRemove && (
         <span className="island-row-note">
@@ -2221,7 +2292,7 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
           This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
         </span>
       )}
-      <span className="island-row-note">Changes are saved as you make them.</span>
+      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
     </div>
   );
 }

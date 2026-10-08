@@ -30,7 +30,7 @@ export async function resizeImageToDataUrl(file, maxDim, quality = 0.82) {
 // The largest side a browser will reliably give a canvas.
 const TEMPLATE_MAX_DIM = 8192;
 
-function loadImage(src) {
+export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -41,7 +41,7 @@ function loadImage(src) {
 
 // The rectangle that holds every one of these islands, in the layer's own
 // un-zoomed pixels.
-function islandsBounds(islands) {
+export function islandsBounds(islands) {
   const minX = Math.min(...islands.map((i) => i.x || 0));
   const minY = Math.min(...islands.map((i) => i.y || 0));
   const maxX = Math.max(...islands.map((i) => (i.x || 0) + i.cols * i.cellSize));
@@ -60,12 +60,21 @@ function islandsBounds(islands) {
 // sliceImageForIslands cuts an upload along the same rectangles.
 // Rejects if a background image fails to load, so the caller can surface
 // an error instead of silently exporting a blank template.
-export async function renderIslandsTemplateToDataUrl(islands) {
-  const { minX, minY, width, height } = islandsBounds(islands);
+// The pixel size of that PNG, which is also the size a picture painted over
+// it should keep: { width, height, scale }.
+export function islandsTemplateSize(islands) {
+  const { width, height } = islandsBounds(islands);
   const scale = Math.min(1, TEMPLATE_MAX_DIM / Math.max(width, height));
+  return { width: Math.round(width * scale), height: Math.round(height * scale), scale };
+}
+
+export async function renderIslandsTemplateToDataUrl(islands) {
+  const { minX, minY } = islandsBounds(islands);
+  const size = islandsTemplateSize(islands);
+  const { scale } = size;
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(width * scale);
-  canvas.height = Math.round(height * scale);
+  canvas.width = size.width;
+  canvas.height = size.height;
   const ctx = canvas.getContext('2d');
   ctx.scale(scale, scale);
 
@@ -101,29 +110,41 @@ export async function renderIslandsTemplateToDataUrl(islands) {
   return canvas.toDataURL('image/png');
 }
 
-// One picture for a whole island group: it is laid over the rectangle that
-// holds every island (the shape renderIslandsTemplateToDataUrl exports) and
-// each island gets the part that falls on it, as its own background.
-// Returns { [islandId]: dataUrl }.
-export async function sliceImageForIslands(file, islands, maxDim, quality = 0.82) {
+// One picture for a map, or for a whole island group: it is laid over the
+// rectangle that holds every island (the shape renderIslandsTemplateToDataUrl
+// exports) and each island gets the part that falls on it, as its own
+// background. Returns { [islandId]: dataUrl }.
+// `placement`: where the picture is laid instead, as { x, y, width, height }
+// in the layer's pixels from that rectangle's top left corner (the settings'
+// MapImageFit tool). What it does not reach is left as bare parchment.
+// `placements`: { [islandId]: the same }, for the maps that have the picture
+// laid for them alone (that tool's Snap to the art, or a map moved by itself).
+export async function sliceImageForIslands(file, islands, maxDim, quality = 0.82, placement = null, placements = null) {
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await loadImage(objectUrl);
     const { minX, minY, width, height } = islandsBounds(islands);
-    const sx = img.width / width;
-    const sy = img.height / height;
+    const shared = placement || { x: 0, y: 0, width, height };
     const slices = {};
     for (const island of islands) {
       const w = island.cols * island.cellSize;
       const h = island.rows * island.cellSize;
-      const srcW = w * sx;
-      const srcH = h * sy;
+      const place = placements?.[island.id] || shared;
+      // Picture pixels to one layer pixel, each way.
+      const sx = img.width / place.width;
+      const sy = img.height / place.height;
       // Keep the island's own proportions, so the slice fills it exactly.
-      const longSide = Math.min(maxDim, Math.max(srcW, srcH));
+      const longSide = Math.max(1, Math.min(maxDim, Math.max(w * sx, h * sy)));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round((longSide * w) / Math.max(w, h)));
       canvas.height = Math.max(1, Math.round((longSide * h) / Math.max(w, h)));
-      canvas.getContext('2d').drawImage(img, ((island.x || 0) - minX) * sx, ((island.y || 0) - minY) * sy, srcW, srcH, 0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#f2e9d4'; // --parchment-100, a map with no background
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // The whole picture, drawn where it lies as seen from this island.
+      const kx = canvas.width / w;
+      const ky = canvas.height / h;
+      ctx.drawImage(img, (place.x - ((island.x || 0) - minX)) * kx, (place.y - ((island.y || 0) - minY)) * ky, place.width * kx, place.height * ky);
       slices[island.id] = canvas.toDataURL('image/jpeg', quality);
     }
     return slices;

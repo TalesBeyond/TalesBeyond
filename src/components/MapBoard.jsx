@@ -1023,6 +1023,11 @@ export default function MapBoard({
         const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
         const fillColour = fill && islandFillColour(fill.style);
         const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, resolveImage(island.backgroundImage) && `url(${resolveImage(island.backgroundImage)})`].filter(Boolean);
+        // A picture still being laid over the map in its settings (Toolbar's
+        // MapImageFit): the whole picture at { x, y, width, height } in the
+        // island's own pixels, in place of one cut to fit.
+        const fit = resolveImage(island.backgroundImage) ? island.backgroundFit : null;
+        const fitLayers = (value, forFill) => [fillColour && forFill, value].filter(Boolean).join(', ');
         // The map's own grid lines, if its settings ask for heavier or coloured ones.
         const gridLines = gridLineStyle(island);
 
@@ -1036,6 +1041,13 @@ export default function MapBoard({
               width: w,
               height: h,
               backgroundImage: background.length ? background.join(', ') : undefined,
+              ...(fit
+                ? {
+                    backgroundSize: fitLayers(`${fit.width * zoom}px ${fit.height * zoom}px`, 'auto'),
+                    backgroundPosition: fitLayers(`${fit.x * zoom}px ${fit.y * zoom}px`, '0 0'),
+                    backgroundRepeat: fitLayers('no-repeat', 'repeat'),
+                  }
+                : null),
             }}
             onPointerDown={(e) => handleIslandPointerDown(e, island)}
           >

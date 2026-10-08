@@ -25,7 +25,7 @@ import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
-import { renderIslandsTemplateToDataUrl } from '../utils/image.js';
+import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resolveImage, storeImage } from '../lib/imageCache.js';
 import {
@@ -590,8 +590,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
   // What is being typed or picked in a map's settings and not saved yet (the
-  // settings save themselves a moment later), drawn on this screen meanwhile:
-  // { [islandId]: { cols, rows, gridLines } }.
+  // settings save themselves a moment later; a picture is saved once it has
+  // been laid over the map), drawn on this screen meanwhile:
+  // { [islandId]: { cols, rows, gridLines, backgroundImage, backgroundFit } }.
   const [islandPreviews, setIslandPreviews] = useState(null);
   // Saved background images still being put away (updateIsland), shown
   // meanwhile so the map does not flash its old picture: { [islandId]: dataUrl }.
@@ -2225,7 +2226,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const title = members.length > 1 ? group.name : island.name;
     try {
       const dataUrl = await renderIslandsTemplateToDataUrl(islands.map((i) => ({ ...i, backgroundImage: resolveImage(i.backgroundImage) })));
-      const filename = `${(title || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}.png`;
+      // The picture's size goes in its name: what is painted over it has to
+      // keep that shape to fit back on the map.
+      const { width, height } = islandsTemplateSize(islands);
+      const filename = `${(title || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}_${width}x${height}.png`;
       downloadDataUrl(dataUrl, filename);
     } catch {
       alert("Could not export this map's image — a background image could not be loaded.");
