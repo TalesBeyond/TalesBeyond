@@ -90,10 +90,22 @@ function reconcileDrawings(state) {
   return { ...state, drawings, drawingOrder };
 }
 
+// A fog chunk (Fog of war) belongs to its island the same way.
+function reconcileFogChunks(state) {
+  if (!state.fogChunkOrder?.length) return state;
+  const islandIds = new Set();
+  for (const layer of Object.values(state.layers)) for (const id of Object.keys(layer.islands || {})) islandIds.add(id);
+  const fogChunkOrder = state.fogChunkOrder.filter((id) => islandIds.has(state.fogChunks[id]?.islandId));
+  if (fogChunkOrder.length === state.fogChunkOrder.length) return state;
+  const fogChunks = {};
+  for (const id of fogChunkOrder) fogChunks[id] = state.fogChunks[id];
+  return { ...state, fogChunks, fogChunkOrder };
+}
+
 function reducer(state, action) {
   const next = baseReducer(state, action);
   if (next === state || !AUDIO_CASCADE_ACTIONS.has(action.type)) return next;
-  return reconcileDrawings(reconcileAudio(next));
+  return reconcileFogChunks(reconcileDrawings(reconcileAudio(next)));
 }
 
 // The tracks (and resulting audio slice) a REMOVE_* action would take with it,
@@ -157,6 +169,12 @@ export function createEmptyGameState({ code, hostPlayerId, hostName, hostColor }
     // corner. `drawingOrder` is creation order — later drawings paint on top.
     drawings: {},
     drawingOrder: [],
+    // Fog of war (68_fog_chunks.sql, utils/fogOfWar.js): {id: {id, islandId,
+    // x, y, w, h, revealed, revealOnEnter}}, the rectangle in whole grid
+    // squares from the island's top-left corner. `fogChunkOrder` is creation
+    // order.
+    fogChunks: {},
+    fogChunkOrder: [],
     players: {
       [hostPlayerId]: {
         id: hostPlayerId,
@@ -503,6 +521,32 @@ function baseReducer(state, action) {
         drawingOrder.push(id);
       }
       return { ...state, drawings, drawingOrder };
+    }
+
+    // Adds a fog chunk, or replaces it in place (revealed, re-fogged, its
+    // setting changed, moved or resized).
+    case 'SET_FOG_CHUNK': {
+      const fogChunks = state.fogChunks || {};
+      const order = state.fogChunkOrder || [];
+      return {
+        ...state,
+        fogChunks: { ...fogChunks, [action.chunk.id]: action.chunk },
+        fogChunkOrder: fogChunks[action.chunk.id] ? order : [...order, action.chunk.id],
+      };
+    }
+
+    case 'REMOVE_FOG_CHUNKS': {
+      const doomed = new Set(action.ids);
+      const order = state.fogChunkOrder || [];
+      if (!order.some((id) => doomed.has(id))) return state;
+      const fogChunks = {};
+      const fogChunkOrder = [];
+      for (const id of order) {
+        if (doomed.has(id) || !state.fogChunks[id]) continue;
+        fogChunks[id] = state.fogChunks[id];
+        fogChunkOrder.push(id);
+      }
+      return { ...state, fogChunks, fogChunkOrder };
     }
 
     case 'REMOVE_CUSTOM_ASSET': {

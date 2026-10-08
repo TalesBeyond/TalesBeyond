@@ -112,6 +112,8 @@ const ICON_PATHS = {
   area: 'M3 10L16 4c1.500 3.500 1.500 8.500 0 12z',
   group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
   draw: 'M3 17c2-1 3-3 5-3M13 3l4 4-8 8-4 1 1-4z',
+  // Fog of war: a covered (hatched) rectangle — not the Fog condition's mist.
+  fogofwar: 'M3 4h14v12H3zM3 10l6-6M3 16L15 4M9 16l8-8M15 16l2-2',
   hidedraw: 'M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6zM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM3 17L17 3',
   storage: 'M3 6h14v3H3zM4 9v8h12V9M8 12h4',
   layout: 'M3 3h14v14H3zM3 10h14M10 3v14',
@@ -202,8 +204,9 @@ const TOOL_ICONS = {
   ruler: <Icon name="ruler" />,
   area: <Icon name="area" />,
   draw: <Icon name="draw" />,
+  fogofwar: <Icon name="fogofwar" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', area: 'Area', draw: 'Draw' };
+const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', area: 'Area', draw: 'Draw', fogofwar: 'Fog of war' };
 
 // The Tools drawer (rail): each tool with what it does. `dm`: the DM's only.
 const DRAWER_TOOLS = [
@@ -211,6 +214,7 @@ const DRAWER_TOOLS = [
   { key: 'ruler', text: 'Drag across the map to measure a distance in feet.' },
   { key: 'area', text: 'Lay a spell’s area on the map: a cone, cube, line, sphere and more.' },
   { key: 'draw', text: 'Sketch on the map. Everyone at the table sees it.', dm: true },
+  { key: 'fogofwar', text: 'Cover parts of a map until the party explores them.', dm: true },
   { key: 'edit', text: 'Drag whole maps to move them and line them up.', dm: true },
 ];
 
@@ -821,6 +825,13 @@ export default function Toolbar({
               active={tool === 'draw'}
               onClick={() => pick(() => onToolChange('draw'))}
               title="Draw on the map — everyone at the table sees it"
+            />
+            <ToolCard
+              icon={TOOL_ICONS.fogofwar}
+              label="Fog of war"
+              active={tool === 'fogofwar'}
+              onClick={() => pick(() => onToolChange('fogofwar'))}
+              title="Fog of war — cover parts of a map until the party explores them"
             />
             <ToolCard
               icon={TOOL_ICONS.edit}

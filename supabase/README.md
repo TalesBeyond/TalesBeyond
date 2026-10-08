@@ -69,6 +69,7 @@ The sixteen migrations, in order:
 25. `..._drawings.sql` — the DM's Draw tool: a `drawings` table (one row per pencil stroke, line, circle or rectangle, tied to its island and deleted with it; members read, host writes), added to the realtime publication
 26. `..._island_fill.sql` — lets a drawing be a `fill`: the Draw tool's Fill, which paints a whole island one colour
 27. `..._island_feet_per_square.sql` — each island's own feet per square (`islands.feet_per_square`; null follows the layer's)
+28. `..._fog_chunks.sql` — Fog of war: a `fog_chunks` table (one row per rectangle of fog, in whole squares, tied to its island and deleted with it, with its `revealed` state and its `reveal_on_enter` setting; members read, host writes), added to the realtime publication
 
 ## 3. Enable anonymous sign-in
 

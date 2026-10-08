@@ -67,6 +67,8 @@ import {
   removeCustomAssetRemote,
   upsertDrawingRemote,
   removeDrawingsRemote,
+  upsertFogChunkRemote,
+  removeFogChunksRemote,
   updateTableClockRemote,
   upsertAudioTrackRemote,
   removeAudioTrackRemote,
@@ -2068,6 +2070,66 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // ---- Fog of war (utils/fogOfWar.js) ----
+  // The DM covers parts of an island with fog chunks. A chunk and a token
+  // are never selected together: picking one drops the other.
+  const [selectedFogChunkId, setSelectedFogChunkId] = useState(null);
+  const selectedFogChunkStored = isHost && selectedFogChunkId ? state.fogChunks?.[selectedFogChunkId] || null : null;
+  // Only while its island is on the layer in view.
+  const selectedFogChunk = selectedFogChunkStored && currentLayer.islands[selectedFogChunkStored.islandId] ? selectedFogChunkStored : null;
+
+  function selectFogChunk(id) {
+    setSelectedFogChunkId(id || null);
+    if (id) setSelectedId(null);
+  }
+  useEffect(() => {
+    if (selectedId) setSelectedFogChunkId(null);
+  }, [selectedId]);
+  // The selection goes when its chunk does (deleted, or its island or layer
+  // left the view), and with any tool that isn't Play or Fog of war.
+  const fogSelectionStale = Boolean(selectedFogChunkId) && (!selectedFogChunk || (tool !== 'play' && tool !== 'fogofwar'));
+  useEffect(() => {
+    if (fogSelectionStale) setSelectedFogChunkId(null);
+  }, [fogSelectionStale]);
+
+  // One write per finished action, like a drawing: dispatch here, then the
+  // cloud row or the guest broadcast. Local and guest tables save the whole
+  // state themselves (GameProvider's autosave).
+  function writeFogChunk(chunk) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_FOG_CHUNK', chunk });
+    if (isRemote) upsertFogChunkRemote(state.session.tableId, chunk).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'SET_FOG_CHUNK', chunk });
+  }
+
+  function deleteFogChunk(id) {
+    if (!isHost || !stateRef.current.fogChunks?.[id]) return;
+    dispatch({ type: 'REMOVE_FOG_CHUNKS', ids: [id] });
+    if (isRemote) removeFogChunksRemote([id]).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_FOG_CHUNKS', ids: [id] });
+  }
+
+  // Laying a chunk: `rect` is { islandId, x, y, w, h } in whole squares,
+  // already clipped to its island (MapBoard, or "Fog whole island").
+  function addFogChunk(rect) {
+    if (!isHost) return;
+    writeFogChunk({ id: generateEntityId(), islandId: rect.islandId, x: rect.x, y: rect.y, w: rect.w, h: rect.h, revealed: false, revealOnEnter: true });
+  }
+
+  // Reveal and "Fog again" are for the whole table: there is no per-player fog.
+  function setFogChunkRevealed(id, revealed) {
+    const chunk = stateRef.current.fogChunks?.[id];
+    if (!isHost || !chunk || Boolean(chunk.revealed) === revealed) return;
+    writeFogChunk({ ...chunk, revealed });
+  }
+
+  const fogOfWarApi = {
+    islandName: selectedFogChunk ? currentLayer.islands[selectedFogChunk.islandId]?.name || null : null,
+    onReveal: (id) => setFogChunkRevealed(id, true),
+    onFogAgain: (id) => setFogChunkRevealed(id, false),
+    onDelete: deleteFogChunk,
+  };
+
   function removeCustomAsset(id) {
     if (!isHost) return;
     dispatch({ type: 'REMOVE_CUSTOM_ASSET', id });
@@ -3381,6 +3443,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!isPhone) setPhoneSheet(null);
   }, [isPhone]);
 
+  // Fog chunks are laid on desktop only: the phone layout has no Fog of war tool.
+  useEffect(() => {
+    if (isPhone && tool === 'fogofwar') setTool('play');
+  }, [isPhone, tool]);
+
   // A player has no Tokens panel (placing tokens is the DM's), so only the
   // right panel shares the room with the map.
   // The Tokens flyout lies over the map, so it takes no room from it either.
@@ -3519,6 +3586,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
+          fogChunk={selectedFogChunk}
+          fogOfWar={isHost ? fogOfWarApi : null}
         />
   );
 
@@ -3584,7 +3653,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               entities={layerEntities}
               entityOrder={layerEntityOrder}
               selectedId={selectedId}
-              onSelectEntity={setSelectedId}
+              onSelectEntity={(id) => {
+                setSelectedId(id);
+                // A click on a token, or on open ground, drops a picked fog chunk.
+                setSelectedFogChunkId(null);
+              }}
               onMoveEntity={moveEntity}
               canMoveEntity={canMoveEntity}
               isHost={isHost}
@@ -3613,6 +3686,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onRemoveDrawings={isHost ? removeDrawings : null}
               selectedDrawingId={tool === 'draw' ? selectedDrawingId : null}
               onSelectDrawing={setSelectedDrawingId}
+              fogChunks={state.fogChunks}
+              fogChunkOrder={state.fogChunkOrder}
+              selectedFogChunkId={selectedFogChunk?.id || null}
+              onSelectFogChunk={isHost ? selectFogChunk : null}
+              onAddFogChunk={isHost && !isPhone ? addFogChunk : null}
             />
           </div>
           {isPhone && (
@@ -3709,6 +3787,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           {!isPhone && isHost && tool === 'draw' && (
             <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
               Everyone at the table sees what you draw. Right-drag moves the view.
+            </ModeBar>
+          )}
+          {!isPhone && isHost && tool === 'fogofwar' && (
+            <ModeBar id="fogofwar" className="map-mode-bar" label="Fog of war." doneLabel="Done" onDone={() => setTool('play')}>
+              Drag on a map to cover it. Click a chunk to reveal it, fog it again or delete it.
             </ModeBar>
           )}
           {isHost && !isPhone && tool === 'draw' && (

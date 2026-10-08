@@ -20,6 +20,8 @@ import {
 } from '../utils/drawing.js';
 import { areaShape, areaLabel, areaOutline, outlineBounds, outlineContains } from '../utils/areaOfEffect.js';
 import IslandDrawings from './DrawingLayer.jsx';
+import IslandFogOfWar from './FogOfWarLayer.jsx';
+import { fogChunksOnIsland, fogChunkRectFromDrag, isSquareFogged, smallestFogChunkAt } from '../utils/fogOfWar.js';
 import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 
@@ -53,7 +55,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
-  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw' | 'area'
+  tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw' | 'area' | 'fogofwar'
   zoom = 1,
   onRulerChange,
   moveRange = null, // { islandId, cells: [{col,row}] } — the acting token's reach this turn
@@ -75,6 +77,11 @@ export default function MapBoard({
   onRemoveDrawings = null, // (ids, sweepKey) => void — the eraser, the DM only
   selectedDrawingId = null, // the drawing Select has picked
   onSelectDrawing = null, // (id | null) => void
+  fogChunks = {}, // Fog of war's chunks (utils/fogOfWar.js), keyed by id
+  fogChunkOrder = [], // creation order
+  selectedFogChunkId = null, // the chunk the DM has picked
+  onSelectFogChunk = null, // (id | null) => void — the DM only
+  onAddFogChunk = null, // ({ islandId, x, y, w, h }) => void — the Fog of war tool, the DM only
 }) {
   const tapConsumedRef = useRef(false); // the click that follows a used tap mustn't clear the selection
   useImageCacheVersion(); // redraw when a shared picture arrives
@@ -154,6 +161,20 @@ export default function MapBoard({
   // earlier render (the eraser removes drawings while it's still down).
   const drawingsRef = useRef(drawingsByIsland);
   drawingsRef.current = drawingsByIsland;
+  // Each island's fog chunks (Fog of war), in creation order — and the
+  // latest copy, for the same reason.
+  const fogByIsland = new Map();
+  for (const id of islandOrder) {
+    if (!islandRects[id]) continue;
+    const onIsland = fogChunksOnIsland(fogChunks, fogChunkOrder, id);
+    if (onIsland.length) fogByIsland.set(id, onIsland);
+  }
+  const fogRef = useRef(fogByIsland);
+  fogRef.current = fogByIsland;
+  // The rectangle the DM is dragging out with the Fog of war tool:
+  // { islandId, x, y, w, h }, shown until the pointer lifts.
+  const fogDragRef = useRef(null);
+  const [fogDraft, setFogDraft] = useState(null);
 
   // Padded generously beyond the islands' own bounding box (see
   // CANVAS_PAN_PADDING) so there's always room to pan in every direction —
@@ -389,7 +410,7 @@ export default function MapBoard({
   // resolves the same reliable way token dragging already does.
 
   function handleIslandPointerDown(e, island) {
-    if (tool === 'ruler' || tool === 'pan' || tool === 'draw' || tool === 'area') return;
+    if (tool === 'ruler' || tool === 'pan' || tool === 'draw' || tool === 'area' || tool === 'fogofwar') return;
     e.stopPropagation();
     const p = getRelativePoint(e.clientX, e.clientY);
     islandDragRef.current = { id: island.id, downX: p.x, downY: p.y, startX: island.x, startY: island.y };
@@ -431,6 +452,22 @@ export default function MapBoard({
       if (found) {
         const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
         if (onTapCell(found.island.id, col, row)) {
+          tapConsumedRef.current = true;
+          return;
+        }
+      }
+    }
+
+    // The DM's click on an empty square of a fogged chunk picks that chunk
+    // (Fog of war). A revealed chunk isn't picked this way, so clicks on
+    // explored ground behave as they always did.
+    if (isClick && tool === 'play' && isHost && onSelectFogChunk) {
+      const found = findIslandAt(p.x, p.y);
+      if (found) {
+        const { col, row } = pixelToCell(p.x - found.left, p.y - found.top, found.cellSize, found.island.cols, found.island.rows);
+        const hit = smallestFogChunkAt(fogRef.current.get(found.island.id) || [], found.island, col, row, { unrevealedOnly: true });
+        if (hit) {
+          onSelectFogChunk(hit.id);
           tapConsumedRef.current = true;
           return;
         }
@@ -765,6 +802,76 @@ export default function MapBoard({
     setEditPreview(null);
   }
 
+  // ---- Fog of war ----
+  // A drag on an island lays a fog chunk there: a draft rectangle in whole
+  // squares, clipped to that island, saved when the pointer lifts. A press
+  // that never became a drag picks the chunk under it instead (the smallest,
+  // where several overlap), or drops the selection on empty ground.
+
+  function startFogOfWar(e) {
+    if (!isHost || !onAddFogChunk) return;
+    if (fogDragRef.current) {
+      cancelFogOfWar();
+      return;
+    }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const p = getRelativePoint(e.clientX, e.clientY);
+    const found = findIslandAt(p.x, p.y);
+    if (!found) {
+      onSelectFogChunk?.(null);
+      return;
+    }
+    e.preventDefault();
+    fogDragRef.current = { islandId: found.island.id, start: toIslandSquares(e, found.island.id), downX: p.x, downY: p.y, dragged: false, rect: null };
+    window.addEventListener('pointermove', onFogMove);
+    window.addEventListener('pointerup', onFogUp);
+    window.addEventListener('pointercancel', cancelFogOfWar);
+  }
+
+  function onFogMove(e) {
+    const d = fogDragRef.current;
+    if (!d) return;
+    if (gestureRef?.current?.pinch) {
+      cancelFogOfWar();
+      return;
+    }
+    const p = getRelativePoint(e.clientX, e.clientY);
+    if (!d.dragged && Math.hypot(p.x - d.downX, p.y - d.downY) < CLICK_MOVE_THRESHOLD_PX) return;
+    d.dragged = true;
+    const island = islandRects[d.islandId]?.island;
+    const point = toIslandSquares(e, d.islandId);
+    if (!island || !point) return;
+    d.rect = fogChunkRectFromDrag(d.start, point, island);
+    setFogDraft(d.rect ? { islandId: d.islandId, ...d.rect } : null);
+  }
+
+  function stopFogListeners() {
+    window.removeEventListener('pointermove', onFogMove);
+    window.removeEventListener('pointerup', onFogUp);
+    window.removeEventListener('pointercancel', cancelFogOfWar);
+  }
+
+  function onFogUp() {
+    stopFogListeners();
+    const d = fogDragRef.current;
+    fogDragRef.current = null;
+    setFogDraft(null);
+    if (!d) return;
+    if (!d.dragged) {
+      const island = islandRects[d.islandId]?.island;
+      const hit = island ? smallestFogChunkAt(fogRef.current.get(d.islandId) || [], island, Math.floor(d.start[0]), Math.floor(d.start[1])) : null;
+      onSelectFogChunk?.(hit ? hit.id : null);
+      return;
+    }
+    if (d.rect) onAddFogChunk({ islandId: d.islandId, ...d.rect });
+  }
+
+  function cancelFogOfWar() {
+    stopFogListeners();
+    fogDragRef.current = null;
+    setFogDraft(null);
+  }
+
   // ---- Ruler ----
 
   function handleStagePointerDown(e) {
@@ -774,6 +881,10 @@ export default function MapBoard({
     }
     if (tool === 'draw') {
       startDrawing(e);
+      return;
+    }
+    if (tool === 'fogofwar') {
+      startFogOfWar(e);
       return;
     }
     if (tool === 'area') {
@@ -991,6 +1102,7 @@ export default function MapBoard({
   useEffect(() => {
     if (tool !== 'ruler') setRuler(null);
     if (tool !== 'draw' && drawRef.current) cancelDrawing();
+    if (tool !== 'fogofwar' && fogDragRef.current) cancelFogOfWar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
@@ -1030,6 +1142,7 @@ export default function MapBoard({
         const fitLayers = (value, forFill) => [fillColour && forFill, value].filter(Boolean).join(', ');
         // The map's own grid lines, if its settings ask for heavier or coloured ones.
         const gridLines = gridLineStyle(island);
+        const islandFog = fogByIsland.get(id) || [];
 
         return (
           <div
@@ -1067,8 +1180,10 @@ export default function MapBoard({
                 })}
               </div>
             )}
+            {/* A player's move range stops at the fog: it draws above the
+                cover, and must not show through it. */}
             {moveRange?.islandId === id &&
-              moveRange.cells.map((c) => (
+              (isHost || !islandFog.length ? moveRange.cells : moveRange.cells.filter((c) => !isSquareFogged(islandFog, island, c.col, c.row))).map((c) => (
                 <div
                   key={`${c.col}_${c.row}`}
                   className="move-cell"
@@ -1087,6 +1202,9 @@ export default function MapBoard({
             {phase?.tint && <div className="island-daynight" style={{ background: phase.tint }} />}
             {/* The DM's drawings — chalk on the floor, still under the tokens. */}
             <IslandDrawings drawings={drawingsByIsland.get(id) || []} draft={draft?.islandId === id ? draft : null} cellPx={cellPx} width={w} height={h} />
+            {/* Fog of war — over all of the above, still under the tokens:
+                an opaque cover for players, a tint for the DM. */}
+            <IslandFogOfWar chunks={islandFog} island={island} cellPx={cellPx} isHost={isHost} selectedId={selectedFogChunkId} draft={fogDraft?.islandId === id ? fogDraft : null} />
           </div>
         );
       })}

@@ -290,6 +290,35 @@ export function drawingToDb(tableId, drawing) {
   };
 }
 
+// Fog chunks (68_fog_chunks.sql) — Fog of war. The rectangle is in whole
+// grid squares from the island's top-left corner.
+export function mapDbFogChunk(row) {
+  return {
+    id: row.id,
+    islandId: row.island_id,
+    x: row.x,
+    y: row.y,
+    w: row.w,
+    h: row.h,
+    revealed: row.revealed ?? false,
+    revealOnEnter: row.reveal_on_enter ?? true,
+  };
+}
+
+export function fogChunkToDb(tableId, chunk) {
+  return {
+    id: chunk.id,
+    table_id: tableId,
+    island_id: chunk.islandId,
+    x: chunk.x,
+    y: chunk.y,
+    w: chunk.w,
+    h: chunk.h,
+    revealed: Boolean(chunk.revealed),
+    reveal_on_enter: chunk.revealOnEnter !== false,
+  };
+}
+
 export function audioTrackToDb(tableId, track) {
   return {
     id: track.id,

@@ -59,6 +59,8 @@ export default function RightPanel({
   collapsed,
   onToggleCollapsed,
   encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
+  fogChunk = null, // the fog chunk the DM has picked (Fog of war) — shown in place of a token's card
+  fogOfWar = null, // its actions: { islandName, onReveal, onFogAgain, onDelete }
 }) {
   if (collapsed) {
     return (
@@ -67,13 +69,13 @@ export default function RightPanel({
             still acknowledged while the inspector is folded away. */}
         <button
           type="button"
-          className={`panel-rail${selectedEntity ? ' has-selection' : ''}`}
+          className={`panel-rail${selectedEntity || fogChunk ? ' has-selection' : ''}`}
           onClick={onToggleCollapsed}
           title="Expand the inspector"
         >
           <span className="panel-rail-chevron" aria-hidden="true">«</span>
           <span className="panel-rail-label">
-            {selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Inspector'}
+            {fogChunk ? 'Inspect · Fog of war' : selectedEntity ? `Inspect · ${selectedEntity.name}` : 'Inspector'}
           </span>
         </button>
       </div>
@@ -91,7 +93,9 @@ export default function RightPanel({
       </div>
 
       <div className="panel-scroll inspector-scroll">
-        {!selectedEntity && !isHost && !Object.values(entities || {}).some((e) => e.kind === 'hero' && e.ownerId === meId) ? (
+        {fogChunk && fogOfWar ? (
+          <FogChunkCard chunk={fogChunk} {...fogOfWar} />
+        ) : !selectedEntity && !isHost &&!Object.values(entities || {}).some((e) => e.kind === 'hero' && e.ownerId === meId) ? (
           <EmptyState icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" /></svg>} title="You don’t have a hero yet">
             Ask your DM to pick you under <b>played by</b> on a hero’s card. It shows up here the moment they do.
           </EmptyState>
@@ -314,6 +318,39 @@ export function HiddenField({ entity, onUpdate, style }) {
       <input type="checkbox" checked={Boolean(entity.hidden)} onChange={(e) => onUpdate(entity.id, { hidden: e.target.checked })} />
       Hidden from players
     </label>
+  );
+}
+
+// ---------- fog of war ----------
+
+// The card for a fog chunk the DM has picked on the map (utils/fogOfWar.js):
+// open it for the whole table or fog it again, and take it off the map.
+export function FogChunkCard({ chunk, islandName, onReveal, onFogAgain, onDelete }) {
+  return (
+    <div className="inspector-card fog-of-war-card">
+      <h4>Fog of war</h4>
+      <div className="section-label" style={{ margin: '0 0 12px' }}>
+        {islandName ? `${islandName} · ` : ''}
+        {chunk.w} × {chunk.h} squares · {chunk.revealed ? 'revealed' : 'fogged'}
+      </div>
+      {chunk.revealed ? (
+        <button type="button" className="btn btn-block btn-secondary" title="Cover this area again for everyone at the table" onClick={() => onFogAgain(chunk.id)}>
+          Fog again
+        </button>
+      ) : (
+        <button type="button" className="btn btn-block btn-primary" title="Open this area for everyone at the table" onClick={() => onReveal(chunk.id)}>
+          Reveal
+        </button>
+      )}
+      <p className="fog-of-war-card-note">
+        {chunk.revealed
+          ? 'Players see this area. Its dashed outline shows only to you.'
+          : 'Players see an opaque cover here. The tint shows only to you.'}
+      </p>
+      <button type="button" className="btn btn-block btn-danger" title="Take this fog chunk off the map" onClick={() => onDelete(chunk.id)}>
+        Delete
+      </button>
+    </div>
   );
 }
 
