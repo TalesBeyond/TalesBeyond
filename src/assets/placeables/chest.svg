@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" role="img" aria-label="A shut wooden chest">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="46%" r="70%">
+      <stop offset="0" stop-color="#5a3f27"/>
+      <stop offset="0.55" stop-color="#2f2015"/>
+      <stop offset="1" stop-color="#15100b"/>
+    </radialGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a8703a"/>
+      <stop offset="1" stop-color="#6d421f"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c08a4c"/>
+      <stop offset="1" stop-color="#8a5628"/>
+    </linearGradient>
+    <linearGradient id="iron" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3a3835"/>
+      <stop offset="0.5" stop-color="#7d7a74"/>
+      <stop offset="1" stop-color="#34322f"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6d77a"/>
+      <stop offset="1" stop-color="#b9862a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="200" fill="url(#bg)"/>
+  <ellipse cx="200" cy="176" rx="118" ry="13" fill="#000" opacity="0.45"/>
+
+  <!-- body -->
+  <rect x="124" y="100" width="152" height="72" rx="5" fill="url(#wood)" stroke="#2a1a0d" stroke-width="3"/>
+  <g stroke="#4f2f15" stroke-width="1.5" opacity="0.7">
+    <line x1="126" y1="124" x2="274" y2="124"/>
+    <line x1="126" y1="148" x2="274" y2="148"/>
+  </g>
+
+  <!-- lid -->
+  <path d="M120 102 V82 Q120 50 200 50 Q280 50 280 82 V102 Z" fill="url(#lid)" stroke="#2a1a0d" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M132 76 Q136 60 200 59 Q264 60 268 76" fill="none" stroke="#e2b87a" stroke-width="2" opacity="0.5"/>
+  <g stroke="#6d421f" stroke-width="1.5" opacity="0.6" fill="none">
+    <path d="M122 88 Q200 78 278 88"/>
+  </g>
+
+  <!-- iron bands -->
+  <g fill="url(#iron)" stroke="#1c1b19" stroke-width="2">
+    <path d="M144 54 Q150 52 158 51 V172 H144 Z"/>
+    <path d="M242 51 Q250 52 256 54 V172 H242 Z"/>
+    <rect x="118" y="96" width="164" height="11" rx="3"/>
+    <rect x="124" y="164" width="152" height="8" rx="2"/>
+  </g>
+  <g fill="#cfcabd">
+    <circle cx="151" cy="68" r="2.4"/><circle cx="151" cy="88" r="2.4"/><circle cx="151" cy="120" r="2.4"/><circle cx="151" cy="150" r="2.4"/>
+    <circle cx="249" cy="68" r="2.4"/><circle cx="249" cy="88" r="2.4"/><circle cx="249" cy="120" r="2.4"/><circle cx="249" cy="150" r="2.4"/>
+  </g>
+
+  <!-- lock -->
+  <path d="M186 92 H214 V118 Q214 126 200 128 Q186 126 186 118 Z" fill="url(#gold)" stroke="#3a2608" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="200" cy="107" r="4" fill="#3a2608"/>
+  <path d="M198 109 H202 L204 120 H196 Z" fill="#3a2608"/>
+</svg>

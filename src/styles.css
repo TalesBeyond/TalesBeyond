@@ -408,6 +408,10 @@ input, select {
 }
 
 .btn:active { transform: translateY(1px); }
+/* A button that can't be pressed right now looks it. */
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled:hover { filter: none; }
+.btn:disabled:active { transform: none; }
 
 .btn-primary {
   background: var(--ember);
@@ -1318,6 +1322,10 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .token-card:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
 .token-card img, .token-card svg { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--parchment-100); object-fit: cover; }
 .token-card.square img { border-radius: 6px; }
+/* A shopkeeper's name runs to two lines ("Wandering Salesman"). */
+.token-grid.merchants, .token-grid.placeables { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.token-grid.merchants .token-card span { white-space: normal; min-height: 2.4em; display: flex; align-items: center; }
+.sidebar-sublabel { margin-top: 2px; font-size: 12px; color: var(--parchment-300); opacity: 0.85; }
 .token-card span {
   max-width: 100%;
   padding: 0 4px;
@@ -1342,7 +1350,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .sidebar-blocks { display: flex; flex-direction: column; gap: 22px; padding: 18px 16px; }
 .sidebar-block { display: flex; flex-direction: column; gap: 10px; }
 .side-btn-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.side-btn-row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .side-btn {
   height: 40px;
   background: var(--ink-900);
@@ -1527,8 +1534,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 }
 @keyframes roll-toast-in { from { opacity: 0; transform: translateY(-8px); } }
 /* The DM's "may they open this chest?" card: a toast that waits for an answer. */
-.roll-toast.chest-ask { align-items: flex-start; cursor: default; border-color: var(--gold-hi); }
-.chest-ask-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .roll-avatar { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display-caps); font-size: 17px; font-weight: 700; color: #fff; }
 .roll-toast-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.3; }
 .roll-toast-dice { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-300); }
@@ -1659,7 +1664,27 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .island-row.sub { margin-left: 16px; padding-left: 8px; border-left: 2px solid var(--gold-line); }
 .island-settings { margin: 2px 6px 10px; padding: 10px 12px; border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-900); }
 .island-settings .field-row .btn { flex: 1; }
-.island-settings-confirm { margin-top: 10px; }
+/* Laying a picked picture over the map (MapImageFit.jsx): a plan of the maps
+   with the picture under it to drag, then its size and where to start from. */
+.image-fit { display: flex; flex-direction: column; gap: 8px; }
+.image-fit-pad { display: block; width: 100%; max-height: 260px; border: 1px solid var(--ink-700); border-radius: 8px; background: var(--ink-950); cursor: grab; touch-action: none; user-select: none; }
+.image-fit-pad:active { cursor: grabbing; }
+.image-fit-pad:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.image-fit-shade { fill: rgba(10, 8, 6, 0.66); pointer-events: none; }
+.image-fit-map { fill: none; stroke: var(--gold-hi); stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+.image-fit-map.active { stroke: #fff; stroke-width: 2.5; }
+.image-fit-snap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.image-fit-target { flex: 1 1 180px; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--parchment-200); }
+.image-fit-target .field { flex: 1; min-width: 0; margin: 0; }
+.image-fit .island-row-note { padding: 0; }
+.image-fit-sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.image-fit-sizes label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--parchment-300); }
+.image-fit-sizes input { width: 100%; margin: 0; accent-color: var(--gold-hi); }
+.image-fit-keep { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--parchment-200); cursor: pointer; }
+.image-fit-keep input { margin: 0; accent-color: var(--gold-hi); }
+.image-fit-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.image-fit-presets .btn { flex: 1 1 auto; }
+.image-fit-actions { margin-top: 2px; }
 /* Grid lines: how heavy, which colour, and a strip showing the result. */
 .grid-lines-label { margin-top: 12px; }
 .grid-lines-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
@@ -1913,6 +1938,13 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 }
 
 .chest-item-list { margin-bottom: 8px; }
+/* An ambush's waiting monsters: five rows, then it scrolls (AmbushMonstersEditor.jsx sets the height). */
+.ambush-waiting-list { overflow-y: auto; overscroll-behavior: contain; }
+.ambush-waiting-list[style] { padding-right: 6px; }
+/* The chest editor's two ways to add an item, and the placement modal's footer. */
+.chest-add-tabs { margin: 14px 0 10px; }
+.chest-modal-actions { display: flex; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ink-700); }
+.chest-modal-pending { margin: 8px 0 0; font-size: 12px; line-height: 1.4; color: var(--gold-hi); }
 
 .chest-item-row {
   display: grid;
@@ -1946,6 +1978,64 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   border-bottom: 1px solid var(--ink-700);
 }
 .chest-search-row:last-child { border-bottom: none; }
+
+/* ---------- Shopkeepers (MerchantShop.jsx) ---------- */
+
+/* The stocking editor is the chest editor's, with a price where a chest has
+   a quantity and a list that scrolls once the shelves fill up. */
+.shop-editor .shop-ware-list { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.shop-ware-row { grid-template-columns: minmax(0, 1fr) 92px auto; }
+.shop-ware-row .chest-item-meta, .shop-ware-name .chest-item-meta { white-space: normal; text-transform: capitalize; }
+.shop-price-field { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--parchment-300); }
+.shop-price-field .field { min-width: 0; }
+.shop-source-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.shop-source-chips .tool-btn { min-height: 34px; padding: 0 10px; font-size: 12.5px; }
+.shop-search-row { display: flex; gap: 8px; align-items: center; }
+.shop-search-row .field { flex: 1; min-width: 0; margin-bottom: 0; }
+.shop-search-row .btn { flex-shrink: 0; white-space: nowrap; }
+.shop-empty { margin: 0; padding: 8px 4px; font-size: 12px; color: var(--parchment-300); }
+.shop-modal-blurb { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--parchment-200); }
+
+/* The chest and shopkeeper windows (TokenSidebar.jsx) do not scroll as a
+   whole. The window is always its full height; what is in the chest or on
+   the shelves takes up to two fifths of the editor and scrolls, and the
+   panel that adds to it (the compendium list, or the custom form) fills the
+   rest and scrolls, so the name and the buttons stay in view. The body
+   itself only scrolls on a screen too short for even that. */
+.book-card.fit-modal { height: 85vh; }
+.fit-modal-body { flex: 1; min-height: 0; padding: 16px; display: flex; flex-direction: column; overflow-y: auto; }
+.fit-modal-body > *, .fit-modal-body .chest-editor > *, .fit-modal-body .chest-add-panel > * { flex-shrink: 0; }
+.fit-modal-body > .chest-editor { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.fit-modal-body .chest-editor > .chest-item-list { flex: 0 1 auto; min-height: 42px; max-height: 40%; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.fit-modal-body .chest-editor > .chest-add-panel { flex: 1 1 0; min-height: 200px; display: flex; flex-direction: column; overflow-y: auto; }
+.fit-modal-body .chest-add-panel > .chest-search-results { flex: 1 1 0; min-height: 96px; max-height: none; }
+
+/* The Shop tab on a shopkeeper's card: who is buying and their gold, then
+   one row per ware. */
+.shop-customer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.shop-customer-pick { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; font-size: 12px; color: var(--parchment-300); }
+.shop-customer-pick .field { margin-bottom: 0; min-width: 0; flex: 1; padding: 6px 8px; font-size: 13px; }
+.shop-customer-pick b { color: var(--parchment-100); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-gold { flex-shrink: 0; padding: 4px 10px; border: 1px solid var(--gold-line); border-radius: 999px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--gold-hi); }
+.shop-note { margin: 0 0 8px; font-size: 12.5px; line-height: 1.4; color: var(--parchment-300); }
+.shop-ware { padding: 8px 0; border-bottom: 1px solid var(--ink-700); }
+.shop-ware:last-child { border-bottom: 0; }
+.shop-ware-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.shop-ware-name { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; padding: 0; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.shop-ware-name:disabled { cursor: default; }
+.shop-ware-name:not(:disabled):hover .chest-item-name { text-decoration: underline; }
+.shop-ware-name:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.shop-ware-price { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--parchment-100); white-space: nowrap; }
+.shop-ware-actions { display: flex; gap: 4px; }
+.shop-feedback { display: block; margin-top: 4px; font-size: 11.5px; font-weight: 600; color: var(--moss-dim); }
+.shop-ware-text, .equipment-read p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--parchment-200); white-space: pre-line; overflow-wrap: anywhere; }
+.shop-ware-text { max-height: 220px; overflow-y: auto; }
+.game-screen.phone .shop-ware-head .btn-sm { min-height: 40px; }
+
+/* Something to read on a Bag row: a tome's text, a map's, a shop's own ware. */
+.equipment-read { grid-column: 1 / -1; font-size: 12px; color: var(--parchment-300); }
+.equipment-read summary { cursor: pointer; width: fit-content; }
+.equipment-read p { max-height: 260px; overflow-y: auto; }
 
 .droppable-list { margin-bottom: 4px; }
 
@@ -2208,7 +2298,7 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   background: var(--parchment-100);
   background-size: cover;
   background-position: center;
-  box-shadow: 0 0 0 3px var(--gold-line), 0 4px 14px -6px rgba(0,0,0,0.6);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold-line) 30%, transparent), 0 4px 14px -6px rgba(0,0,0,0.6);
 }
 .island-canvas:not(.tool-play) .grid-wrap.active {
   box-shadow: 0 0 0 2px var(--ember), 0 4px 14px -6px rgba(0,0,0,0.6);
@@ -3115,6 +3205,8 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .cbook-facts.abilities small { font-family: var(--font-ui); font-size: 11px; font-weight: 600; color: var(--pg-soft); }
 .cbook-entry-text { margin: 0; max-width: 62ch; font-size: 15px; line-height: 1.6; color: var(--pg-ink); }
 .cbook-attack { font-style: italic; color: #6b3a22; }
+/* A tome's text keeps the line breaks its author gave it. */
+.cbook-entry-text.lore, .cphone-detail-text.lore { white-space: pre-line; overflow-wrap: anywhere; }
 .cbook-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .cbook-chips span { padding: 3px 10px; border: 1px solid var(--pg-line); border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--pg-soft); }
 .rules-list { padding-left: 18px; }
@@ -3157,10 +3249,12 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .cbook-page .hint-action { border-color: #8a6a4a; }
 .cbook-page .hint-body p { color: var(--pg-ink); }
 
-.cbook-tabs { flex-shrink: 0; width: 112px; padding-top: 70px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+/* Six chapters: the tabs are sized to fit down the fore edge of the
+   shortest book (.cbook-stage's height). */
+.cbook-tabs { flex-shrink: 0; width: 112px; padding-top: 62px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .cbook-tab {
   width: 104px;
-  height: 56px;
+  height: 48px;
   padding: 0 0 0 14px;
   text-align: left;
   border: 1px solid rgba(201, 160, 84, 0.55);
@@ -3184,7 +3278,7 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   /* The tabs run along the top, with the close button at the end of the row. */
   .cbook-close { top: 0; right: 0; }
   .cbook-tabs { width: auto; padding: 0 52px 0 0; flex-direction: row; gap: 6px; order: -1; }
-  .cbook-tab { flex: 1 1 0; min-width: 0; border-left: 1px solid rgba(201, 160, 84, 0.55); border-radius: 10px 10px 0 0; width: auto; padding: 0 8px; height: 44px; text-align: center; font-size: 14px; }
+  .cbook-tab { flex: 1 1 0; min-width: 0; border-left: 1px solid rgba(201, 160, 84, 0.55); border-radius: 10px 10px 0 0; width: auto; padding: 0 2px; height: 44px; text-align: center; font-size: 13px; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cbook-tab.active { width: auto; }
   .cbook-page.left { padding: 12px 26px 12px 14px; }
   .cbook-page.right { padding: 12px 14px 12px 28px; }
@@ -4156,8 +4250,7 @@ button.card-plaque-value { border-style: solid; }
 }
 button.card-notes { border-style: solid; }
 .card-notes-input { width: 100%; min-height: 96px; padding: 8px 10px; font-family: var(--font-display); font-size: 15px; font-style: italic; resize: vertical; }
-/* Remove from the table: a trash icon at the top of the card, then a
-   "Remove" to confirm. */
+/* Remove from the table: a trash icon at the top of the card. */
 .card-remove-icon {
   flex-shrink: 0;
   width: 32px;
@@ -4173,33 +4266,8 @@ button.card-notes { border-style: solid; }
 }
 .card-remove-icon:hover,
 .card-remove-icon:focus-visible { border-color: #c0392b; background: #9b2d20; color: #fbeccb; }
-.card-remove-ask { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
-.card-remove-yes {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: #9b2d20;
-  color: #fbeccb;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.card-remove-no {
-  width: 32px;
-  height: 32px;
-  border: 1px solid rgba(201, 162, 74, 0.45);
-  border-radius: 999px;
-  background: transparent;
-  color: #f2e9d4;
-  font-size: 16px;
-  cursor: pointer;
-}
 .phone-creature-remove { align-self: flex-start; margin-left: auto; }
-.phone-creature-remove.card-remove-icon,
-.phone-creature-remove .card-remove-no { width: 44px; height: 44px; }
-.phone-creature-remove .card-remove-yes { min-height: 44px; padding: 0 16px; font-size: 14px; }
+.phone-creature-remove.card-remove-icon { width: 44px; height: 44px; }
 
 .target-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; background: var(--ink-950); border: 1px solid var(--ink-700); border-radius: 12px; }
 .target-preview div { display: flex; flex-direction: column; gap: 2px; }
@@ -5045,7 +5113,7 @@ button.card-notes { border-style: solid; }
 .phone-creature .card-ed { color: inherit; }
 .phone-owner { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--parchment-300); }
 .phone-owner select { min-height: 40px; padding: 0 10px; border: 1px dashed var(--gold-line); border-radius: 8px; background: var(--ink-800); color: var(--parchment-100); font: inherit; font-size: 14px; }
-.phone-creature-tabs button { min-width: 0; flex: 1 1 0; }
+.phone-creature-tabs button { min-width: 0; flex: 1 1 0; padding: 0 4px; }
 .phone-creature-body { display: flex; flex-direction: column; gap: 14px; }
 .phone-hp { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--ink-700); border-radius: 16px; background: var(--ink-800); }
 .phone-hp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -5158,6 +5226,7 @@ body:has(.game-screen.phone) .book-card {
 .phone-add-tabs button { min-width: 96px; }
 .phone-add-body { display: flex; flex-direction: column; gap: 12px; }
 .phone-add-body .token-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.phone-add-body .token-grid.merchants { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .phone-add-body .field, .phone-add-body .btn { min-height: 44px; }
 .phone-add-body .side-btn { min-height: 44px; }
 
@@ -5278,6 +5347,22 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 }
 .hint-tight { margin-top: 8px; padding: 8px 10px; }
 .card-notice { margin: 4px 12px 8px; }
+
+/* ---- Placeable card: a door's, chest's, trap's or ambush's inspector on the creature card (RightPanel.jsx's PlaceableCard) ---- */
+.placeable-card .target-card-type { padding-top: 10px; }
+.placeable-card-art { height: 170px; background-color: #2f2318; }
+/* A picture (data/placeableArt.js) fills the frame; the token icon doesn't. */
+.placeable-card-art.painted { background-size: cover; }
+/* The lock and visibility icons on its title bar: lit when locked / hidden. */
+.card-toggle-icon { flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(201, 162, 74, 0.45); border-radius: 999px; background: transparent; color: #bfae86; cursor: pointer; }
+button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-color: #f2c14e; color: #f1e7cf; outline: none; }
+.card-toggle-icon.on { border-color: #f2c14e; background: rgba(242, 193, 78, 0.18); color: #f2c14e; }
+.card-toggle-icon.static { cursor: default; }
+.game-screen.phone .card-toggle-icon { width: 44px; height: 44px; }
+/* A plaque holding words (a size, where a door leads) rather than a number. */
+.placeable-plaque-text { font-size: 15px; line-height: 1.2; overflow-wrap: anywhere; }
+.placeable-card-body { min-height: 0; border-top: 1px solid var(--card-rule); }
+.placeable-card-body .field-label:first-child { margin-top: 0; }
 /* The DM's "Hidden from players" tick on a monster's card, in the card's ink. */
 .target-card .checkbox-row { justify-content: center; color: var(--card-ink); }
 /* On the paper creature cards, a hint reads in the card's own ink. */
@@ -5783,7 +5868,7 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .side-panel .dm-hist { max-height: none; }
 
 /* ---------- The compendium drawer (desktop rail) ----------
-   The Compendium tab's side panel: its three books lying in the drawer, then
+   The Compendium tab's side panel: its books lying in the drawer, then
    Storage. A book is its cover seen from above — leather, a spine, a gilt
    line and the page edges under it — in its own colours under every
    palette, like the open book it turns into (.cbook-*). */
@@ -5809,6 +5894,9 @@ body:has(.game-screen.phone) .condition-badge { width: 44px; height: 44px; }
 .drawer-book.monsters { --book: #3c4a2f; }
 .drawer-book.items { --book: #4a2c1d; }
 .drawer-book.weapons { --book: #6b2a22; }
+.drawer-book.tomes { --book: #33425c; }
+.drawer-book.foods { --book: #7a4f24; }
+.drawer-book.spells { --book: #43346e; }
 .drawer-book::after {
   content: '';
   position: absolute;

@@ -1,7 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DICE_TYPES } from '../data/weapons.js';
 import { useCatalog } from '../lib/catalog.js';
+import { useGameState } from '../state/store.jsx';
 import { newChestItem } from '../data/chests.js';
+import { WARE_SOURCES, sourceEntries, wareMeta } from '../data/merchants.js';
+
+// The compendium chapters a chest is filled from. Not Spells: a spell is
+// taught (the Wizard's shop), not found in a box.
+const CHEST_SOURCES = ['weapons', 'items', 'tomes', 'foods'];
+// How many entries of a chapter the list shows at once. The rest are a
+// search away.
+const BROWSE_LIMIT = 40;
 
 function formatCost(gp) {
   if (gp >= 1) return `${Math.round(gp * 100) / 100} gp`;
@@ -15,14 +24,37 @@ function diceLabel(item) {
   return `${item.numberOfDice}${item.diceType}${mod}`;
 }
 
-// The searchable "pick from a compendium" + "type a custom one" item
-// picker, plus the running list of what's already in the chest — shared
-// between the placement modal (TokenSidebar) and the in-place editor shown
-// on an existing chest's inspector while the Edit tool is active
-// (RightPanel), so both stay identical instead of drifting apart.
-export default function ChestContentsEditor({ items, capacity, onAddItem, onRemoveItem, onUpdateQty }) {
+// One compendium entry as it sits in a chest. A tome or a dish remembers
+// its chapter, so looting it puts it under Other items, a tome with its text
+// (GameView's giveChestItemToHero); a weapon or an item goes to Weapons &
+// gear as it always has.
+function chestItemFromEntry(source, entry) {
+  const weapon = source === 'weapons';
+  return newChestItem({
+    name: entry.name,
+    cost: entry.cost || 0,
+    numberOfDice: weapon ? entry.numberOfDice || 0 : 0,
+    diceType: weapon ? entry.diceType || null : null,
+    modifier: weapon ? entry.modifier || 0 : 0,
+    ...(source === 'tomes' || source === 'foods' ? { source } : {}),
+  });
+}
+
+// The running list of what's already in the chest, then two tabs for adding
+// to it: a compendium chapter to browse and search (with one picked at random
+// for a quick fill), or a custom item to type — shared between the
+// placement modal (TokenSidebar) and the in-place editor shown on an existing
+// chest's inspector while the Edit tool is active (RightPanel), so both stay
+// identical instead of drifting apart.
+//
+// onPendingCustomChange (optional): told the name of a custom item that has
+// been typed but not added yet ('' when there is none), so the placement
+// modal can hold "Place chest" back until it is added or cleared — a typed
+// item is easy to lose by placing the chest first.
+export default function ChestContentsEditor({ items, capacity, onAddItem, onRemoveItem, onUpdateQty, onPendingCustomChange }) {
   const [search, setSearch] = useState('');
-  const [showCustom, setShowCustom] = useState(false);
+  const [source, setSource] = useState(CHEST_SOURCES[0]);
+  const [tab, setTab] = useState('compendium'); // 'compendium' | 'custom'
   const [customName, setCustomName] = useState('');
   const [customDice, setCustomDice] = useState(0);
   const [customDiceType, setCustomDiceType] = useState('d6');
@@ -31,31 +63,37 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
 
   const full = items.length >= capacity;
 
-  const { weapons, items: catalogItems } = useCatalog();
-  const results = useMemo(() => {
+  // A named custom item still waiting for "Add custom item". Not while the
+  // chest is full: nothing can be added then, so there is nothing to wait for.
+  const pendingCustom = tab === 'custom' && !full ? customName.trim() : '';
+  useEffect(() => {
+    onPendingCustomChange?.(pendingCustom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCustom]);
+
+  // The chapter being browsed: the app's own entries, then this table's
+  // (Asset Storage), narrowed by the search.
+  const catalog = useCatalog();
+  const { customAssets } = useGameState();
+  const entries = useMemo(() => sourceEntries(source, catalog, customAssets), [source, catalog, customAssets]);
+  const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return [];
-    const weaponMatches = weapons.filter((w) => w.name.toLowerCase().includes(q)).map((w) => ({
-      name: w.name,
-      cost: w.cost,
-      numberOfDice: w.numberOfDice,
-      diceType: w.diceType,
-      modifier: w.modifier,
-    }));
-    const itemMatches = catalogItems.filter((it) => it.name.toLowerCase().includes(q)).map((it) => ({
-      name: it.name,
-      cost: it.cost,
-      numberOfDice: 0,
-      diceType: null,
-      modifier: 0,
-    }));
-    return [...weaponMatches, ...itemMatches].slice(0, 20);
-  }, [search, weapons, catalogItems]);
+    return q ? entries.filter((entry) => entry.name.toLowerCase().includes(q)) : entries;
+  }, [entries, search]);
+  // Already inside: its quantity is changed in the list above, not by adding it twice.
+  const held = useMemo(() => new Set(items.map((item) => item.name)), [items]);
+  const spare = matches.filter((entry) => !held.has(entry.name));
+  const chapter = WARE_SOURCES[source].label.toLowerCase();
 
   function addFromCatalog(entry) {
-    if (full) return;
-    onAddItem(newChestItem(entry));
-    setSearch('');
+    if (full || held.has(entry.name)) return;
+    onAddItem(chestItemFromEntry(source, entry));
+  }
+
+  // One of what the list is showing, picked at random.
+  function addRandom() {
+    if (full || !spare.length) return;
+    addFromCatalog(spare[Math.floor(Math.random() * spare.length)]);
   }
 
   function addCustom() {
@@ -107,50 +145,67 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
         </div>
       )}
 
-      {!showCustom && (
-        <>
-          <div className="section-label" style={{ marginTop: 14 }}>
-            Add from compendium
+      <div className="dm-seg chest-add-tabs" role="tablist" aria-label="Add an item">
+        <button type="button" role="tab" aria-selected={tab === 'compendium'} className={tab === 'compendium' ? 'on' : ''} onClick={() => setTab('compendium')}>
+          From the compendium
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'custom'} className={tab === 'custom' ? 'on' : ''} onClick={() => setTab('custom')}>
+          Custom item
+        </button>
+      </div>
+
+      {tab === 'compendium' && (
+        <div className="chest-add-panel" role="tabpanel" aria-label="From the compendium">
+          <div className="shop-source-chips" role="group" aria-label="Which chapter">
+            {CHEST_SOURCES.map((key) => (
+              <button key={key} type="button" className={`tool-btn${source === key ? ' active' : ''}`} aria-pressed={source === key} onClick={() => setSource(key)}>
+                {WARE_SOURCES[key].label}
+              </button>
+            ))}
           </div>
-          <input
-            className="field"
-            placeholder={full ? 'Chest is full' : 'Search weapons & items…'}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            disabled={full}
-          />
-          {results.length > 0 && (
-            <div className="chest-search-results">
-              {results.map((entry, i) => (
+          <div className="shop-search-row">
+            <input className="field" placeholder={full ? 'Chest is full' : `Search ${chapter}…`} value={search} onChange={(e) => setSearch(e.target.value)} disabled={full} />
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={full || spare.length === 0}
+              title={full ? 'The chest is full' : search.trim() ? `Add one of the ${chapter} found, picked at random` : `Add one of the ${chapter}, picked at random`}
+              onClick={addRandom}
+            >
+              + 1 at random
+            </button>
+          </div>
+          <div className="chest-search-results">
+            {matches.slice(0, BROWSE_LIMIT).map((entry, i) => {
+              const has = held.has(entry.name);
+              const meta = wareMeta(source, entry);
+              return (
                 <div className="chest-search-row" key={`${entry.name}-${i}`}>
                   <span className="chest-item-name">{entry.name}</span>
                   <span className="chest-item-meta">
-                    {diceLabel(entry) ? `${diceLabel(entry)} · ` : ''}
-                    {formatCost(entry.cost)}
+                    {meta ? `${meta} · ` : ''}
+                    {formatCost(entry.cost || 0)}
                   </span>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={full} onClick={() => addFromCatalog(entry)}>
-                    + Add
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={full || has} onClick={() => addFromCatalog(entry)}>
+                    {has ? 'In chest' : '+ Add'}
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </>
+              );
+            })}
+            {matches.length === 0 && <p className="shop-empty">Nothing by that name.</p>}
+            {matches.length > BROWSE_LIMIT && (
+              <p className="shop-empty">
+                Showing {BROWSE_LIMIT} of {matches.length}. Search to narrow it down.
+              </p>
+            )}
+          </div>
+        </div>
       )}
 
-      <div className="section-label" style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>Add a custom item</span>
-        <label
-          style={{ display: 'flex', alignItems: 'center', gap: 6, textTransform: 'none', letterSpacing: 'normal', opacity: 1, cursor: 'pointer', fontSize: 12 }}
-        >
-          <input type="checkbox" checked={showCustom} onChange={(e) => setShowCustom(e.target.checked)} />
-          Custom
-        </label>
-      </div>
-
-      {showCustom && (
-        <>
-          <input className="field" placeholder="Item name" value={customName} onChange={(e) => setCustomName(e.target.value)} disabled={full} />
+      {tab === 'custom' && (
+        <div className="chest-add-panel" role="tabpanel" aria-label="Custom item">
+          <label className="field-label">Item name</label>
+          <input className="field" placeholder={full ? 'Chest is full' : 'e.g. Rusty key'} value={customName} onChange={(e) => setCustomName(e.target.value)} disabled={full} />
           <div className="field-row">
             <div>
               <label className="field-label">Number of dice</label>
@@ -198,10 +253,17 @@ export default function ChestContentsEditor({ items, capacity, onAddItem, onRemo
               />
             </div>
           </div>
-          <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 4 }} disabled={full || !customName.trim()} onClick={addCustom}>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            style={{ marginTop: 4 }}
+            disabled={full || !customName.trim()}
+            title={full ? 'The chest is full' : !customName.trim() ? 'Give the item a name first' : 'Put this item in the chest'}
+            onClick={addCustom}
+          >
             + Add custom item
           </button>
-        </>
+        </div>
       )}
     </div>
   );

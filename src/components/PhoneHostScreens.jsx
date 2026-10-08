@@ -96,6 +96,15 @@ export function PhoneRunTable({
             <button type="button" className="phone-tile" onClick={go(() => open('bestiary'))}>
               Monsters
             </button>
+            <button type="button" className="phone-tile" onClick={go(() => open('tomes'))}>
+              Tomes
+            </button>
+            <button type="button" className="phone-tile" onClick={go(() => open('foods'))}>
+              Food
+            </button>
+            <button type="button" className="phone-tile" onClick={go(() => open('spells'))}>
+              Spells
+            </button>
           </div>
           <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(() => open('assetStorage'))}>
             Asset storage

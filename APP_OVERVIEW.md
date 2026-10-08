@@ -80,7 +80,8 @@ Every placeable thing on the map is an **entity**, keyed by id, carrying a
 | Kind | What it is | Kind-specific fields |
 |---|---|---|
 | `hero` | A player character | `sheet` (full D&D 5e character sheet, see §4), `ownerId`, `dmNotes` |
-| `mob` | A monster/NPC | `armorClass`, `conditions`, `droppables` (loot list), `dmNotes` |
+| `mob` | A monster | `armorClass`, `conditions`, `droppables` (loot list), `dmNotes` |
+| `npc` | A character the DM runs, with a hero's sheet | `armorClass`, `conditions`, `mobSheet` (the hero-style sheet, DM-only), `hidden`, `dmNotes`, and for a shopkeeper `shop` (`{ role, wares }`, public — see `src/data/merchants.js`) |
 | `door` | A bidirectional portal between two layers | `targetLayerId`, `targetCol`/`targetRow` (independent placement on the far side) |
 | `chest` | A lootable container | `chestSize`, `opened`, `items` |
 
@@ -181,6 +182,18 @@ reloads the full snapshot on mount).
   variants; 128 PHB-flavored adventuring-gear/tool/instrument items) —
   each row can be **Bought** (deducts gold, rounded up, from a picked
   hero) or **Given** (no cost) directly into that hero's Bag.
+- **Tomes / Food & Drink / Spells** chapters of the same book (built into
+  the app, no catalog table): 100 made-up tomes, 60 foods and drinks, 100
+  spells. Buy and Give work the same way; a tome, food or drink lands in
+  Bag > Other items (a tome keeps its text, read from the Bag row), and a
+  spell is written into the hero's Spells tab at its level. The DM writes
+  tomes of their own (title, author, text) under Asset Storage > Tomes.
+- **Shopkeepers** (Tokens > NPC): Weapon Salesman, Librarian, Food
+  Salesman, Wizard, Wandering Salesman (any chapter) and Cartographer
+  (maps the DM writes). Each is an NPC with a `shop`; the DM stocks it and
+  sets prices when placing it and from its Shop tab, and sells or gives to
+  any hero. A player buys into their own hero from the same tab. Stock is
+  unlimited; a sale only changes the buyer's sheet.
 - **Save / Export / Import**: manual localStorage save (cloud mode shows
   "Synced to the cloud" instead, since every action already writes
   through immediately), download the whole table as `.json`, or restore
@@ -211,11 +224,12 @@ rule (`src/utils/grid.js`'s `feetDistance`).
   Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
   (`src/data/defaultTokens.js`), one click to place. Placing a default
   monster auto-seeds its **Droppables** loot list (see below).
-- **Placeable → Door**: name + target layer (disabled until a second
-  layer exists) → places a linked pair of door tokens.
-- **Placeable → Chest**: name + size (Small=1/Medium=5/Large=8/
-  XLarge=12 item slots) → opens a configuration modal (shared
-  `ChestContentsEditor`, see below) before placing.
+- **Placeable** tiles (Door, Chest, Trap, Ambush): clicking one opens its
+  configuration modal straight away; nothing is set up in the sidebar.
+  **Door**: name + target layer (or, with no second layer yet, the form
+  to create one) → places a linked pair of door tokens. **Chest**: name +
+  size (Small=1/Medium=5/Large=8/XLarge=12 item slots) + contents (shared
+  `ChestContentsEditor`, see below).
 
 ### Players button (`Toolbar.jsx` `PlayerList`)
 
@@ -262,10 +276,14 @@ disadvantage, etc.).
 
 Every chest/droppable item shares one shape: `{ name, qty, cost,
 numberOfDice, diceType, modifier }` — the same fields whether it came
-from the Weapon compendium, the Item compendium, or was hand-typed. The
-"Add a custom item" form is hidden behind a **Custom** checkbox next to
-its label; checking it swaps out the "Add from compendium" search so the
-two don't clutter the panel together.
+from a compendium chapter or was hand-typed. A chest's editor has two
+tabs. **From the compendium** lists a chapter (Weapons, Items, Tomes or
+Food & drink, with this table's own entries) to browse and search, each
+row with **+ Add** ("In chest" once it is inside), and **+ 1 at random**
+adds one of what the list is showing. **Custom item** is the hand-typed
+form. A tome or a dish also keeps its chapter as `source`, so looting it
+puts it under the hero's Other items (a tome with its text) instead of
+Weapons & gear.
 
 ### Mob droppables (`DroppablesEditor.jsx`, `data/droppables.js`)
 
@@ -547,6 +565,7 @@ src/
     TokenSidebar.jsx        Default hero/monster gallery, custom upload, doors & chests
     RightPanel.jsx          Player roster + selected-token inspector (all kinds)
     ChestContentsEditor.jsx Shared chest-contents / droppable-loot item picker
+    MerchantShop.jsx        A shopkeeper's stocking editor and its Shop tab (sell / give / buy)
     DroppablesEditor.jsx    Mob loot list: same picker + d20 drop-chance rolling
   utils/
     grid.js                 Grid<->pixel math, island canvas bounds, 5-10-5 distance
@@ -558,6 +577,8 @@ src/
     conditions.js           The 5-condition catalog
     weapons.js              100-entry mock weapon compendium (37 PHB base × variants)
     items.js                128-entry mock item compendium (PHB equipment chapter)
+    tomes.js / foods.js / spells.js  The Tomes, Food & Drink and Spells chapters
+    merchants.js            Shopkeeper roles, the `shop` shape, and the buy / give helpers
     chests.js               Chest size tiers + chest-item shape
     droppables.js           Mob loot item shape + per-monster starter loot tables
 supabase/

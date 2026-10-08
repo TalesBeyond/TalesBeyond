@@ -89,7 +89,7 @@ export const TABLE_RULES = {
       sub: 'The rooms and areas of a world',
       where: 'Mapping drawer',
       dm: true,
-      text: 'Lists the maps on the layer you are viewing. Beside each name are four icon buttons: Recenter brings that map (or its whole group) to the middle of the view and makes it the active one, Download map saves it as an image, Settings opens its name, width, height, feet per square, background image and grid lines, and Delete removes it. Download map saves the map as a PNG with its grid, so you can paint over it in an image editor and upload it back in Settings. For a map in a group it saves the whole group as one picture, and an image uploaded to any map in the group is spread across all of them the same way. Grid lines sets how heavy the map’s grid is drawn (Light, Strong or Bold) and in which colour, for when the lines get lost over a background image; a strip under the buttons shows the result, and a map in a group shares its grid lines with the rest of the group. Nothing in a map’s Settings is applied until you press Save changes. + New map, at the foot of the drawer, adds a map of its own. + Sub map adds a new map that belongs to the one you clicked: it lands beside it and is grouped with it, so the two move together and share the parent’s name and conditions. A map with sub maps shows how many it has; click its name to unfold them. Detach turns a sub map back into a map of its own.',
+      text: 'Lists the maps on the layer you are viewing. Beside each name are four icon buttons: Recenter brings that map (or its whole group) to the middle of the view and makes it the active one, Download map saves it as an image, Settings opens its name, width, height, feet per square, background image and grid lines, and Delete removes it. Download map saves the map as a PNG with its grid, so you can paint over it in an image editor and upload it back in Settings. For a map in a group it saves the whole group as one picture, and an image uploaded to any map in the group is spread across all of them the same way. Grid lines sets how heavy the map’s grid is drawn (Light, Strong or Bold) and in which colour, for when the lines get lost over a background image; a strip under the buttons shows the result, and a map in a group shares its grid lines with the rest of the group. Remove image takes a map’s background off again (click it twice: it cannot be undone); for a map in a group it comes off every map in the group. A map’s Settings have no Save button: each change shows on the map straight away and is saved by itself. A background image is the exception: once you pick one, a small plan of the map (or of the whole group) opens with the picture under it. Drag it, size it with the Width and Height sliders, or start from Fit width, Fit height, Stretch or Centre; the map shows the result as you go, and Use this picture saves it. When a picture is the right size but its art still sits off the maps (one redrawn from the downloaded map rather than painted over it), Snap each map to its art finds every map’s own piece and fits it to that map; Move then picks a single map to shift by itself. + New map, at the foot of the drawer, adds a map of its own. + Sub map adds a new map that belongs to the one you clicked: it lands beside it and is grouped with it, so the two move together and share the parent’s name and conditions. A map with sub maps shows how many it has; click its name to unfold them. Detach turns a sub map back into a map of its own.',
     },
     {
       key: 'layers',
@@ -355,7 +355,7 @@ export const TABLE_RULES = {
       name: 'Maps',
       sub: 'Pieces of the world',
       where: 'On the map',
-      text: 'A world is made of maps, each with its own grid. Click a map’s background to make it the active one: new tokens land there, and Recenter scrolls back to it.',
+      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Edit and click a map’s background, or press a map’s Recenter button in Mapping; a click on a map during play leaves it alone.',
     },
     {
       key: 'movetoken',
@@ -404,7 +404,7 @@ export const TABLE_RULES = {
       name: 'Chests',
       sub: 'Loot to open and take',
       where: 'On the map',
-      text: 'Select a chest and press Open chest in the Inspector. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool.',
+      text: 'Select a chest and press Open chest in the Inspector. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes or Food & drink) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome or a dish taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
     },
     {
       key: 'trap',
@@ -476,7 +476,7 @@ export const TABLE_RULES = {
       text: 'Everything you can place on the map. The Tokens tab folds the panel out over the left of the map; click the tab again, or the « button, to fold it away. You can drag its edge to make it wider or narrower.',
       items: [
         ['Default heroes', 'ready-made characters.'],
-        ['Placeable', 'doors, chests and traps.'],
+        ['Placeable', 'doors, chests, traps and ambushes.'],
         ['Add your own image', 'a picture as a token.'],
       ],
     },
@@ -491,14 +491,15 @@ export const TABLE_RULES = {
     {
       key: 'placeable',
       name: 'Placeable',
-      sub: 'Doors, chests and traps',
+      sub: 'Doors, chests, traps and ambushes',
       where: 'Tokens panel',
       dm: true,
-      text: 'Things to put on the map.',
+      text: 'Things to put on the map. Click one and a window opens to set it up; Place puts it on the map you are viewing.',
       items: [
         ['Door', 'name it and choose the world (layer) it leads to.'],
-        ['Chest', 'name it and pick its size.'],
+        ['Chest', 'name it, pick its size and fill it from the compendium, at random or with items of your own.'],
         ['Trap', 'set its save and damage; hidden from players until you reveal it.'],
+        ['Ambush', 'name it and choose its monsters; hidden from players until you reveal it.'],
       ],
     },
     {

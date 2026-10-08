@@ -67,8 +67,8 @@ export const HOST_TOUR = [
     title: 'Compendium',
     text: 'Things ready to drop into the game. The tab opens a drawer of books.',
     items: [
-      ['Monsters, Items, Weapons', 'three books of ready-made content. Click one to open it.'],
-      ['Storage', 'make your own monsters, weapons and items for this table.'],
+      ['Monsters, Items, Weapons, Tomes, Food & Drink, Spells', 'books of ready-made content. Click one to open it.'],
+      ['Storage', 'make your own monsters, weapons, items and tomes for this table.'],
     ],
   },
   {
@@ -131,11 +131,12 @@ export const HOST_TOUR = [
   {
     target: 'side-placeable',
     title: 'Placeable',
-    text: 'Things to put on the map.',
+    text: 'Things to put on the map. Click one to set it up, then place it.',
     items: [
       ['Door', 'lets tokens walk through to another world.'],
       ['Chest', 'holds loot for players to open and take.'],
       ['Trap', 'hidden from players until you reveal it.'],
+      ['Ambush', 'a hidden band of monsters, revealed all at once.'],
     ],
     side: 'right',
   },

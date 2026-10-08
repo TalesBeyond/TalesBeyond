@@ -3,6 +3,9 @@
 //   src/assets/compendium/weapons/<slug>.png
 //   src/assets/compendium/items/<slug>.png
 //   src/assets/compendium/monsters/<slug>.png
+//   src/assets/compendium/tomes/<slug>.png
+//   src/assets/compendium/foods/<slug>.png
+//   src/assets/compendium/spells/<slug>.png
 //
 // <slug> is the entry's name in lower case with every run of other characters
 // turned into one "-" ("Giant Spider" -> giant-spider). A weapon's +1/+2/+3

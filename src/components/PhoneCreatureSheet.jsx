@@ -3,23 +3,32 @@ import { useFx } from '../lib/fx.js';
 import { ABILITIES, abilityModifier, formatModifier, defaultCharacterSheet } from '../data/characterSheet.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
-import { acOf, defaultMobAttacks } from '../utils/combat.js';
+import { acOf, attackTargetsFor, defaultMobAttacks } from '../utils/combat.js';
 import { Editable, RemoveTokenButton } from './CreatureCard.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab, MobLoot } from './RightPanel.jsx';
 import { PhoneSheet, PhoneSwitch } from './PhoneChrome.jsx';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
+import { ShopTab } from './MerchantShop.jsx';
+import { merchantRole } from '../data/merchants.js';
 
 // A hero's or monster's card on a phone (MOBILE_DESIGN.md): the numbers a
 // turn needs up top — hit points, armor, initiative, speed, conditions, death
 // saves — then the sheet in tabs. Permissions are the desktop card's: the DM
 // edits everything; a hero's own player edits its attacks, spells and bag;
 // everyone else looks. A player sees a monster's name, AC, HP, size and
-// conditions only.
-export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, heroes, audio, onUpdate, onRemove, onGiveItem, onTakeItem, onClose }) {
+// conditions only — and an NPC's the same: the DM runs it with a hero's
+// sections (data/tokenKinds.js), kept where a monster's sheet is. A
+// shopkeeper (data/merchants.js) opens on its Shop, for the DM and for a
+// player alike.
+export default function PhoneCreatureSheet({ entity, isHost, meId, players, entities, heroes, customAssets, audio, onUpdate, onRemove, onGiveItem, onTakeItem, onClose }) {
   useImageCacheVersion(); // redraw when a shared picture arrives
   const isHero = entity.kind === 'hero';
+  const isNpc = entity.kind === 'npc';
+  // The hero's sections — Magic, Bag, attacks out of the bag, death saves —
+  // for a hero, and for the DM on an NPC.
+  const heroSections = isHero || (isNpc && isHost);
   const isOwner = isHero && !!meId && entity.ownerId === meId;
   const canEdit = isHost;
   const canEditOwnTabs = isHost || isOwner;
@@ -28,9 +37,11 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
   const sheet = (isHero ? entity.sheet : entity.mobSheet) || defaultCharacterSheet();
   const sheetKey = isHero ? 'sheet' : 'mobSheet';
   const showSheet = isHero || isHost;
+  const role = isNpc ? merchantRole(entity) : null;
 
-  const tabs = isHero
+  const tabs = heroSections
     ? [
+        ...(role ? [{ key: 'shop', label: 'Shop' }] : []),
         { key: 'fight', label: 'Fight' },
         { key: 'magic', label: 'Magic' },
         { key: 'bag', label: 'Bag' },
@@ -44,8 +55,13 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           { key: 'stats', label: 'Stats' },
           { key: 'dm', label: 'DM' },
         ]
-      : [];
-  const [tab, setTab] = useState('fight');
+      : role
+        ? [
+            { key: 'shop', label: 'Shop' },
+            { key: 'fight', label: 'Card' },
+          ]
+        : [];
+  const [tab, setTab] = useState(role ? 'shop' : 'fight');
   // A hint's "Open the Bag" switches to that tab here too.
   useFx((event) => {
     if (event.type === 'cardTab' && tabs.some((t) => t.key === event.key)) setTab(event.key);
@@ -61,7 +77,7 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
   const pct = max ? Math.max(0, Math.min(1, hp / max)) : 0;
   const conditions = entity.conditions || [];
   const owner = isHero ? players?.[entity.ownerId] : null;
-  const targets = Object.values(entities || {}).filter((e) => (isHero ? e.kind === 'mob' : e.kind === 'hero'));
+  const targets = attackTargetsFor(entity, entities);
   const droppables = entity.droppables || [];
 
   function setAc(n) {
@@ -88,7 +104,13 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
 
   const typeLine = isHero
     ? `Level ${sheet.level ?? 1} hero${owner ? ` · played by ${owner.id === meId ? 'you' : owner.name}` : ' · no player yet'}`
-    : 'Monster';
+    : isNpc
+      ? isHost
+        ? `Level ${sheet.level ?? 1} ${role ? role.name : 'NPC'}${entity.hidden ? ' · hidden from players' : ''}`
+        : role
+          ? role.name
+          : 'NPC'
+      : 'Monster';
 
   return (
     <PhoneSheet title={entity.name} onClose={onClose} className="phone-sheet-creature">
@@ -139,7 +161,10 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           </div>
         )}
 
-        {(tab === 'fight' || !showSheet) && (
+        {tab === 'shop' && role && (
+          <div className="phone-creature-body">{paper(<ShopTab entity={entity} isHost={isHost} meId={meId} heroes={heroes} customAssets={customAssets} onUpdate={onUpdate} />)}</div>
+        )}
+        {(tab === 'fight' || (!showSheet && tab !== 'shop')) && (
           <div className="phone-creature-body">
             <MobLoot entity={entity} isHost={isHost} heroes={heroes} meId={meId} onGive={onGiveItem} onTake={onTakeItem} phone />
             {isHost && !isHero && (
@@ -242,7 +267,7 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
               </div>
             </section>
 
-            {isHero && (
+            {heroSections && (
               <section className="phone-death" aria-label="Death saves">
                 <span className="phone-label">Death saves</span>
                 {['successes', 'failures'].map((kind) => {
@@ -269,17 +294,17 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
 
             {showSheet && (
               <section aria-label="Attacks">
-                <span className="phone-label">{isHero ? 'Attacks' : 'Battle'}</span>
+                <span className="phone-label">{heroSections ? 'Attacks' : 'Battle'}</span>
                 {paper(
                   <BattleEquipmentTab
                     sheet={sheet}
                     updateSheet={updateSheet}
                     targets={targets}
                     onAttackTarget={onUpdate}
-                    playSoundOnHit={isHero}
+                    playSoundOnHit={heroSections}
                     attackerName={entity.name}
-                    ownAttacks={!isHero}
-                    defaultAttacks={isHero ? [] : defaultMobAttacks(entity.name)}
+                    ownAttacks={!heroSections}
+                    defaultAttacks={heroSections ? [] : defaultMobAttacks(entity.name)}
                   />,
                   canEditOwnTabs
                 )}
@@ -288,9 +313,9 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           </div>
         )}
 
-        {tab === 'magic' && isHero && <div className="phone-creature-body">{paper(<SpellsTab sheet={sheet} updateSheet={updateSheet} />, canEditOwnTabs)}</div>}
-        {tab === 'bag' && isHero && <div className="phone-creature-body">{paper(<BagTab sheet={sheet} updateSheet={updateSheet} />, canEditOwnTabs)}</div>}
-        {tab === 'loot' && !isHero && isHost && (
+        {tab === 'magic' && heroSections && <div className="phone-creature-body">{paper(<SpellsTab sheet={sheet} updateSheet={updateSheet} />, canEditOwnTabs)}</div>}
+        {tab === 'bag' && heroSections && <div className="phone-creature-body">{paper(<BagTab sheet={sheet} updateSheet={updateSheet} />, canEditOwnTabs)}</div>}
+        {tab === 'loot' && entity.kind === 'mob' && isHost && (
           <div className="phone-creature-body">
             {paper(
               <DroppablesEditor
@@ -330,7 +355,7 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
         )}
         {tab === 'dm' && isHost && (
           <div className="phone-creature-body">
-            {paper(<DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder={isHero ? 'Private notes about this player…' : 'Private notes about this monster…'} />)}
+            {paper(<DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder={isHero ? 'Private notes about this player…' : isNpc ? 'Private notes about this NPC…' : 'Private notes about this monster…'} />)}
           </div>
         )}
       </div>

@@ -25,12 +25,17 @@ import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import DiceInput from './DiceInput.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
-import CreatureCard, { Editable } from './CreatureCard.jsx';
+import CreatureCard, { Editable, RemoveTokenButton } from './CreatureCard.jsx';
+import { placeableArt } from '../data/placeableArt.js';
+import { entityImageSrc } from '../lib/storedImages.js';
+import { useImageCacheVersion } from '../lib/imageCache.js';
 import SoundField from './SoundField.jsx';
 import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { ambushMonsterCount } from '../data/ambush.js';
-import { totalToHit, totalDamageLabel, acOf, attackWeapon, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
+import { totalToHit, totalDamageLabel, acOf, attackWeapon, attackTargetsFor, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 import RollModeTabs from './RollModeTabs.jsx';
+import { ShopTab } from './MerchantShop.jsx';
+import { merchantRole } from '../data/merchants.js';
 
 export default function RightPanel({
   audio,
@@ -49,6 +54,7 @@ export default function RightPanel({
   onGiveChestItem,
   onTakeChestItem,
   customMonsters,
+  customAssets,
   onRevealAmbush,
   collapsed,
   onToggleCollapsed,
@@ -104,6 +110,20 @@ export default function RightPanel({
             players={players}
             encounterActor={encounterActor}
           />
+        ) : selectedEntity.kind === 'npc' ? (
+          <NpcInspector
+            key={selectedEntity.id}
+            entity={selectedEntity}
+            isHost={isHost}
+            audio={audio}
+            meId={meId}
+            heroes={heroes}
+            customAssets={customAssets}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            entities={entities}
+            encounterActor={encounterActor}
+          />
         ) : selectedEntity.kind === 'door' ? (
           <DoorInspector
             entity={selectedEntity}
@@ -120,7 +140,6 @@ export default function RightPanel({
             heroes={heroes}
             isHost={isHost}
             meId={meId}
-            players={players}
             onUpdate={onUpdateEntity}
             onRemove={onRemoveEntity}
             onGiveItem={onGiveChestItem}
@@ -160,47 +179,129 @@ export default function RightPanel({
 
 // ---------- shared bits ----------
 
-function NameField({ entity, onUpdate, disabled }) {
-  return (
-    <>
-      <label className="field-label">Name</label>
-      <input
-        className="field"
-        value={entity.name}
-        disabled={disabled}
-        onChange={(e) => onUpdate(entity.id, { name: e.target.value })}
-      />
-    </>
-  );
-}
+// The round icons on a placeable card's title bar. Lit (gold) means locked,
+// or hidden from players; the DM clicks one to flip it. `onChange` left out
+// makes it a plain sign rather than a switch — a locked chest for a player,
+// an ambush for the DM (it is always hidden).
+const LOCK_SHUT = (
+  <>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </>
+);
+const LOCK_OPEN = (
+  <>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 7.6-1.8" />
+  </>
+);
+const EYE = <path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />;
+const EYE_OFF = (
+  <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10 10 0 0 1 12 4c6 0 10 8 10 8a17 17 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s4 8 10 8a9.7 9.7 0 0 0 5.4-1.6" />
+);
 
-function RemoveButton({ entity, onRemove }) {
+function CardIconToggle({ on, label, title, onChange, children }) {
+  const icon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+  if (!onChange) {
+    return (
+      <span className={`card-toggle-icon static${on ? ' on' : ''}`} role="img" aria-label={label} title={title}>
+        {icon}
+      </span>
+    );
+  }
   return (
-    <button className="btn btn-danger btn-block" style={{ marginTop: 14 }} onClick={() => onRemove(entity.id)}>
-      Remove from map
+    <button type="button" className={`card-toggle-icon${on ? ' on' : ''}`} aria-pressed={on} aria-label={label} title={title} onClick={() => onChange(!on)}>
+      {icon}
     </button>
   );
 }
 
-function SizeField({ entity, onUpdate, disabled, maxSize }) {
+// `what`: "door" or "chest", for the tooltip.
+function LockToggle({ locked, what, onChange }) {
   return (
-    <>
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Token size (squares wide)
-      </label>
-      <select
-        className="field"
-        value={entity.size || 1}
-        disabled={disabled}
-        onChange={(e) => onUpdate(entity.id, { size: parseInt(e.target.value, 10) })}
-      >
-        {tokenSizesUpTo(maxSize).map((s) => (
-          <option key={s.size} value={s.size}>
-            {s.label}
-          </option>
-        ))}
-      </select>
-    </>
+    <CardIconToggle
+      on={locked}
+      label="Locked"
+      title={onChange ? (locked ? `Locked — click to unlock this ${what}` : `Unlocked — click to lock this ${what}`) : `This ${what} is locked`}
+      onChange={onChange}
+    >
+      {locked ? LOCK_SHUT : LOCK_OPEN}
+    </CardIconToggle>
+  );
+}
+
+function VisibilityToggle({ hidden, onChange, staticTitle }) {
+  return (
+    <CardIconToggle
+      on={hidden}
+      label="Hidden from players"
+      title={onChange ? (hidden ? 'Hidden from players — click to show it' : 'Players can see it — click to hide it') : staticTitle}
+      onChange={onChange}
+    >
+      {hidden ? EYE_OFF : EYE}
+    </CardIconToggle>
+  );
+}
+
+// The card a door, chest, trap or ambush is inspected on — the same
+// collectible card a hero or monster gets (CreatureCard.jsx's classes): its
+// name on the title bar (click to rename, for the DM) beside its `controls`
+// (the lock and visibility icons below) and the DM's remove-from-table, its
+// picture (data/placeableArt.js, else the token's own icon), a type line,
+// `plaques` ({ label, value } or { label, node }; `text` for words rather
+// than a number), and the rest as children on the parchment.
+function PlaceableCard({ entity, isHost, onUpdate, onRemove, art, artLabel, controls = null, typeLine, plaques = [], children }) {
+  useImageCacheVersion(); // redraw when a shared picture arrives
+  return (
+    <div className="creature-card">
+      <article className="target-card ally placeable-card">
+        <header className="target-card-title">
+          {/* The Grimoire palette's illuminated capital — hidden in every other palette. */}
+          <span className="inspector-dropcap" aria-hidden="true">
+            {(entity.name || '').trim().charAt(0) || '?'}
+          </span>
+          <Editable
+            type="text"
+            label="Name"
+            value={entity.name}
+            disabled={!isHost}
+            className="card-name on-dark"
+            inputClassName="card-name-input"
+            onCommit={(name) => name.trim() && onUpdate(entity.id, { name: name.trim() })}
+          />
+          {controls}
+          {isHost && <RemoveTokenButton name={entity.name} onRemove={() => onRemove(entity.id)} />}
+        </header>
+
+        <div
+          className={`target-card-art placeable-card-art${art ? ' painted' : ''}`}
+          style={{ backgroundImage: `url(${art || entityImageSrc(entity)})` }}
+          role="img"
+          aria-label={artLabel}
+        />
+
+        <div className="target-card-type">
+          <span>{typeLine}</span>
+        </div>
+
+        {plaques.length > 0 && (
+          <div className="card-plaques" style={{ gridTemplateColumns: `repeat(${plaques.length}, minmax(0, 1fr))` }}>
+            {plaques.map((p) => (
+              <div key={p.label} className="card-plaque">
+                {p.node ?? <span className={`card-ed static card-plaque-value${p.text ? ' placeable-plaque-text' : ''}`}>{p.value}</span>}
+                <span className="card-plaque-label">{p.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {children && <div className="card-tab-body placeable-card-body">{children}</div>}
+      </article>
+    </div>
   );
 }
 
@@ -219,45 +320,46 @@ export function HiddenField({ entity, onUpdate, style }) {
 // ---------- door ----------
 
 export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, onRemove }) {
-  return (
-    <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        Door · square ({entity.col}, {entity.row})
-        {entity.locked ? ' · locked' : ''}
-        {isHost && entity.hidden ? ' · hidden from players' : ''}
-      </div>
-      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
+  const locked = Boolean(entity.locked);
+  const destination = entity.targetLayerId ? layers?.[entity.targetLayerId]?.name || 'Untitled layer' : null;
 
+  return (
+    <PlaceableCard
+      entity={entity}
+      isHost={isHost}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      art={placeableArt(locked ? 'door-locked' : 'door', 'door')}
+      artLabel={locked ? 'A locked door' : 'A door'}
+      controls={
+        isHost ? (
+          <>
+            <LockToggle locked={locked} what="door" onChange={(next) => onUpdate(entity.id, { locked: next })} />
+            <VisibilityToggle hidden={Boolean(entity.hidden)} onChange={(hidden) => onUpdate(entity.id, { hidden })} />
+          </>
+        ) : null
+      }
+      typeLine={`Door · square (${entity.col}, ${entity.row})${locked ? ' · locked' : ''}${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      plaques={[{ label: 'Leads to', value: destination || 'Nowhere yet', text: true }]}
+    >
       {isHost && (
         <>
-          <label className="checkbox-row" style={{ marginTop: 10, marginBottom: 6 }}>
-            <input type="checkbox" checked={Boolean(entity.locked)} onChange={(e) => onUpdate(entity.id, { locked: e.target.checked })} />
-            Locked — players can’t open it
-          </label>
-          <HiddenField entity={entity} onUpdate={onUpdate} style={{ marginBottom: 0 }} />
+          <label className="field-label">Linked layer</label>
+          <select
+            className="field"
+            value={entity.targetLayerId || ''}
+            onChange={(e) => onUpdate(entity.id, { targetLayerId: e.target.value || null, targetCol: null, targetRow: null })}
+          >
+            <option value="">— not linked —</option>
+            {(layerOrder || []).map((id) => (
+              <option key={id} value={id}>
+                {layers?.[id]?.name || 'Untitled layer'}
+              </option>
+            ))}
+          </select>
         </>
       )}
-
-      <label className="field-label" style={{ marginTop: 10 }}>
-        Linked layer {!isHost && <span style={{ opacity: 0.6 }}>(host only can edit)</span>}
-      </label>
-      <select
-        className="field"
-        value={entity.targetLayerId || ''}
-        disabled={!isHost}
-        onChange={(e) => onUpdate(entity.id, { targetLayerId: e.target.value || null, targetCol: null, targetRow: null })}
-      >
-        <option value="">— not linked —</option>
-        {(layerOrder || []).map((id) => (
-          <option key={id} value={id}>
-            {layers?.[id]?.name || 'Untitled layer'}
-          </option>
-        ))}
-      </select>
-
-      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
-    </div>
+    </PlaceableCard>
   );
 }
 
@@ -268,32 +370,40 @@ export function DoorInspector({ entity, layers, layerOrder, isHost, onUpdate, on
 // entitiesVisibleOnLayer), and sees the same fields read-only.
 export function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
   const revealed = Boolean(entity.trapRevealed);
+  const sizes = tokenSizesUpTo(MAX_TRAP_SIZE);
+  const sizeLabel = sizes.find((s) => s.size === (entity.size || 1))?.label || `${entity.size || 1} squares`;
 
   return (
-    <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        Trap &middot; square ({entity.col}, {entity.row})
-        {isHost && !revealed ? ' \u00b7 hidden from players' : ''}
-      </div>
-      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-
-      <SizeField entity={entity} onUpdate={onUpdate} disabled={!isHost} maxSize={MAX_TRAP_SIZE} />
-
-      {isHost && (
-        <label className="checkbox-row" style={{ marginTop: 10 }}>
-          <input
-            type="checkbox"
-            checked={revealed}
-            onChange={(e) => onUpdate(entity.id, { trapRevealed: e.target.checked })}
-          />
-          Reveal trap
-        </label>
-      )}
-
-      <label className="field-label" style={{ marginTop: isHost ? 0 : 10 }}>
-        Description
-      </label>
+    <PlaceableCard
+      entity={entity}
+      isHost={isHost}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      art={placeableArt('trap')}
+      artLabel="A trap"
+      controls={isHost ? <VisibilityToggle hidden={!revealed} onChange={(hidden) => onUpdate(entity.id, { trapRevealed: !hidden })} /> : null}
+      typeLine={`Trap · square (${entity.col}, ${entity.row})${isHost && !revealed ? ' · hidden from players' : ''}`}
+      plaques={[
+        {
+          label: 'Size',
+          node: (
+            <Editable
+              label="Token size"
+              type="select"
+              value={String(entity.size || 1)}
+              display={sizeLabel}
+              options={sizes.map((s) => ({ value: String(s.size), label: s.label }))}
+              disabled={!isHost}
+              className="card-plaque-value placeable-plaque-text"
+              inputClassName="card-plaque-input"
+              onCommit={(v) => onUpdate(entity.id, { size: parseInt(v, 10) })}
+            />
+          ),
+        },
+        { label: 'Dice', value: entity.trapDice || '—' },
+      ]}
+    >
+      <label className="field-label">Description</label>
       <textarea
         className="field"
         rows={3}
@@ -359,9 +469,7 @@ export function TrapInspector({ entity, isHost, onUpdate, onRemove }) {
           </option>
         ))}
       </select>
-
-      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
-    </div>
+    </PlaceableCard>
   );
 }
 
@@ -376,14 +484,21 @@ export function AmbushInspector({ entity, customMonsters, isHost, onUpdate, onRe
   const count = ambushMonsterCount(entity);
 
   return (
-    <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        Ambush &middot; square ({entity.col}, {entity.row}) &middot; hidden from players
-      </div>
-      <NameField entity={entity} onUpdate={onUpdate} />
-
-      <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 12 }} disabled={count === 0} onClick={() => onReveal(entity.id)}>
+    <PlaceableCard
+      entity={entity}
+      isHost
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      art={placeableArt('ambush')}
+      artLabel="An ambush lying in wait"
+      controls={<VisibilityToggle hidden staticTitle="An ambush is always hidden from players — reveal it to put its monsters on the map" />}
+      typeLine={`Ambush · square (${entity.col}, ${entity.row}) · hidden from players`}
+      plaques={[
+        { label: count === 1 ? 'Monster' : 'Monsters', value: count },
+        { label: monsters.length === 1 ? 'Kind' : 'Kinds', value: monsters.length },
+      ]}
+    >
+      <button type="button" className="btn btn-primary btn-block" disabled={count === 0} onClick={() => onReveal(entity.id)}>
         Reveal the ambush
       </button>
       <p className="footer-note" style={{ border: 'none', padding: '6px 0 0' }}>
@@ -402,9 +517,7 @@ export function AmbushInspector({ entity, customMonsters, isHost, onUpdate, onRe
         onRemove={(id) => onUpdate(entity.id, { ambushMonsters: monsters.filter((m) => m.id !== id) })}
         onUpdateQty={(id, qty) => onUpdate(entity.id, { ambushMonsters: monsters.map((m) => (m.id === id ? { ...m, qty } : m)) })}
       />
-
-      <RemoveButton entity={entity} onRemove={onRemove} />
-    </div>
+    </PlaceableCard>
   );
 }
 
@@ -502,73 +615,66 @@ export function TakeChestItemButton({ disabled, onTake }) {
   );
 }
 
-// Opening a chest is the DM's call: a player asks, the DM allows it or not
-// (GameView.jsx's chestAsks). Shared by the phone chest sheet, which passes
-// its own button classes.
-export function ChestOpenButton({
-  entity,
-  isHost,
-  meId,
-  players,
-  onUpdate,
-  primaryClass = 'btn btn-block btn-primary',
-  secondaryClass = 'btn btn-block btn-secondary',
-  quietClass = 'btn btn-block btn-quiet',
-}) {
+// Opens or closes a chest. Anyone may, unless the DM has locked it
+// (data/visibility.js): a locked chest shows players a dead "Locked", and
+// the DM's own button unlocks it as it opens. Shared by the phone chest
+// sheet, which passes its own button classes.
+export function ChestOpenButton({ entity, isHost, onUpdate, primaryClass = 'btn btn-block btn-primary', secondaryClass = 'btn btn-block btn-secondary' }) {
   function toggleOpen() {
     const opened = !entity.opened;
     onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
   }
-  if (isHost || entity.opened) {
+  if (!isHost && !entity.opened && entity.locked) {
     return (
-      <button type="button" className={entity.opened ? secondaryClass : primaryClass} onClick={toggleOpen}>
-        {entity.opened ? 'Close chest' : 'Open chest'}
-      </button>
-    );
-  }
-  const asker = players?.[entity.openRequestBy] || null;
-  if (!asker) {
-    return (
-      <button type="button" className={primaryClass} onClick={() => onUpdate(entity.id, { openRequestBy: meId })}>
-        Ask the DM to open it
-      </button>
-    );
-  }
-  const mine = asker.id === meId;
-  return (
-    <>
       <button type="button" className={secondaryClass} disabled>
-        {mine ? 'Waiting for the DM…' : `${asker.name} is asking the DM…`}
+        Locked
       </button>
-      {mine && (
-        <button type="button" className={quietClass} style={{ marginTop: 6 }} onClick={() => onUpdate(entity.id, { openRequestBy: null })}>
-          Cancel
-        </button>
-      )}
-    </>
+    );
+  }
+  return (
+    <button type="button" className={entity.opened ? secondaryClass : primaryClass} onClick={toggleOpen}>
+      {entity.opened ? 'Close chest' : entity.locked ? 'Unlock and open chest' : 'Open chest'}
+    </button>
   );
 }
 
-function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate, onRemove, onGiveItem, onTakeItem }) {
+// A chest's inspector, on the same card (PlaceableCard above): whether it is
+// open, its picture, its size and how full it is, then opening it and what
+// is inside.
+function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove, onGiveItem, onTakeItem }) {
   const items = entity.items || [];
   const capacity = chestSlotCount(entity.chestSize);
   const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
   const myHero = (heroes || []).find((h) => h.ownerId === meId);
+  // A player learns what a chest holds only once it is open.
+  const seesInside = isHost || entity.opened;
+  const locked = Boolean(entity.locked);
 
   return (
-    <div className="inspector-card">
-      <h4>{entity.name}</h4>
-      <div className="section-label" style={{ margin: '0 0 8px' }}>
-        {sizeLabel} chest · square ({entity.col}, {entity.row})
-        {isHost && entity.hidden ? ' · hidden from players' : ''}
-      </div>
-      <NameField entity={entity} onUpdate={onUpdate} disabled={!isHost} />
-      {isHost && <HiddenField entity={entity} onUpdate={onUpdate} style={{ marginTop: 10, marginBottom: 0 }} />}
-
-      <label className="field-label" style={{ marginTop: 10 }}>
-        State
-      </label>
-      <ChestOpenButton entity={entity} isHost={isHost} meId={meId} players={players} onUpdate={onUpdate} />
+    <PlaceableCard
+      entity={entity}
+      isHost={isHost}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      art={placeableArt(entity.opened ? 'chest-open' : 'chest', 'chest')}
+      artLabel={entity.opened ? 'An open chest' : 'A shut chest'}
+      controls={
+        isHost ? (
+          <>
+            <LockToggle locked={locked} what="chest" onChange={(next) => onUpdate(entity.id, { locked: next })} />
+            <VisibilityToggle hidden={Boolean(entity.hidden)} onChange={(hidden) => onUpdate(entity.id, { hidden })} />
+          </>
+        ) : locked ? (
+          <LockToggle locked what="chest" />
+        ) : null
+      }
+      typeLine={`${sizeLabel} chest · ${entity.opened ? 'open' : locked ? 'locked' : 'shut'} · square (${entity.col}, ${entity.row})${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      plaques={[
+        { label: 'Size', value: sizeLabel, text: true },
+        { label: seesInside ? 'Slots filled' : 'Inside', value: seesInside ? `${items.length}/${capacity}` : '?' },
+      ]}
+    >
+      <ChestOpenButton entity={entity} isHost={isHost} onUpdate={onUpdate} />
 
       {isHost && entity.opened && (
         <>
@@ -616,14 +722,9 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate,
           />
         </>
       ) : !isHost && !entity.opened ? (
-        <>
-          <label className="field-label" style={{ marginTop: 14 }}>
-            Contents
-          </label>
-          <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>
-            The DM decides whether it opens. Ask, and you’ll see what’s inside once they allow it.
-          </p>
-        </>
+        <p className="card-tab-note" style={{ margin: '12px 0 0' }}>
+          {locked ? 'It’s locked. Only the DM can unlock it.' : 'Open it to see what’s inside.'}
+        </p>
       ) : (
         <>
           <label className="field-label" style={{ marginTop: 14 }}>
@@ -660,9 +761,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, players, onUpdate,
           )}
         </>
       )}
-
-      {isHost && <RemoveButton entity={entity} onRemove={onRemove} />}
-    </div>
+    </PlaceableCard>
   );
 }
 
@@ -741,10 +840,10 @@ export function MobLoot({ entity, isHost, heroes, meId, onGive, onTake, phone = 
 function MobInspector({ entity, isHost, audio, meId, heroes, onUpdate, onRemove, onGiveItem, onTakeItem, entities, encounterActor }) {
   const droppables = entity.droppables || [];
   const sheet = entity.mobSheet || defaultCharacterSheet();
-  // A monster's Battle Equipment attacks heroes, mirroring how a hero's
-  // attacks monsters. It is the monster's own attacks (it has no bag), set
-  // when it was placed and the DM's to change.
-  const heroTargets = Object.values(entities || {}).filter((e) => e.kind === 'hero');
+  // A monster's Battle Equipment attacks heroes (and NPCs), mirroring how a
+  // hero's attacks monsters. It is the monster's own attacks (it has no bag),
+  // set when it was placed and the DM's to change.
+  const heroTargets = attackTargetsFor(entity, entities);
 
   function updateSheet(patch) {
     onUpdate(entity.id, { mobSheet: { ...sheet, ...patch } });
@@ -810,6 +909,62 @@ function MobInspector({ entity, isHost, audio, meId, heroes, onUpdate, onRemove,
   );
 }
 
+// ---------- NPC ----------
+
+// A character the DM runs (data/tokenKinds.js): a hero's whole card — level,
+// ability scores, death saves and the Battle / Spells / Bag / Skills tabs —
+// with nobody playing it. Its sheet is kept the way a monster's is
+// (`mobSheet`, which players never receive), so a player sees an NPC's public
+// face alone: name, AC, HP, size and conditions. The DM can hide it from
+// players altogether.
+//
+// A shopkeeper (data/merchants.js) is an NPC with a Shop tab in front of the
+// rest, and it is the one tab a player gets: that is where they buy.
+function NpcInspector({ entity, isHost, audio, meId, heroes, customAssets, onUpdate, onRemove, entities, encounterActor }) {
+  const sheet = entity.mobSheet || defaultCharacterSheet();
+  const targets = attackTargetsFor(entity, entities);
+  const role = merchantRole(entity);
+
+  function updateSheet(patch) {
+    onUpdate(entity.id, { mobSheet: { ...sheet, ...patch } });
+  }
+
+  const shopTab = role
+    ? [{ key: 'shop', label: 'Shop', content: <ShopTab entity={entity} isHost={isHost} meId={meId} heroes={heroes} customAssets={customAssets} onUpdate={onUpdate} /> }]
+    : [];
+  const tabs = isHost
+    ? [
+        ...shopTab,
+        {
+          key: 'battle',
+          label: 'Battle',
+          content: <BattleEquipmentTab sheet={sheet} updateSheet={updateSheet} targets={targets} onAttackTarget={onUpdate} playSoundOnHit attackerName={entity.name} />,
+        },
+        { key: 'spells', label: 'Spells', content: <SpellsTab sheet={sheet} updateSheet={updateSheet} /> },
+        { key: 'bag', label: 'Bag', content: <BagTab sheet={sheet} updateSheet={updateSheet} /> },
+        { key: 'skills', label: 'Skills', content: <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} /> },
+        { key: 'dm', label: 'DM', content: <DmTab entity={entity} audio={audio} onUpdate={onUpdate} placeholder="Private notes about this NPC…" /> },
+      ]
+    : shopTab;
+
+  return (
+    <CreatureCard
+      entity={entity}
+      sheet={sheet}
+      updateSheet={updateSheet}
+      onUpdate={onUpdate}
+      canEdit={isHost}
+      onRemove={isHost ? onRemove : null}
+      showStats={isHost}
+      showDeathSaves={isHost}
+      typeLine={`${role ? role.name : 'NPC'} · square (${entity.col}, ${entity.row})${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      notice={isHost ? <HiddenField entity={entity} onUpdate={onUpdate} style={{ margin: 0 }} /> : null}
+      actor={encounterActor}
+      tabs={tabs}
+    />
+  );
+}
+
 // ---------- hero ----------
 
 // The DM edits the whole card. A hero's own player edits everything in the
@@ -817,7 +972,7 @@ function MobInspector({ entity, isHost, audio, meId, heroes, onUpdate, onRemove,
 // look through every tab but change nothing.
 function HeroInspector({ entity, isHost, audio, meId, onUpdate, onRemove, entities, players, encounterActor }) {
   const sheet = entity.sheet || defaultCharacterSheet();
-  const mobs = Object.values(entities || {}).filter((e) => e.kind === 'mob');
+  const mobs = attackTargetsFor(entity, entities);
   const isOwner = !!meId && entity.ownerId === meId;
   const canEditOwnTabs = isHost || isOwner;
 
@@ -1517,6 +1672,14 @@ function EquipmentCategory({ hint, items, onAdd, onUpdate, onRemove }) {
           <button type="button" className="btn btn-danger btn-sm" onClick={() => onRemove(item.id)}>
             ×
           </button>
+          {/* A tome, a map or a shop's own ware comes with something to
+              read (data/merchants.js's sheetWithGoods). */}
+          {item.description && (
+            <details className="equipment-read">
+              <summary>Read</summary>
+              <p>{item.description}</p>
+            </details>
+          )}
         </div>
       ))}
       <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 4 }} onClick={onAdd}>

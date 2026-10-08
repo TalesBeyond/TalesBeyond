@@ -51,10 +51,10 @@ below.
    placing is host-only now, so this is a required setup step per player.
 2. Click a door to walk through it — unless the DM has locked it
    (`src/data/visibility.js`), in which case it can't be clicked at all.
-3. Click "Ask the DM to open it" / "Close chest" on a chest's inspector.
-   Opening is the DM's call: the ask sits on the chest (`openRequestBy`),
-   the DM gets an Allow / Deny card, and only the DM's client ever opens
-   it (`60_chest_open_requests.sql` enforces that in cloud mode).
+3. Click "Open chest" / "Close chest" on a chest's inspector — unless the
+   DM has locked it, in which case it stays shut for them
+   (`66_players_open_chests.sql` enforces that in cloud mode). The earlier
+   "Ask the DM to open it" step is gone.
 4. On their own hero's **Battle Equipment** tab: add/remove equipment,
    change weapon, add modifiers, and roll an attack — including applying
    the resulting damage to whichever monster they targeted.
@@ -76,7 +76,9 @@ hero's character sheet (level/abilities/saves/skills), chest contents and
 "Give to a player," DM notes and mob droppables (already were),
 layers/islands (already were), and importing a `.json` table (overwrites
 the whole shared state). A monster stays DM-only too, except that its
-`hp` can be reduced by a player's attack roll.
+`hp` can be reduced by a player's attack roll — and so does an NPC
+(`64_npc_tokens.sql`), whose hero-style sheet lives in the DM-only
+`mobSheet` like a monster's, never in `sheet`.
 
 **Where it's enforced:**
 - `GameView.jsx` — `canMoveEntity(entity)` and `canUpdateEntity(entity,

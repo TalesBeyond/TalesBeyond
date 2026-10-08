@@ -5,11 +5,14 @@ import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
 import { clampGridDims, clampFeetPerSquare, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
 import { resolveImage } from '../lib/imageCache.js';
-import { resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
+import { islandsBounds, resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
+import MapImageFit, { defaultImagePlacement } from './MapImageFit.jsx';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
 import { defaultCharacterSheet, normalizeEquipment, normalizeCurrency, newEquipmentItem } from '../data/characterSheet.js';
+import { TOME_CATEGORIES, TOME_TEXT_MAX } from '../data/tomes.js';
+import { shopPrice, entryGoods, knowsSpell, sheetWithGoods } from '../data/merchants.js';
 import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
@@ -123,6 +126,9 @@ const ICON_PATHS = {
   library: 'M4 3h9a3 3 0 0 1 3 3v11H7a3 3 0 0 1-3-3zM4 14a3 3 0 0 1 3-3h9',
   weapons: 'M16 3h1v1L9 12l-3 1 1-3zM5 14l-2 2M4 12l4 4',
   items: 'M3 6l7-3 7 3v8l-7 3-7-3zM3 6l7 3 7-3M10 9v8',
+  tomes: 'M5 3h9a1 1 0 0 1 1 1v13H6a1 1 0 0 1-1-1zM5 14h10M8 3v6l1.500-1.500L11 9V3',
+  foods: 'M4 7h9v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM13 9h2a2 2 0 0 1 0 5h-2M7 4v1M10 3v2',
+  spells: 'M9 2l1.800 5.200L16 9l-5.200 1.800L9 16l-1.800-5.200L2 9l5.200-1.800zM16 13v4M14 15h4',
   initiative: 'M4 5h12M4 10h12M4 15h8',
   music: 'M8 15V4l8-2v11M8 15a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 13a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
   dice: 'M4 4h12v12H4zM7.5 7.5h.01M12.5 12.5h.01M12.5 7.5h.01M7.5 12.5h.01',
@@ -159,7 +165,12 @@ const COMPENDIUM_BOOKS = [
   { kind: 'monsters', label: 'Monsters', sub: 'Creatures to place on the map', icon: 'monsters' },
   { kind: 'items', label: 'Items', sub: 'Gear, potions and supplies to give or sell', icon: 'items' },
   { kind: 'weapons', label: 'Weapons', sub: 'Blades, bows and the rest, to give or sell', icon: 'weapons' },
+  { kind: 'tomes', label: 'Tomes', sub: 'Books to give or sell, and the ones you write', icon: 'tomes' },
+  { kind: 'foods', label: 'Food & Drink', sub: 'Tavern fare and trail food to give or sell', icon: 'foods' },
+  { kind: 'spells', label: 'Spells', sub: 'A hundred spells to teach a hero', icon: 'spells' },
 ];
+// The books opened through `extraBook` below, not a boolean of their own.
+const EXTRA_BOOKS = ['tomes', 'foods', 'spells'];
 
 // A card in a rail drawer: its icon, its name and a line saying what it does.
 function DrawerCard({ icon, label, text, title, active = false, danger = false, onClick }) {
@@ -305,6 +316,7 @@ export default function Toolbar({
   onRemoveIsland,
   onDownloadIslandImage,
   onUpdateIsland,
+  onPreviewIslands,
   onDetachIsland,
   onRenameGroup,
   onIslandConditions,
@@ -333,7 +345,13 @@ export default function Toolbar({
   const [showCompendium, setShowCompendium] = useState(false);
   const [showItemCompendium, setShowItemCompendium] = useState(false);
   const [showMonsterCompendium, setShowMonsterCompendium] = useState(false);
+  // The compendium's newer chapters share one piece of state: which of
+  // EXTRA_BOOKS is open, or null.
+  const [extraBook, setExtraBook] = useState(null);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
+  // The tab Asset Storage opens on ('tome' from the Tomes chapter's "Write
+  // your own").
+  const [assetStorageTab, setAssetStorageTab] = useState('monster');
   const [showDayNight, setShowDayNight] = useState(false);
   const [showAmbience, setShowAmbience] = useState(false);
   const [showRules, setShowRules] = useState(false);
@@ -477,18 +495,25 @@ export default function Toolbar({
     setShowInitiative(false);
     setShowCompendium(false);
     setShowItemCompendium(false);
+    setExtraBook(null);
     setShowAssetStorage(false);
     setShowDayNight(false);
   }
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
-  // Takes one book out of the compendium drawer and opens it.
-  function openBook(kind) {
-    closePopovers();
+  // Puts the compendium book on one chapter, or shuts it (null).
+  function showBook(kind) {
     setShowCompendium(kind === 'weapons');
     setShowItemCompendium(kind === 'items');
     setShowMonsterCompendium(kind === 'monsters');
+    setExtraBook(EXTRA_BOOKS.includes(kind) ? kind : null);
+  }
+
+  // Takes one book out of the compendium drawer and opens it.
+  function openBook(kind) {
+    closePopovers();
+    showBook(kind);
   }
 
   // A section that opens a menu or a dialog takes the place of whatever panel
@@ -535,7 +560,9 @@ export default function Toolbar({
     setShowInitiative((s) => (name === 'initiative' ? !s : false));
     setShowCompendium((s) => (name === 'compendium' ? !s : false));
     setShowItemCompendium((s) => (name === 'itemCompendium' ? !s : false));
+    setExtraBook(null);
     setShowAssetStorage((s) => (name === 'assetStorage' ? !s : false));
+    if (name === 'assetStorage') setAssetStorageTab('monster');
     setShowDayNight((s) => (name === 'dayNight' ? !s : false));
     setShowAmbience((s) => (name === 'ambience' ? !s : false));
     if (name !== 'islands') setIslandsFocusId(null);
@@ -561,6 +588,11 @@ export default function Toolbar({
       const open = showMonsterCompendium;
       togglePopover(null);
       setShowMonsterCompendium(!open);
+    } else if (EXTRA_BOOKS.includes(event.panel)) {
+      const open = extraBook === event.panel;
+      togglePopover(null);
+      setShowMonsterCompendium(false);
+      setExtraBook(open ? null : event.panel);
     }
   });
 
@@ -571,19 +603,30 @@ export default function Toolbar({
     });
   }
 
-  // Used by both compendiums (weapons and items share the same hero-equipment
-  // shape) — always drops the entry into Bag > Weapons & gear; "Buy" also
-  // deducts its cost (rounded up to the nearest gold piece, since hero
-  // currency is tracked as whole gold/silver/bronze) from the hero's gold.
-  function giveItemToHero(hero, item, deduct) {
+  // Used by every chapter of the compendium but Monsters. A weapon or an item
+  // (they share the same hero-equipment shape) always drops into Bag >
+  // Weapons & gear; a tome, food or drink goes to Bag > Other items, and a
+  // spell is written into the Spells tab (data/merchants.js's
+  // sheetWithGoods). "Buy" also deducts its cost (rounded up to the nearest
+  // gold piece, since hero currency is tracked as whole gold/silver/bronze)
+  // from the hero's gold. Returns false when there was nothing to hand over:
+  // a spell the hero already knows.
+  function giveItemToHero(hero, item, deduct, kind) {
     const sheet = hero.sheet || defaultCharacterSheet();
-    const equipment = normalizeEquipment(sheet.equipment);
     const currency = normalizeCurrency(sheet);
+    const nextCurrency = deduct ? { ...currency, gold: Math.max(0, currency.gold - shopPrice(item.cost)) } : currency;
+    if (EXTRA_BOOKS.includes(kind)) {
+      const goods = entryGoods(kind, item);
+      if (knowsSpell(sheet, goods)) return false;
+      onUpdateEntity(hero.id, { sheet: { ...sheetWithGoods(sheet, goods), currency: nextCurrency } });
+      return true;
+    }
+    const equipment = normalizeEquipment(sheet.equipment);
     const newItem = { ...newEquipmentItem(), name: item.name };
-    const nextCurrency = deduct ? { ...currency, gold: Math.max(0, currency.gold - Math.max(1, Math.ceil(item.cost || 0))) } : currency;
     onUpdateEntity(hero.id, {
       sheet: { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] }, currency: nextCurrency },
     });
+    return true;
   }
 
   function copyHostKey() {
@@ -594,24 +637,23 @@ export default function Toolbar({
   }
 
   // An island's background image, picked in its settings (World maps
-  // dialog) and sent here when Save changes is pressed.
+  // dialog), made into the picture each map gets: { [islandId]: dataUrl },
+  // which the settings save once it has been laid where it belongs.
   // For an island in a group the picture belongs to the whole group: it is
   // laid over all of them together and each gets its own part — the shape
   // Download map exports (GameView's downloadIslandImage).
-  async function uploadIslandBackground(islandId, file) {
-    try {
-      const group = Object.values(layer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
-      const members = group ? group.islandIds.map((id) => layer.islands[id]).filter(Boolean) : [];
-      if (members.length > 1) {
-        const slices = await sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78);
-        for (const member of members) onUpdateIsland(member.id, { backgroundImage: slices[member.id] });
-        return;
-      }
-      const backgroundImage = await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78);
-      onUpdateIsland(islandId, { backgroundImage });
-    } catch (err) {
-      alert('Could not read that image — try a different file.');
-    }
+  // `size`: the { cols, rows } typed into those settings, perhaps not saved yet.
+  // `placement`: where the picture was laid by hand (MapImageFit). A map on
+  // its own, left where it was first laid, keeps the whole picture instead
+  // and lets the map crop it.
+  // `placements`: { [islandId]: the same }, the maps of a group that have the
+  // picture laid for them alone.
+  async function prepareIslandBackground(islandId, file, size = null, placement = null, placements = null) {
+    const group = Object.values(layer.islandGroups || {}).find((g) => g.islandIds.includes(islandId));
+    const grouped = group ? group.islandIds.map((id) => layer.islands[id]).filter(Boolean) : [];
+    const members = (grouped.length > 1 ? grouped : [layer.islands[islandId]]).map((member) => (member.id === islandId && size ? { ...member, ...size } : member));
+    if (members.length > 1 || placement) return sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78, placement, placements);
+    return { [islandId]: await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78) };
   }
 
   function handleImportFile(e) {
@@ -633,6 +675,10 @@ export default function Toolbar({
   const customItems = Object.values(customAssets || {})
     .filter((item) => item.assetType === 'item')
     .map((item) => ({ id: item.id, ...item.data }));
+  const customTomes = Object.values(customAssets || {})
+    .filter((item) => item.assetType === 'tome')
+    .map((item) => ({ id: item.id, ...item.data }));
+  const bookOpen = showCompendium || showItemCompendium || showMonsterCompendium || Boolean(extraBook);
 
   const codeChips = isHost && (
     <>
@@ -827,7 +873,8 @@ export default function Toolbar({
                   onIslandConditions={onIslandConditions}
                   onGroupConditions={onGroupConditions}
                   onUpdateIsland={onUpdateIsland}
-                  onUploadBackground={uploadIslandBackground}
+                  onPreviewIslands={onPreviewIslands}
+                  onPrepareBackground={prepareIslandBackground}
                   onDownloadIslandImage={onDownloadIslandImage}
                   focusIslandId={islandsFocusId}
                   layerFeet={layer.feetPerSquare || 5}
@@ -969,8 +1016,8 @@ export default function Toolbar({
           icon={<Icon name="library" />}
           label="Compendium"
           tour="compendium"
-          title="The compendium, and your own monsters, weapons and items"
-          active={showCompendium || showItemCompendium || showMonsterCompendium || showAssetStorage}
+          title="The compendium, and your own monsters, weapons, items and tomes"
+          active={bookOpen || showAssetStorage}
           open={rail ? sidePanel === 'compendium' : openMenu === 'compendium'}
           onToggle={() => (rail ? openSide('compendium') : toggleMenu('compendium'))}
           onClose={rail ? closeSide : closeMenu}
@@ -999,12 +1046,12 @@ export default function Toolbar({
                   setShowMonsterCompendium(false);
                   togglePopover('assetStorage');
                 }}
-                title="Asset Storage — create custom monsters, weapons, and items for this table"
+                title="Asset Storage — create custom monsters, weapons, items and tomes for this table"
               >
                 <Icon name="storage" />
                 <span className="drawer-book-text">
                   <span className="drawer-storage-title">Storage</span>
-                  <span className="drawer-storage-sub">Your own monsters, weapons and items</span>
+                  <span className="drawer-storage-sub">Your own monsters, weapons, items and tomes</span>
                 </span>
               </button>
             </>
@@ -1014,15 +1061,15 @@ export default function Toolbar({
           <ToolCard
             icon={<Icon name="library" />}
             label="Book"
-            active={showCompendium || showItemCompendium || showMonsterCompendium}
+            active={bookOpen}
             onClick={() => {
-              const open = showCompendium || showItemCompendium || showMonsterCompendium;
+              const open = bookOpen;
               togglePopover(null);
               setShowCompendium(!open);
               setShowItemCompendium(false);
               setShowMonsterCompendium(false);
             }}
-            title="Open the compendium of weapons, items, and monsters"
+            title="Open the compendium of weapons, items, monsters, tomes, food and spells"
           />
           <ToolCard
             icon={<Icon name="storage" />}
@@ -1032,7 +1079,7 @@ export default function Toolbar({
               setShowMonsterCompendium(false);
               togglePopover('assetStorage');
             }}
-            title="Asset Storage — create custom monsters, weapons, and items for this table"
+            title="Asset Storage — create custom monsters, weapons, items and tomes for this table"
           />
             </>
           )}
@@ -1194,29 +1241,29 @@ export default function Toolbar({
         </ToolMenu>
       )}
 
-      {isHost && (showCompendium || showItemCompendium || showMonsterCompendium) && (
+      {isHost && bookOpen && (
         <CompendiumBook
-          kind={showCompendium ? 'weapons' : showItemCompendium ? 'items' : 'monsters'}
-          onClose={() => {
-            setShowCompendium(false);
-            setShowItemCompendium(false);
-            setShowMonsterCompendium(false);
-          }}
-          onSwitchKind={(k) => {
-            setShowCompendium(k === 'weapons');
-            setShowItemCompendium(k === 'items');
-            setShowMonsterCompendium(k === 'monsters');
-          }}
+          kind={extraBook || (showCompendium ? 'weapons' : showItemCompendium ? 'items' : 'monsters')}
+          onClose={() => showBook(null)}
+          onSwitchKind={showBook}
           onAddMonster={onAddEntity}
           customMonsters={customMonsters}
           heroes={heroes || []}
           onGiveItem={giveItemToHero}
           customWeapons={customWeapons}
           customItems={customItems}
+          customTomes={customTomes}
+          onWriteTome={() => {
+            showBook(null);
+            setAssetStorageTab('tome');
+            setShowAssetStorage(true);
+          }}
         />
       )}
       {isHost && showAssetStorage && (
         <AssetStorageModal
+          key={assetStorageTab}
+          initialTab={assetStorageTab}
           onClose={() => setShowAssetStorage(false)}
           customAssets={customAssets}
           onAddAsset={onAddCustomAsset}
@@ -1710,7 +1757,8 @@ function IslandManagerPopover({
   onIslandConditions,
   onGroupConditions,
   onUpdateIsland,
-  onUploadBackground,
+  onPreviewIslands,
+  onPrepareBackground,
   onDownloadIslandImage,
   focusIslandId = null,
   layerFeet = 5,
@@ -1938,9 +1986,15 @@ function IslandManagerPopover({
                 // The group takes its parent's name.
                 if (patch.name && group && !parentId) onRenameGroup?.(group.id, patch.name);
               }}
-              onUploadBackground={(file) => onUploadBackground(id, file)}
+              onPreview={onPreviewIslands}
+              onPrepareBackground={(file, size, placement, placements) => onPrepareBackground(id, file, size, placement, placements)}
+              onSaveBackground={(images) => {
+                for (const [islandId, backgroundImage] of Object.entries(images)) onUpdateIsland(islandId, { backgroundImage });
+              }}
               groupName={group?.name || null}
-              onSaved={() => setOpenId(null)}
+              groupIslands={(group ? group.islandIds : [id]).map((memberId) => islands[memberId]).filter(Boolean)}
+              // A group is one picture, so taking it off takes it off them all.
+              imageIslandIds={(group ? group.islandIds : [id]).filter((memberId) => islands[memberId]?.backgroundImage)}
             />
           )}
           {addingTo === id &&
@@ -1992,14 +2046,25 @@ function IslandManagerPopover({
 }
 
 // An island's own settings, opened from its row in the Islands dialog.
-// Nothing here applies by itself: the fields and a newly picked background
-// image are held until Save changes is pressed, and Discard puts the form
-// back to the map as it is.
+// There is no Save button: every change saves itself. What is typed (name,
+// size, feet) or picked for the grid lines is saved a moment after the last
+// change, and at once on Enter, on leaving the field, or when the form is
+// folded away. Until then the new size and grid lines are drawn on the map
+// as a preview (`onPreview`, on this screen only:
+// { [islandId]: { cols, rows, gridLines, backgroundImage, backgroundFit } },
+// or null to end it).
+// A background image is the one thing with a step of its own: once picked it
+// is laid over the map with MapImageFit, shown on the map through the same
+// preview, and saved by Use this picture.
 // `groupName`: the island is in a group, so a background image is spread
-// over the whole group (uploadIslandBackground above).
-// `onSaved`: called once Save changes has applied everything, so the dialog
-// can fold the form away again.
-function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground, groupName = null, onSaved }) {
+// over the whole group (prepareIslandBackground above), and
+// `onSaveBackground` is handed a picture for each of its maps.
+// `groupIslands`: this map, or every map of its group. They share their grid
+// lines and their picture.
+// `imageIslandIds`: the maps (this one, or its group's) that have a
+// background image now, the ones Remove image clears.
+const ISLAND_AUTOSAVE_MS = 500;
+function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, onPrepareBackground, onSaveBackground, groupName = null, groupIslands = [], imageIslandIds = [] }) {
   const savedFeet = island.feetPerSquare || fallbackFeet;
   const [name, setName] = useState(island.name);
   const [cols, setCols] = useState(island.cols);
@@ -2010,90 +2075,183 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground,
   const [lineColor, setLineColor] = useState(savedLines?.color || null);
   const lines = normalizeGridLines({ strength: lineStrength, color: lineColor });
   const linesChanged = JSON.stringify(lines) !== JSON.stringify(savedLines);
-  const [pendingFile, setPendingFile] = useState(null); // a background image picked but not saved yet
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false); // a picked background image is being made ready
+  // A picked picture being laid over the map (MapImageFit), not saved yet:
+  // { file, url, imageWidth, imageHeight, place, placements, initial }.
+  // `place` is where it lies; `placements` the same for each map that has
+  // it laid for itself alone.
+  const [fit, setFit] = useState(null);
+  const [confirmRemove, setConfirmRemove] = useState(false); // Remove image, pressed once
   const fileRef = useRef(null);
 
-  const dirty =
-    name !== island.name ||
-    String(cols) !== String(island.cols) ||
-    String(rows) !== String(island.rows) ||
-    String(feet) !== String(savedFeet) ||
-    linesChanged ||
-    Boolean(pendingFile);
+  // What the fields come to. One that is empty for a moment, or not a
+  // number, keeps what is saved.
+  const typed = (value, saved, clamp) => (Number.isNaN(parseInt(value, 10)) ? saved : clamp(value));
+  const nextName = name.trim() || island.name;
+  const nextCols = typed(cols, island.cols, clampGridDims);
+  const nextRows = typed(rows, island.rows, clampGridDims);
+  const nextFeet = typed(feet, savedFeet, clampFeetPerSquare);
+  const sizeChanged = nextCols !== island.cols || nextRows !== island.rows;
+  // The maps a picture is spread over, this one at the size being typed.
+  const members = (groupIslands.length ? groupIslands : [island]).map((member) => (member.id === island.id ? { ...member, cols: nextCols, rows: nextRows } : member));
 
-  function discard() {
-    setName(island.name);
-    setCols(island.cols);
-    setRows(island.rows);
-    setFeet(savedFeet);
-    setLineStrength(savedLines?.strength || 'light');
-    setLineColor(savedLines?.color || null);
-    setPendingFile(null);
-  }
+  const patch = {};
+  if (nextName !== island.name) patch.name = nextName;
+  if (sizeChanged) Object.assign(patch, { cols: nextCols, rows: nextRows });
+  if (nextFeet !== savedFeet) patch.feetPerSquare = nextFeet;
+  const unsaved = Object.keys(patch).length > 0 || linesChanged;
+  const unsavedKey = JSON.stringify([patch, linesChanged ? lines : 0]);
 
-  async function save() {
-    if (!dirty || saving) return;
-    const nextName = name.trim() || 'Untitled Map';
-    const c = clampGridDims(cols);
-    const r = clampGridDims(rows);
-    const f = clampFeetPerSquare(feet);
-    setName(nextName);
-    setCols(c);
-    setRows(r);
-    setFeet(f);
-    const patch = {};
-    if (nextName !== island.name) patch.name = nextName;
-    if (c !== island.cols || r !== island.rows) Object.assign(patch, { cols: c, rows: r });
-    if (f !== island.feetPerSquare) patch.feetPerSquare = f;
+  // In a ref, so the timer below and folding the form away both save what
+  // the fields hold by then.
+  const saveRef = useRef(null);
+  saveRef.current = () => {
     if (Object.keys(patch).length) onPatch(patch);
     // On its own, so the rest still saves on a table whose database has no
     // grid_lines column yet (supabase/migrations 58).
     if (linesChanged) onPatch({ gridLines: lines });
-    if (pendingFile) {
-      setSaving(true);
-      try {
-        await onUploadBackground(pendingFile);
-      } finally {
-        setSaving(false);
-        setPendingFile(null);
+  };
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const timer = setTimeout(() => saveRef.current(), ISLAND_AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [unsavedKey]);
+  useEffect(() => () => saveRef.current(), []);
+
+  // The map shows the new size and grid lines at once, ahead of the save.
+  const linesKey = linesChanged ? JSON.stringify(lines) : '';
+  useEffect(() => {
+    if (!onPreview) return;
+    const previews = {};
+    if (sizeChanged) previews[island.id] = { cols: nextCols, rows: nextRows };
+    if (linesChanged) for (const member of members) previews[member.id] = { ...previews[member.id], gridLines: lines };
+    if (fit) {
+      // The picture being laid: the whole of it on every map, each showing
+      // the part that falls on it (MapBoard's backgroundFit).
+      const { minX, minY } = islandsBounds(members);
+      for (const member of members) {
+        const at = fit.placements[member.id] || fit.place;
+        const backgroundFit = { x: at.x - ((member.x || 0) - minX), y: at.y - ((member.y || 0) - minY), width: at.width, height: at.height };
+        previews[member.id] = { ...previews[member.id], backgroundImage: fit.url, backgroundFit };
       }
     }
-    onSaved?.();
-  }
+    onPreview(Object.keys(previews).length ? previews : null);
+  }, [sizeChanged, nextCols, nextRows, linesKey, fit]);
+  useEffect(() => () => onPreview?.(null), []);
+  // The picked picture is only held while it is being laid.
+  const fitRef = useRef(null);
+  fitRef.current = fit;
+  useEffect(() => () => fitRef.current && URL.revokeObjectURL(fitRef.current.url), []);
 
-  const saveOnEnter = (e) => {
-    if (e.key === 'Enter') save();
+  // Enter, or leaving a field: save now, and tidy the fields to what was saved.
+  function commit() {
+    saveRef.current();
+    setName(nextName);
+    setCols(nextCols);
+    setRows(nextRows);
+    setFeet(nextFeet);
+  }
+  const commitOnEnter = (e) => {
+    if (e.key === 'Enter') commit();
   };
-  function pickFile(e) {
+
+  // A picked picture is laid over the map first (MapImageFit) and saved from there.
+  async function pickFile(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (file) setPendingFile(file);
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const loading = new Image();
+        loading.onload = () => resolve(loading);
+        loading.onerror = reject;
+        loading.src = url;
+      });
+      const place = defaultImagePlacement(img.naturalWidth, img.naturalHeight, members);
+      if (fit) URL.revokeObjectURL(fit.url);
+      setFit({ file, url, imageWidth: img.naturalWidth, imageHeight: img.naturalHeight, place, placements: {}, initial: place });
+    } catch {
+      URL.revokeObjectURL(url);
+      alert('Could not read that image — try a different file.');
+    }
+  }
+  function closeFit() {
+    if (fit) URL.revokeObjectURL(fit.url);
+    setFit(null);
+  }
+  async function saveFit() {
+    if (!fit || busy) return;
+    setBusy(true);
+    try {
+      const untouched = JSON.stringify(fit.place) === JSON.stringify(fit.initial) && !Object.keys(fit.placements).length;
+      onSaveBackground(await onPrepareBackground(fit.file, { cols: nextCols, rows: nextRows }, members.length < 2 && untouched ? null : fit.place, fit.placements));
+      closeFit();
+    } catch {
+      alert('Could not read that image — try a different file.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  // Asked twice: there is no undo, and a removed picture has to be uploaded again.
+  function removeBackground() {
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      return;
+    }
+    setConfirmRemove(false);
+    onSaveBackground(Object.fromEntries(imageIslandIds.map((islandId) => [islandId, null])));
   }
 
   return (
     <div className="island-settings">
       <label className="field-label">Name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={saveOnEnter} />
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
       <div className="field-row">
         <div>
           <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} onKeyDown={saveOnEnter} />
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
         </div>
         <div>
           <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onKeyDown={saveOnEnter} />
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
         </div>
       </div>
       <label className="field-label">Feet per square</label>
-      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onKeyDown={saveOnEnter} />
+      <input className="field" type="number" min="1" value={feet} onChange={(e) => setFeet(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
       <label className="field-label">Background image</label>
-      <div className="field-row">
-        <button className="btn btn-secondary" disabled={saving} onClick={() => fileRef.current?.click()}>
-          {pendingFile ? 'Choose another image' : island.backgroundImage ? 'Replace image' : 'Upload image'}
-        </button>
-      </div>
+      {fit ? (
+        <MapImageFit
+          url={fit.url}
+          imageWidth={fit.imageWidth}
+          imageHeight={fit.imageHeight}
+          islands={members}
+          place={fit.place}
+          placements={fit.placements}
+          onChange={(place, placements) => setFit((current) => current && { ...current, place, placements })}
+          onCancel={closeFit}
+          onUse={saveFit}
+          busy={busy}
+          groupName={groupName}
+        />
+      ) : (
+        <div className="field-row">
+          <button className="btn btn-secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
+            {island.backgroundImage ? 'Replace image' : 'Upload image'}
+          </button>
+          {imageIslandIds.length > 0 && (
+            <button className={`btn ${confirmRemove ? 'btn-danger' : 'btn-secondary'}`} disabled={busy} onClick={removeBackground} onBlur={() => setConfirmRemove(false)}>
+              {confirmRemove ? 'Click again to remove' : 'Remove image'}
+            </button>
+          )}
+        </div>
+      )}
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+      {confirmRemove && (
+        <span className="island-row-note">
+          This takes the picture off {groupName ? 'every map in the group' : 'the map'} for everyone, and it cannot be undone.
+        </span>
+      )}
       <label className="field-label grid-lines-label">Grid lines</label>
       <div className="grid-lines-row">
         <div className="side-tabs grid-lines-strength" role="group" aria-label="Grid line strength">
@@ -2125,7 +2283,7 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground,
           </label>
         </div>
       </div>
-      <GridLinesPreview lines={lines} image={pendingFile ? null : resolveImage(island.backgroundImage)} />
+      <GridLinesPreview lines={lines} image={resolveImage(island.backgroundImage)} />
       <span className="island-row-note">
         Heavier or coloured lines keep the grid readable over a background image.{groupName ? ' They are used for every map in the group.' : ''}
       </span>
@@ -2134,29 +2292,13 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onUploadBackground,
           This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
         </span>
       )}
-      {pendingFile && (
-        <span className="island-row-note">
-          New background: <b>{pendingFile.name}</b>. It is used once you save.
-        </span>
-      )}
-      {dirty ? (
-        <div className="field-row island-settings-confirm">
-          <button className="btn btn-secondary" disabled={saving} onClick={discard}>
-            Discard
-          </button>
-          <button className="btn btn-primary" disabled={saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </button>
-        </div>
-      ) : (
-        <span className="island-row-note">Change anything above, then press Save changes. Nothing is applied until you do.</span>
-      )}
+      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
     </div>
   );
 }
 
-// A strip of grid drawn the way the settings above would draw it, over the
-// map's own background, since nothing reaches the map until Save changes.
+// A strip of grid drawn the way the settings above draw it, over the map's
+// own background, for a close look at lines that may be small on the map.
 function GridLinesPreview({ lines, image }) {
   const id = useId();
   const style = gridLineStyle({ gridLines: lines });
@@ -2219,7 +2361,9 @@ function InitiativeGroup({ title, entities, checkedIds, onToggle, onSetAll, empt
             <label className={`initiative-pick${checkedIds.has(e.id) ? ' checked' : ''}`} key={e.id}>
               <input type="checkbox" checked={checkedIds.has(e.id)} onChange={() => onToggle(e.id)} />
               <span>{e.name}</span>
-              {(e.ownerName || e.hidden) && <small>{e.ownerName || 'hidden from players'}</small>}
+              {(e.ownerName || e.hidden || e.kind === 'npc') && (
+                <small>{e.ownerName || [e.kind === 'npc' && 'NPC', e.hidden && 'hidden from players'].filter(Boolean).join(' · ')}</small>
+              )}
             </label>
           ))}
         </div>
@@ -2358,7 +2502,15 @@ const ASSET_STORAGE_TABS = [
   { key: 'monster', label: 'Monsters' },
   { key: 'weapon', label: 'Weapons' },
   { key: 'item', label: 'Items' },
+  { key: 'tome', label: 'Tomes' },
 ];
+// Where each kind of custom asset turns up once it is saved.
+const ASSET_SHOWS_UP_IN = {
+  monster: 'the monster token list',
+  weapon: 'the Weapons Compendium',
+  item: 'the Item Compendium',
+  tome: 'the Tomes Compendium, and a Librarian’s shelves',
+};
 
 // A modest, hand-drawn subset of defaultTokens.js's icon set that reads as
 // "creature" rather than "hero" or "object" — full parity with every icon
@@ -2374,16 +2526,22 @@ function emptyWeaponDraft() {
 function emptyItemDraft() {
   return { name: '', category: ITEM_CATEGORIES[0], cost: 0, weight: 0, description: '' };
 }
+function emptyTomeDraft() {
+  return { name: '', author: '', category: 'tales', cost: 5, description: '' };
+}
 
-// DM-only: authors custom monsters/weapons/items and drops them into this
-// table's compendiums / monster token list, alongside — never instead of —
-// the app's built-in defaults. See 36_custom_assets.sql and GameView.jsx's
-// addCustomAsset/removeCustomAsset.
-function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset }) {
-  const [tab, setTab] = useState('monster');
+// DM-only: authors custom monsters/weapons/items/tomes and drops them into
+// this table's compendiums / monster token list, alongside — never instead
+// of — the app's built-in defaults. A tome is the one with room to write: its
+// description is the book's own text (a story, a piece of the world's lore),
+// and a hero who is given or sold it can read that in their bag. See
+// 36_custom_assets.sql and GameView.jsx's addCustomAsset/removeCustomAsset.
+function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, initialTab = 'monster' }) {
+  const [tab, setTab] = useState(initialTab);
   const [monsterDraft, setMonsterDraft] = useState(emptyMonsterDraft);
   const [weaponDraft, setWeaponDraft] = useState(emptyWeaponDraft);
   const [itemDraft, setItemDraft] = useState(emptyItemDraft);
+  const [tomeDraft, setTomeDraft] = useState(emptyTomeDraft);
 
   const activeTab = ASSET_STORAGE_TABS.find((t) => t.key === tab);
   const ownEntries = Object.values(customAssets || {}).filter((item) => item.assetType === tab);
@@ -2430,6 +2588,19 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
     setItemDraft(emptyItemDraft());
   }
 
+  function addTome() {
+    const name = tomeDraft.name.trim();
+    if (!name) return;
+    onAddAsset('tome', {
+      category: tomeDraft.category,
+      name,
+      author: tomeDraft.author.trim(),
+      cost: Math.max(0, parseFloat(tomeDraft.cost) || 0),
+      description: tomeDraft.description.trim().slice(0, TOME_TEXT_MAX),
+    });
+    setTomeDraft(emptyTomeDraft());
+  }
+
   function toggleWeaponClass(cls) {
     setWeaponDraft((prev) => ({
       ...prev,
@@ -2463,14 +2634,14 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
             ))}
           </div>
           <span className="footer-note" style={{ border: 'none', padding: 0 }}>
-            Shows up in {tab === 'monster' ? 'the monster token list' : tab === 'weapon' ? 'the Weapons Compendium' : 'the Item Compendium'}
+            Shows up in {ASSET_SHOWS_UP_IN[tab]}
           </span>
         </div>
 
         <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
           {nothingSaved && (
             <Hint className="asset-empty-hint">
-              Nothing saved here yet. Make a monster, weapon or item once below, then place it as often as you like at this table.
+              Nothing saved here yet. Make a monster, weapon, item or tome once below, then use it as often as you like at this table.
             </Hint>
           )}
           {tab === 'monster' && (
@@ -2682,6 +2853,76 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset })
 
               <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addItem}>
                 + Add item
+              </button>
+            </>
+          )}
+
+          {tab === 'tome' && (
+            <>
+              <label className="field-label">Title</label>
+              <input
+                className="field"
+                value={tomeDraft.name}
+                maxLength={80}
+                onChange={(e) => setTomeDraft((p) => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. The Drowned King’s Confession"
+              />
+
+              <div className="field-row">
+                <div>
+                  <label className="field-label">Author</label>
+                  <input
+                    className="field"
+                    value={tomeDraft.author}
+                    maxLength={60}
+                    onChange={(e) => setTomeDraft((p) => ({ ...p, author: e.target.value }))}
+                    placeholder="Unknown"
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Cost (gp)</label>
+                  <input
+                    className="field"
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={tomeDraft.cost}
+                    onChange={(e) => setTomeDraft((p) => ({ ...p, cost: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <label className="field-label">Category</label>
+              <select
+                className="field"
+                value={tomeDraft.category}
+                onChange={(e) => setTomeDraft((p) => ({ ...p, category: e.target.value }))}
+              >
+                {TOME_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c[0].toUpperCase() + c.slice(1)}
+                  </option>
+                ))}
+              </select>
+
+              <label className="field-label" style={{ marginTop: 8 }}>
+                What it says
+              </label>
+              <textarea
+                className="field"
+                rows={9}
+                style={{ resize: 'vertical' }}
+                maxLength={TOME_TEXT_MAX}
+                value={tomeDraft.description}
+                onChange={(e) => setTomeDraft((p) => ({ ...p, description: e.target.value }))}
+                placeholder="A story, a legend, a page of your world’s history. Whoever holds the book can read it."
+              />
+              <span className="footer-note" style={{ border: 'none', padding: 0 }}>
+                {tomeDraft.description.length} / {TOME_TEXT_MAX}
+              </span>
+
+              <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addTome}>
+                + Add tome
               </button>
             </>
           )}

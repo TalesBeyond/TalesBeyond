@@ -1,8 +1,9 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
-import { isHiddenFromPlayers, isLockedDoor } from '../data/visibility.js';
+import { isHiddenFromPlayers, isLockedDoor, isLockedChest } from '../data/visibility.js';
 import { ambushMonsterCount } from '../data/ambush.js';
+import { isCreature } from '../data/tokenKinds.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
 import { useFx } from '../lib/fx.js';
@@ -361,8 +362,8 @@ export default function MapBoard({
     onMoveEntity(current.id, col, row, found.island.id);
     // Landing a hero token on a door's square (via an actual drag, not a
     // bare click/reselect) offers to walk through it. The DM gets the same
-    // offer for any hero or monster they drop on a door.
-    const canUseDoor = isHost ? current.entity.kind === 'hero' || current.entity.kind === 'mob' : current.entity.kind === 'hero';
+    // offer for any hero, monster or NPC they drop on a door.
+    const canUseDoor = isHost ? isCreature(current.entity) : current.entity.kind === 'hero';
     if (canUseDoor && !isClick) {
       const door = findDoorAt(found.island.id, col, row);
       if (door) {
@@ -436,10 +437,9 @@ export default function MapBoard({
       }
     }
 
-    // Selecting the "active" island (for placing new tokens) works in any
-    // tool that reaches here — only the drag-to-reposition part below is
-    // restricted to the Edit tool.
-    onSelectIsland(current.id);
+    // Selecting the "active" island (for placing new tokens) is the Edit
+    // tool's: a click on the map during play must not change it.
+    if (tool !== 'play') onSelectIsland(current.id);
     if (!isClick && tool === 'edit' && isHost) {
       // Rounded to whole pixels — see the matching comment in
       // onIslandDragMove; this is the value that actually gets persisted
@@ -964,7 +964,7 @@ export default function MapBoard({
     const inside = [];
     for (const id of entityOrder) {
       const e = entities[id];
-      if (!e || (e.kind !== 'hero' && e.kind !== 'mob')) continue;
+      if (!isCreature(e)) continue;
       if (e.id === area.entityId && shape.aim !== 'point') continue;
       const size = e.size || 1;
       let hit = false;
@@ -1023,6 +1023,11 @@ export default function MapBoard({
         const fill = (drawingsByIsland.get(id) || []).filter((d) => d.kind === 'fill').pop();
         const fillColour = fill && islandFillColour(fill.style);
         const background = [fillColour && `linear-gradient(${fillColour}, ${fillColour})`, resolveImage(island.backgroundImage) && `url(${resolveImage(island.backgroundImage)})`].filter(Boolean);
+        // A picture still being laid over the map in its settings (Toolbar's
+        // MapImageFit): the whole picture at { x, y, width, height } in the
+        // island's own pixels, in place of one cut to fit.
+        const fit = resolveImage(island.backgroundImage) ? island.backgroundFit : null;
+        const fitLayers = (value, forFill) => [fillColour && forFill, value].filter(Boolean).join(', ');
         // The map's own grid lines, if its settings ask for heavier or coloured ones.
         const gridLines = gridLineStyle(island);
 
@@ -1036,6 +1041,13 @@ export default function MapBoard({
               width: w,
               height: h,
               backgroundImage: background.length ? background.join(', ') : undefined,
+              ...(fit
+                ? {
+                    backgroundSize: fitLayers(`${fit.width * zoom}px ${fit.height * zoom}px`, 'auto'),
+                    backgroundPosition: fitLayers(`${fit.x * zoom}px ${fit.y * zoom}px`, '0 0'),
+                    backgroundRepeat: fitLayers('no-repeat', 'repeat'),
+                  }
+                : null),
             }}
             onPointerDown={(e) => handleIslandPointerDown(e, island)}
           >
@@ -1160,6 +1172,8 @@ export default function MapBoard({
           // DM's own reminder that players can't see it.
           const concealed = isHiddenFromPlayers(entity);
           const locked = isLockedDoor(entity);
+          // A locked chest wears the padlock too, but stays clickable.
+          const padlocked = locked || isLockedChest(entity);
 
           return (
             <div
@@ -1175,10 +1189,10 @@ export default function MapBoard({
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
               onClick={(e) => e.stopPropagation()}
-              title={`${entity.name}${locked ? ' (locked)' : ''}${concealed ? ' (hidden from players)' : ''}`}
+              title={`${entity.name}${padlocked ? ' (locked)' : ''}${concealed ? ' (hidden from players)' : ''}`}
             >
               <span className="token-label">{entity.name}</span>
-              {locked && (
+              {padlocked && (
                 <span className="token-lock" aria-label="Locked" style={{ fontSize: Math.max(7, Math.min(12, size * 0.4)) }}>
                   🔒
                 </span>

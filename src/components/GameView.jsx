@@ -10,20 +10,22 @@ import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
 import { islandConditionKeys } from '../data/islandConditions.js';
 import DrawingBar, { PhoneDrawBar, DrawClearMenu } from './DrawingBar.jsx';
 import DrawStylePanel from './DrawStyle.jsx';
-import { RollToasts, ChestAsks, RollLog, CharacterLog } from './RollFeed.jsx';
+import { RollToasts, RollLog, CharacterLog } from './RollFeed.jsx';
 import { diffHero, mergeActivity } from '../utils/heroActivity.js';
 import { ModeBar, EmptyState, useTourState } from './Hints.jsx';
 import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
+import { entryGoods, sheetWithGoods, sourceEntries } from '../data/merchants.js';
 import { defaultDroppablesFor, rollDroppables } from '../data/droppables.js';
 import { mobSheetWithAttacks } from '../utils/combat.js';
+import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js';
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
-import { renderIslandsTemplateToDataUrl } from '../utils/image.js';
+import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resolveImage, storeImage } from '../lib/imageCache.js';
 import {
@@ -587,6 +589,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [rulerFeet, setRulerFeet] = useState(null); // live distance from MapBoard's ruler, for the HUD readout
   const currentLayerId = isHost ? hostViewLayerId : state.players[me.id]?.currentLayerId || baseLayerId;
   const currentLayer = state.layers[currentLayerId] || state.layers[baseLayerId];
+  // What is being typed or picked in a map's settings and not saved yet (the
+  // settings save themselves a moment later; a picture is saved once it has
+  // been laid over the map), drawn on this screen meanwhile:
+  // { [islandId]: { cols, rows, gridLines, backgroundImage, backgroundFit } }.
+  const [islandPreviews, setIslandPreviews] = useState(null);
+  // Saved background images still being put away (updateIsland), shown
+  // meanwhile so the map does not flash its old picture: { [islandId]: dataUrl }.
+  const [storingBackgrounds, setStoringBackgrounds] = useState({});
+  const boardIslands = useMemo(() => {
+    let islands = currentLayer.islands;
+    for (const id of new Set([...Object.keys(storingBackgrounds), ...Object.keys(islandPreviews || {})])) {
+      if (!currentLayer.islands[id]) continue;
+      if (islands === currentLayer.islands) islands = { ...islands };
+      islands[id] = { ...islands[id], ...(storingBackgrounds[id] ? { backgroundImage: storingBackgrounds[id] } : null), ...islandPreviews?.[id] };
+    }
+    return islands;
+  }, [currentLayer.islands, islandPreviews, storingBackgrounds]);
 
   // REQ-009 Synced Table Audio. Cloud tables sync audio through Storage. A
   // guest DM keeps their files on their own device only (nothing is uploaded
@@ -793,13 +812,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // Roll for Initiative's participant pools — unlike `heroes` above, scoped
   // to whatever the host is currently looking at: an encounter roll is for
   // the scene in front of them, not every hero/monster across every layer.
-  // There's no separate "NPC" kind in this app (see mob), so a "monster or
-  // NPC" token is just any mob-kind entity — a DM already renames/reskins
-  // one for either purpose via Asset Storage.
+  // Monsters and NPCs (data/tokenKinds.js) share the second pool: both are
+  // the DM's to run.
   const initiativeHeroes = Object.values(layerEntities)
     .filter((e) => e.kind === 'hero')
     .map((e) => ({ ...e, ownerName: state.players[e.ownerId]?.name }));
-  const initiativeMobs = Object.values(layerEntities).filter((e) => e.kind === 'mob');
+  const initiativeMobs = Object.values(layerEntities).filter(isDmCreature);
 
   // In cloud mode, subscribe to live changes from every other connected
   // browser for as long as this screen is mounted (SPEC.md §9.5). One
@@ -1040,7 +1058,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // (the DM for any creature, a player for their own hero); otherwise the
   // template starts wherever it is first aimed.
   function openAreaPicker(entity) {
-    const caster = entity && (entity.kind === 'hero' || entity.kind === 'mob') && canMoveEntity(entity) ? entity : null;
+    const caster = isCreature(entity) && canMoveEntity(entity) ? entity : null;
     setAreaPicker({ entityId: caster?.id || null });
   }
   function startArea(choice) {
@@ -1344,21 +1362,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // 35_player_battle_equipment.sql's trigger.
   const CHEST_TOGGLE_KEYS = ['opened', 'imageUrl'];
 
-  // A player may close a chest, never open one: opening is the DM's call.
-  function isCloseChestPatch(patch) {
-    return patch.opened === false && Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key));
-  }
-
-  // What a player does instead: ask the DM to open it (`openRequestBy` =
-  // their own id, while nobody else is asking), or withdraw their own ask.
-  // An ask left behind by someone no longer at the table doesn't count.
-  // Mirrored server-side by 60_chest_open_requests.sql.
-  function isChestOpenRequestPatch(entity, patch, playerId) {
-    const keys = Object.keys(patch);
-    if (keys.length !== 1 || keys[0] !== 'openRequestBy') return false;
-    const asker = stateRef.current.players[entity.openRequestBy] ? entity.openRequestBy : null;
-    if (patch.openRequestBy == null) return asker === playerId;
-    return patch.openRequestBy === playerId && !asker && !entity.opened;
+  // A player opens and closes a chest themselves — it just swings its
+  // `opened` flag and its picture — unless the DM has locked it
+  // (data/visibility.js): a locked chest stays shut for players. Mirrored
+  // server-side by 66_players_open_chests.sql.
+  function isChestTogglePatch(entity, patch) {
+    if (typeof patch.opened !== 'boolean' || !Object.keys(patch).every((key) => CHEST_TOGGLE_KEYS.includes(key))) return false;
+    return !patch.opened || !entity.locked;
   }
   // Sheet keys a hero's own owner may change — everything its Battle,
   // Spells, Bag and Skills tabs write: Battle Equipment writes `attacks`,
@@ -1473,12 +1483,14 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // locking a door is never theirs to do.
     if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch) return false;
     if (entity.kind === 'chest') {
-      return isCloseChestPatch(patch) || isChestOpenRequestPatch(entity, patch, playerId) || isTakeChestItemPatch(entity, patch);
+      return isChestTogglePatch(entity, patch) || isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
     }
-    if (entity.kind === 'mob') {
+    // A monster or an NPC takes the damage of a player's attack; only a
+    // monster drops loot.
+    if (isDmCreature(entity)) {
       return canDamageMob(entity, patch) || isTakeMobLootPatch(entity, patch);
     }
     return false;
@@ -1516,7 +1528,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       size: place.size,
       hp: draft.maxHp,
       maxHp: draft.maxHp,
-      armorClass: draft.kind === 'mob' ? draft.armorClass ?? 10 : undefined,
+      armorClass: draft.kind === 'mob' || draft.kind === 'npc' ? draft.armorClass ?? 10 : undefined,
       // Left unassigned (rather than defaulting to the placing DM) since
       // only the DM places tokens now — the DM assigns a hero to whichever
       // player controls it afterward, via the Owner field on its inspector.
@@ -1526,16 +1538,24 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       targetLayerId: draft.kind === 'door' ? draft.targetLayerId ?? null : null,
       targetCol: place.targetCol ?? null,
       targetRow: place.targetRow ?? null,
-      conditions: draft.kind === 'hero' || draft.kind === 'mob' ? [] : undefined,
-      dmNotes: draft.kind === 'hero' || draft.kind === 'mob' ? draft.dmNotes ?? '' : undefined,
-      // Every monster is placed with something to attack with.
-      mobSheet: draft.kind === 'mob' ? mobSheetWithAttacks(draft.mobSheet, draft.name) : undefined,
+      conditions: isCreatureKind(draft.kind) ? [] : undefined,
+      dmNotes: isCreatureKind(draft.kind) ? draft.dmNotes ?? '' : undefined,
+      // Every monster is placed with something to attack with. An NPC gets a
+      // hero's blank sheet, kept where a monster's is (data/tokenKinds.js).
+      mobSheet:
+        draft.kind === 'mob'
+          ? mobSheetWithAttacks(draft.mobSheet, draft.name)
+          : draft.kind === 'npc'
+            ? draft.mobSheet || defaultCharacterSheet()
+            : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
       sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
       opened: draft.kind === 'chest' ? false : undefined,
       items: draft.kind === 'chest' ? draft.items || [] : undefined,
       ambushMonsters: draft.kind === 'ambush' ? draft.ambushMonsters || [] : undefined,
+      // A shopkeeper's shelves (data/merchants.js). A plain NPC has none.
+      shop: draft.kind === 'npc' && draft.shop ? draft.shop : undefined,
       // A trap always starts hidden - the DM reveals it deliberately from
       // its inspector.
       ...(draft.kind === 'trap'
@@ -1657,10 +1677,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       return;
     }
     if (entity.kind === 'chest') {
-      // The DM opening a chest answers whoever was asking to open it.
-      if (isHost && patch.opened && entity.openRequestBy) patch = { ...patch, openRequestBy: null };
-      // A player taking their own ask back isn't a "no" from the DM.
-      if (!isHost && 'openRequestBy' in patch && patch.openRequestBy == null) myChestAsksRef.current.delete(id);
+      // The DM opening a locked chest unlocks it: an open chest is never a
+      // locked one.
+      if (isHost && patch.opened && entity.locked && !('locked' in patch)) patch = { ...patch, locked: false };
+      // Locking a chest shuts it.
+      if (isHost && patch.locked && entity.opened) patch = { ...patch, opened: false, imageUrl: makeIconDataUrl('chest', entity.color) };
     }
     // REQ-008: same host-authoritative split as moveEntity — a guest
     // player's only reachable use of this (a chest toggle, per
@@ -1774,70 +1795,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }, [state.entities, isHost]);
   useEffect(() => () => Object.values(pendingLootRef.current).forEach(clearTimeout), []);
-
-  // ---- Asking to open a chest ----
-  // A player can't open a chest: their "Ask the DM to open it" puts their id
-  // on the chest (`openRequestBy`), which reaches the DM like any other
-  // token change. The DM gets a card per ask (RollFeed.jsx's ChestAsks) and
-  // either opens the chest or clears the ask.
-  const chestAsks = isHost
-    ? Object.values(state.entities)
-        .filter((e) => e.kind === 'chest' && !e.opened && state.players[e.openRequestBy])
-        .map((e) => {
-          const player = state.players[e.openRequestBy];
-          return {
-            chestId: e.id,
-            chestName: e.name || 'Chest',
-            playerName: player.name,
-            color: player.color,
-            where: e.layerId !== currentLayerId ? state.layers[e.layerId]?.name || null : null,
-          };
-        })
-    : [];
-
-  function allowChestOpen(chestId) {
-    const chest = state.entities[chestId];
-    if (!chest) return;
-    updateEntity(chestId, { opened: true, imageUrl: makeIconDataUrl('chest-open', chest.color) });
-  }
-
-  function denyChestOpen(chestId) {
-    updateEntity(chestId, { openRequestBy: null });
-  }
-
-  // The DM hears each new ask and gets it in the log.
-  const chestAskKey = chestAsks.map((ask) => `${ask.chestId}:${ask.playerName}`).join('|');
-  const heardChestAsksRef = useRef(new Set());
-  useEffect(() => {
-    const heard = heardChestAsksRef.current;
-    heardChestAsksRef.current = new Set(chestAsks.map((ask) => ask.chestId));
-    const fresh = chestAsks.filter((ask) => !heard.has(ask.chestId));
-    if (!fresh.length) return;
-    for (const ask of fresh) emitFx({ type: 'log', text: `${ask.playerName} asks to open ${ask.chestName}` });
-    playSfx('page');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chestAskKey]);
-
-  // The player hears back: an ask of theirs that went away without the chest
-  // opening was turned down. (One they cancelled is dropped from the set in
-  // updateEntity first; one the DM allowed shows the loot reveal instead.)
-  const myChestAsksRef = useRef(new Set());
-  useEffect(() => {
-    if (isHost) return;
-    const mine = myChestAsksRef.current;
-    for (const e of Object.values(visibleEntities)) {
-      if (e.kind === 'chest' && e.openRequestBy === me.id) mine.add(e.id);
-    }
-    for (const id of [...mine]) {
-      const chest = visibleEntities[id];
-      if (chest?.openRequestBy === me.id) continue;
-      mine.delete(id);
-      if (!chest || chest.opened) continue;
-      emitFx({ type: 'banner', title: 'Still shut', sub: `The DM didn’t let you open ${chest.name || 'the chest'}`, tone: 'enemy' });
-      emitFx({ type: 'log', text: `The DM didn’t let you open ${chest.name || 'the chest'}` });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleEntities]);
 
   // Roll for Initiative: DM-only, rolls a d20 for every selected hero/mob
   // and stamps entity.initiativeRoll/initiativeTurn via the same updateEntity
@@ -2126,9 +2083,20 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const hero = state.entities[heroId];
     if (!hero) return;
     const sheet = hero.sheet || defaultCharacterSheet();
-    const equipment = normalizeEquipment(sheet.equipment);
-    const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
-    updateEntity(hero.id, { sheet: { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } } });
+    let nextSheet = sheet;
+    if (item.source === 'tomes' || item.source === 'foods') {
+      // Put in from the Tomes or Food chapter (ChestContentsEditor): it goes
+      // under Other items, the way a shop hands it over, a tome with its
+      // text to read (data/merchants.js).
+      const description = sourceEntries(item.source, catalog, state.customAssets).find((entry) => entry.name === item.name)?.description || '';
+      const goods = entryGoods(item.source, { name: item.name, description });
+      for (let i = 0; i < Math.max(1, item.qty || 1); i++) nextSheet = sheetWithGoods(nextSheet, goods);
+    } else {
+      const equipment = normalizeEquipment(sheet.equipment);
+      const newItem = { ...newEquipmentItem(), name: item.name, qty: item.qty };
+      nextSheet = { ...sheet, equipment: { ...equipment, gear: [...equipment.gear, newItem] } };
+    }
+    updateEntity(hero.id, { sheet: nextSheet });
     // A defeated monster's loot is given and taken the same way as a
     // chest's contents; it just lives under `loot`.
     const key = chestEntity.kind === 'mob' ? 'loot' : 'items';
@@ -2248,7 +2216,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // island's settings (Mapping → Islands) as its background.
   // An island in a group downloads the whole group as one picture, each
   // island where it sits; uploading that picture back spreads it across the
-  // group the same way (Toolbar's uploadIslandBackground).
+  // group the same way (Toolbar's prepareIslandBackground).
   async function downloadIslandImage(islandId = activeIslandId) {
     const island = currentLayer.islands[islandId];
     if (!island) return;
@@ -2258,7 +2226,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const title = members.length > 1 ? group.name : island.name;
     try {
       const dataUrl = await renderIslandsTemplateToDataUrl(islands.map((i) => ({ ...i, backgroundImage: resolveImage(i.backgroundImage) })));
-      const filename = `${(title || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}.png`;
+      // The picture's size goes in its name: what is painted over it has to
+      // keep that shape to fit back on the map.
+      const { width, height } = islandsTemplateSize(islands);
+      const filename = `${(title || 'map').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'map'}_${width}x${height}.png`;
       downloadDataUrl(dataUrl, filename);
     } catch {
       alert("Could not export this map's image — a background image could not be loaded.");
@@ -2268,9 +2239,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function updateIsland(islandId, patch) {
     if (!isHost) return;
     if (needsSharing(patch.backgroundImage)) {
-      storeImage(patch.backgroundImage)
+      const picked = patch.backgroundImage;
+      setStoringBackgrounds((all) => ({ ...all, [islandId]: picked }));
+      storeImage(picked)
         .then((backgroundImage) => updateIsland(islandId, { ...patch, backgroundImage }))
-        .catch(shareImageFailed);
+        .catch(shareImageFailed)
+        .finally(() =>
+          setStoringBackgrounds((all) => {
+            if (all[islandId] !== picked) return all;
+            const { [islandId]: _stored, ...rest } = all;
+            return rest;
+          }),
+        );
       return;
     }
     dispatch({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
@@ -2295,7 +2275,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   // ---- Synced Table Audio (REQ-009): the DM alone uploads, plays, pauses ----
 
-  const { audio: catalogSongs } = useCatalog();
+  const catalog = useCatalog();
+  const { audio: catalogSongs } = catalog;
   const audioTracks = state.audio?.tracks || {};
   const audioPlayback = state.audio?.playback || { nowPlaying: null, resume: {} };
   const audioUsedBytes = Object.values(audioTracks).reduce((sum, t) => sum + (t.sizeBytes || 0), 0);
@@ -3277,13 +3258,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     moveEntity(entity.id, col, row, islandId);
     // Landing a hero on a door's square offers to walk through it, as a drag
     // does — and so does the DM landing a hero or monster on one.
-    const canUseDoor = isHost ? entity.kind === 'hero' || entity.kind === 'mob' : entity.kind === 'hero';
+    const canUseDoor = isHost ? isCreature(entity) : entity.kind === 'hero';
     const door = canUseDoor ? doorAt(islandId, col, row) : null;
     if (door) enterDoor(door, entity);
   }
   function handleTapCell(islandId, col, row) {
     const entity = selectedEntity;
-    if (!entity || (entity.kind !== 'hero' && entity.kind !== 'mob') || !canMoveEntity(entity)) return false;
+    if (!isCreature(entity) || !canMoveEntity(entity)) return false;
     if (entity.islandId === islandId && entity.col === col && entity.row === row) return false;
     if (encounter && actor?.id === entity.id) {
       setPlannedMove({ entityId: entity.id, islandId, col, row });
@@ -3319,7 +3300,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
   // On the acting hero's turn, a creature they could attack gets a Target button.
   const canTargetSelected = Boolean(
-    encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && selectedEntity.kind === 'mob'
+    encounter && actor?.kind === 'hero' && (isHost || isMyTurn) && selectedEntity && selectedEntity.id !== actor.id && isDmCreature(selectedEntity)
   );
 
   const plannedMoveForMap =
@@ -3346,13 +3327,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const entity = selectedEntity;
     const hasHp = entity.kind !== 'door' && entity.kind !== 'chest' && entity.maxHp;
     const canEditLife = isHost || (entity.kind === 'hero' && entity.ownerId === me.id);
-    const sheet = entity.kind === 'chest' ? 'chest' : entity.kind === 'hero' || entity.kind === 'mob' ? 'creature' : 'inspect';
+    const sheet = entity.kind === 'chest' ? 'chest' : isCreature(entity) ? 'creature' : 'inspect';
     tokenActions = [
       { id: 'open', label: `${entity.name}. Open its card`, icon: <PhoneIcon name="sheet" size={20} />, onPress: () => setPhoneSheet(sheet) },
       canTargetSelected && { id: 'target', label: `Target ${entity.name}`, icon: <PhoneIcon name="sword" size={20} strokeWidth={2} />, primary: true, onPress: () => setPhoneSheet('target') },
       canEditLife && hasHp && { id: 'hp-down', label: `${entity.name} loses 1 hit point`, icon: <PhoneIcon name="minus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.max(0, entity.hp - 1) }) },
       canEditLife && hasHp && { id: 'hp-up', label: `${entity.name} gains 1 hit point`, icon: <PhoneIcon name="plus" size={20} strokeWidth={2.4} />, onPress: () => updateEntity(entity.id, { hp: Math.min(entity.maxHp, entity.hp + 1) }) },
-      (entity.kind === 'hero' || entity.kind === 'mob') && canMoveEntity(entity) && { id: 'area', label: `Area of effect from ${entity.name}`, icon: <PhoneIcon name="area" size={20} />, onPress: () => openAreaPicker(entity) },
+      isCreature(entity) && canMoveEntity(entity) && { id: 'area', label: `Area of effect from ${entity.name}`, icon: <PhoneIcon name="area" size={20} />, onPress: () => openAreaPicker(entity) },
     ].filter(Boolean);
   }
 
@@ -3471,6 +3452,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onRemoveIsland={removeIsland}
         onDownloadIslandImage={downloadIslandImage}
         onUpdateIsland={updateIsland}
+        onPreviewIslands={isHost ? setIslandPreviews : null}
         onDetachIsland={detachIslandFromGroup}
         onRenameGroup={renameGroup}
         onIslandConditions={(islandId, conditions) => updateIsland(islandId, { conditions })}
@@ -3532,6 +3514,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           onGiveChestItem={giveChestItemToHero}
           onTakeChestItem={takeChestItem}
           customMonsters={customMonsters}
+          customAssets={state.customAssets}
           onRevealAmbush={revealAmbush}
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
@@ -3589,7 +3572,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           <div className="stage-wrap">
           <div className="stage" ref={stageRef}>
             <MapBoard
-              islands={currentLayer.islands}
+              islands={boardIslands}
               islandOrder={currentLayer.islandOrder}
               islandGroups={currentLayer.islandGroups || {}}
               dayPhase={tablePhase}
@@ -3688,9 +3671,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           <RulerReadout feet={tool === 'ruler' ? rulerFeet : null} />
-          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))}>
-            {chestAsks.length > 0 && <ChestAsks asks={chestAsks} onAllow={allowChestOpen} onDeny={denyChestOpen} />}
-          </RollToasts>
+          <RollToasts toasts={rollToasts} onDismiss={(id) => setRollToasts((prev) => prev.filter((t) => t.id !== id))} />
           {/* While a tool changes what a press does, say so across the top of
               the map (the phone's Edit and Draw have their own bars). */}
           {tool === 'ruler' && (
@@ -3999,14 +3980,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               isHost={isHost}
               heroes={heroes}
               meId={me.id}
-              players={state.players}
               onUpdate={updateEntity}
               onGive={giveChestItemToHero}
               onTake={takeChestItem}
               onClose={() => setPhoneSheet(null)}
             />
           )}
-          {phoneSheet === 'creature' && selectedEntity && (selectedEntity.kind === 'hero' || selectedEntity.kind === 'mob') && (
+          {phoneSheet === 'creature' && isCreature(selectedEntity) && (
             <PhoneCreatureSheet
               entity={selectedEntity}
               isHost={isHost}
@@ -4014,6 +3994,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               players={state.players}
               entities={layerEntities}
               heroes={heroes}
+              customAssets={state.customAssets}
               audio={audioApi}
               onUpdate={updateEntity}
               onRemove={removeEntity}

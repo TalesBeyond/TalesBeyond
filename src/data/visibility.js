@@ -13,7 +13,7 @@
 
 import { isHiddenTrap } from './traps.js';
 
-export const HIDEABLE_KINDS = ['mob', 'chest', 'door'];
+export const HIDEABLE_KINDS = ['mob', 'npc', 'chest', 'door'];
 
 export function canBeHidden(entity) {
   return HIDEABLE_KINDS.includes(entity?.kind);
@@ -27,6 +27,14 @@ export function isHiddenFromPlayers(entity) {
 
 export function isLockedDoor(entity) {
   return entity?.kind === 'door' && Boolean(entity.locked);
+}
+
+// A chest can be locked too. Players still see it and can look at its card,
+// but can't open it until it is unlocked (an unlocked one they open
+// themselves); a locked chest is always a shut one (GameView.jsx's
+// updateEntity keeps the two in step).
+export function isLockedChest(entity) {
+  return entity?.kind === 'chest' && Boolean(entity.locked);
 }
 
 // The entities a player's screen may draw from: everything for the DM,

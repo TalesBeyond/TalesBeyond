@@ -21,6 +21,15 @@ const ICONS = {
   bow: '<path d="M20 14 C34 24 34 40 20 50" fill="none" stroke="#f2e9d4" stroke-width="3"/><line x1="20" y1="14" x2="44" y2="46" stroke="#f2e9d4" stroke-width="2"/>',
   skull: '<ellipse cx="32" cy="28" rx="16" ry="14" fill="#f2e9d4"/><rect x="24" y="38" width="16" height="10" fill="#f2e9d4"/><circle cx="26" cy="27" r="4" fill="#17140f"/><circle cx="38" cy="27" r="4" fill="#17140f"/>',
   fangs: '<path d="M16 20 L48 20 L40 44 L32 34 L24 44 Z" fill="#f2e9d4"/>',
+  // An NPC's default face (data/tokenKinds.js): head and shoulders.
+  npc: '<circle cx="32" cy="23" r="9" fill="#f2e9d4"/><path d="M14 52 C14 41 22 36 32 36 C42 36 50 41 50 52 Z" fill="#f2e9d4"/>',
+  // The shopkeeper NPCs (data/merchants.js): what each one sells.
+  anvil: '<path d="M12 22 H46 V28 C46 33 41 35 36 35 V41 H44 V49 H18 V41 H26 V35 C19 35 12 30 12 22 Z" fill="#f2e9d4"/><path d="M46 22 H56 C55 27 51 29 46 29 Z" fill="#f2e9d4"/>',
+  book: '<path d="M32 21 C26 16 18 15 11 17 V46 C18 44 26 45 32 50 C38 45 46 44 53 46 V17 C46 15 38 16 32 21 Z" fill="#f2e9d4"/><path d="M32 21 V50" stroke="#17140f" stroke-width="2"/>',
+  mug: '<rect x="15" y="22" width="26" height="29" rx="3" fill="#f2e9d4"/><path d="M41 28 H45 C50 28 52 31 52 35 V38 C52 42 50 45 45 45 H41" fill="none" stroke="#f2e9d4" stroke-width="4"/><path d="M13 23 C11 16 18 12 23 16 C26 10 33 10 35 16 C40 12 46 17 43 23 Z" fill="#f2e9d4"/><g stroke="#17140f" stroke-width="2"><line x1="23" y1="30" x2="23" y2="45"/><line x1="33" y1="30" x2="33" y2="45"/></g>',
+  hat: '<path d="M34 8 L45 42 H19 Z" fill="#f2e9d4"/><ellipse cx="32" cy="45" rx="23" ry="7" fill="#f2e9d4"/><path d="M21 40 H43" stroke="#17140f" stroke-width="2.5"/><circle cx="33" cy="27" r="3" fill="#17140f"/>',
+  pack: '<rect x="17" y="20" width="30" height="33" rx="8" fill="#f2e9d4"/><path d="M24 21 V17 C24 10 40 10 40 17 V21" fill="none" stroke="#f2e9d4" stroke-width="4"/><rect x="23" y="35" width="18" height="11" rx="2" fill="none" stroke="#17140f" stroke-width="2"/><line x1="17" y1="29" x2="47" y2="29" stroke="#17140f" stroke-width="2"/>',
+  map: '<path d="M10 19 L24 14 L40 20 L54 15 V45 L40 50 L24 44 L10 49 Z" fill="#f2e9d4"/><g stroke="#17140f" stroke-width="2" fill="none"><path d="M24 14 V44"/><path d="M40 20 V50"/><path d="M15 38 L19 34 M19 38 L15 34" stroke-linecap="round"/><path d="M28 34 Q33 26 37 31" stroke-dasharray="2 3" stroke-linecap="round"/></g>',
   claw: '<path d="M16 46 L26 16 L32 16 L24 46 Z" fill="#f2e9d4"/><path d="M26 46 L34 14 L40 14 L30 46 Z" fill="#f2e9d4"/><path d="M36 46 L42 18 L48 18 L40 46 Z" fill="#f2e9d4"/>',
   wing: '<path d="M12 40 C24 16 44 16 52 32 C40 28 30 30 24 40 C20 34 16 34 12 40 Z" fill="#f2e9d4"/>',
   eye: '<ellipse cx="32" cy="32" rx="18" ry="10" fill="#f2e9d4"/><circle cx="32" cy="32" r="6" fill="#17140f"/>',
