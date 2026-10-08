@@ -74,3 +74,71 @@ export function smallestFogChunkAt(chunks, island, col, row, { unrevealedOnly = 
   }
   return best;
 }
+
+// ---- Tokens in fog ----
+// `world` below is the table's state, or anything shaped like the part of it
+// these rules read: { layers, fogChunks, fogChunkOrder }.
+
+function findIsland(layers, islandId) {
+  for (const layer of Object.values(layers || {})) {
+    if (layer.islands?.[islandId]) return layer.islands[islandId];
+  }
+  return null;
+}
+
+function unrevealedOn(world, islandId) {
+  return fogChunksOnIsland(world.fogChunks, world.fogChunkOrder, islandId).filter((chunk) => !chunk.revealed);
+}
+
+// Whether a token's whole footprint (size × size squares from col, row) is
+// fogged. Squares hanging off the island's edge don't count either way; a
+// footprint with no square on the island is not fogged.
+export function isFootprintFogged(world, islandId, col, row, size = 1) {
+  const island = findIsland(world.layers, islandId);
+  if (!island) return false;
+  const chunks = unrevealedOn(world, islandId);
+  if (!chunks.length) return false;
+  let onIsland = 0;
+  for (let dx = 0; dx < size; dx++) {
+    for (let dy = 0; dy < size; dy++) {
+      const c = col + dx;
+      const r = row + dy;
+      if (c < 0 || r < 0 || c >= island.cols || r >= island.rows) continue;
+      onIsland += 1;
+      if (!chunks.some((chunk) => coversSquare(chunk, island, c, r))) return false;
+    }
+  }
+  return onIsland > 0;
+}
+
+// A door is one token with two sides: its home square, and a second square
+// on its target layer's base island (GameView.jsx's entitiesVisibleOnLayer).
+// Null for anything else, and for a door that leads nowhere.
+export function doorTargetSide(world, door) {
+  if (door?.kind !== 'door' || !door.targetLayerId || door.targetLayerId === door.layerId) return null;
+  const islandId = world.layers?.[door.targetLayerId]?.islandOrder?.[0];
+  if (!islandId) return null;
+  return { islandId, col: door.targetCol ?? door.col, row: door.targetRow ?? door.row };
+}
+
+// Which of a door's sides are wholly in fog. A player's screen leaves such a
+// side out, even while the door itself is still theirs to see from the other.
+export function isDoorHomeSideFogged(door, world) {
+  return isFootprintFogged(world, door.islandId, door.col, door.row, door.size || 1);
+}
+
+export function isDoorTargetSideFogged(door, world) {
+  const target = doorTargetSide(world, door);
+  return Boolean(target) && isFootprintFogged(world, target.islandId, target.col, target.row, door.size || 1);
+}
+
+// A token is fogged when it is not a hero and every square it occupies is
+// fogged — for a door, every square on both of its sides. This is the value
+// the DM's client stores as `entity.fogged`; a fogged token does not exist
+// for players, like a hidden one (data/visibility.js).
+export function isEntityFogged(entity, world) {
+  if (!entity || entity.kind === 'hero') return false;
+  if (!isFootprintFogged(world, entity.islandId, entity.col, entity.row, entity.size || 1)) return false;
+  const target = doorTargetSide(world, entity);
+  return !target || isFootprintFogged(world, target.islandId, target.col, target.row, entity.size || 1);
+}

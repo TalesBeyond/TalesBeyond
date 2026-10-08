@@ -38,7 +38,8 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
   if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
-  // The DM just hid a monster, chest or door. Realtime sends no event when a
+  // The DM just hid a monster, chest or door, or the fog of war now covers a
+  // token (69_fogged_tokens.sql). Realtime sends no event when a
   // row stops being visible to a subscriber, so the DM's client names the
   // token here (`sendConceal`, below) once the row is hidden. The row stays
   // the authority: the token is only dropped if this client really can no

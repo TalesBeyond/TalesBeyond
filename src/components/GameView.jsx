@@ -24,6 +24,7 @@ import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js'
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
+import { isEntityFogged, isDoorHomeSideFogged, isDoorTargetSideFogged } from '../utils/fogOfWar.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
 import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
@@ -240,8 +241,13 @@ function entitiesVisibleOnLayer(state, layerId, showHidden) {
     // table and nothing else can keep it apart.
     if (isHiddenFromPlayers(entity) && !showHidden) continue;
     if (entity.layerId === layerId) {
+      // A door with one side wholly in the fog of war and the other clear is
+      // not a fogged token (utils/fogOfWar.js), but a player's screen still
+      // leaves out the side that has no clear square.
+      if (!showHidden && entity.kind === 'door' && isDoorHomeSideFogged(entity, state)) continue;
       result[id] = entity;
     } else if (entity.kind === 'door' && entity.targetLayerId === layerId) {
+      if (!showHidden && isDoorTargetSideFogged(entity, state)) continue;
       result[id] = {
         ...entity,
         islandId: targetBaseIslandId,
@@ -326,8 +332,9 @@ function withoutDmOnlyKeys(obj) {
   return copy;
 }
 
-// The same filter keeps an unrevealed trap, and a monster, chest or door
-// the DM has hidden (data/visibility.js), off a guest table's wire. To
+// The same filter keeps an unrevealed trap, a monster, chest or door the DM
+// has hidden, and any token standing wholly in the fog of war
+// (data/visibility.js), off a guest table's wire. To
 // players a hidden token does not exist until shown, so showing one is sent
 // as an ADD_ENTITY, hiding it again as a REMOVE_ENTITY, and anything that
 // touches a still-hidden token (moves, edits, its own removal) is not sent
@@ -1482,8 +1489,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function canPlayerUpdateEntity(entity, patch, playerId) {
     if (!entity) return false;
     // A hidden token doesn't exist for players, and hiding a token or
-    // locking a door is never theirs to do.
-    if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch) return false;
+    // locking a door is never theirs to do. Neither is `fogged`: only the
+    // DM's client works out what the fog of war covers.
+    if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch || 'fogged' in patch) return false;
     if (entity.kind === 'chest') {
       return isChestTogglePatch(entity, patch) || isTakeChestItemPatch(entity, patch);
     }
@@ -1519,7 +1527,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // made into a token standing at `place`: { layerId, islandId, col, row,
   // size, targetCol?, targetRow? }.
   function entityFromDraft(draft, place) {
-    return {
+    const entity = {
       id: generateEntityId(),
       kind: draft.kind,
       name: draft.name,
@@ -1572,6 +1580,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           }
         : {}),
     };
+    // Placed straight into the fog of war, it is fogged from its first write
+    // and never reaches a player (the same-write rule, utils/fogOfWar.js).
+    return isEntityFogged(entity, stateRef.current) ? { ...entity, fogged: true } : entity;
+  }
+
+  // The same-write rule for a token already on the map: whatever changes
+  // where it stands (or how many squares it covers, or a door's other side)
+  // carries its new `fogged` in the same write, so a token moved into fog is
+  // never readable there, and one moved out arrives already where it stands.
+  const FOG_PLACEMENT_KEYS = ['col', 'row', 'size', 'islandId', 'layerId', 'targetCol', 'targetRow', 'targetLayerId'];
+
+  function withFoggedStamp(entity, patch) {
+    if (!isHost || 'fogged' in patch || !FOG_PLACEMENT_KEYS.some((key) => key in patch)) return patch;
+    const fogged = isEntityFogged({ ...entity, ...patch }, stateRef.current);
+    return fogged === Boolean(entity.fogged) ? patch : { ...patch, fogged };
   }
 
   // On a cloud or guest table, the pictures of the monsters an ambush holds
@@ -1664,6 +1687,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       guestChannelRef.current?.sendIntent({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId }, me.id);
       return;
     }
+    // The DM moving a token into or out of the fog of war: its position and
+    // its `fogged` go out as one update (withFoggedStamp), not as a move
+    // followed by a second write. A move that leaves `fogged` as it was is
+    // the plain move below.
+    if (isHost) {
+      const place = { col, row, ...(islandId ? { islandId } : {}), ...(layerId ? { layerId } : {}) };
+      const stamped = withFoggedStamp(entity, place);
+      if ('fogged' in stamped) {
+        updateEntity(id, stamped);
+        return;
+      }
+    }
     dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
     if (isRemote) moveEntityRemote(id, col, row, islandId, layerId).catch(reportError);
     else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
@@ -1685,6 +1720,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // Locking a chest shuts it.
       if (isHost && patch.locked && entity.opened) patch = { ...patch, opened: false, imageUrl: makeIconDataUrl('chest', entity.color) };
     }
+    patch = withFoggedStamp(entity, patch);
     // REQ-008: same host-authoritative split as moveEntity — a guest
     // player's only reachable use of this (a chest toggle, per
     // canUpdateEntity above) is an intent, never a local dispatch.
@@ -1703,10 +1739,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // hideTrapRemote for why it is a delete + re-insert instead.
       if (entity.kind === 'trap' && entity.trapRevealed && patch.trapRevealed === false) {
         hideTrapRemote(state.session.tableId, { ...entity, ...patch }).catch(reportError);
-      } else if (patch.hidden === true && !entity.hidden) {
-        // Hiding a monster, chest or door: players get no event when its row
-        // stops being visible to them, so tell their clients to look again
-        // once it has (lib/realtime.js's 'conceal').
+      } else if ((patch.hidden === true && !entity.hidden) || (patch.fogged === true && !entity.fogged)) {
+        // Hiding a monster, chest or door, or a token the fog of war now
+        // covers: players get no event when its row stops being visible to
+        // them, so tell their clients to look again once it has
+        // (lib/realtime.js's 'conceal').
         updateEntityRemote(id, patch)
           .then(() => tableChannelRef.current?.sendConceal(id))
           .catch(reportError);
@@ -2122,6 +2159,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!isHost || !chunk || Boolean(chunk.revealed) === revealed) return;
     writeFogChunk({ ...chunk, revealed });
   }
+
+  // Which tokens the fog covers (`entity.fogged`) is derived data that only
+  // the DM's client writes. A token's own placement or move carries it in the
+  // same write (withFoggedStamp); this is everything else that can change the
+  // answer: a chunk laid, deleted, moved, resized, revealed or fogged again,
+  // an island resized, a layer or island removed from under a door's other
+  // side. It also runs once the table is held and after every HYDRATE (a
+  // resync or an import replaces `layers` and `fogChunks` wholesale), so a
+  // write that never landed is put right. Each correction goes through
+  // updateEntity, which sends 'conceal' for a newly fogged token on a cloud
+  // table. Two DM tabs may both run it: they write the same values.
+  useEffect(() => {
+    if (!isHost) return;
+    const current = stateRef.current;
+    for (const id of current.entityOrder) {
+      const entity = current.entities[id];
+      if (!entity || entity.kind === 'hero') continue;
+      const fogged = isEntityFogged(entity, current);
+      if (fogged !== Boolean(entity.fogged)) updateEntity(id, { fogged });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, state.layers, state.fogChunks, state.fogChunkOrder]);
 
   const fogOfWarApi = {
     islandName: selectedFogChunk ? currentLayer.islands[selectedFogChunk.islandId]?.name || null : null,
