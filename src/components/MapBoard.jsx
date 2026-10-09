@@ -24,6 +24,7 @@ import IslandFogOfWar from './FogOfWarLayer.jsx';
 import { clippedFogChunk, fogChunksOnIsland, fogChunkRectFromDrag, fogChunkRectFromEdit, fogChunkGrabAt, isSquareFogged, smallestFogChunkAt } from '../utils/fogOfWar.js';
 import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
+import { spriteForUrl, setSpritePlaying } from '../data/spriteTokens.js';
 
 const CLICK_MOVE_THRESHOLD_PX = 6;
 const FOG_HANDLE_REACH_PX = 8; // how near a press must be to a picked fog chunk's handle to take it
@@ -415,6 +416,20 @@ export default function MapBoard({
       setDragPos(null);
     }
   }, [entities, dragPos]);
+
+  // An animated token plays while it is dragged (and while the pointer is over
+  // it — see its pointer handlers); the inspector's picture of it follows.
+  const dragId = dragPos?.id ?? null;
+  useEffect(() => {
+    setSpritePlaying('drag', dragId);
+  }, [dragId]);
+  useEffect(
+    () => () => {
+      setSpritePlaying('hover', null);
+      setSpritePlaying('drag', null);
+    },
+    []
+  );
 
   // ---- Island dragging / selection ----
   // Entirely pointer-driven (not the native click event) so click-vs-drag
@@ -1354,20 +1369,26 @@ export default function MapBoard({
           const locked = isLockedDoor(entity);
           // A locked chest wears the padlock too, but stays clickable.
           const padlocked = locked || isLockedChest(entity);
+          // An animated token is drawn from its strip of frames, which the
+          // stylesheet plays while the pointer is over it.
+          const sprite = spriteForUrl(entity.imageUrl);
 
           return (
             <div
               key={id}
-              className={`token${entity.kind === 'door' ? ' door' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
+              className={`token${sprite ? ' sprite' : ''}${entity.kind === 'door' ? ' door' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
               style={{
                 width: size,
                 height: size,
                 left: cx - size / 2,
                 top: cy - size / 2,
-                backgroundImage: `url(${entityImageSrc(entity)})`,
+                backgroundImage: `url(${sprite ? sprite.sheet : entityImageSrc(entity)})`,
                 '--token-color': entity.color || 'transparent',
+                '--sprite-frames': sprite?.frames,
               }}
               onPointerDown={(e) => handleTokenPointerDown(e, entity)}
+              onPointerEnter={sprite ? () => setSpritePlaying('hover', id) : undefined}
+              onPointerLeave={sprite ? () => setSpritePlaying('hover', null) : undefined}
               onClick={(e) => e.stopPropagation()}
               title={`${entity.name}${padlocked ? ' (locked)' : ''}${concealed ? ' (hidden from players)' : ''}`}
             >

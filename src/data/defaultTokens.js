@@ -69,6 +69,15 @@ const ICONS = {
 const urlByRef = new Map();
 const refByUrl = new Map();
 
+// Icons whose picture is a bundled file instead of an SVG drawn here: the
+// animated tokens. data/spriteTokens.js adds them, since this module is also
+// read by Node (scripts/catalog-admin.mjs), which can't import a picture.
+const ICON_IMAGES = {};
+
+export function registerIconImage(name, url) {
+  ICON_IMAGES[name] = url;
+}
+
 export const DEFAULT_HEROES = [
   { key: 'fighter', name: 'Fighter', color: '#8f3a20', icon: 'shield' },
   { key: 'wizard', name: 'Wizard', color: '#4c7a86', icon: 'wand' },
@@ -89,13 +98,14 @@ export const DEFAULT_MOBS = [
 ].map((m) => ({ ...m, imageUrl: makeIconDataUrl(m.icon, m.color) }));
 
 export function makeIconDataUrl(icon, color) {
-  const key = ICONS[icon] ? icon : 'shield';
+  const key = ICONS[icon] || ICON_IMAGES[icon] ? icon : 'shield';
   const ref = `icon:${key}:${color}`;
   let url = urlByRef.get(ref);
   if (!url) {
-    url = svgToDataUrl(ICONS[key], color);
+    url = ICON_IMAGES[key] || svgToDataUrl(ICONS[key], color);
     urlByRef.set(ref, url);
-    refByUrl.set(url, ref);
+    // A bundled picture is the same in every colour: it keeps its first reference.
+    if (!refByUrl.has(url)) refByUrl.set(url, ref);
   }
   return url;
 }
@@ -114,6 +124,6 @@ export function iconRefForUrl(url) {
 // The picture for a reference, or null if it isn't a valid one.
 export function iconUrlForRef(ref) {
   const match = /^icon:([a-z-]+):(#[0-9a-fA-F]{3,8})$/.exec(ref || '');
-  if (!match || !ICONS[match[1]] || !COLOR_RE.test(match[2])) return null;
+  if (!match || !(ICONS[match[1]] || ICON_IMAGES[match[1]]) || !COLOR_RE.test(match[2])) return null;
   return makeIconDataUrl(match[1], match[2]);
 }

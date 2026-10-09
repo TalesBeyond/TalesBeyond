@@ -261,7 +261,13 @@ returns `false` and the map does not hold it at the drop square.
   Cleric, Paladin) and **default monsters** (5: Goblin, Skeleton, Orc,
   Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
   (`src/data/defaultTokens.js`), one click to place. Placing a default
-  monster auto-seeds its **Droppables** loot list (see below).
+  monster auto-seeds its **Droppables** loot list (see below). The heroes
+  gallery ends with one animated token, the **Sprite Warrior**
+  (`src/data/spriteTokens.js`, art in `src/assets/sprites/`): a two-frame
+  walk that plays while the pointer is over its tile or its token on the
+  map (and while the token is dragged), and stands still otherwise. Its
+  picture on the inspector's card plays along with the map token. It is
+  stored like any built-in icon, as `icon:sprite-warrior:<#color>`.
 - **Placeable** tiles (Door, Chest, Trap, Ambush): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
@@ -667,6 +673,7 @@ src/
     image.js                Client-side image resizing
   data/
     defaultTokens.js        Inline-SVG default hero/monster/condition/chest art
+    spriteTokens.js         Animated tokens (a strip of frames played on hover)
     characterSheet.js       5e sheet shape, defaults, normalizers
     conditions.js           The 5-condition catalog
     weapons.js              100-entry mock weapon compendium (37 PHB base × variants)

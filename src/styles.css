@@ -1320,7 +1320,8 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 }
 .token-card:hover { border-color: var(--gold-line); }
 .token-card:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
-.token-card img, .token-card svg { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--parchment-100); object-fit: cover; }
+.token-card img, .token-card svg, .token-card .sprite { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--parchment-100); object-fit: cover; }
+.token-card .sprite { flex-shrink: 0; padding: 0; }
 .token-card.square img { border-radius: 6px; }
 /* A shopkeeper's name runs to two lines ("Wandering Salesman"). */
 .token-grid.merchants, .token-grid.placeables { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2567,6 +2568,26 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .token.dragging { cursor: grabbing; z-index: 50; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
 .token.selected { box-shadow: 0 0 0 3px var(--ink-950), 0 0 0 5px var(--gold-hi); }
 .token.door { border-radius: 6px; border-style: dashed; }
+/* An animated token (data/spriteTokens.js): its picture is a strip of
+   --sprite-frames frames side by side. It shows the first one, and plays them
+   all while the pointer is over it or it is being dragged. Its picture on the
+   inspector's card plays along (.playing, set while the map token plays). */
+.token.sprite, .token-card .sprite, .target-card-art .sprite {
+  background-repeat: no-repeat;
+  background-size: calc(var(--sprite-frames) * 100%) 100%;
+  background-position: 0 0;
+  border-color: transparent;
+}
+/* The figure stands on the map as it is, with no disc behind it, so the
+   token's rim and shadow go too. The selection ring stays. */
+.token.sprite:not(.selected) { box-shadow: none; }
+.token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing {
+  animation: sprite-play 0.6s steps(var(--sprite-frames), jump-none) infinite;
+}
+@keyframes sprite-play { from { background-position: 0 0; } to { background-position: 100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing { animation: none; }
+}
 /* A token players can't see (an unrevealed trap, or a monster, chest or door
    the DM has hidden): only the DM's client ever has it, so ghost it to tell
    it apart from one the players do see. */
@@ -4198,6 +4219,8 @@ button.card-level.on-dark:hover, button.card-level.on-dark:focus-visible { borde
   background-repeat: no-repeat;
   background-position: center;
 }
+/* An animated token's frames (see .token.sprite), in a square the height of the art. */
+.target-card-art .sprite { position: absolute; top: 0; bottom: 0; left: 50%; aspect-ratio: 1; transform: translateX(-50%); }
 .card-gem-slot { position: absolute; bottom: -26px; z-index: 1; }
 .card-gem-slot.left { left: 10px; }
 .card-gem-slot.right { right: 10px; }
