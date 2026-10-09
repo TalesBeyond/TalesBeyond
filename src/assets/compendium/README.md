@@ -16,6 +16,9 @@ spells/fireball.png
 potions/healing-draught.png   (ingredients go here too: potions/heartleaf.png)
 ```
 
+A potion with no picture of its own shows `potions/_default.png` (ingredients
+do not). A `foods/_default.png` would do the same for food and drink.
+
 The file name is the entry's name in lower case, with every run of other
 characters turned into one `-`. Accepted types: png, jpg, jpeg, webp, gif, svg.
 Square pictures look best (they are shown at 56 x 56 and cropped to fit).

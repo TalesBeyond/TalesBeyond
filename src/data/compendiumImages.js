@@ -13,6 +13,10 @@
 // versions share the base weapon's picture (a "+2 Longsword" uses longsword.png).
 // png, jpg, jpeg, webp, gif and svg all work. Drop a file in and it shows up in
 // the book on the next reload; an entry with no file just shows no picture.
+//
+// A foods or potions folder can also hold `_default.<ext>`: the picture for
+// every dish or potion in it that has none of its own (ingredients are left
+// without one). The underscore keeps the name clear of every slug.
 
 import { slugify } from './slugify.js';
 
@@ -33,4 +37,9 @@ export { slugify };
 // The picture for one entry, or null when the folder has none.
 export function compendiumImage(kind, name) {
   return INDEX[`${kind}/${slugify(name)}`] || null;
+}
+
+// A folder's stand-in picture (`_default`), or null when it has none.
+export function compendiumDefaultImage(kind) {
+  return INDEX[`${kind}/_default`] || null;
 }

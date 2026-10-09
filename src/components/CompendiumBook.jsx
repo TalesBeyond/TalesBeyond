@@ -9,6 +9,7 @@ import { SPELL_LEVELS } from '../data/characterSheet.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
+import { compendiumDefaultImage } from '../data/compendiumImages.js';
 import { emitFx } from '../lib/fx.js';
 import { Hint } from './Hints.jsx';
 import { usePhoneLayout } from './PhoneChrome.jsx';
@@ -162,7 +163,8 @@ function recipeChapterEntries({ made, larder, own = [], filter, q, keyPrefix, fo
           ['Cost', formatCost(e.cost)],
         ],
         item: e,
-        image: e.id ? null : entryImage(folder, e.name),
+        // Its own picture, else the chapter's stand-in for a made thing.
+        image: (e.id ? null : entryImage(folder, e.name)) || (isIngredient(e) ? null : compendiumDefaultImage(folder)),
       };
     });
 }
