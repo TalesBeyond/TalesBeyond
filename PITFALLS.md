@@ -49,6 +49,10 @@ below.
    hero the DM has linked to them via the new **Owner** field on that
    hero's inspector — a freshly placed hero starts unassigned, since
    placing is host-only now, so this is a required setup step per player.
+   A hero cannot be moved into a held-back fog chunk (Fog of war,
+   `src/utils/fogOfWar.js`); that check is the player's own client on
+   cloud and local tables and the DM's client on a guest table, not the
+   database.
 2. Click a door to walk through it — unless the DM has locked it
    (`src/data/visibility.js`), in which case it can't be clicked at all.
 3. Click "Open chest" / "Close chest" on a chest's inspector — unless the
@@ -74,8 +78,11 @@ below.
 token, renaming/resizing/HP/AC/conditions on anything, the rest of a
 hero's character sheet (level/abilities/saves/skills), chest contents and
 "Give to a player," DM notes and mob droppables (already were),
-layers/islands (already were), and importing a `.json` table (overwrites
-the whole shared state). A monster stays DM-only too, except that its
+layers/islands (already were), the Fog of war (laying, moving, resizing,
+revealing, fogging again and deleting fog chunks, and every token's
+`fogged` flag, which only the DM's client works out —
+`68_fog_chunks.sql`, `69_fogged_tokens.sql`), and importing a `.json`
+table (overwrites the whole shared state). A monster stays DM-only too, except that its
 `hp` can be reduced by a player's attack roll — and so does an NPC
 (`64_npc_tokens.sql`), whose hero-style sheet lives in the DM-only
 `mobSheet` like a monster's, never in `sheet`.

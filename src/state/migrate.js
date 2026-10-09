@@ -52,6 +52,9 @@ export function migrateLegacyState(raw) {
   // The Draw tool's drawings, same again.
   if (!state.drawings) state = { ...state, drawings: {} };
   if (!state.drawingOrder) state = { ...state, drawingOrder: [] };
+  // Fog of war's chunks, same again.
+  if (!state.fogChunks) state = { ...state, fogChunks: {} };
+  if (!state.fogChunkOrder) state = { ...state, fogChunkOrder: [] };
 
   // session.hostKey (the local/guest "rejoin as host" code — see
   // store.jsx's createEmptyGameState) is likewise a field added after

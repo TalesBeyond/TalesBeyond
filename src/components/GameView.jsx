@@ -17,13 +17,21 @@ import Tour from './Tour.jsx';
 import { migrateLegacyState } from '../state/migrate.js';
 import { clampGridDims, clampFeetPerSquare, computeCanvasBounds, feetDistance, islandFeet } from '../utils/grid.js';
 import { defaultCharacterSheet, normalizeEquipment, newEquipmentItem } from '../data/characterSheet.js';
-import { entryGoods, sheetWithGoods, sourceEntries } from '../data/merchants.js';
+import { entryGoods, landsInOtherItems, sheetWithGoods, sourceEntries } from '../data/merchants.js';
 import { defaultDroppablesFor, rollDroppables } from '../data/droppables.js';
 import { mobSheetWithAttacks } from '../utils/combat.js';
 import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js';
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
+import {
+  isEntityFogged,
+  isDoorHomeSideFogged,
+  isDoorTargetSideFogged,
+  isFogChunkOccupied,
+  fogChunksToRevealOnEnter,
+  isHeldBackDestination,
+} from '../utils/fogOfWar.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
 import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
@@ -67,6 +75,8 @@ import {
   removeCustomAssetRemote,
   upsertDrawingRemote,
   removeDrawingsRemote,
+  upsertFogChunkRemote,
+  removeFogChunksRemote,
   updateTableClockRemote,
   upsertAudioTrackRemote,
   removeAudioTrackRemote,
@@ -112,7 +122,7 @@ import {
   PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
-import { DoorInspector, TrapInspector, AmbushInspector } from './RightPanel.jsx';
+import { DoorInspector, TrapInspector, AmbushInspector, FogChunkCard } from './RightPanel.jsx';
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
@@ -222,6 +232,20 @@ function arrivalCellNearDoor(state, doorEntity, destinationLayerId) {
   return { islandId, col: free.col, row: free.row };
 }
 
+// A held-back fog chunk (utils/fogOfWar.js) is shut to players: nobody may
+// move their own hero onto one of its squares. This is that test for one
+// move, shared by the player's own client (moveEntity, the door prompt) and
+// a guest table's DM validating a player's intent. `islandId` may be missing
+// (a move within the token's own island). A token left where it stands is not
+// a move, so a hero already inside can still be clicked and dragged in place.
+function isHeldBackMove(world, entity, islandId, col, row) {
+  const destinationIslandId = islandId || entity.islandId;
+  if (destinationIslandId === entity.islandId && col === entity.col && row === entity.row) return false;
+  return isHeldBackDestination(world, destinationIslandId, col, row, entity.size || 1);
+}
+
+const HELD_BACK_LOG = 'That area is not open yet';
+
 function entitiesVisibleOnLayer(state, layerId, showHidden) {
   const result = {};
   const targetLayer = state.layers[layerId];
@@ -238,8 +262,13 @@ function entitiesVisibleOnLayer(state, layerId, showHidden) {
     // table and nothing else can keep it apart.
     if (isHiddenFromPlayers(entity) && !showHidden) continue;
     if (entity.layerId === layerId) {
+      // A door with one side wholly in the fog of war and the other clear is
+      // not a fogged token (utils/fogOfWar.js), but a player's screen still
+      // leaves out the side that has no clear square.
+      if (!showHidden && entity.kind === 'door' && isDoorHomeSideFogged(entity, state)) continue;
       result[id] = entity;
     } else if (entity.kind === 'door' && entity.targetLayerId === layerId) {
+      if (!showHidden && isDoorTargetSideFogged(entity, state)) continue;
       result[id] = {
         ...entity,
         islandId: targetBaseIslandId,
@@ -324,8 +353,9 @@ function withoutDmOnlyKeys(obj) {
   return copy;
 }
 
-// The same filter keeps an unrevealed trap, and a monster, chest or door
-// the DM has hidden (data/visibility.js), off a guest table's wire. To
+// The same filter keeps an unrevealed trap, a monster, chest or door the DM
+// has hidden, and any token standing wholly in the fog of war
+// (data/visibility.js), off a guest table's wire. To
 // players a hidden token does not exist until shown, so showing one is sent
 // as an ADD_ENTITY, hiding it again as a REMOVE_ENTITY, and anything that
 // touches a still-hidden token (moves, edits, its own removal) is not sent
@@ -1220,6 +1250,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       if (action.type === 'MOVE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
         if (!entity || entity.kind !== 'hero' || entity.ownerId !== senderId) return;
+        // The player's own client refuses this before sending it
+        // (moveEntity); this is the check that counts on a guest table.
+        if (isHeldBackMove(stateRef.current, entity, action.islandId, action.col, action.row)) return;
         applyAndBroadcast(action);
       } else if (action.type === 'UPDATE_ENTITY') {
         const entity = stateRef.current.entities[action.id];
@@ -1480,8 +1513,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function canPlayerUpdateEntity(entity, patch, playerId) {
     if (!entity) return false;
     // A hidden token doesn't exist for players, and hiding a token or
-    // locking a door is never theirs to do.
-    if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch) return false;
+    // locking a door is never theirs to do. Neither is `fogged`: only the
+    // DM's client works out what the fog of war covers.
+    if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch || 'fogged' in patch) return false;
     if (entity.kind === 'chest') {
       return isChestTogglePatch(entity, patch) || isTakeChestItemPatch(entity, patch);
     }
@@ -1517,7 +1551,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // made into a token standing at `place`: { layerId, islandId, col, row,
   // size, targetCol?, targetRow? }.
   function entityFromDraft(draft, place) {
-    return {
+    const entity = {
       id: generateEntityId(),
       kind: draft.kind,
       name: draft.name,
@@ -1570,6 +1604,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           }
         : {}),
     };
+    // Placed straight into the fog of war, it is fogged from its first write
+    // and never reaches a player (the same-write rule, utils/fogOfWar.js).
+    return isEntityFogged(entity, stateRef.current) ? { ...entity, fogged: true } : entity;
+  }
+
+  // The same-write rule for a token already on the map: whatever changes
+  // where it stands (or how many squares it covers, or a door's other side)
+  // carries its new `fogged` in the same write, so a token moved into fog is
+  // never readable there, and one moved out arrives already where it stands.
+  const FOG_PLACEMENT_KEYS = ['col', 'row', 'size', 'islandId', 'layerId', 'targetCol', 'targetRow', 'targetLayerId'];
+
+  function withFoggedStamp(entity, patch) {
+    if (!isHost || 'fogged' in patch || !FOG_PLACEMENT_KEYS.some((key) => key in patch)) return patch;
+    const fogged = isEntityFogged({ ...entity, ...patch }, stateRef.current);
+    return fogged === Boolean(entity.fogged) ? patch : { ...patch, fogged };
   }
 
   // On a cloud or guest table, the pictures of the monsters an ambush holds
@@ -1638,13 +1687,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }
 
+  // A player's own hero does not go into a held-back fog chunk: the move is
+  // refused, with one line in the log saying why. The DM is never restricted.
+  function refusedAsHeldBack(entity, islandId, col, row) {
+    if (isHost || !isHeldBackMove(stateRef.current, entity, islandId, col, row)) return false;
+    emitFx({ type: 'log', text: HELD_BACK_LOG });
+    return true;
+  }
+
   // `layerId` is only ever passed by confirmEnterDoor, to carry a hero
   // across to the door's other side along with the col/row/islandId move —
   // every other caller (MapBoard's drag) leaves it undefined and this
   // behaves exactly as before.
+  //
+  // Returns false when the move was refused as held back, so the map can
+  // leave the token where it was rather than hold it at the drop square.
   function moveEntity(id, col, row, islandId, layerId) {
     const entity = state.entities[id];
     if (!canMoveEntity(entity)) return;
+    if (refusedAsHeldBack(entity, islandId, col, row)) return false;
     // Dragging a door while viewing it from its target-layer side repositions
     // only that side, independent of where it sits on its home layer. That
     // side isn't per-island, so only accept a drop that landed back on the
@@ -1661,6 +1722,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isGuest && !isGuestHost) {
       guestChannelRef.current?.sendIntent({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId }, me.id);
       return;
+    }
+    // The DM moving a token into or out of the fog of war: its position and
+    // its `fogged` go out as one update (withFoggedStamp), not as a move
+    // followed by a second write. A move that leaves `fogged` as it was is
+    // the plain move below.
+    if (isHost) {
+      const place = { col, row, ...(islandId ? { islandId } : {}), ...(layerId ? { layerId } : {}) };
+      const stamped = withFoggedStamp(entity, place);
+      if ('fogged' in stamped) {
+        updateEntity(id, stamped);
+        return;
+      }
     }
     dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
     if (isRemote) moveEntityRemote(id, col, row, islandId, layerId).catch(reportError);
@@ -1683,6 +1756,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // Locking a chest shuts it.
       if (isHost && patch.locked && entity.opened) patch = { ...patch, opened: false, imageUrl: makeIconDataUrl('chest', entity.color) };
     }
+    patch = withFoggedStamp(entity, patch);
     // REQ-008: same host-authoritative split as moveEntity — a guest
     // player's only reachable use of this (a chest toggle, per
     // canUpdateEntity above) is an intent, never a local dispatch.
@@ -1701,10 +1775,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // hideTrapRemote for why it is a delete + re-insert instead.
       if (entity.kind === 'trap' && entity.trapRevealed && patch.trapRevealed === false) {
         hideTrapRemote(state.session.tableId, { ...entity, ...patch }).catch(reportError);
-      } else if (patch.hidden === true && !entity.hidden) {
-        // Hiding a monster, chest or door: players get no event when its row
-        // stops being visible to them, so tell their clients to look again
-        // once it has (lib/realtime.js's 'conceal').
+      } else if ((patch.hidden === true && !entity.hidden) || (patch.fogged === true && !entity.fogged)) {
+        // Hiding a monster, chest or door, or a token the fog of war now
+        // covers: players get no event when its row stops being visible to
+        // them, so tell their clients to look again once it has
+        // (lib/realtime.js's 'conceal').
         updateEntityRemote(id, patch)
           .then(() => tableChannelRef.current?.sendConceal(id))
           .catch(reportError);
@@ -2068,6 +2143,163 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // ---- Fog of war (utils/fogOfWar.js) ----
+  // The DM covers parts of an island with fog chunks. A chunk and a token
+  // are never selected together: picking one drops the other.
+  const [selectedFogChunkId, setSelectedFogChunkId] = useState(null);
+  const selectedFogChunkStored = isHost && selectedFogChunkId ? state.fogChunks?.[selectedFogChunkId] || null : null;
+  // Only while its island is on the layer in view.
+  const selectedFogChunk = selectedFogChunkStored && currentLayer.islands[selectedFogChunkStored.islandId] ? selectedFogChunkStored : null;
+
+  // On the phone there is no Fog of war tool and no side panel: a tap on a
+  // fogged chunk, or on a revealed one's corner tag, opens its card in a sheet.
+  function selectFogChunk(id) {
+    setSelectedFogChunkId(id || null);
+    if (!id) return;
+    setSelectedId(null);
+    if (isPhone) setPhoneSheet('fogofwar');
+  }
+  useEffect(() => {
+    if (selectedId) setSelectedFogChunkId(null);
+  }, [selectedId]);
+  // The selection goes when its chunk does (deleted, or its island or layer
+  // left the view), and with any tool that isn't Play or Fog of war.
+  const fogSelectionStale = Boolean(selectedFogChunkId) && (!selectedFogChunk || (tool !== 'play' && tool !== 'fogofwar'));
+  useEffect(() => {
+    if (fogSelectionStale) setSelectedFogChunkId(null);
+  }, [fogSelectionStale]);
+
+  // One write per finished action, like a drawing: dispatch here, then the
+  // cloud row or the guest broadcast. Local and guest tables save the whole
+  // state themselves (GameProvider's autosave).
+  function writeFogChunk(chunk) {
+    if (!isHost) return;
+    dispatch({ type: 'SET_FOG_CHUNK', chunk });
+    if (isRemote) upsertFogChunkRemote(state.session.tableId, chunk).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'SET_FOG_CHUNK', chunk });
+  }
+
+  function deleteFogChunk(id) {
+    if (!isHost || !stateRef.current.fogChunks?.[id]) return;
+    dispatch({ type: 'REMOVE_FOG_CHUNKS', ids: [id] });
+    if (isRemote) removeFogChunksRemote([id]).catch(reportError);
+    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_FOG_CHUNKS', ids: [id] });
+  }
+
+  // Laying a chunk: `rect` is { islandId, x, y, w, h } in whole squares,
+  // already clipped to its island (MapBoard, or "Fog whole island").
+  //
+  // "Reveals when entered" is positional: a chunk with it on opens while a
+  // hero stands in it (the effect below). So a chunk laid over a hero starts
+  // with it off — held back — or it would open the moment it was drawn.
+  function addFogChunk(rect) {
+    if (!isHost) return;
+    const chunk = { id: generateEntityId(), islandId: rect.islandId, x: rect.x, y: rect.y, w: rect.w, h: rect.h, revealed: false, revealOnEnter: true };
+    const current = stateRef.current;
+    writeFogChunk(isFogChunkOccupied(chunk, current, current.entities) ? { ...chunk, revealOnEnter: false } : chunk);
+  }
+
+  // Reveal and "Fog again" are for the whole table: there is no per-player
+  // fog. "Fog again" on a chunk a hero stands in turns "Reveals when entered"
+  // off, for the same reason a chunk laid over one starts that way.
+  function setFogChunkRevealed(id, revealed) {
+    const current = stateRef.current;
+    const chunk = current.fogChunks?.[id];
+    if (!isHost || !chunk || Boolean(chunk.revealed) === revealed) return;
+    const heldBack = !revealed && isFogChunkOccupied(chunk, current, current.entities);
+    writeFogChunk({ ...chunk, revealed, ...(heldBack ? { revealOnEnter: false } : {}) });
+  }
+
+  // "Fog whole island": one chunk the size of the active island.
+  function fogWholeIsland() {
+    const island = currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]];
+    if (island) addFogChunk({ islandId: island.id, x: 0, y: 0, w: island.cols, h: island.rows });
+  }
+
+  // The picked chunk, moved or resized on the map (MapBoard): `rect` is
+  // { id, x, y, w, h } in whole squares, on its island. A fogged chunk that
+  // now covers a hero it did not cover before becomes held back, as one laid
+  // over a hero does: otherwise it would open the moment it was dropped.
+  function updateFogChunkRect(rect) {
+    const current = stateRef.current;
+    const chunk = current.fogChunks?.[rect.id];
+    if (!isHost || !chunk) return;
+    const next = { ...chunk, x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    const newlyOccupied = !next.revealed && !isFogChunkOccupied(chunk, current, current.entities) && isFogChunkOccupied(next, current, current.entities);
+    writeFogChunk(newlyOccupied ? { ...next, revealOnEnter: false } : next);
+  }
+
+  // In the Fog of war tool: Esc drops the selection, Delete or Backspace
+  // removes the picked chunk — never while typing in a field.
+  useEffect(() => {
+    if (!isHost || tool !== 'fogofwar') return undefined;
+    function onKey(e) {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === 'Escape') {
+        setSelectedFogChunkId(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFogChunkId) {
+        e.preventDefault();
+        deleteFogChunk(selectedFogChunkId);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  function setFogChunkRevealOnEnter(id, revealOnEnter) {
+    const chunk = stateRef.current.fogChunks?.[id];
+    if (!isHost || !chunk || (chunk.revealOnEnter !== false) === revealOnEnter) return;
+    writeFogChunk({ ...chunk, revealOnEnter });
+  }
+
+  // Reveals when entered. Only the DM's client does this, so nothing opens
+  // while the DM is away; it catches up when they are back, and after every
+  // HYDRATE (which replaces `entities` and `fogChunks`). It goes through the
+  // same path as the Reveal button, so the tokens inside are restamped by the
+  // effect below.
+  useEffect(() => {
+    if (!isHost) return;
+    const current = stateRef.current;
+    for (const id of fogChunksToRevealOnEnter(current, current.entities)) setFogChunkRevealed(id, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, state.entities, state.layers, state.fogChunks, state.fogChunkOrder]);
+
+  // Which tokens the fog covers (`entity.fogged`) is derived data that only
+  // the DM's client writes. A token's own placement or move carries it in the
+  // same write (withFoggedStamp); this is everything else that can change the
+  // answer: a chunk laid, deleted, moved, resized, revealed or fogged again,
+  // an island resized, a layer or island removed from under a door's other
+  // side. It also runs once the table is held and after every HYDRATE (a
+  // resync or an import replaces `layers` and `fogChunks` wholesale), so a
+  // write that never landed is put right. Each correction goes through
+  // updateEntity, which sends 'conceal' for a newly fogged token on a cloud
+  // table. Two DM tabs may both run it: they write the same values.
+  useEffect(() => {
+    if (!isHost) return;
+    const current = stateRef.current;
+    for (const id of current.entityOrder) {
+      const entity = current.entities[id];
+      if (!entity || entity.kind === 'hero') continue;
+      const fogged = isEntityFogged(entity, current);
+      if (fogged !== Boolean(entity.fogged)) updateEntity(id, { fogged });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, state.layers, state.fogChunks, state.fogChunkOrder]);
+
+  // The island "Fog whole island" would cover: the active one, which a
+  // press on a map with the Fog of war tool makes that map.
+  const fogWholeIslandName = (currentLayer.islands[activeIslandId] || currentLayer.islands[currentLayer.islandOrder[0]])?.name || 'this map';
+
+  const fogOfWarApi = {
+    islandName: selectedFogChunk ? currentLayer.islands[selectedFogChunk.islandId]?.name || null : null,
+    occupied: selectedFogChunk ? isFogChunkOccupied(selectedFogChunk, state, state.entities) : false,
+    onReveal: (id) => setFogChunkRevealed(id, true),
+    onFogAgain: (id) => setFogChunkRevealed(id, false),
+    onRevealOnEnter: setFogChunkRevealOnEnter,
+    onDelete: deleteFogChunk,
+  };
+
   function removeCustomAsset(id) {
     if (!isHost) return;
     dispatch({ type: 'REMOVE_CUSTOM_ASSET', id });
@@ -2084,10 +2316,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!hero) return;
     const sheet = hero.sheet || defaultCharacterSheet();
     let nextSheet = sheet;
-    if (item.source === 'tomes' || item.source === 'foods') {
-      // Put in from the Tomes or Food chapter (ChestContentsEditor): it goes
-      // under Other items, the way a shop hands it over, a tome with its
-      // text to read (data/merchants.js).
+    if (landsInOtherItems(item.source)) {
+      // Put in from the Tomes, Food or Potions chapter (ChestContentsEditor):
+      // it goes under Other items, the way a shop hands it over, a tome or a
+      // potion with its text to read (data/merchants.js).
       const description = sourceEntries(item.source, catalog, state.customAssets).find((entry) => entry.name === item.name)?.description || '';
       const goods = entryGoods(item.source, { name: item.name, description });
       for (let i = 0; i < Math.max(1, item.qty || 1); i++) nextSheet = sheetWithGoods(nextSheet, goods);
@@ -2671,7 +2903,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // currently being viewed from, so the same door works walking in from
     // either side.
     const destinationLayerId = currentLayerId === doorEntity.layerId ? doorEntity.targetLayerId : doorEntity.layerId;
+    // Nor does a player go through a door that comes out in a held-back fog
+    // chunk: the same log line as a refused move, and no prompt.
+    if (!isHost && doorArrivalHeldBack(doorEntity.id, destinationLayerId)) return;
     setPendingDoor({ door: doorEntity, destinationLayerId, travellerId: isHost ? traveller.id : null });
+  }
+
+  // For a player: whether walking through this door would land them in a
+  // held-back fog chunk (logging the refusal when it would). The arrival
+  // square is worked out from the raw door, as confirmEnterDoor does.
+  function doorArrivalHeldBack(doorId, destinationLayerId) {
+    const rawDoor = state.entities[doorId];
+    if (!rawDoor) return false;
+    const myHero = heroes.find((h) => h.ownerId === me.id);
+    const arrival = arrivalCellNearDoor(state, rawDoor, destinationLayerId);
+    if (!isHeldBackDestination(stateRef.current, arrival.islandId, arrival.col, arrival.row, myHero?.size || 1)) return false;
+    emitFx({ type: 'log', text: HELD_BACK_LOG });
+    return true;
   }
 
   // Moves this player's own view to another layer.
@@ -2714,6 +2962,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       return;
     }
     if (isLockedDoor(rawDoor) || isHiddenFromPlayers(rawDoor)) return;
+    // Or held back the far side while the prompt was up.
+    if (doorArrivalHeldBack(rawDoor.id, pending.destinationLayerId)) return;
     const myHero = heroes.find((h) => h.ownerId === me.id);
     if (myHero) {
       const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
@@ -3080,7 +3330,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     hostTour.finish();
     setTourOpen(false);
   }
-  const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas'
+  const [phoneSheet, setPhoneSheet] = useState(null); // null | 'panel' | 'add' | 'menu' | 'layers' | 'atlas' | 'fogofwar' | …
   // A hint's "Open Tokens": the Tokens panel on desktop, the Add sheet on a
   // phone.
   useFx((event) => {
@@ -3255,7 +3505,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return Object.values(layerEntities).find((e) => e.kind === 'door' && e.islandId === islandId && e.col === col && e.row === row) || null;
   }
   function commitMove(entity, islandId, col, row) {
-    moveEntity(entity.id, col, row, islandId);
+    if (moveEntity(entity.id, col, row, islandId) === false) return; // held back: no move, so no door either
     // Landing a hero on a door's square offers to walk through it, as a drag
     // does — and so does the DM landing a hero or monster on one.
     const canUseDoor = isHost ? isCreature(entity) : entity.kind === 'hero';
@@ -3266,6 +3516,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const entity = selectedEntity;
     if (!isCreature(entity) || !canMoveEntity(entity)) return false;
     if (entity.islandId === islandId && entity.col === col && entity.row === row) return false;
+    // A square in a held-back fog chunk is refused here, before it can become
+    // a planned move. The tap was still used: it selects nothing.
+    if (refusedAsHeldBack(entity, islandId, col, row)) return true;
     if (encounter && actor?.id === entity.id) {
       setPlannedMove({ entityId: entity.id, islandId, col, row });
       return true;
@@ -3380,6 +3633,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   useEffect(() => {
     if (!isPhone) setPhoneSheet(null);
   }, [isPhone]);
+
+  // Fog chunks are laid on desktop only: the phone layout has no Fog of war tool.
+  useEffect(() => {
+    if (isPhone && tool === 'fogofwar') setTool('play');
+  }, [isPhone, tool]);
+  // The phone's fog sheet closes with its chunk (deleted, or its map left).
+  useEffect(() => {
+    if (phoneSheet === 'fogofwar' && !selectedFogChunk) setPhoneSheet(null);
+  }, [phoneSheet, selectedFogChunk]);
 
   // A player has no Tokens panel (placing tokens is the DM's), so only the
   // right panel shares the room with the map.
@@ -3519,6 +3781,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
+          fogChunk={selectedFogChunk}
+          fogOfWar={isHost ? fogOfWarApi : null}
         />
   );
 
@@ -3584,7 +3848,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               entities={layerEntities}
               entityOrder={layerEntityOrder}
               selectedId={selectedId}
-              onSelectEntity={setSelectedId}
+              onSelectEntity={(id) => {
+                setSelectedId(id);
+                // A click on a token, or on open ground, drops a picked fog chunk.
+                setSelectedFogChunkId(null);
+              }}
               onMoveEntity={moveEntity}
               canMoveEntity={canMoveEntity}
               isHost={isHost}
@@ -3613,6 +3881,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onRemoveDrawings={isHost ? removeDrawings : null}
               selectedDrawingId={tool === 'draw' ? selectedDrawingId : null}
               onSelectDrawing={setSelectedDrawingId}
+              fogChunks={state.fogChunks}
+              fogChunkOrder={state.fogChunkOrder}
+              selectedFogChunkId={selectedFogChunk?.id || null}
+              onSelectFogChunk={isHost ? selectFogChunk : null}
+              onAddFogChunk={isHost && !isPhone ? addFogChunk : null}
+              onUpdateFogChunk={isHost && !isPhone ? updateFogChunkRect : null}
             />
           </div>
           {isPhone && (
@@ -3710,6 +3984,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             <ModeBar id="draw" className="map-mode-bar" label="Draw." doneLabel="Done" onDone={() => setTool('play')}>
               Everyone at the table sees what you draw. Right-drag moves the view.
             </ModeBar>
+          )}
+          {/* Not a hint to dismiss, like the others: it carries the tool's
+              one action, so it stays for as long as the tool is in hand. */}
+          {!isPhone && isHost && tool === 'fogofwar' && (
+            <div role="status" className="mode-bar map-mode-bar fog-of-war-bar">
+              <span className="mode-bar-text">
+                <b>Fog of war.</b> Drag on a map to cover it. Click a chunk to pick it, then drag it or its handles.
+              </span>
+              <button type="button" className="mode-bar-done" title={`Cover all of ${fogWholeIslandName} with one fog chunk`} onClick={fogWholeIsland}>
+                Fog whole island
+              </button>
+              <button type="button" className="area-bar-place" onClick={() => setTool('play')}>
+                Done
+              </button>
+            </div>
           )}
           {isHost && !isPhone && tool === 'draw' && (
             <DrawingBar
@@ -3972,6 +4261,19 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onWalk={confirmEnterDoor}
               onCancel={cancelEnterDoor}
             />
+          )}
+          {phoneSheet === 'fogofwar' && isHost && selectedFogChunk && (
+            <PhoneSheet
+              title="Fog of war"
+              onClose={() => {
+                setPhoneSheet(null);
+                setSelectedFogChunkId(null);
+              }}
+            >
+              <div className="phone-sheet-pad">
+                <FogChunkCard chunk={selectedFogChunk} {...fogOfWarApi} />
+              </div>
+            </PhoneSheet>
           )}
           {phoneSheet === 'chest' && selectedEntity?.kind === 'chest' && (
             <PhoneChestSheet

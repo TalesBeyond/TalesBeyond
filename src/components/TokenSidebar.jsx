@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import { Hint } from './Hints.jsx';
 import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
+import { SPRITE_HEROES, spriteForUrl } from '../data/spriteTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
@@ -31,11 +32,17 @@ function SidebarSection({ title, tour, children }) {
 
 // A token card is one button: the whole tile places the token on the map,
 // or opens what has to be set up first (a shopkeeper's shelves, a
-// placeable's modal), which `label` then says.
+// placeable's modal), which `label` then says. An animated token
+// (data/spriteTokens.js) plays its frames while the pointer is over its tile.
 function TokenCard({ name, imageUrl, shape, onPlace, label = `Place ${name}`, title }) {
+  const sprite = spriteForUrl(imageUrl);
   return (
     <button type="button" className={`token-card ${shape}`} aria-label={label} title={title} onClick={onPlace}>
-      <img src={imageUrl} alt="" />
+      {sprite ? (
+        <span className="sprite" style={{ backgroundImage: `url(${sprite.sheet})`, '--sprite-frames': sprite.frames }} aria-hidden="true" />
+      ) : (
+        <img src={imageUrl} alt="" />
+      )}
       <span>{name}</span>
     </button>
   );
@@ -238,7 +245,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
 
   const heroesBody = (
           <div className="token-grid">
-            {DEFAULT_HEROES.map((h) => (
+            {[...DEFAULT_HEROES, ...SPRITE_HEROES].map((h) => (
               <TokenCard
                 key={h.key}
                 name={h.name}

@@ -147,7 +147,7 @@ export const TABLE_RULES = {
         ['Monsters', 'the book of creatures to place on the map.'],
         ['Items', 'the book of gear, potions and supplies.'],
         ['Weapons', 'the book of weapons.'],
-        ['Storage', 'your own monsters, weapons and items.'],
+        ['Storage', 'your own monsters, weapons, items, tomes, food, spells and potions.'],
       ],
     },
     {
@@ -164,7 +164,7 @@ export const TABLE_RULES = {
       sub: 'Your own creations',
       where: 'Compendium drawer',
       dm: true,
-      text: 'Make your own monsters, weapons and items for this table. They appear in the books next to the built-in ones, marked Custom.',
+      text: 'Make your own monsters, weapons, items, tomes, food and drink, spells and potions for this table. They appear in the books next to the built-in ones, marked Custom, and on the shelves of the shopkeeper who sells that kind. A dish or a potion can be given a recipe, and you can add ingredients of your own for it.',
     },
     {
       key: 'initiative',
@@ -404,7 +404,7 @@ export const TABLE_RULES = {
       name: 'Chests',
       sub: 'Loot to open and take',
       where: 'On the map',
-      text: 'Select a chest and press Open chest in the Inspector. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes or Food & drink) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome or a dish taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
+      text: 'Select a chest and press Open chest in the Inspector. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
     },
     {
       key: 'trap',

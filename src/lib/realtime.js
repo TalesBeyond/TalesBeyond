@@ -12,7 +12,7 @@
 import { supabase } from './supabaseClient.js';
 import { attachImageExchange } from './imageExchange.js';
 import { canBeHidden } from '../data/visibility.js';
-import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing } from './mappers.js';
+import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing, mapDbFogChunk } from './mappers.js';
 
 // onStatusChange, if given, is called on every SUBSCRIBED/TIMED_OUT/CLOSED/
 // CHANNEL_ERROR transition of this one channel (see REALTIME_SUBSCRIBE_STATES
@@ -38,7 +38,8 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
   if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
-  // The DM just hid a monster, chest or door. Realtime sends no event when a
+  // The DM just hid a monster, chest or door, or the fog of war now covers a
+  // token (69_fogged_tokens.sql). Realtime sends no event when a
   // row stops being visible to a subscriber, so the DM's client names the
   // token here (`sendConceal`, below) once the row is hidden. The row stays
   // the authority: the token is only dropped if this client really can no
@@ -178,6 +179,15 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
         dispatch({ type: 'REMOVE_DRAWINGS', ids: [payload.old.id] });
       } else {
         dispatch({ type: 'SET_DRAWING', drawing: mapDbDrawing(payload.new) });
+      }
+    })
+    // Fog of war (68_fog_chunks.sql): one row per chunk, so the echo of an
+    // earlier write can only touch its own chunk.
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fog_chunks', filter: `table_id=eq.${tableId}` }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'REMOVE_FOG_CHUNKS', ids: [payload.old.id] });
+      } else {
+        dispatch({ type: 'SET_FOG_CHUNK', chunk: mapDbFogChunk(payload.new) });
       }
     })
     .on(

@@ -8,6 +8,7 @@
 // (20250101000055_no_stored_images.sql).
 
 import { iconRefForUrl, iconUrlForRef, makeIconDataUrl } from '../data/defaultTokens.js';
+import '../data/spriteTokens.js'; // adds the animated tokens' icons before any reference is read
 import { isImageRef, resolveImage } from './imageCache.js';
 
 const FALLBACK = {

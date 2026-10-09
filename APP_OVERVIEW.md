@@ -164,7 +164,8 @@ reloads the full snapshot on mount).
 - **Tool select** (mutually exclusive): **Play** (select/drag tokens,
   walk through doors) · **Edit** (host-only: drag islands to reposition,
   edit chest contents) · **Pan** (click-drag to scroll) · **Ruler**
-  (click-drag to measure).
+  (click-drag to measure) · **Fog of war** (host-only, desktop: cover
+  parts of a map until the party explores them — see Fog of war below).
 - **Zoom**: −/Reset(shows current %)/+ /Recenter (scroll back to the
   currently active island). Mouse wheel also zooms in any tool. Zoom is
   a per-viewer preference, never persisted or synced.
@@ -183,17 +184,47 @@ reloads the full snapshot on mount).
   each row can be **Bought** (deducts gold, rounded up, from a picked
   hero) or **Given** (no cost) directly into that hero's Bag.
 - **Tomes / Food & Drink / Spells** chapters of the same book (built into
-  the app, no catalog table): 100 made-up tomes, 60 foods and drinks, 100
+  the app, no catalog table): 100 made-up tomes, 60 foods and drinks (with
+  the 52 ingredients they are made from, see Potions below), 100
   spells. Buy and Give work the same way; a tome, food or drink lands in
   Bag > Other items (a tome keeps its text, read from the Bag row), and a
   spell is written into the hero's Spells tab at its level. The DM writes
   tomes of their own (title, author, text) under Asset Storage > Tomes.
+- **Potions** chapter (built in too, `data/potions.js`): 60 made-up
+  potions in four kinds (potion, elixir, magic potion, venom) and the 47
+  ingredients they are brewed from. A potion's page prints its
+  **recipe** (`recipe: [{ name, qty }]`, every name an ingredient); an
+  ingredient's page lists the potions it goes into. Searching also finds
+  a potion by an ingredient's name. Both land in Bag > Other items with
+  their text. What a potion does is its description, for the DM to
+  apply; the app rolls none of it. **Food & Drink** works the same way
+  (`data/foods.js`): each dish has a recipe from its own larder of
+  ingredients (or from another dish: a mug of cider goes into hot spiced
+  cider), listed in that chapter under **Ingredients**. An apple, milk,
+  a jar of honey and a sack of apples have none.
+- **Your own food, spells and potions** (Asset Storage > Food & Drink,
+  Spells, Potions; custom asset types `food`, `spell`, `potion`, the DM's
+  to write like every custom asset): a name, a kind (a spell: level and
+  school), a cost and a description, and for a dish or a potion a
+  **recipe** of up to 8 ingredients, typed with the known ingredients
+  offered. Picking the kind **Ingredient** on either tab saves one of the
+  table's own ingredients instead. They sit in their chapter marked
+  (Custom), and on the shelves and in the chests that chapter stocks
+  (`sourceEntries`); a Potion Brewer or Food Salesman makes one from its
+  recipe like any other. Each of those chapters, and Tomes, has a button
+  that opens Asset Storage on its own tab.
 - **Shopkeepers** (Tokens > NPC): Weapon Salesman, Librarian, Food
-  Salesman, Wizard, Wandering Salesman (any chapter) and Cartographer
+  Salesman, Wizard, Wandering Salesman (any chapter), Potion Brewer
+  (potions of every kind, never ingredients) and Cartographer
   (maps the DM writes). Each is an NPC with a `shop`; the DM stocks it and
   sets prices when placing it and from its Shop tab, and sells or gives to
   any hero. A player buys into their own hero from the same tab. Stock is
-  unlimited; a sale only changes the buyer's sheet.
+  unlimited; a sale only changes the buyer's sheet. A **Potion Brewer**
+  and a **Food Salesman** also show each ware's recipe, ticked where the
+  customer carries enough, and **Brew** / **Make** makes it from those
+  ingredients for no gold (`sheetAfterMaking`: the ingredients leave the
+  Bag, what they make enters it). A ware the DM wrote for the shop has
+  no recipe.
 - **Save / Export / Import**: manual localStorage save (cloud mode shows
   "Synced to the cloud" instead, since every action already writes
   through immediately), download the whole table as `.json`, or restore
@@ -215,6 +246,13 @@ rectangle contains it*, re-scoping the token to that island if it moved
 across a boundary. Distance is measured with D&D 5e's "5-10-5" diagonal
 rule (`src/utils/grid.js`'s `feetDistance`).
 
+Fog of war paints inside each island, over the map art, grid, day/night
+tint and drawings and under every token (`FogOfWarLayer.jsx`): an opaque
+cover of drifting mist for players, a tint for the DM. A player's encounter move range
+stops at the cover. A token dropped where the table refuses it (a
+player's hero into a held-back fog chunk) never lands: `onMoveEntity`
+returns `false` and the map does not hold it at the drop square.
+
 ### Token sidebar (`TokenSidebar.jsx`)
 
 - **Add your own image**: upload any image as a Hero or Monster token
@@ -223,7 +261,13 @@ rule (`src/utils/grid.js`'s `feetDistance`).
   Cleric, Paladin) and **default monsters** (5: Goblin, Skeleton, Orc,
   Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
   (`src/data/defaultTokens.js`), one click to place. Placing a default
-  monster auto-seeds its **Droppables** loot list (see below).
+  monster auto-seeds its **Droppables** loot list (see below). The heroes
+  gallery ends with one animated token, the **Sprite Warrior**
+  (`src/data/spriteTokens.js`, art in `src/assets/sprites/`): a two-frame
+  walk that plays while the pointer is over its tile or its token on the
+  map (and while the token is dragged), and stands still otherwise. Its
+  picture on the inspector's card plays along with the map token. It is
+  stored like any built-in icon, as `icon:sprite-warrior:<#color>`.
 - **Placeable** tiles (Door, Chest, Trap, Ambush): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
@@ -277,13 +321,14 @@ disadvantage, etc.).
 Every chest/droppable item shares one shape: `{ name, qty, cost,
 numberOfDice, diceType, modifier }` — the same fields whether it came
 from a compendium chapter or was hand-typed. A chest's editor has two
-tabs. **From the compendium** lists a chapter (Weapons, Items, Tomes or
-Food & drink, with this table's own entries) to browse and search, each
+tabs. **From the compendium** lists a chapter (Weapons, Items, Tomes,
+Food & drink, Potions or Ingredients, with this table's own entries) to
+browse and search, each
 row with **+ Add** ("In chest" once it is inside), and **+ 1 at random**
 adds one of what the list is showing. **Custom item** is the hand-typed
-form. A tome or a dish also keeps its chapter as `source`, so looting it
-puts it under the hero's Other items (a tome with its text) instead of
-Weapons & gear.
+form. A tome, a dish, a potion or an ingredient also keeps its chapter
+as `source`, so looting it puts it under the hero's Other items (a tome
+or a potion with its text) instead of Weapons & gear.
 
 ### Mob droppables (`DroppablesEditor.jsx`, `data/droppables.js`)
 
@@ -368,6 +413,54 @@ map; every seated player sees the result, and only the DM can draw.
   mode, the guest broadcast in a guest table, the saved state locally. The
   drawing preferences (tool, style, Snap, recent colours, Hide) are
   `hearthbound:drawprefs` in this browser only.
+
+### Fog of war (`FogOfWarLayer.jsx`, `utils/fogOfWar.js`)
+
+The DM's **Fog of war** tool (Tools menu, desktop only) covers parts of a
+map until the party explores them. It is not the Fog island condition.
+
+- **Fog chunks**: each is a rectangle on one island —
+  `{ id, islandId, x, y, w, h, revealed, revealOnEnter }` in
+  `state.fogChunks` / `state.fogChunkOrder`, in whole squares from the
+  island's top-left corner. Squares outside the island's current size are
+  ignored. A square is fogged while at least one unrevealed chunk covers
+  it. Chunks move with their island and are deleted with it (or its layer).
+- **What each side sees**: players get an opaque cover of slowly drifting
+  mist (`src/assets/fog-of-war.png`, a picture that repeats without a
+  seam, in two sheets sliding across each other; still when the device
+  asks for reduced motion). It is one cover per island cut to the fogged
+  chunks, so the mist never breaks at a chunk's edge; the DM gets a
+  tint with the map showing through, and a dashed outline with a corner
+  tag once a chunk is revealed. There is no per-player fog.
+- **The tool**: drag on a map to lay a chunk; **Fog whole island** in the
+  bar lays one the size of the active island. Click a chunk to pick it
+  (the smallest, where several overlap), then drag it to move it or a
+  handle to resize it, in whole squares; Esc drops the selection, Delete
+  or Backspace removes the chunk. In Play, the DM's click on a fogged
+  square picks its chunk, and a revealed chunk is picked by its corner tag
+  only.
+- **The fog card** (right panel; a sheet on a phone): **Reveal** or **Fog
+  again**, the **Reveals when entered** switch, **Delete**.
+- **Tokens in fog**: a token that is not a hero and stands wholly on
+  fogged squares is fogged (`entity.fogged`) and does not exist for
+  players, the same three ways a hidden token doesn't (`data/visibility.js`).
+  A door needs both of its sides in fog; with one side clear, players see
+  it on that side only. Only the DM's client writes `fogged`: in the same
+  write that places or moves the token, again for every token whenever
+  chunks or islands change, and once more on load and after each resync.
+- **Reveals when entered**: with the setting on, the DM's client reveals
+  a chunk while any hero stands in it — whoever moved the hero. Nothing
+  opens while the DM's browser is closed. A chunk laid (or moved) over a
+  hero starts with the setting off, and so does one fogged again while a
+  hero stands in it.
+- **Held-back chunks** (setting off) open only by the DM's hand, and a
+  player cannot move their own hero into one — by drag, phone tap, planned
+  move or door. The hero stays where it was and the log says the area is
+  not open yet. The player's own client checks this on cloud and local
+  tables, the DM's client on a guest table; the database does not.
+- **Sync**: one write per finished action — the `fog_chunks` table in
+  cloud mode, the guest broadcast in a guest table, the saved state
+  locally.
 
 ### Dice rolls at the table (`RollFeed.jsx`)
 
@@ -487,6 +580,9 @@ policy and RPC below keys off that session's `auth.uid()`.
 | `14_entity_ordering_and_player_leave.sql` | `entities.created_at` (real, reliable stacking-order timestamp — the pre-existing `z_order` column was declared but never actually written by the client); a self-only DELETE policy on `players` so **Leave** actually frees a seat in cloud mode instead of only flipping `connected` |
 | `15_entity_dm_data_privacy.sql` | Moves `dm_notes`/`drop_items` off `entities` into a new `entity_dm_data` table with host-only SELECT/UPDATE/DELETE — a non-host's query (or Realtime subscription) now returns zero rows instead of the raw value, so this data is actually private, not just UI-hidden |
 | `52_drawings.sql` | The Draw tool: a `drawings` table (one row per shape, `island_id` cascading from `islands`), members read, host writes; added to the realtime publication |
+| `68_fog_chunks.sql` | Fog of war: a `fog_chunks` table (one row per rectangle of fog in whole squares, `island_id` cascading from `islands`, with `revealed` and `reveal_on_enter`), members read, host writes; added to the realtime publication |
+| `69_fogged_tokens.sql` | Fog of war: `entities.fogged`, written only by the DM's client for a token standing wholly in fog. The `entities` read policy gains `and not fogged` for players, and `enforce_entity_write_permissions` keeps `fogged` the DM's, beside `hidden` and `locked` |
+| `70_more_custom_assets.sql` | Asset Storage keeps food and drink, spells and potions of the table's own: `custom_assets.asset_type` may also be `food`, `spell` or `potion`. |
 | `16_dm_only_edits.sql` | The DM is the only one who edits information — INSERT/DELETE on `entities` becomes host-only, and a BEFORE UPDATE trigger (`enforce_entity_write_permissions`) restricts a non-host's UPDATE to exactly two cases: moving their own hero (col/row/island_id), or opening/closing a chest (opened/image_url) |
 
 Every table trusts "any seated member of this table" for reads and (for
@@ -513,10 +609,14 @@ migration 14, deleted by its own owner (leaving).
 
 One Postgres-changes subscription per open table, listening on
 `entities`, `players`, `layers`, `islands`, `tables` (open/close),
-`drawings`, and `invite_codes` (rotation) — every event is translated into the exact same
+`drawings`, `fog_chunks`, and `invite_codes` (rotation) — every event is translated into the exact same
 reducer action a local interaction would dispatch, so no component ever
 needs to know whether a change came from this browser or someone else's.
-Conflict handling is last-write-wins per row. This is already a working
+Conflict handling is last-write-wins per row. Realtime sends nothing when
+a row stops being readable, so a token the DM hides, or one the fog of war
+now covers, leaves players' maps through a `conceal` broadcast naming it
+(the row stays the authority: a client drops the token only if it really
+can no longer read it). This is already a working
 WebSocket-based live sync layer — `REALTIME_ROADMAP.md` lays out the
 step-by-step plan for hardening it (reconnect recovery, presence,
 ephemeral live-drag updates, load testing) into full live-service quality.
@@ -573,12 +673,14 @@ src/
     image.js                Client-side image resizing
   data/
     defaultTokens.js        Inline-SVG default hero/monster/condition/chest art
+    spriteTokens.js         Animated tokens (a strip of frames played on hover)
     characterSheet.js       5e sheet shape, defaults, normalizers
     conditions.js           The 5-condition catalog
     weapons.js              100-entry mock weapon compendium (37 PHB base × variants)
     items.js                128-entry mock item compendium (PHB equipment chapter)
-    tomes.js / foods.js / spells.js  The Tomes, Food & Drink and Spells chapters
-    merchants.js            Shopkeeper roles, the `shop` shape, and the buy / give helpers
+    tomes.js / foods.js / spells.js  The Tomes, Food & Drink (with recipes and a larder of 52 ingredients) and Spells chapters
+    potions.js              The Potions chapter: 60 potions with recipes, and their 47 ingredients
+    merchants.js            Shopkeeper roles, the `shop` shape, and the buy / give / make helpers
     chests.js               Chest size tiers + chest-item shape
     droppables.js           Mob loot item shape + per-monster starter loot tables
 supabase/

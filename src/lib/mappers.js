@@ -105,6 +105,9 @@ export function mapDbEntity(row) {
     items: row.kind === 'chest' ? row.chest_items ?? [] : undefined,
     // 59_hidden_tokens_locked_doors.sql — absent (so false) before it is applied.
     hidden: row.hidden ?? false,
+    // 69_fogged_tokens.sql — standing wholly in the fog of war; the DM's
+    // client alone writes it. Absent (so false) before it is applied.
+    fogged: row.fogged ?? false,
     // A door or a chest can be locked (65_locked_chests.sql for the chest).
     locked: row.kind === 'door' || row.kind === 'chest' ? row.locked ?? false : undefined,
     // 63_monster_loot.sql — what a defeated monster dropped; null until rolled.
@@ -157,6 +160,8 @@ export function mapClientEntityToDb(entity, tableId) {
     // Only when set, so placing tokens keeps working on a project that
     // hasn't run 59_hidden_tokens_locked_doors.sql yet.
     ...(entity.hidden ? { hidden: true } : {}),
+    // The same for 69_fogged_tokens.sql: only a token placed in fog sends it.
+    ...(entity.fogged ? { fogged: true } : {}),
     ...(entity.locked ? { locked: true } : {}),
     ...(entity.loot != null ? { loot: entity.loot } : {}),
     // Only when set, so placing tokens keeps working on a project that
@@ -201,6 +206,7 @@ export function mapClientEntityPatchToDb(patch) {
   if ('opened' in patch) db.opened = patch.opened;
   if ('items' in patch) db.chest_items = patch.items;
   if ('hidden' in patch) db.hidden = Boolean(patch.hidden);
+  if ('fogged' in patch) db.fogged = Boolean(patch.fogged);
   if ('locked' in patch) db.locked = Boolean(patch.locked);
   if ('loot' in patch) db.loot = patch.loot ?? null;
   if ('shop' in patch) db.shop = patch.shop ?? null;
@@ -237,7 +243,8 @@ export function mapClientEntityDmDataPatchToDb(patch) {
   return db;
 }
 
-// Custom assets (36_custom_assets.sql) — a DM-authored monster/weapon/item.
+// Custom assets (36_custom_assets.sql) — a DM-authored monster, weapon, item,
+// tome, dish, spell or potion (70_more_custom_assets.sql).
 // `data` is already in the exact shape its catalog counterpart uses (see
 // src/data/weapons.js / items.js / defaultTokens.js), so the client never
 // needs to reshape it before rendering it alongside the built-in catalog.
@@ -287,6 +294,35 @@ export function drawingToDb(tableId, drawing) {
     kind: drawing.kind,
     geometry: drawing.geometry,
     style: drawing.style || {},
+  };
+}
+
+// Fog chunks (68_fog_chunks.sql) — Fog of war. The rectangle is in whole
+// grid squares from the island's top-left corner.
+export function mapDbFogChunk(row) {
+  return {
+    id: row.id,
+    islandId: row.island_id,
+    x: row.x,
+    y: row.y,
+    w: row.w,
+    h: row.h,
+    revealed: row.revealed ?? false,
+    revealOnEnter: row.reveal_on_enter ?? true,
+  };
+}
+
+export function fogChunkToDb(tableId, chunk) {
+  return {
+    id: chunk.id,
+    table_id: tableId,
+    island_id: chunk.islandId,
+    x: chunk.x,
+    y: chunk.y,
+    w: chunk.w,
+    h: chunk.h,
+    revealed: Boolean(chunk.revealed),
+    reveal_on_enter: chunk.revealOnEnter !== false,
   };
 }
 

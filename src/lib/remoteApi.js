@@ -22,6 +22,8 @@ import {
   audioTrackToDb,
   mapDbDrawing,
   drawingToDb,
+  mapDbFogChunk,
+  fogChunkToDb,
   mapDbPlayer,
 } from './mappers.js';
 import { customAssetDataToDb } from './storedImages.js';
@@ -201,6 +203,17 @@ export async function fetchTableSnapshot(tableId) {
     drawingOrder.push(row.id);
   }
 
+  // Fog of war's chunks (68_fog_chunks.sql), forgiving like the rest, in
+  // creation order.
+  const fogChunksRes = await supabase.from('fog_chunks').select('*').eq('table_id', tableId).order('created_at', { ascending: true });
+  const fogChunkRows = fogChunksRes.error ? [] : fogChunksRes.data;
+  const fogChunks = {};
+  const fogChunkOrder = [];
+  for (const row of fogChunkRows) {
+    fogChunks[row.id] = mapDbFogChunk(row);
+    fogChunkOrder.push(row.id);
+  }
+
   const players = {};
   let hostPlayerId = null;
   for (const row of playerRows) {
@@ -261,6 +274,8 @@ export async function fetchTableSnapshot(tableId) {
     customAssetOrder,
     drawings,
     drawingOrder,
+    fogChunks,
+    fogChunkOrder,
     audio: {
       tracks: audioTracks,
       trackOrder: audioTrackOrder,
@@ -294,6 +309,19 @@ export async function upsertDrawingRemote(tableId, drawing) {
 export async function removeDrawingsRemote(ids) {
   if (!ids.length) return;
   must(await supabase.from('drawings').delete().in('id', ids), 'removeDrawings');
+}
+
+// ---- Fog of war (68_fog_chunks.sql) — host only ----
+
+// Inserts a new fog chunk or rewrites one (revealed, re-fogged, its setting
+// changed, moved or resized).
+export async function upsertFogChunkRemote(tableId, chunk) {
+  must(await supabase.from('fog_chunks').upsert(fogChunkToDb(tableId, chunk)), 'upsertFogChunk');
+}
+
+export async function removeFogChunksRemote(ids) {
+  if (!ids.length) return;
+  must(await supabase.from('fog_chunks').delete().in('id', ids), 'removeFogChunks');
 }
 
 export async function updateAudioPlaybackRemote(tableId, playback) {

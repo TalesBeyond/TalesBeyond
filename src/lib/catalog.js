@@ -3,8 +3,9 @@
 // app (src/data/*) so nothing ever waits on the network, and is replaced
 // wholesale, once, when Supabase returns rows for that type. A failed or empty
 // fetch leaves the built-in data in place. Local demo mode never fetches.
-// Tomes, food & drink and spells are built into the app only: no Supabase
-// table feeds them yet, so they have no entry in SOURCES below.
+// Tomes, food & drink, spells, potions and their ingredients are built into
+// the app only: no Supabase table feeds them yet, so they have no entry in
+// SOURCES below.
 
 import { useSyncExternalStore } from 'react';
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
@@ -12,8 +13,9 @@ import { WEAPONS } from '../data/weapons.js';
 import { ITEMS } from '../data/items.js';
 import { MONSTERS } from '../data/monsters.js';
 import { TOMES } from '../data/tomes.js';
-import { FOODS } from '../data/foods.js';
+import { FOODS, FOOD_INGREDIENTS } from '../data/foods.js';
 import { SPELLS } from '../data/spells.js';
+import { POTIONS, INGREDIENTS } from '../data/potions.js';
 import { makeIconDataUrl } from '../data/defaultTokens.js';
 import { compendiumImage } from '../data/compendiumImages.js';
 
@@ -27,6 +29,9 @@ let current = {
   tomes: TOMES,
   foods: FOODS,
   spells: SPELLS,
+  potions: POTIONS,
+  ingredients: INGREDIENTS,
+  foodIngredients: FOOD_INGREDIENTS,
   audio: [], // songs have no built-in fallback: the picker is simply empty
   diceImages: [], // nor do dice pictures: a tile without one keeps its outline
   // Public picture URLs by kind, keyed by the entry's name (monsters: key).

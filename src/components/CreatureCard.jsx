@@ -6,6 +6,7 @@ import { acOf, attackPreview } from '../utils/combat.js';
 import { useFx } from '../lib/fx.js';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
+import { spriteForUrl, useSpritePlaying } from '../data/spriteTokens.js';
 
 // A hero's or monster's whole inspector, drawn as one collectible card: the
 // name on the title bar, the token's art with its armor (shield) and hit
@@ -252,6 +253,9 @@ export default function CreatureCard({
   onRemove = null, // the DM's remove-from-table; shows the trash icon
 }) {
   useImageCacheVersion(); // redraw when a shared picture arrives
+  // An animated token's picture plays here whenever its token plays on the map.
+  const sprite = spriteForUrl(entity.imageUrl);
+  const spritePlaying = useSpritePlaying(entity.id);
   const isMob = entity.kind === 'mob';
   const [tabKey, setTabKey] = useState(tabs[0]?.key);
   const [addingCondition, setAddingCondition] = useState(false);
@@ -376,7 +380,14 @@ export default function CreatureCard({
           {onRemove && <RemoveTokenButton name={entity.name} onRemove={() => onRemove(entity.id)} />}
         </header>
 
-        <div className="target-card-art" style={{ backgroundImage: `url(${entityImageSrc(entity)})` }}>
+        <div className="target-card-art" style={sprite ? undefined : { backgroundImage: `url(${entityImageSrc(entity)})` }}>
+          {sprite && (
+            <span
+              className={`sprite${spritePlaying ? ' playing' : ''}`}
+              style={{ backgroundImage: `url(${sprite.sheet})`, '--sprite-frames': sprite.frames }}
+              aria-hidden="true"
+            />
+          )}
           <span className="card-gem-slot left">
             {canEdit ? (
               <Editable

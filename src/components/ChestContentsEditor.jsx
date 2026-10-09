@@ -3,11 +3,11 @@ import { DICE_TYPES } from '../data/weapons.js';
 import { useCatalog } from '../lib/catalog.js';
 import { useGameState } from '../state/store.jsx';
 import { newChestItem } from '../data/chests.js';
-import { WARE_SOURCES, sourceEntries, wareMeta } from '../data/merchants.js';
+import { WARE_SOURCES, landsInOtherItems, sourceEntries, wareMeta } from '../data/merchants.js';
 
 // The compendium chapters a chest is filled from. Not Spells: a spell is
 // taught (the Wizard's shop), not found in a box.
-const CHEST_SOURCES = ['weapons', 'items', 'tomes', 'foods'];
+const CHEST_SOURCES = ['weapons', 'items', 'tomes', 'foods', 'potions', 'ingredients'];
 // How many entries of a chapter the list shows at once. The rest are a
 // search away.
 const BROWSE_LIMIT = 40;
@@ -24,10 +24,10 @@ function diceLabel(item) {
   return `${item.numberOfDice}${item.diceType}${mod}`;
 }
 
-// One compendium entry as it sits in a chest. A tome or a dish remembers
-// its chapter, so looting it puts it under Other items, a tome with its text
-// (GameView's giveChestItemToHero); a weapon or an item goes to Weapons &
-// gear as it always has.
+// One compendium entry as it sits in a chest. A tome, a dish, a potion or an
+// ingredient remembers its chapter, so looting it puts it under Other items,
+// a tome or a potion with its text (GameView's giveChestItemToHero); a weapon
+// or an item goes to Weapons & gear as it always has.
 function chestItemFromEntry(source, entry) {
   const weapon = source === 'weapons';
   return newChestItem({
@@ -36,7 +36,7 @@ function chestItemFromEntry(source, entry) {
     numberOfDice: weapon ? entry.numberOfDice || 0 : 0,
     diceType: weapon ? entry.diceType || null : null,
     modifier: weapon ? entry.modifier || 0 : 0,
-    ...(source === 'tomes' || source === 'foods' ? { source } : {}),
+    ...(landsInOtherItems(source) ? { source } : {}),
   });
 }
 

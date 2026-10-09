@@ -30,6 +30,7 @@ const ICONS = {
   hat: '<path d="M34 8 L45 42 H19 Z" fill="#f2e9d4"/><ellipse cx="32" cy="45" rx="23" ry="7" fill="#f2e9d4"/><path d="M21 40 H43" stroke="#17140f" stroke-width="2.5"/><circle cx="33" cy="27" r="3" fill="#17140f"/>',
   pack: '<rect x="17" y="20" width="30" height="33" rx="8" fill="#f2e9d4"/><path d="M24 21 V17 C24 10 40 10 40 17 V21" fill="none" stroke="#f2e9d4" stroke-width="4"/><rect x="23" y="35" width="18" height="11" rx="2" fill="none" stroke="#17140f" stroke-width="2"/><line x1="17" y1="29" x2="47" y2="29" stroke="#17140f" stroke-width="2"/>',
   map: '<path d="M10 19 L24 14 L40 20 L54 15 V45 L40 50 L24 44 L10 49 Z" fill="#f2e9d4"/><g stroke="#17140f" stroke-width="2" fill="none"><path d="M24 14 V44"/><path d="M40 20 V50"/><path d="M15 38 L19 34 M19 38 L15 34" stroke-linecap="round"/><path d="M28 34 Q33 26 37 31" stroke-dasharray="2 3" stroke-linecap="round"/></g>',
+  flask: '<path d="M26 10 H38 V15 H36 V26 L48 46 C50 50 47 54 43 54 H21 C17 54 14 50 16 46 L28 26 V15 H26 Z" fill="#f2e9d4"/><path d="M21 41 H43" stroke="#17140f" stroke-width="2"/><circle cx="28" cy="47" r="2.2" fill="#17140f"/><circle cx="36" cy="48" r="1.6" fill="#17140f"/>',
   claw: '<path d="M16 46 L26 16 L32 16 L24 46 Z" fill="#f2e9d4"/><path d="M26 46 L34 14 L40 14 L30 46 Z" fill="#f2e9d4"/><path d="M36 46 L42 18 L48 18 L40 46 Z" fill="#f2e9d4"/>',
   wing: '<path d="M12 40 C24 16 44 16 52 32 C40 28 30 30 24 40 C20 34 16 34 12 40 Z" fill="#f2e9d4"/>',
   eye: '<ellipse cx="32" cy="32" rx="18" ry="10" fill="#f2e9d4"/><circle cx="32" cy="32" r="6" fill="#17140f"/>',
@@ -68,6 +69,15 @@ const ICONS = {
 const urlByRef = new Map();
 const refByUrl = new Map();
 
+// Icons whose picture is a bundled file instead of an SVG drawn here: the
+// animated tokens. data/spriteTokens.js adds them, since this module is also
+// read by Node (scripts/catalog-admin.mjs), which can't import a picture.
+const ICON_IMAGES = {};
+
+export function registerIconImage(name, url) {
+  ICON_IMAGES[name] = url;
+}
+
 export const DEFAULT_HEROES = [
   { key: 'fighter', name: 'Fighter', color: '#8f3a20', icon: 'shield' },
   { key: 'wizard', name: 'Wizard', color: '#4c7a86', icon: 'wand' },
@@ -88,13 +98,14 @@ export const DEFAULT_MOBS = [
 ].map((m) => ({ ...m, imageUrl: makeIconDataUrl(m.icon, m.color) }));
 
 export function makeIconDataUrl(icon, color) {
-  const key = ICONS[icon] ? icon : 'shield';
+  const key = ICONS[icon] || ICON_IMAGES[icon] ? icon : 'shield';
   const ref = `icon:${key}:${color}`;
   let url = urlByRef.get(ref);
   if (!url) {
-    url = svgToDataUrl(ICONS[key], color);
+    url = ICON_IMAGES[key] || svgToDataUrl(ICONS[key], color);
     urlByRef.set(ref, url);
-    refByUrl.set(url, ref);
+    // A bundled picture is the same in every colour: it keeps its first reference.
+    if (!refByUrl.has(url)) refByUrl.set(url, ref);
   }
   return url;
 }
@@ -113,6 +124,6 @@ export function iconRefForUrl(url) {
 // The picture for a reference, or null if it isn't a valid one.
 export function iconUrlForRef(ref) {
   const match = /^icon:([a-z-]+):(#[0-9a-fA-F]{3,8})$/.exec(ref || '');
-  if (!match || !ICONS[match[1]] || !COLOR_RE.test(match[2])) return null;
+  if (!match || !(ICONS[match[1]] || ICON_IMAGES[match[1]]) || !COLOR_RE.test(match[2])) return null;
   return makeIconDataUrl(match[1], match[2]);
 }

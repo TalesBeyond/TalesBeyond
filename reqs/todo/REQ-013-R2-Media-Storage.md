@@ -140,7 +140,7 @@ Moves a cloud table's uploaded media — token images, island backgrounds, and a
 |  | S013 | S | Prefix delete | `DELETE /<tableId>/` route (host only), called from the table-delete flow before `deleteTableRemote`, beside `deleteTableStorage`. | S002 | Worker directory, `src/components/Landing.jsx`, `src/lib/storageUpload.js` |
 |  | S014 | S | 3D types | Add `.glb`/`.gltf` to the Worker allow-list at 25 MB. No client code. | S002 | Worker directory |
 |  | S015 | X | Retire `table-audio` | Once no `audio_tracks` row has a bare (non-`r2:`) `storage_path`, remove the bucket from `TABLE_STORAGE_BUCKETS` and drop it and its policies in a migration (Q3). | S011 | `src/lib/storageUpload.js`, `supabase/migrations/` |
-|  | S016 | D | Docs and thesaurus | Document Worker setup, deploy, env vars, and the lifecycle rule in `supabase/README.md` (or a Worker README) and `SPEC.md` §9.6; add terms to `THESAURUS.md`: Media fingerprint, Media Worker, Self-heal. | S013, S014 | `THESAURUS.md`, `SPEC.md`, `supabase/README.md` |
+|  | S016 | D | Docs and thesaurus | Document Worker setup, deploy, env vars, and the lifecycle rule in `supabase/README.md` (or a Worker README) and `SPEC.md` §9.6; add terms to `reqs/GLOSSARY.md`: Media fingerprint, Media Worker, Self-heal. | S013, S014 | `reqs/GLOSSARY.md`, `SPEC.md`, `supabase/README.md` |
 
 ### Dependency graph
 
@@ -233,3 +233,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | ---- | ------ | ----------------- |
 | 2026-09-30 | Blaxine | Initial plan, from a `/create-req` interview (issuer, guest posture, key layout, retention, existing audio, read access, slices) and a deep-dive into `imageCache.js`, `GameView.jsx`, `storageUpload.js`, `audioEngine.js`, and the audio migrations. |
 | 2026-09-30 | Blaxine | Renumbered from REQ-010 (taken on develop by Default Catalog Assets); migration references updated for the renumbered 55_no_stored_images.sql and next migration 56. |
+| 2026-10-08 | Claude | Paths updated for the reqs/ rename. |
