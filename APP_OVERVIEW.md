@@ -262,12 +262,17 @@ returns `false` and the map does not hold it at the drop square.
   Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
   (`src/data/defaultTokens.js`), one click to place. Placing a default
   monster auto-seeds its **Droppables** loot list (see below). The heroes
-  gallery ends with one animated token, the **Sprite Warrior**
-  (`src/data/spriteTokens.js`, art in `src/assets/sprites/`): a two-frame
-  walk that plays while the pointer is over its tile or its token on the
-  map (and while the token is dragged), and stands still otherwise. Its
-  picture on the inspector's card plays along with the map token. It is
-  stored like any built-in icon, as `icon:sprite-warrior:<#color>`.
+  gallery ends with eight animated tokens, the **Sprite Warrior**, **Sprite
+  Rogue**, **Sprite Ranger**, **Sprite Wizard**, **Sprite Bard**, **Sprite
+  Barbarian**, **Sprite Cleric** and **Sprite Mage**
+  (`src/data/spriteTokens.js`, art in `src/assets/sprites/`): each a
+  two-frame walk that plays while the
+  pointer is over its tile or its token on the map (and while the token is
+  dragged), and stands still otherwise. Its picture on the inspector's card
+  plays along with the map token. Each is stored like any built-in icon, as
+  `icon:sprite-<name>:<#color>` (`sprite-warrior`, `sprite-rogue`,
+  `sprite-ranger`, `sprite-wizard`, `sprite-bard`, `sprite-barbarian`,
+  `sprite-cleric`, `sprite-mage`).
 - **Placeable** tiles (Door, Chest, Trap, Ambush): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
