@@ -8,7 +8,7 @@
 
 // Line thickness presets, as a fraction of one grid square — chalk on the
 // floor, so it scales with the map. A style's `width` is a preset's id or,
-// from the Pencil's Thickness slider, a number of squares.
+// from the Pencil's Brush size slider, a number of squares.
 export const DRAW_WIDTHS = [
   { id: 'fine', label: 'Fine', squares: 0.06 },
   { id: 'medium', label: 'Medium', squares: 0.12 },
@@ -27,9 +27,10 @@ export const PENCIL_MAX_POINTS = 400;
 // Points closer than this to the simplified line (in squares) are dropped.
 const PENCIL_TOLERANCE = 0.04;
 
-// The Thickness slider's range, in squares.
+// The Brush size slider's range, in squares: 1% is the finest line, 100% a
+// brush wide enough to paint an area in a few strokes.
 export const DRAW_WIDTH_MIN = 0.03;
-export const DRAW_WIDTH_MAX = 0.6;
+export const DRAW_WIDTH_MAX = 3;
 
 export function drawWidthSquares(width) {
   if (typeof width === 'number' && Number.isFinite(width)) return Math.max(DRAW_WIDTH_MIN, Math.min(DRAW_WIDTH_MAX, width));
@@ -37,6 +38,16 @@ export function drawWidthSquares(width) {
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
+
+// A style's `width` as the Brush size slider shows it (1 to 100%), and the
+// width a slider value stands for.
+export function brushPercent(width) {
+  return Math.max(1, Math.round((drawWidthSquares(width) / DRAW_WIDTH_MAX) * 100));
+}
+
+export function brushWidth(percent) {
+  return round2((percent / 100) * DRAW_WIDTH_MAX);
+}
 
 // Ramer–Douglas–Peucker: drops points that barely bend the line.
 function simplify(points, tolerance) {

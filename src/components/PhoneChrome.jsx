@@ -693,7 +693,7 @@ export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, 
 
 // ---------- the player's table menu ----------
 
-export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, islandConditions = [], feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onClose }) {
+export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, islandConditions = [], feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onReport, onClose }) {
   const [confirming, setConfirming] = useState(false);
   const islandConds = islandConditions.map((k) => getIslandCondition(k)?.label).filter(Boolean);
   return (
@@ -730,6 +730,11 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
             <dd>{islandConds.length ? islandConds.join(', ') : 'None'}</dd>
           </dl>
         </section>
+        {onReport && (
+          <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onReport}>
+            Report this table
+          </button>
+        )}
         {confirming ? (
           <div className="phone-confirm" role="alertdialog" aria-label="Leave the table?">
             <p>Leave {layerName}? You’ll need the invitation code to join again.</p>

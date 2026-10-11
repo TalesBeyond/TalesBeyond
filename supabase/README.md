@@ -72,6 +72,7 @@ The sixteen migrations, in order:
 28. `..._fog_chunks.sql` — Fog of war: a `fog_chunks` table (one row per rectangle of fog, in whole squares, tied to its island and deleted with it, with its `revealed` state and its `reveal_on_enter` setting; members read, host writes), added to the realtime publication
 29. `..._fogged_tokens.sql` — Fog of war: `entities.fogged`, written only by the DM's client for a token standing wholly inside fog. A fogged token's row is readable by the host only (the read policy gains `and not fogged`), and the write trigger keeps `fogged` the DM's, like `hidden` and `locked`
 30. `..._more_custom_assets.sql` — Asset Storage keeps three more kinds of a table's own: `custom_assets.asset_type` may also be `food`, `spell` or `potion` (a dish or a potion can carry a recipe in its `data`)
+31. `..._moderation.sql` — the Terms of Use, enforced: `create_table` / `join_table` take the terms version the caller accepted and record it (`terms_acceptances`), refuse a blocked identity (`banned_users`), and `report_table` lets anyone seated at a table report it (`content_reports`). No browser can read these tables; the operator works them with `npm run moderate` (see `MODERATION.md`)
 
 ## 3. Enable anonymous sign-in
 

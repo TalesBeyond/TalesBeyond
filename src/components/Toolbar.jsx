@@ -147,6 +147,7 @@ const ICON_PATHS = {
   lock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 6 0v3',
   unlock: 'M5 9h10v8H5zM7 9V6a3 3 0 0 1 5.5-1.5',
   leave: 'M8 3H4v14h4M8 10h9M14 7l3 3-3 3',
+  flag: 'M5 17V3M5 4h10l-2.5 3.5L15 11H5',
   timer: 'M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 8v4M8 2h4',
   rolllog: 'M4 3h9l3 3v11H4zM7 8h6M7 11h6M7 14h4',
   charlog: 'M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 17v-1a6 6 0 0 1 8.5-5.5M12.5 17l.5-2.5 3.5-3.5 2 2-3.5 3.5z',
@@ -315,6 +316,7 @@ export default function Toolbar({
   onExport,
   onImport,
   onLeave,
+  onReport,
   lastSavedLabel,
   layers,
   layerOrder,
@@ -1458,6 +1460,7 @@ export default function Toolbar({
               </section>
             )}
             <section className="drawer-section">
+              {onReport && <DrawerCard icon="flag" label="Report this table" text="Tells us about content here that breaks the rules." onClick={onReport} />}
               <DrawerCard icon="leave" label="Leave" text="Leaves this table and goes back to the start." danger onClick={onLeave} />
             </section>
           </>
@@ -1533,6 +1536,7 @@ export default function Toolbar({
           }
           title="What every button and tool does"
         />
+        {onReport && <ToolCard icon={<Icon name="flag" />} label="Report this table" onClick={() => pick(onReport)} title="Tell us about content here that breaks the rules" />}
           </>
         )}
       </ToolMenu>

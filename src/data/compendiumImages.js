@@ -16,7 +16,9 @@
 //
 // A foods or potions folder can also hold `_default.<ext>`: the picture for
 // every dish or potion in it that has none of its own (ingredients are left
-// without one). The underscore keeps the name clear of every slug.
+// without one). `_<category>.<ext>` does the same for one category of the
+// folder, ahead of `_default`: potions/_elixir.png is every elixir's picture.
+// The underscore keeps the name clear of every slug.
 
 import { slugify } from './slugify.js';
 
@@ -39,7 +41,8 @@ export function compendiumImage(kind, name) {
   return INDEX[`${kind}/${slugify(name)}`] || null;
 }
 
-// A folder's stand-in picture (`_default`), or null when it has none.
-export function compendiumDefaultImage(kind) {
-  return INDEX[`${kind}/_default`] || null;
+// A folder's stand-in picture: the one for `category` (`_elixir`) when it has
+// one, else `_default`, or null when it has neither.
+export function compendiumDefaultImage(kind, category) {
+  return (category && INDEX[`${kind}/_${slugify(category)}`]) || INDEX[`${kind}/_default`] || null;
 }

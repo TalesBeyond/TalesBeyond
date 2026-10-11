@@ -132,6 +132,14 @@ player could bypass. See `PITFALLS.md` #1 for how this decision was made.
    - **Join a table**: invite code + name + color. A returning browser
      (same anonymous identity/localStorage identity) resumes its existing
      seat instead of creating a duplicate.
+   - **Terms box**: every form that puts someone at a table (host, guest
+     host, resume, join) has a checkbox agreeing to the Terms of Use and
+     Privacy Policy, to being old enough, and to add no pornographic
+     content; its button stays disabled until it is ticked. It is asked on
+     each visit; a page refresh that resumes a table skips it. On a cloud
+     table the accepted terms version (`LEGAL.termsVersion`) is recorded by
+     `create_table` / `join_table` / `record_terms_acceptance`
+     (`71_moderation.sql`); a guest or local table records nothing.
    - **Local-mode-only "testing" escape hatch**: a `hostKey` (a second,
      private code shown only to the host) can re-seat someone as host of
      a table saved in *this browser* if they ever get dropped from the
@@ -404,8 +412,9 @@ map; every seated player sees the result, and only the DM can draw.
   drawing it touches, whole). A press in Draw always draws, even on a token;
   right-drag still pans.
 - **Style**: a colour wheel with brightness, 8 swatches and the last 5
-  colours used; 4 thicknesses, and with the Pencil a Thickness slider beside
-  the bar (a style's `width` is then a number of squares); a see-through
+  colours used; 4 thicknesses, and with the Pencil a Brush size slider beside
+  the bar, 1 to 100% of a brush 3 squares wide (a style's `width` is then a
+  number of squares); a see-through
   fill for circles and rectangles. **Snap to grid** puts line ends and circle centres on grid
   corners or square centres, radii on whole squares and rectangle corners on
   grid corners. A feet label (the ruler's look) shows while drawing or
@@ -488,6 +497,17 @@ they choose otherwise.
   Party → Roll log on a phone). The DM's hidden rolls are marked "Only you";
   revealed ones show as "The DM" with "Shown by the DM". The dice window says
   who will see the next roll.
+
+### Reporting a table (`ReportModal.jsx`)
+
+**Report this table** sits in the table menu for everyone seated (the
+Configurations drawer or menu on desktop, the table menu on a phone): a
+reason and an optional description. On a cloud table it is saved for the
+operator through `report_table` (`71_moderation.sql`); a guest or local
+table has no row on the server, so the button opens an email to
+`LEGAL.contactEmail` with the table's code written in. The DM and the other
+players are not told. The operator reads reports, removes tables and blocks
+identities with `npm run moderate` — see `MODERATION.md`.
 
 ### Hints (`Hints.jsx`)
 
@@ -588,6 +608,7 @@ policy and RPC below keys off that session's `auth.uid()`.
 | `68_fog_chunks.sql` | Fog of war: a `fog_chunks` table (one row per rectangle of fog in whole squares, `island_id` cascading from `islands`, with `revealed` and `reveal_on_enter`), members read, host writes; added to the realtime publication |
 | `69_fogged_tokens.sql` | Fog of war: `entities.fogged`, written only by the DM's client for a token standing wholly in fog. The `entities` read policy gains `and not fogged` for players, and `enforce_entity_write_permissions` keeps `fogged` the DM's, beside `hidden` and `locked` |
 | `70_more_custom_assets.sql` | Asset Storage keeps food and drink, spells and potions of the table's own: `custom_assets.asset_type` may also be `food`, `spell` or `potion`. |
+| `71_moderation.sql` | The Terms of Use, enforced: `terms_acceptances` (who accepted which terms version for which table, written by `create_table` / `join_table`, which now refuse without one), `banned_users` (a blocked identity can neither host nor join), `content_reports` (written by `report_table`, for anyone seated) and `moderation_actions`. None has a policy, so no browser reads them; the operator uses `scripts/moderation-admin.mjs` |
 | `16_dm_only_edits.sql` | The DM is the only one who edits information — INSERT/DELETE on `entities` becomes host-only, and a BEFORE UPDATE trigger (`enforce_entity_write_permissions`) restricts a non-host's UPDATE to exactly two cases: moving their own hero (col/row/island_id), or opening/closing a chest (opened/image_url) |
 
 Every table trusts "any seated member of this table" for reads and (for

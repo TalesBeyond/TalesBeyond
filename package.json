@@ -8,6 +8,7 @@
     "dev:duo": "powershell -ExecutionPolicy Bypass -File launch-two-players.ps1",
     "env:pull": "npx vercel env pull .env",
     "catalog:seed": "node --env-file=.env scripts/catalog-admin.mjs",
+    "moderate": "node --env-file=.env scripts/moderation-admin.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "git config core.hooksPath .githooks || true"

@@ -901,7 +901,7 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .draw-bar-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
 .draw-clear-popover { width: 240px; padding: 8px; }
 /* The active tool's slider (DrawingBar.jsx ToolSlider): the Pencil's
-   thickness, Fill's opacity. */
+   brush size, Fill's opacity. */
 .draw-tool-slider-pop {
   position: absolute;
   left: calc(100% + 10px);
@@ -919,7 +919,7 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .draw-tool-slider-head b { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-weight: 600; color: var(--parchment-100); }
 .draw-tool-slider input { width: 100%; margin: 0; accent-color: var(--gold-hi); }
 .draw-tool-slider-head b { min-height: 18px; }
-.draw-tool-slider-line { width: 40px; border-radius: 999px; }
+.draw-tool-slider-brush { flex-shrink: 0; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25); }
 .draw-tool-slider-swatch {
   width: 16px;
   height: 16px;
@@ -5824,7 +5824,13 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 /* ---------- Legal pages (LegalPage.jsx) ---------- */
 
 .legal-consent { margin: 14px 2px 0; font-size: 12.5px; line-height: 1.5; color: var(--parchment-300); }
-.legal-consent a, .legal-footer a, .legal-doc a, .legal-tabs a { color: var(--gold-hi, var(--parchment-100)); text-underline-offset: 3px; }
+.legal-consent-check { display: flex; align-items: flex-start; gap: 10px; margin: 14px 2px 4px; font-size: 13.5px; color: var(--parchment-200); cursor: pointer; }
+.legal-consent-check input { flex-shrink: 0; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--gold-line); cursor: pointer; }
+.legal-consent a, .legal-footer a, .legal-doc a, .legal-tabs a, .landing-header a { color: var(--gold-hi, var(--parchment-100)); text-underline-offset: 3px; }
+
+/* The landing screen's top row: the Contact us link, over the hero and the card. */
+.landing-header { width: 100%; max-width: 1240px; margin-bottom: 20px; display: flex; justify-content: flex-end; flex-shrink: 0; font-size: 14.5px; }
+.landing-header a { min-height: 32px; display: inline-flex; align-items: center; }
 
 .legal-footer { width: 100%; max-width: 1240px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--ink-700); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
 .legal-footer nav { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13.5px; }

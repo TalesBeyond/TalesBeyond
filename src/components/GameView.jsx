@@ -125,6 +125,7 @@ import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
 import { DoorInspector, TrapInspector, AmbushInspector, FogChunkCard } from './RightPanel.jsx';
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
+import ReportModal from './ReportModal.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
 import FxLayer from './FxLayer.jsx';
@@ -436,6 +437,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [panelWidths, setPanelWidths] = useState(loadPanelWidths);
   const [showClockModal, setShowClockModal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   // Only changes when the day/night phase does, so the map can react to dusk
   // arriving without this whole screen re-rendering every second.
   const clockPhase = useDayPhase(state.clock);
@@ -3696,6 +3698,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onExport={exportTable}
         onImport={importTable}
         onLeave={leaveTable}
+        onReport={() => setShowReport(true)}
         onKickPlayer={isHost ? setPendingKickId : null}
         onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
         theme={theme}
@@ -4055,6 +4058,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </button>
         )}
 
+        {showReport && (
+          <ReportModal mode={mode} tableId={state.session.tableId} code={state.session.code} onClose={() => setShowReport(false)} />
+        )}
+
         {showClockModal && isHost && (
           <ClockModal
             clock={state.clock}
@@ -4338,6 +4345,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               hideDrawings={hideDrawings}
               onHideDrawingsChange={setHideDrawings}
               onLeave={leaveTable}
+              onReport={() => {
+                setPhoneSheet(null);
+                setShowReport(true);
+              }}
               onClose={() => setPhoneSheet(null)}
             />
           )}
@@ -4408,6 +4419,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               revealRolls={revealRolls}
               onRevealRollsChange={setRevealRolls}
               onLeave={leaveTable}
+              onReport={() => {
+                setPhoneSheet(null);
+                setShowReport(true);
+              }}
               onClose={() => setPhoneSheet(null)}
             />
           )}

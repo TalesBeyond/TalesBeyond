@@ -163,8 +163,8 @@ function recipeChapterEntries({ made, larder, own = [], filter, q, keyPrefix, fo
           ['Cost', formatCost(e.cost)],
         ],
         item: e,
-        // Its own picture, else the chapter's stand-in for a made thing.
-        image: (e.id ? null : entryImage(folder, e.name)) || (isIngredient(e) ? null : compendiumDefaultImage(folder)),
+        // Its own picture, else the chapter's stand-in for a made thing of its kind.
+        image: (e.id ? null : entryImage(folder, e.name)) || (isIngredient(e) ? null : compendiumDefaultImage(folder, e.category)),
       };
     });
 }
