@@ -36,6 +36,7 @@ import { uniqueTokenName } from '../utils/tokenNames.js';
 import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
 import { resolveImage, storeImage } from '../lib/imageCache.js';
+import { imageErrorMessage } from '../lib/imageSafety.js';
 import {
   saveSession,
   deleteSession,
@@ -126,6 +127,7 @@ import { DoorInspector, TrapInspector, AmbushInspector, FogChunkCard } from './R
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import ReportModal from './ReportModal.jsx';
+import ImageCheckNotice from './ImageCheckNotice.jsx';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
 import FxLayer from './FxLayer.jsx';
@@ -1545,8 +1547,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return isSharedTable && typeof url === 'string' && url.startsWith('data:') && !iconRefForUrl(url);
   }
 
-  function shareImageFailed() {
-    alert('Could not keep that image in this browser — try a different file.');
+  function shareImageFailed(err) {
+    alert(imageErrorMessage(err, 'Could not keep that image in this browser — try a different file.'));
   }
 
   // A draft (what the token sidebar, the compendium or an ambush hands over)
@@ -4057,6 +4059,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             🔊 Tap to enable sound
           </button>
         )}
+
+        <ImageCheckNotice />
 
         {showReport && (
           <ReportModal mode={mode} tableId={state.session.tableId} code={state.session.code} onClose={() => setShowReport(false)} />

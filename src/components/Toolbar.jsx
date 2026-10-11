@@ -6,6 +6,7 @@ import DiceModal from './DiceModal.jsx';
 import { clampGridDims, clampFeetPerSquare, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
 import { resolveImage } from '../lib/imageCache.js';
 import { islandsBounds, resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
+import { imageErrorMessage } from '../lib/imageSafety.js';
 import MapImageFit, { defaultImagePlacement } from './MapImageFit.jsx';
 import { WEAPONS, WEAPON_TYPES, DICE_TYPES as WEAPON_DICE_TYPES, CLASSES, averageDamage } from '../data/weapons.js';
 import { ITEMS, ITEM_CATEGORIES } from '../data/items.js';
@@ -2224,8 +2225,8 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
       const untouched = JSON.stringify(fit.place) === JSON.stringify(fit.initial) && !Object.keys(fit.placements).length;
       onSaveBackground(await onPrepareBackground(fit.file, { cols: nextCols, rows: nextRows }, members.length < 2 && untouched ? null : fit.place, fit.placements));
       closeFit();
-    } catch {
-      alert('Could not read that image — try a different file.');
+    } catch (err) {
+      alert(imageErrorMessage(err, 'Could not read that image — try a different file.'));
     } finally {
       setBusy(false);
     }

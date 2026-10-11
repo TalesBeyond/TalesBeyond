@@ -5867,6 +5867,10 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   .legal-footer { margin-top: 20px; }
 }
 
+/* ---------- Picture filter notice (ImageCheckNotice.jsx) ---------- */
+
+.image-check-notice { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 900; box-sizing: border-box; max-width: min(560px, calc(100vw - 24px)); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 16px; border: 1px solid var(--gold-line); border-radius: 12px; background: var(--ink-900); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55); color: var(--parchment-100); font-size: 14px; line-height: 1.45; }
+
 /* ---------- First-table tutorial (Tour.jsx) ---------- */
 
 .tour { position: fixed; inset: 0; z-index: 1000; }

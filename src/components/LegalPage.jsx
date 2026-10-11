@@ -11,6 +11,8 @@ import { LEGAL as L, LEGAL_DOCS } from '../data/legal.js';
 //   - bundled sounds, fonts, rules  -> CreditsDoc
 //   - what is kept about accepted terms, reports and blocks
 //     (71_moderation.sql)           -> PrivacyDoc sections 3, 5, 6 and 10
+//   - where pictures are checked (lib/imageSafety.js: on the device,
+//     nothing sent)                 -> PrivacyDoc section 4, TermsDoc section 6
 // The operator's own details (name, contact, governing law) live in
 // data/legal.js.
 
@@ -155,6 +157,12 @@ function PrivacyDoc() {
         Table names, character names, notes, pictures and audio are whatever you choose to put in. Please do not put
         sensitive personal information in them (health details, identity numbers, anything about a real person that
         they would not want shared). Everyone at your table can see most of what is on it.
+      </p>
+      <p>
+        <strong>Pictures are checked on your own device.</strong> Before a picture is added to a table, and when your
+        browser receives one from another player, a small program in your browser scores it for pornographic or
+        sexually explicit content and refuses it if it finds any. The picture is not sent to us or to anyone else for
+        this, and we keep no record of what was checked or refused.
       </p>
 
       <h2>5. Who can see what at a table</h2>
@@ -569,6 +577,13 @@ function TermsDoc() {
         table and to remove a player who adds it.
       </p>
       <p>
+        <strong>Pictures are checked automatically.</strong> Every picture is scored for pornographic or sexually
+        explicit content by a program in your own browser, before it is added and again when another player&rsquo;s
+        browser receives it, and is refused if it finds any. The check is automatic and can be wrong either way: a
+        picture it lets through can still break these terms, and if it refuses one that does not, try another or
+        write to <Mail />. You may not switch it off or work around it.
+      </p>
+      <p>
         <strong>What we do about it.</strong> We do not watch tables, and a guest table never reaches our database, so
         we cannot see what is on it. When we learn of content that breaks this section we may remove it, delete the
         table, delete the account and block the person who added it from hosting or joining again, without notice. Where content appears to involve the
@@ -717,7 +732,8 @@ function CreditsDoc() {
       <h2>5. Software</h2>
       <p>
         {L.appName} is built with open-source software, including React, Vite and the Supabase client library, each
-        used under the MIT License. Their copyright notices and licence texts are kept with the software.
+        used under the MIT License. The picture check uses NSFWJS (MIT License) and TensorFlow.js (Apache License
+        2.0). Their copyright notices and licence texts are kept with the software.
       </p>
 
       <h2>6. Content added by users</h2>

@@ -4,6 +4,7 @@ import { Hint } from './Hints.jsx';
 import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
 import { SPRITE_HEROES, spriteForUrl } from '../data/spriteTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
+import { imageErrorMessage } from '../lib/imageSafety.js';
 import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
@@ -239,7 +240,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         maxHp: pendingKind === 'mob' ? 15 : 20,
       });
     } catch (err) {
-      alert('Could not read that image — try a different file.');
+      alert(imageErrorMessage(err, 'Could not read that image — try a different file.'));
     }
   }
 

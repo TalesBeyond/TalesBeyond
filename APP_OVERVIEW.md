@@ -498,6 +498,32 @@ they choose otherwise.
   revealed ones show as "The DM" with "Shown by the DM". The dice window says
   who will see the next roll.
 
+### Picture filter (`lib/imageSafety.js`, `ImageCheckNotice.jsx`)
+
+Every picture is scored in the browser for pornographic or explicit content
+by a small classifier (NSFWJS on TensorFlow.js) before it is used. Nothing
+is sent anywhere for this.
+
+- **When a DM picks one** (a token, a map background, a monster's portrait):
+  `resizeImageToDataUrl` / `sliceImageForIslands` (`utils/image.js`) and
+  `storeImage` (`lib/imageCache.js`) reject with `BlockedImageError`, and the
+  picture is not added. If the check cannot run (no connection for the
+  classifier), the picture is not added either.
+- **When a browser receives one** from another (`acceptImage`), or reads one
+  it kept from before the filter existed: a refused picture is dropped and
+  never asked for again this session; its token shows its kind's default
+  icon and a notice says a picture was blocked on this device. If the check
+  cannot run here, the picture is shown.
+- **Limits** are `LIMITS` at the top of `imageSafety.js`: how sure the
+  classifier must be, with more room for received pictures than picked ones.
+  A large picture is also scored in quarters.
+- The classifier and its model (about 5 MB) load on the first check, in
+  their own chunks, never on the start screen.
+
+It does not tell a person's age and is not a detector of child sexual abuse
+material. Server-side scanning for that is planned with the move to R2:
+`CLOUDFLARE_SCANNING.md`.
+
 ### Reporting a table (`ReportModal.jsx`)
 
 **Report this table** sits in the table menu for everyone seated (the

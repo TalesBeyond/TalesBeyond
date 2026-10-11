@@ -30,6 +30,19 @@ knowing about it.
   export or remove one; you can only answer the report and block an identity
   if you have it.
 
+## What is checked automatically
+
+Every picture is scored for pornographic or explicit content in the browser,
+when a DM picks it and again when another player's browser receives it
+(`src/lib/imageSafety.js`). A refused picture is never added or shown. You
+are not told about refusals: nothing leaves the device.
+
+The filter makes mistakes both ways, and it cannot tell a person's age. A
+report about a picture that got through is still yours to handle. Scanning
+on the server, including matching against lists of known child sexual abuse
+material, is planned for when pictures move to Cloudflare R2
+(`CLOUDFLARE_SCANNING.md`).
+
 ## Handling a report
 
 1. Read it: `npm run moderate -- reports`
@@ -94,6 +107,10 @@ Every `export`, `remove`, `ban` and `unban` is written to the
 - **A block stops an identity, not a person.** Most people have an anonymous
   identity kept in their browser; clearing the browser's data gives them a
   new one.
+- **The picture filter runs in the user's own browser.** Someone who
+  changes the app's code can switch off their own check. They still cannot
+  make another player's browser show the picture, because that browser
+  checks it again.
 - **No freeze.** A table cannot be hidden from its players while it is kept;
   it is there, or it is removed.
 - **Accepted terms are recorded for cloud tables only**
