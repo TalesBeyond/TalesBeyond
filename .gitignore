@@ -8,6 +8,9 @@ dist-ssr
 # Default catalog source files (pictures, songs, models) for the admin script
 catalog-assets/
 
+# Copies of removed tables made by the moderation script (MODERATION.md)
+moderation-exports/
+
 # Environment secrets — never commit real Supabase credentials
 .env
 .env.local

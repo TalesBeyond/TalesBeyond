@@ -201,6 +201,7 @@ export function PhoneHostMenu({
   revealRolls = false,
   onRevealRollsChange,
   onLeave,
+  onReport,
   onClose,
 }) {
   const [shown, setShown] = useState(false);
@@ -321,6 +322,11 @@ export function PhoneHostMenu({
 
         <PhoneLookAndSound theme={theme} onThemeChange={onThemeChange} muted={muted} onMutedChange={onMutedChange} hideDrawings={hideDrawings} onHideDrawingsChange={onHideDrawingsChange} />
 
+        {onReport && (
+          <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onReport}>
+            Report this table
+          </button>
+        )}
         <button type="button" className="phone-btn-danger-ghost phone-btn-full" onClick={onLeave}>
           Leave the table
         </button>

@@ -86,7 +86,7 @@ function SwatchRow({ label, colours, current, onPick }) {
 
 export default function DrawStylePanel({ style, recent = [], onChange }) {
   const set = (patch) => onChange({ ...style, ...patch });
-  // A width from the Pencil's slider lights the preset it matches, if any.
+  // A width from the Pencil's Brush size slider lights the preset it matches, if any.
   const widthSquares = drawWidthSquares(style.width);
   return (
     <div className="draw-style">

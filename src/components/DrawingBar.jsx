@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import DrawStylePanel from './DrawStyle.jsx';
-import { DRAW_WIDTH_MAX, DRAW_WIDTH_MIN, drawWidthSquares } from '../utils/drawing.js';
+import { brushPercent, brushWidth, drawWidthSquares } from '../utils/drawing.js';
 
 // The DM's drawing bar (desktop): floats at the map's left edge while the
 // Draw tool is active. Picks the drawing tool, the style (colour button →
@@ -67,21 +67,22 @@ export function DrawClearMenu({ islandName, mapName, islandCount, mapCount, onCl
 }
 
 // The one setting the active tool wants at hand, as a slider: the Pencil's
-// thickness, Fill's opacity. Beside the desktop bar, and a row of the
-// phone's bar. Thickness counts in hundredths of a square.
+// brush size, Fill's opacity. Beside the desktop bar, and a row of the
+// phone's bar. Brush size runs from the finest line to the widest brush
+// (drawing.js brushWidth).
 const TOOL_SLIDERS = {
   pencil: {
-    label: 'Thickness',
-    min: Math.round(DRAW_WIDTH_MIN * 100),
-    max: Math.round(DRAW_WIDTH_MAX * 100),
+    label: 'Brush size',
+    min: 1,
+    max: 100,
     step: 1,
-    read: (style) => Math.round(drawWidthSquares(style.width) * 100),
-    write: (v) => ({ width: v / 100 }),
-    text: (v) => `${v}% of a square`,
-    preview: (v, style) => (
-      <i className="draw-tool-slider-line" style={{ height: Math.max(2, Math.round((v / 100) * 30)), background: style.color }} />
-    ),
-    hideText: true,
+    read: (style) => brushPercent(style.width),
+    write: (v) => ({ width: brushWidth(v) }),
+    text: (v) => `${v}%`,
+    preview: (v, style) => {
+      const size = 4 + Math.round((v / 100) * 14);
+      return <i className="draw-tool-slider-brush" style={{ width: size, height: size, background: style.color }} />;
+    },
   },
   fill: {
     label: 'Opacity',
@@ -105,7 +106,7 @@ export function ToolSlider({ settings, onChange }) {
         <span>{spec.label}</span>
         <b>
           {spec.preview(value, settings.style)}
-          {!spec.hideText && spec.text(value)}
+          {spec.text(value)}
         </b>
       </span>
       <input

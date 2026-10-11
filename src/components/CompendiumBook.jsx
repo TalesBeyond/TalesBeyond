@@ -8,7 +8,9 @@ import { recipesUsing } from '../data/merchants.js';
 import { SPELL_LEVELS } from '../data/characterSheet.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
+import { imageErrorMessage } from '../lib/imageSafety.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
+import { compendiumDefaultImage } from '../data/compendiumImages.js';
 import { emitFx } from '../lib/fx.js';
 import { Hint } from './Hints.jsx';
 import { usePhoneLayout } from './PhoneChrome.jsx';
@@ -162,7 +164,8 @@ function recipeChapterEntries({ made, larder, own = [], filter, q, keyPrefix, fo
           ['Cost', formatCost(e.cost)],
         ],
         item: e,
-        image: e.id ? null : entryImage(folder, e.name),
+        // Its own picture, else the chapter's stand-in for a made thing of its kind.
+        image: (e.id ? null : entryImage(folder, e.name)) || (isIngredient(e) ? null : compendiumDefaultImage(folder, e.category)),
       };
     });
 }
@@ -405,7 +408,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
       setMonsterImages(next);
       if (!saveMonsterImages(next)) setFeedback('Image used for now; this browser could not save it');
     } catch (err) {
-      setFeedback('Could not read that image');
+      setFeedback(imageErrorMessage(err, 'Could not read that image'));
     }
   }
 

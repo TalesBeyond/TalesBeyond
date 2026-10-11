@@ -27,6 +27,7 @@ import {
   mapDbPlayer,
 } from './mappers.js';
 import { customAssetDataToDb } from './storedImages.js';
+import { LEGAL } from '../data/legal.js';
 
 // dmNotes/droppables live in their own host-only-readable table (see
 // 15_entity_dm_data_privacy.sql) instead of on `entities` — split a patch
@@ -40,8 +41,18 @@ function must(result, context) {
 
 // ---- Table lifecycle ----
 
+// create_table and join_table record which terms the caller accepted on the
+// landing screen (71_moderation.sql). A project that has not run that
+// migration yet has no such parameter (PostgREST answers PGRST202), and that
+// must not stop anyone hosting or joining.
+async function rpcWithTerms(fn, params) {
+  const result = await supabase.rpc(fn, { ...params, p_terms_version: LEGAL.termsVersion });
+  if (result.error?.code === 'PGRST202') return supabase.rpc(fn, params);
+  return result;
+}
+
 export async function createTableRemote({ name, cols, rows, displayName, color }) {
-  const { data, error } = await supabase.rpc('create_table', {
+  const { data, error } = await rpcWithTerms('create_table', {
     p_name: name,
     p_cols: cols,
     p_rows: rows,
@@ -54,7 +65,7 @@ export async function createTableRemote({ name, cols, rows, displayName, color }
 }
 
 export async function joinTableRemote({ code, displayName, color }) {
-  const { data, error } = await supabase.rpc('join_table', {
+  const { data, error } = await rpcWithTerms('join_table', {
     p_code: code,
     p_display_name: displayName,
     p_color: color,
@@ -62,6 +73,25 @@ export async function joinTableRemote({ code, displayName, color }) {
   if (error) throw new Error(`join_table: ${error.message}`);
   const row = data[0];
   return { tableId: row.table_id, playerId: row.player_id };
+}
+
+// A returning host or player resumes a seat without create_table or
+// join_table, so the terms they just ticked are recorded on their own.
+// Never worth blocking the resume over: failures are swallowed.
+export async function acceptTermsRemote(tableId) {
+  try {
+    await supabase.rpc('record_terms_acceptance', { p_table_id: tableId, p_terms_version: LEGAL.termsVersion });
+  } catch {
+    // Not recorded this time.
+  }
+}
+
+// Anyone seated at a cloud table can report it to the operator
+// (71_moderation.sql). `reason` is one of REPORT_REASONS' keys
+// (components/ReportModal.jsx).
+export async function reportTableRemote(tableId, reason, details) {
+  const { error } = await supabase.rpc('report_table', { p_table_id: tableId, p_reason: reason, p_details: details });
+  if (error) throw new Error(error.message);
 }
 
 export async function regenerateInviteCodeRemote(tableId) {

@@ -9,6 +9,10 @@ import { LEGAL as L, LEGAL_DOCS } from '../data/legal.js';
 //   - browser storage keys          -> the table in CookiesDoc
 //   - a new outside service or font -> "Who we share data with" + CookiesDoc
 //   - bundled sounds, fonts, rules  -> CreditsDoc
+//   - what is kept about accepted terms, reports and blocks
+//     (71_moderation.sql)           -> PrivacyDoc sections 3, 5, 6 and 10
+//   - where pictures are checked (lib/imageSafety.js: on the device,
+//     nothing sent)                 -> PrivacyDoc section 4, TermsDoc section 6
 // The operator's own details (name, contact, governing law) live in
 // data/legal.js.
 
@@ -111,7 +115,19 @@ function PrivacyDoc() {
         <li>
           <strong>Preferences:</strong> for example the colour palette you picked.
         </li>
+        <li>
+          <strong>That you accepted the terms:</strong> which version of the Terms of Use you ticked the box for, for
+          which table, and when, kept with your user ID.
+        </li>
       </ul>
+
+      <h3>When you report a table</h3>
+      <p>
+        If you use &ldquo;Report this table&rdquo; at a cloud table, we keep your report: the reason you picked, what
+        you wrote, your display name and user ID, whether you were the DM, the table&rsquo;s name and invitation code,
+        the DM&rsquo;s user ID, and the time. A report about a guest table is an email you send us, and we keep that
+        email.
+      </p>
 
       <h3>When you create a host account</h3>
       <p>
@@ -142,6 +158,12 @@ function PrivacyDoc() {
         sensitive personal information in them (health details, identity numbers, anything about a real person that
         they would not want shared). Everyone at your table can see most of what is on it.
       </p>
+      <p>
+        <strong>Pictures are checked on your own device.</strong> Before a picture is added to a table, and when your
+        browser receives one from another player, a small program in your browser scores it for pornographic or
+        sexually explicit content and refuses it if it finds any. The picture is not sent to us or to anyone else for
+        this, and we keep no record of what was checked or refused.
+      </p>
 
       <h2>5. Who can see what at a table</h2>
       <ul>
@@ -156,6 +178,10 @@ function PrivacyDoc() {
         </li>
         <li>
           <strong>DM-only material</strong> (private notes, monster sheets, hidden traps) is not sent to players.
+        </li>
+        <li>
+          <strong>Reports</strong> are read only by us. The DM and the other players are not told who reported a
+          table, or that it was reported.
         </li>
         <li>
           <strong>Anyone with the invitation code</strong> can join a table that is open. The DM can remove a player,
@@ -173,6 +199,11 @@ function PrivacyDoc() {
         <li>To run the game: seat you at a table, keep everyone&rsquo;s screen in step, and save cloud tables.</li>
         <li>To sign you in, if you have an account.</li>
         <li>To keep the service secure and prevent abuse (for example limits on how many tables one host can create).</li>
+        <li>
+          To enforce the <a href="#/legal/terms">Terms of Use</a>: to show that they were accepted, to look into
+          reports, to remove tables that break them, and to block the user ID of someone who broke them from hosting
+          or joining again.
+        </li>
         <li>To meet legal obligations, and to answer you when you write to us.</li>
       </ul>
       <p>
@@ -251,6 +282,15 @@ function PrivacyDoc() {
         <li>
           <strong>Host accounts and anonymous sign-ins:</strong> kept until you ask us to delete them, or until we
           remove inactive ones.
+        </li>
+        <li>
+          <strong>Accepted terms, reports and our record of what we did about them:</strong> kept after the table or
+          the seat is gone, for as long as we may need them to show how a table was handled or to meet a legal
+          obligation. A blocked user ID stays on the block list until we lift the block.
+        </li>
+        <li>
+          <strong>A table we removed for breaking the terms:</strong> deleted like any other. Where the law requires
+          us to keep material for the authorities, we keep a copy for the time it requires and no longer.
         </li>
         <li>
           <strong>Server logs:</strong> kept by our providers for a limited period, as their policies describe.
@@ -423,8 +463,8 @@ function TermsDoc() {
 
       <p>
         These terms are the agreement between you and {L.operator} (&ldquo;we&rdquo;, &ldquo;us&rdquo;) for using{' '}
-        {L.appName}. By hosting or joining a table, or creating an account, you agree to them. If you do not agree,
-        please do not use {L.appName}.
+        {L.appName}. You agree to them when you tick the box on the start screen and host or join a table, or when you
+        create an account. If you do not agree, please do not use {L.appName}.
       </p>
 
       <h2>1. What {L.appName} is</h2>
@@ -436,8 +476,9 @@ function TermsDoc() {
 
       <h2>2. Who can use it</h2>
       <p>
-        You must be at least {L.minAge} years old. If you are under the age of majority where you live, you need a
-        parent or guardian&rsquo;s permission, and they agree to these terms for you.
+        You must be at least {L.minAge} years old, and by ticking the box on the start screen you confirm that you
+        are. If you are under the age of majority where you live, you need a parent or guardian&rsquo;s permission,
+        and they agree to these terms for you.
       </p>
 
       <h2>3. Tables, codes and accounts</h2>
@@ -484,6 +525,7 @@ function TermsDoc() {
       <p>You agree not to:</p>
       <ul>
         <li>harass, threaten, or abuse other people, or share content that sexualises minors;</li>
+        <li>add pornographic or sexually explicit content of any kind (section 6 below);</li>
         <li>upload anything illegal, or anything you have no right to share;</li>
         <li>put other people&rsquo;s personal information on a table without their permission;</li>
         <li>try to get into tables, accounts or data that are not yours, or guess invitation codes;</li>
@@ -492,7 +534,69 @@ function TermsDoc() {
         <li>pretend to be someone else, or misrepresent your connection to a person or company.</li>
       </ul>
 
-      <h2>6. Copyright complaints</h2>
+      <h2>6. Sexual and pornographic content</h2>
+      <p>
+        {L.appName} is open to players from the age of {L.minAge}, and it is not an adult service. Pornographic and
+        sexually explicit content is not allowed anywhere in it, at any table, whoever is seated there, and whether or
+        not everyone present is an adult and agrees to it.
+      </p>
+      <p>You must not add, upload, draw, write, play or link to:</p>
+      <ul>
+        <li>
+          <strong>Pornography or sexually explicit material:</strong> pictures, drawings, audio or text that show or
+          describe sexual acts, or that show genitals or nudity in a sexual way. It makes no difference whether it is
+          a photograph, a drawing, computer-made or made with AI.
+        </li>
+        <li>
+          <strong>Anything sexual involving a minor</strong>, or a character who is or appears to be under 18, in any
+          form, including fiction, drawings and AI-made images.
+        </li>
+        <li>
+          <strong>Sexual or intimate pictures of a real person</strong> shared without their consent, including faked
+          or AI-made ones.
+        </li>
+        <li>
+          <strong>Sexual advances towards a minor</strong>, requests for sexual pictures from anyone, or sexual
+          material sent to someone who did not ask for it.
+        </li>
+        <li>
+          <strong>Offers of sexual services</strong>, or advertising for adult sites.
+        </li>
+      </ul>
+      <p>
+        This covers every place content can go: map backgrounds, token and monster pictures, drawings on the map,
+        music and sounds, the names of tables, characters and players, notes, tomes and anything else you write, and
+        character sheets.
+      </p>
+      <p>
+        A story may still have romance and mature themes, as many adventures do, so long as nothing sexually explicit
+        is shown or described.
+      </p>
+      <p>
+        <strong>The DM is responsible for their table.</strong> If you host, you agree to keep this content off your
+        table and to remove a player who adds it.
+      </p>
+      <p>
+        <strong>Pictures are checked automatically.</strong> Every picture is scored for pornographic or sexually
+        explicit content by a program in your own browser, before it is added and again when another player&rsquo;s
+        browser receives it, and is refused if it finds any. The check is automatic and can be wrong either way: a
+        picture it lets through can still break these terms, and if it refuses one that does not, try another or
+        write to <Mail />. You may not switch it off or work around it.
+      </p>
+      <p>
+        <strong>What we do about it.</strong> We do not watch tables, and a guest table never reaches our database, so
+        we cannot see what is on it. When we learn of content that breaks this section we may remove it, delete the
+        table, delete the account and block the person who added it from hosting or joining again, without notice. Where content appears to involve the
+        sexual abuse or exploitation of a child, we will report it to the competent authorities, and keep and hand
+        over the information the law requires.
+      </p>
+      <p>
+        <strong>Reporting it.</strong> If you see content like this, use &ldquo;Report this table&rdquo; in the table
+        menu, or write to <Mail /> with the table&rsquo;s name or invitation code and what you saw. Then leave the
+        table. Do not send us the material itself.
+      </p>
+
+      <h2>7. Copyright complaints</h2>
       <p>
         If you believe something on {L.appName} infringes your copyright, write to <Mail /> with: what the work is,
         where the material is (the table&rsquo;s name or invitation code helps), your contact details, a statement
@@ -501,7 +605,7 @@ function TermsDoc() {
         close the tables of people who infringe repeatedly.
       </p>
 
-      <h2>7. The app, and other people&rsquo;s rights</h2>
+      <h2>8. The app, and other people&rsquo;s rights</h2>
       <p>
         The {L.appName} software, its design, its name and its original text and artwork belong to us or to those who
         licensed them to us. You may use the app to play; you may not copy, resell or redistribute it except as the
@@ -513,7 +617,7 @@ function TermsDoc() {
         with their licences, in <a href="#/legal/credits">Licenses &amp; Credits</a>.
       </p>
 
-      <h2>8. Availability</h2>
+      <h2>9. Availability</h2>
       <p>
         {L.appName} is provided free of charge. We try to keep it running, but we do not promise that it will always
         be available, free of errors, or that any table or file will be kept. We may change, limit or stop any part of
@@ -521,7 +625,7 @@ function TermsDoc() {
         export anything you cannot afford to lose.
       </p>
 
-      <h2>9. Ending your use</h2>
+      <h2>10. Ending your use</h2>
       <p>
         You can stop using {L.appName} at any time, delete your tables, and ask us to delete your account. We may
         suspend or end your access if you break these terms, if the law requires it, or if we stop offering the
@@ -529,14 +633,14 @@ function TermsDoc() {
         of liability) continue after that.
       </p>
 
-      <h2>10. No warranty</h2>
+      <h2>11. No warranty</h2>
       <p>
         To the fullest extent the law allows, {L.appName} is provided &ldquo;as is&rdquo; and &ldquo;as
         available&rdquo;, without warranties of any kind, whether express or implied, including fitness for a
         particular purpose, uninterrupted availability, or that it is free of errors.
       </p>
 
-      <h2>11. Limit of liability</h2>
+      <h2>12. Limit of liability</h2>
       <p>
         To the fullest extent the law allows, we are not liable for indirect, incidental or consequential loss, or for
         loss of data, tables, content or enjoyment, arising from your use of {L.appName} or from what other users do
@@ -548,33 +652,33 @@ function TermsDoc() {
         that the law does not allow to be limited, such as for fraud or for death or injury caused by negligence.
       </p>
 
-      <h2>12. If you cause us a loss</h2>
+      <h2>13. If you cause us a loss</h2>
       <p>
         If someone brings a claim against us because of content you added or because you broke these terms, you agree
         to cover the reasonable costs that result, as far as the law in your country allows.
       </p>
 
-      <h2>13. Governing law</h2>
+      <h2>14. Governing law</h2>
       <p>
         These terms are governed by the law of {L.governingLaw}, and its courts have jurisdiction. If you are a
         consumer, you also keep the protection of the mandatory laws of the country you live in, and you may bring
         proceedings there.
       </p>
 
-      <h2>14. Changes to these terms</h2>
+      <h2>15. Changes to these terms</h2>
       <p>
         We may update these terms. We will change the date at the top and, for significant changes, say so on the site
         before they take effect. Using {L.appName} after a change means you accept the new terms.
       </p>
 
-      <h2>15. General</h2>
+      <h2>16. General</h2>
       <p>
         If a part of these terms turns out to be unenforceable, the rest still applies. If we do not enforce a term
         once, we can still enforce it later. These terms, with the <a href="#/legal/privacy">Privacy Policy</a>, are
         the whole agreement between us about {L.appName}.
       </p>
 
-      <h2>16. Contact</h2>
+      <h2>17. Contact</h2>
       <p>
         {L.operator} &middot; <Mail />
       </p>
@@ -628,7 +732,8 @@ function CreditsDoc() {
       <h2>5. Software</h2>
       <p>
         {L.appName} is built with open-source software, including React, Vite and the Supabase client library, each
-        used under the MIT License. Their copyright notices and licence texts are kept with the software.
+        used under the MIT License. The picture check uses NSFWJS (MIT License) and TensorFlow.js (Apache License
+        2.0). Their copyright notices and licence texts are kept with the software.
       </p>
 
       <h2>6. Content added by users</h2>

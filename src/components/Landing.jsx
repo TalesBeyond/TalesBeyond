@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import { generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { createEmptyGameState, MAX_PLAYERS } from '../state/store.jsx';
@@ -23,12 +23,14 @@ import {
   joinTableRemote,
   fetchTableSnapshot,
   whoamiForCodeRemote,
+  acceptTermsRemote,
   listMyTablesRemote,
   deleteTableRemote,
 } from '../lib/remoteApi.js';
 import { deleteTableStorage } from '../lib/storageUpload.js';
 import { requestGuestJoin } from '../lib/guestRealtime.js';
 import { LegalFooter } from './LegalPage.jsx';
+import { LEGAL } from '../data/legal.js';
 
 const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#b23a3a', '#3a6ea5', '#c98a3b'];
 
@@ -36,8 +38,35 @@ const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#
 // only offers a guest table (start new or resume) until this flips back on.
 const SHOW_HOST_LOGIN = false;
 
+// Nobody gets into a table from this screen, as host or as player, without
+// ticking the terms box (ConsentCheck). One answer covers every form here;
+// it is not saved, so it is asked again on the next visit.
+const ConsentContext = createContext({ agreed: false, setAgreed: () => {} });
+
+function ConsentCheck() {
+  const { agreed, setAgreed } = useContext(ConsentContext);
+  return (
+    <label className="legal-consent legal-consent-check">
+      <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+      <span>
+        I agree to the{' '}
+        <a href="#/legal/terms" target="_blank" rel="noopener noreferrer">
+          Terms of Use
+        </a>{' '}
+        and{' '}
+        <a href="#/legal/privacy" target="_blank" rel="noopener noreferrer">
+          Privacy Policy
+        </a>
+        , I am {LEGAL.minAge} or older, and I will not add pornographic or sexually explicit content to any
+        table.
+      </span>
+    </label>
+  );
+}
+
 export default function Landing({ onEnter, notice = null }) {
   const [mode, setMode] = useState('host');
+  const [agreed, setAgreed] = useState(false);
 
   const cardCopy =
     mode === 'join'
@@ -45,61 +74,61 @@ export default function Landing({ onEnter, notice = null }) {
       : { title: 'Run your own table', lede: 'You will be the Dungeon Master. Up to nine players can join you.' };
 
   return (
-    <div className="centered-column">
-      <div className="landing-shell">
-        <LandingHero />
+    <ConsentContext.Provider value={{ agreed, setAgreed }}>
+      <div className="centered-column">
+        <header className="landing-header">
+          <a href={`mailto:${LEGAL.contactEmail}`}>Contact us</a>
+        </header>
+        <div className="landing-shell">
+          <LandingHero />
 
-        <div className="lobby-card">
-          {notice && (
-            <div className="error-note" role="status">
-              {notice}
-            </div>
-          )}
-          {mode === 'hostkey' ? (
-            <>
-              <RejoinHostForm onEnter={onEnter} />
-              <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
-                <button type="button" className="link-btn" onClick={() => setMode('host')}>
-                  ← Back
-                </button>
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="mode-toggle">
-                <button className={mode === 'host' ? 'active' : ''} onClick={() => setMode('host')}>
-                  Host a table
-                </button>
-                <button className={mode === 'join' ? 'active' : ''} onClick={() => setMode('join')}>
-                  Join a table
-                </button>
+          <div className="lobby-card">
+            {notice && (
+              <div className="error-note" role="status">
+                {notice}
               </div>
-
-              <h2>{cardCopy.title}</h2>
-              <p className="lede">{cardCopy.lede}</p>
-
-              {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
-
-              <p className="legal-consent">
-                By hosting or joining a table you agree to the <a href="#/legal/terms">Terms of Use</a> and{' '}
-                <a href="#/legal/privacy">Privacy Policy</a>.
-              </p>
-
-              {!isSupabaseConfigured && (
-                <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
-                  Testing only —{' '}
-                  <button type="button" className="link-btn" onClick={() => setMode('hostkey')}>
-                    rejoin as host with a host key
+            )}
+            {mode === 'hostkey' ? (
+              <>
+                <RejoinHostForm onEnter={onEnter} />
+                <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+                  <button type="button" className="link-btn" onClick={() => setMode('host')}>
+                    ← Back
                   </button>
-                  .
                 </p>
-              )}
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <div className="mode-toggle">
+                  <button className={mode === 'host' ? 'active' : ''} onClick={() => setMode('host')}>
+                    Host a table
+                  </button>
+                  <button className={mode === 'join' ? 'active' : ''} onClick={() => setMode('join')}>
+                    Join a table
+                  </button>
+                </div>
+
+                <h2>{cardCopy.title}</h2>
+                <p className="lede">{cardCopy.lede}</p>
+
+                {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
+
+                {!isSupabaseConfigured && (
+                  <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
+                    Testing only —{' '}
+                    <button type="button" className="link-btn" onClick={() => setMode('hostkey')}>
+                      rejoin as host with a host key
+                    </button>
+                    .
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </div>
+        <LegalFooter />
       </div>
-      <LegalFooter />
-    </div>
+    </ConsentContext.Provider>
   );
 }
 
@@ -187,6 +216,7 @@ function HostForm({ onEnter }) {
   // REQ-008 Slice 4: a guest table on this browser that was never left
   // cleanly (crash, force-closed tab) — see findUnclosedGuestTable.
   const [unclosedCode, setUnclosedCode] = useState(null);
+  const { agreed } = useContext(ConsentContext);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -251,8 +281,9 @@ function HostForm({ onEnter }) {
               A guest table on this browser (<code style={{ fontFamily: 'var(--font-mono)' }}>{unclosedCode}</code>)
               was not closed properly last time — you can pick it back up.
             </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="btn btn-primary" onClick={resumeUnclosedGuestTable}>
+            <ConsentCheck />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button type="button" className="btn btn-primary" onClick={resumeUnclosedGuestTable} disabled={!agreed}>
                 Resume it
               </button>
               <button type="button" className="btn btn-secondary" onClick={discardUnclosedGuestTable}>
@@ -315,6 +346,7 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
   const [pendingDelete, setPendingDelete] = useState(null); // table being confirmed for delete
   const [deletingId, setDeletingId] = useState(null);
   const busyId = resumingId ?? deletingId;
+  const { agreed } = useContext(ConsentContext);
 
   useEffect(() => {
     let cancelled = false;
@@ -336,6 +368,7 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
     try {
       const state = await fetchTableSnapshot(table.tableId);
       const player = state.players[table.playerId];
+      acceptTermsRemote(table.tableId);
       onEnter({ state, me: player, mode: 'remote' });
     } catch (err) {
       setError(err.message || 'Could not resume that table.');
@@ -418,7 +451,7 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={busyId !== null}
+                  disabled={busyId !== null || !agreed}
                   onClick={() => resume(table)}
                 >
                   {resumingId === table.tableId ? 'Resuming…' : 'Resume'}
@@ -436,6 +469,8 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
           ))}
         </ul>
       )}
+
+      {tables?.length > 0 && <ConsentCheck />}
 
       <button
         type="button"
@@ -573,6 +608,7 @@ function HostAuthForm({ onAuthed }) {
 }
 
 function HostTableForm({ onEnter }) {
+  const { agreed } = useContext(ConsentContext);
   const [name, setName] = useState('');
   const [color, setColor] = useState(PLAYER_COLORS[0]);
   const [mapName, setMapName] = useState('The Sunken Crypt');
@@ -583,6 +619,7 @@ function HostTableForm({ onEnter }) {
 
   async function submit(e) {
     e.preventDefault();
+    if (!agreed) return;
     if (!name.trim()) {
       setError('Enter a name for yourself as the host.');
       return;
@@ -666,7 +703,9 @@ function HostTableForm({ onEnter }) {
         </div>
       </div>
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
         {busy ? 'Opening…' : 'Open the table'}
       </button>
       <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
@@ -683,6 +722,7 @@ function HostTableForm({ onEnter }) {
 // generated by createEmptyGameState and surfaced in-game via the existing
 // "Host key" toolbar button (Toolbar.jsx) — nothing extra to show here.
 function GuestHostForm({ onEnter, onBack }) {
+  const { agreed } = useContext(ConsentContext);
   const [name, setName] = useState('');
   const [color, setColor] = useState(PLAYER_COLORS[0]);
   const [mapName, setMapName] = useState('The Sunken Crypt');
@@ -693,6 +733,7 @@ function GuestHostForm({ onEnter, onBack }) {
 
   function submit(e) {
     e.preventDefault();
+    if (!agreed) return;
     if (!name.trim()) {
       setError('Enter a name for yourself as the host.');
       return;
@@ -763,7 +804,9 @@ function GuestHostForm({ onEnter, onBack }) {
         </div>
       </div>
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
         {busy ? 'Opening…' : 'Start the guest table'}
       </button>
       <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
@@ -785,6 +828,7 @@ function GuestHostForm({ onEnter, onBack }) {
 // player who already has it can rejoin; GameView's guest subscription
 // effect reopens the identical broadcast channel once entered.
 function GuestResumeForm({ onEnter, onBack }) {
+  const { agreed } = useContext(ConsentContext);
   const [fileName, setFileName] = useState('');
   const [fileContents, setFileContents] = useState(null);
   const [code, setCode] = useState('');
@@ -806,6 +850,7 @@ function GuestResumeForm({ onEnter, onBack }) {
 
   async function submit(e) {
     e.preventDefault();
+    if (!agreed) return;
     if (!fileContents) {
       setError('Choose the table file you exported.');
       return;
@@ -867,7 +912,9 @@ function GuestResumeForm({ onEnter, onBack }) {
         placeholder="Paste your DM code"
       />
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
         {busy ? 'Resuming…' : 'Resume the table'}
       </button>
       <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
@@ -880,6 +927,7 @@ function GuestResumeForm({ onEnter, onBack }) {
 }
 
 function JoinForm({ onEnter }) {
+  const { agreed } = useContext(ConsentContext);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [color, setColor] = useState(PLAYER_COLORS[1]);
@@ -888,6 +936,7 @@ function JoinForm({ onEnter }) {
 
   async function submit(e) {
     e.preventDefault();
+    if (!agreed) return;
     const cleanCode = code.trim().toUpperCase();
     if (!cleanCode) {
       setError('Enter the invitation code your host shared with you.');
@@ -922,6 +971,7 @@ function JoinForm({ onEnter }) {
           : await joinTableRemote({ code: cleanCode, displayName: name.trim(), color });
         const state = await fetchTableSnapshot(tableId);
         const player = state.players[playerId];
+        if (prior) acceptTermsRemote(tableId);
         onEnter({ state, me: player, mode: 'remote' });
         return;
       }
@@ -990,7 +1040,9 @@ function JoinForm({ onEnter }) {
       <label className="field-label">Your color</label>
       <ColorPicker value={color} onChange={setColor} />
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
         {busy ? 'Joining…' : 'Join the table'}
       </button>
     </form>
@@ -1003,6 +1055,7 @@ function JoinForm({ onEnter }) {
 // browser for one whose session.hostKey matches, then re-seats the caller
 // as that table's host under the table's original hostPlayerId.
 function RejoinHostForm({ onEnter }) {
+  const { agreed } = useContext(ConsentContext);
   const [hostKey, setHostKey] = useState('');
   const [name, setName] = useState('');
   const [color, setColor] = useState(PLAYER_COLORS[0]);
@@ -1011,6 +1064,7 @@ function RejoinHostForm({ onEnter }) {
 
   function submit(e) {
     e.preventDefault();
+    if (!agreed) return;
     const key = hostKey.trim();
     if (!key) {
       setError('Enter the host key you saved when you created the table.');
@@ -1079,7 +1133,9 @@ function RejoinHostForm({ onEnter }) {
       <label className="field-label">Your color</label>
       <ColorPicker value={color} onChange={setColor} />
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
         {busy ? 'Rejoining…' : 'Rejoin as host'}
       </button>
       <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>

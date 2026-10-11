@@ -6,10 +6,14 @@ export const LEGAL = {
   appName: 'Hearthbound',
   operator: '[OPERATOR NAME — the person or company that runs this site]',
   operatorAddress: '[POSTAL ADDRESS, if you are required to publish one]',
-  contactEmail: '[CONTACT EMAIL]',
+  contactEmail: 'talesbeyondtabletop@gmail.com',
   governingLaw: '[COUNTRY OR STATE WHOSE LAW APPLIES]',
   // The date these documents last changed, shown at the top of each.
-  effectiveDate: 'September 30, 2026',
+  effectiveDate: 'October 11, 2026',
+  // Which wording of the terms someone agreed to. Saved with their
+  // acceptance (71_moderation.sql); change it whenever the Terms of Use or
+  // Privacy Policy change in substance.
+  termsVersion: '2026-10-11',
   // Youngest age allowed to use the app. 13 follows the US children's
   // privacy law (COPPA); some countries set 14, 15 or 16 for consent.
   minAge: 13,

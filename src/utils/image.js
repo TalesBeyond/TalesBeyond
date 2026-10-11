@@ -2,6 +2,13 @@
 // upload) is downscaled to a canvas before it's used anywhere, so it can't
 // silently blow past localStorage's per-origin quota (Phase 1, embedded as a
 // data URL) or bloat a Supabase Storage upload (Phase 2, see lib/storageUpload.js).
+//
+// A picture someone picked is also put through the picture filter here
+// (lib/imageSafety.js) before its data URL is handed back, so no caller can
+// use one that was refused: resizeImageToDataUrl and sliceImageForIslands
+// reject with BlockedImageError or ImageCheckUnavailableError.
+
+import { assertImageAllowed } from '../lib/imageSafety.js';
 
 export function resizeImageToCanvas(file, maxDim) {
   return new Promise((resolve, reject) => {
@@ -24,7 +31,9 @@ export function resizeImageToCanvas(file, maxDim) {
 
 export async function resizeImageToDataUrl(file, maxDim, quality = 0.82) {
   const canvas = await resizeImageToCanvas(file, maxDim);
-  return canvas.toDataURL('image/jpeg', quality);
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
+  await assertImageAllowed(dataUrl);
+  return dataUrl;
 }
 
 // The largest side a browser will reliably give a canvas.
@@ -147,6 +156,7 @@ export async function sliceImageForIslands(file, islands, maxDim, quality = 0.82
       ctx.drawImage(img, (place.x - ((island.x || 0) - minX)) * kx, (place.y - ((island.y || 0) - minY)) * ky, place.width * kx, place.height * ky);
       slices[island.id] = canvas.toDataURL('image/jpeg', quality);
     }
+    for (const slice of Object.values(slices)) await assertImageAllowed(slice);
     return slices;
   } finally {
     URL.revokeObjectURL(objectUrl);
