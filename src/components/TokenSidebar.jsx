@@ -16,6 +16,7 @@ import { emptyTrapDraft, parseTrapNumber, normalizeDice, clampTrapSize, MAX_TRAP
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import DiceInput from './DiceInput.jsx';
 import { emitFx } from '../lib/fx.js';
+import { HERO_FILE_EXTENSION, heroFileErrorMessage, heroTokenDraft, readHeroFile } from '../lib/heroFile.js';
 
 const TOKEN_IMAGE_MAX_DIM = 256; // tokens render small; no need to keep a multi-megapixel upload
 
@@ -51,6 +52,7 @@ function TokenCard({ name, imageUrl, shape, onPlace, label = `Place ${name}`, ti
 
 export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
   const fileInputRef = useRef(null);
+  const heroFileRef = useRef(null);
   const [pendingKind, setPendingKind] = useState('hero');
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
   const [showDoorModal, setShowDoorModal] = useState(false);
@@ -244,7 +246,23 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
     }
   }
 
+  // A premade hero (lib/heroFile.js, built on the Characters screen): its
+  // .tlsbyd file goes straight onto the map, with the sheet it was built with.
+  async function handleHeroFileChosen(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const { hero, pictureError } = await readHeroFile(file);
+      onAddEntity(heroTokenDraft(hero));
+      if (pictureError) alert(`${hero.name} was placed without its picture. ${imageErrorMessage(pictureError, 'The picture in the file could not be read.')}`);
+    } catch (err) {
+      alert(heroFileErrorMessage(err));
+    }
+  }
+
   const heroesBody = (
+    <>
           <div className="token-grid">
             {[...DEFAULT_HEROES, ...SPRITE_HEROES].map((h) => (
               <TokenCard
@@ -256,6 +274,12 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
               />
             ))}
           </div>
+          <button type="button" className="add-image-drop" onClick={() => heroFileRef.current?.click()}>
+            Upload a premade hero
+            <span>A {HERO_FILE_EXTENSION} file from the Characters screen</span>
+          </button>
+          <input ref={heroFileRef} type="file" accept={HERO_FILE_EXTENSION} style={{ display: 'none' }} onChange={handleHeroFileChosen} />
+    </>
   );
   const npcBody = (
     <>

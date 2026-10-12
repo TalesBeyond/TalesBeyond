@@ -31,6 +31,8 @@ import { deleteTableStorage } from '../lib/storageUpload.js';
 import { requestGuestJoin } from '../lib/guestRealtime.js';
 import { LegalFooter } from './LegalPage.jsx';
 import { LEGAL } from '../data/legal.js';
+import CharacterBuilder from './CharacterBuilder.jsx';
+import { HERO_FILE_EXTENSION } from '../lib/heroFile.js';
 
 const PLAYER_COLORS = ['#c1502e', '#4c7a86', '#62795a', '#a9853f', '#8f5aa8', '#b23a3a', '#3a6ea5', '#c98a3b'];
 
@@ -67,6 +69,8 @@ function ConsentCheck() {
 export default function Landing({ onEnter, notice = null }) {
   const [mode, setMode] = useState('host');
   const [agreed, setAgreed] = useState(false);
+  // The Characters screen (CharacterBuilder.jsx): a hero built before any table.
+  const [showCharacters, setShowCharacters] = useState(false);
 
   const cardCopy =
     mode === 'join'
@@ -77,6 +81,9 @@ export default function Landing({ onEnter, notice = null }) {
     <ConsentContext.Provider value={{ agreed, setAgreed }}>
       <div className="centered-column">
         <header className="landing-header">
+          <button type="button" className="link-btn" onClick={() => setShowCharacters(true)}>
+            Create a character
+          </button>
           <a href={`mailto:${LEGAL.contactEmail}`}>Contact us</a>
         </header>
         <div className="landing-shell">
@@ -113,6 +120,14 @@ export default function Landing({ onEnter, notice = null }) {
 
                 {mode === 'host' ? <HostForm onEnter={onEnter} /> : <JoinForm onEnter={onEnter} />}
 
+                <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
+                  Have a hero in mind?{' '}
+                  <button type="button" className="link-btn" onClick={() => setShowCharacters(true)}>
+                    Create a character
+                  </button>{' '}
+                  and keep it as a {HERO_FILE_EXTENSION} file to bring to any table.
+                </p>
+
                 {!isSupabaseConfigured && (
                   <p className="footer-note" style={{ border: 'none', padding: '14px 2px 0', margin: 0 }}>
                     Testing only —{' '}
@@ -127,6 +142,7 @@ export default function Landing({ onEnter, notice = null }) {
           </div>
         </div>
         <LegalFooter />
+        {showCharacters && <CharacterBuilder onClose={() => setShowCharacters(false)} />}
       </div>
     </ConsentContext.Provider>
   );

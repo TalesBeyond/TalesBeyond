@@ -66,6 +66,12 @@ const PATHS = {
       <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4" />
     </>
   ),
+  store: (
+    <>
+      <path d="M5 8h14l-1.2 12H6.2z" />
+      <path d="M9 8V7a3 3 0 0 1 6 0v1" />
+    </>
+  ),
   exit: (
     <>
       <path d="M10 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4" />

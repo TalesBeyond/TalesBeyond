@@ -244,6 +244,7 @@ export default function CreatureCard({
   canEditLife = canEdit,
   showStats = true,
   showDeathSaves = false,
+  showConditions = true, // false leaves the condition chips off (a premade hero stands on no map yet)
   typeLine,
   owner,
   actor,
@@ -527,18 +528,20 @@ export default function CreatureCard({
           </div>
         )}
 
-        <div className="card-conditions" aria-label="Conditions">
-          {conditions.length === 0 && !canEdit && <span className="card-none">No conditions</span>}
-          {CONDITIONS.filter((c) => conditions.includes(c.key)).map((c) => conditionChip(c, true))}
-          {canEdit && (
-            <button type="button" className="card-condition add" aria-expanded={addingCondition} onClick={() => setAddingCondition((a) => !a)}>
-              {addingCondition ? 'Done' : '+ Condition'}
-            </button>
-          )}
-          {canEdit && addingCondition && (
-            <div className="card-condition-picker">{CONDITIONS.filter((c) => !conditions.includes(c.key)).map((c) => conditionChip(c, false))}</div>
-          )}
-        </div>
+        {showConditions && (
+          <div className="card-conditions" aria-label="Conditions">
+            {conditions.length === 0 && !canEdit && <span className="card-none">No conditions</span>}
+            {CONDITIONS.filter((c) => conditions.includes(c.key)).map((c) => conditionChip(c, true))}
+            {canEdit && (
+              <button type="button" className="card-condition add" aria-expanded={addingCondition} onClick={() => setAddingCondition((a) => !a)}>
+                {addingCondition ? 'Done' : '+ Condition'}
+              </button>
+            )}
+            {canEdit && addingCondition && (
+              <div className="card-condition-picker">{CONDITIONS.filter((c) => !conditions.includes(c.key)).map((c) => conditionChip(c, false))}</div>
+            )}
+          </div>
+        )}
 
         {tabs.length > 0 && (
           <>

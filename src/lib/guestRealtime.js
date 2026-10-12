@@ -33,7 +33,7 @@ function channelNameFor(code) {
 //   ever signal the host leaving.
 export function subscribeToGuestTable(
   code,
-  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange, onRoll, onArea } = {}
+  { onStateChange, onIntent, onPlayerJoin, onStateRequest, onStateSnapshot, onStatusChange, isHost, onHostPresenceChange, onRoll, onArea, onHero } = {}
 ) {
   const channel = supabase.channel(channelNameFor(code));
   let hasJoinedOnce = false;
@@ -69,6 +69,11 @@ export function subscribeToGuestTable(
   // of effect") — like rolls, announced to everyone and never part of state.
   if (onArea) {
     channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
+  }
+  // A premade hero a player offers the DM, and the DM's answer (GameView.jsx's
+  // "Premade heroes"). Like rolls, never part of state.
+  if (onHero) {
+    channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(payload));
   }
   if (onStateSnapshot) {
     channel.on('broadcast', { event: 'state_snapshot' }, ({ payload }) => onStateSnapshot(payload.state, payload.forId));
@@ -111,6 +116,9 @@ export function subscribeToGuestTable(
     },
     sendArea(message) {
       channel.send({ type: 'broadcast', event: 'area', payload: message });
+    },
+    sendHero(message) {
+      channel.send({ type: 'broadcast', event: 'hero', payload: message });
     },
   };
 }

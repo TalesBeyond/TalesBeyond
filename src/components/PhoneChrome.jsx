@@ -693,7 +693,7 @@ export function PhoneLookAndSound({ theme, onThemeChange, muted, onMutedChange, 
 
 // ---------- the player's table menu ----------
 
-export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, islandConditions = [], feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onReport, onClose }) {
+export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seated, island, islandConditions = [], feetPerSquare, theme, onThemeChange, muted, onMutedChange, hideDrawings, onHideDrawingsChange, onLeave, onReport, onOpenCharacters, onClose }) {
   const [confirming, setConfirming] = useState(false);
   const islandConds = islandConditions.map((k) => getIslandCondition(k)?.label).filter(Boolean);
   return (
@@ -730,6 +730,11 @@ export function PhonePlayerMenu({ clock, phaseOverride, layerName, dmName, seate
             <dd>{islandConds.length ? islandConds.join(', ') : 'None'}</dd>
           </dl>
         </section>
+        {onOpenCharacters && (
+          <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onOpenCharacters}>
+            Create a character
+          </button>
+        )}
         {onReport && (
           <button type="button" className="phone-btn-ghost phone-btn-full" onClick={onReport}>
             Report this table

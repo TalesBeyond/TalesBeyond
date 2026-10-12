@@ -128,6 +128,8 @@ import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import ReportModal from './ReportModal.jsx';
 import ImageCheckNotice from './ImageCheckNotice.jsx';
+import CharacterBuilder, { HeroOffers } from './CharacterBuilder.jsx';
+import { heroFromOffer, heroOfferPayload, heroTokenDraft } from '../lib/heroFile.js';
 import { TurnOrderRibbon, EncounterActions, CombatLog } from './EncounterHud.jsx';
 import BookTabs from './BookTabs.jsx';
 import FxLayer from './FxLayer.jsx';
@@ -417,6 +419,9 @@ function saveOrWarn(code, nextState) {
   }
   return ok;
 }
+
+// The most premade heroes waiting for the DM's answer at once (one a player).
+const MAX_HERO_OFFERS = 9;
 
 export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onThemeChange }) {
   const state = useGameState();
@@ -942,9 +947,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onHostPresenceChange: isHost ? undefined : handleHostPresenceChange,
       },
       (roll) => receiveRollRef.current(roll),
-      (message) => receiveAreaRef.current(message)
+      (message) => receiveAreaRef.current(message),
+      (message) => receiveHeroRef.current(message)
     );
-    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll, sendArea: unsubscribe.sendArea, sendConceal: unsubscribe.sendConceal };
+    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll, sendArea: unsubscribe.sendArea, sendHero: unsubscribe.sendHero, sendConceal: unsubscribe.sendConceal };
     return () => {
       tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
@@ -1011,7 +1017,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.entities, isHost]);
   const [rollToasts, setRollToasts] = useState([]);
-  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea, sendConceal }
+  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea, sendHero, sendConceal }
   function addRoll(entry) {
     setRollLog((prev) => [entry, ...prev].slice(0, 100));
     if (entry.mine) return;
@@ -1088,6 +1094,69 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isRemote) tableChannelRef.current?.sendArea(message);
     else if (isGuest) guestChannelRef.current?.sendArea(message);
   }
+  // ---- Premade heroes (lib/heroFile.js, CharacterBuilder.jsx) ----
+  // Anyone at the table builds a hero on the Characters screen. The DM places
+  // theirs on the map. A player can't add a token, so theirs is offered to the
+  // DM over the table's channel, like a dice roll and never stored:
+  //   { op: 'offer', byId, hero }
+  // The DM's browser keeps each offer until it is answered, and the answer
+  // goes back the same way:
+  //   { op: 'answer', forId, heroName, accepted }
+  // An offer made while the DM is away would reach nobody, so it isn't sent.
+  const [showCharacters, setShowCharacters] = useState(false);
+  const [heroOffers, setHeroOffers] = useState([]); // the DM's: [{ id, byId, hero }]
+  function sendHeroMessage(message) {
+    const channel = isRemote ? tableChannelRef.current : isGuest ? guestChannelRef.current : null;
+    if (!channel?.sendHero) return false;
+    channel.sendHero(message);
+    return true;
+  }
+  function receiveHeroMessage(message) {
+    if (message?.op === 'offer') {
+      if (!isHost) return;
+      // Only someone seated offers a hero, and each has one offer waiting at
+      // most: a second one takes the first one's place.
+      const sender = stateRef.current.players[message.byId];
+      if (!sender || sender.id === me.id) return;
+      const hero = heroFromOffer(message.hero);
+      if (!hero) return;
+      const offer = { id: `${sender.id}_${Date.now()}`, byId: sender.id, hero };
+      setHeroOffers((prev) => [...prev.filter((o) => o.byId !== sender.id), offer].slice(-MAX_HERO_OFFERS));
+    } else if (message?.op === 'answer' && !isHost && message.forId === me.id) {
+      const name = typeof message.heroName === 'string' && message.heroName ? message.heroName.slice(0, 60) : 'Your hero';
+      emitFx({ type: 'log', text: message.accepted ? `The DM added ${name} to the map. It is yours to play.` : `The DM did not add ${name} to the map.` });
+    }
+  }
+  const receiveHeroRef = useRef(receiveHeroMessage);
+  receiveHeroRef.current = receiveHeroMessage;
+  // The DM's "Place on the map", and what accepting an offer does.
+  function placePremadeHero(hero, ownerId = null) {
+    addEntity(heroTokenDraft(hero, ownerId));
+  }
+  // A player's "Send to the DM". Rejects with what to tell them. A picture of
+  // their own is kept in this browser first and offered by its fingerprint;
+  // the DM's browser then asks for it like any other shared picture.
+  async function offerHero(hero) {
+    if (!hostSeenRef.current) throw new Error('The DM is not at the table right now, so nobody would receive it. Try again when they are back.');
+    let imageUrl = hero.imageUrl;
+    if (needsSharing(imageUrl)) {
+      try {
+        imageUrl = await storeImage(imageUrl);
+      } catch (err) {
+        throw new Error(imageErrorMessage(err, 'Could not keep that picture in this browser, so the hero was not sent. Try a different picture.'));
+      }
+    }
+    const payload = heroOfferPayload({ ...hero, imageUrl });
+    if (!payload) throw new Error('This sheet is too long to send. Export the file and hand it to your DM instead.');
+    if (!sendHeroMessage({ op: 'offer', byId: me.id, hero: payload })) throw new Error('Not connected to the table right now. Try again in a moment.');
+  }
+  function answerHeroOffer(offer, accepted) {
+    setHeroOffers((prev) => prev.filter((o) => o.id !== offer.id));
+    // Whoever sent it plays it, unless they have left since.
+    if (accepted) placePremadeHero(offer.hero, stateRef.current.players[offer.byId] ? offer.byId : null);
+    sendHeroMessage({ op: 'answer', forId: offer.byId, heroName: offer.hero.name, accepted });
+  }
+
   // The picker opens for the selected token when this viewer may act for it
   // (the DM for any creature, a player for their own hero); otherwise the
   // template starts wherever it is first aimed.
@@ -1342,6 +1411,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       onHostPresenceChange: isGuestHost ? undefined : handleHostPresenceChange,
       onRoll: (roll) => receiveRollRef.current(roll),
       onArea: (message) => receiveAreaRef.current(message),
+      onHero: (message) => receiveHeroRef.current(message),
     });
     guestChannelRef.current = channel;
     return () => {
@@ -1570,7 +1640,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // Left unassigned (rather than defaulting to the placing DM) since
       // only the DM places tokens now — the DM assigns a hero to whichever
       // player controls it afterward, via the Owner field on its inspector.
-      ownerId: null,
+      // A premade hero a player sent in is theirs from the start.
+      ownerId: draft.kind === 'hero' ? draft.ownerId ?? null : null,
       layerId: place.layerId,
       islandId: place.islandId,
       targetLayerId: draft.kind === 'door' ? draft.targetLayerId ?? null : null,
@@ -1587,7 +1658,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             ? draft.mobSheet || defaultCharacterSheet()
             : undefined,
       droppables: draft.kind === 'mob' ? draft.droppables || defaultDroppablesFor(draft.mobKey) : undefined,
-      sheet: draft.kind === 'hero' ? defaultCharacterSheet() : undefined,
+      // A premade hero (lib/heroFile.js) arrives with its sheet filled in.
+      sheet: draft.kind === 'hero' ? draft.sheet || defaultCharacterSheet() : undefined,
       chestSize: draft.kind === 'chest' ? draft.chestSize : undefined,
       opened: draft.kind === 'chest' ? false : undefined,
       items: draft.kind === 'chest' ? draft.items || [] : undefined,
@@ -1652,8 +1724,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const free = findFreeCell(layerEntities, targetIsland.id, targetIsland.cols, targetIsland.rows);
     // Only a trap can be sized at placement (1 to 5 squares wide); everything
     // else starts 1x1.
-    // A compendium monster also arrives pre-sized (Large creatures are 2x2).
-    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : draft.kind === 'mob' && draft.size ? Math.min(draft.size, 4) : 1;
+    // A compendium monster also arrives pre-sized (Large creatures are 2x2),
+    // and so does a premade hero.
+    const size = draft.kind === 'trap' ? clampTrapSize(draft.size) : (draft.kind === 'mob' || draft.kind === 'hero') && draft.size ? Math.min(draft.size, 4) : 1;
     // findFreeCell finds a free single square, which is the token's top-left
     // corner — pull a big trap back so it lands fully on the island rather
     // than hanging off its right/bottom edge (an island smaller than the
@@ -3701,6 +3774,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onImport={importTable}
         onLeave={leaveTable}
         onReport={() => setShowReport(true)}
+        onOpenCharacters={() => setShowCharacters(true)}
         onKickPlayer={isHost ? setPendingKickId : null}
         onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
         theme={theme}
@@ -4132,6 +4206,28 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
         {tourOpen && isHost && !isPhone && <Tour onFinish={closeTour} />}
 
+        {/* Heroes players sent in, waiting for the DM's answer. */}
+        {isHost && (
+          <HeroOffers
+            offers={heroOffers}
+            players={state.players}
+            onAccept={(offer) => answerHeroOffer(offer, true)}
+            onDecline={(offer) => answerHeroOffer(offer, false)}
+          />
+        )}
+        {showCharacters && (
+          <CharacterBuilder
+            table={{
+              isHost,
+              canSend: isSharedTable,
+              dmName: state.players[state.session.hostPlayerId]?.name,
+              onPlace: (hero) => placePremadeHero(hero),
+              onSend: offerHero,
+            }}
+            onClose={() => setShowCharacters(false)}
+          />
+        )}
+
         {pendingKick && (
           <div className="door-confirm-backdrop" onClick={() => setPendingKickId(null)}>
             <div className="door-confirm-card" onClick={(e) => e.stopPropagation()}>
@@ -4353,6 +4449,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 setPhoneSheet(null);
                 setShowReport(true);
               }}
+              onOpenCharacters={() => {
+                setPhoneSheet(null);
+                setShowCharacters(true);
+              }}
               onClose={() => setPhoneSheet(null)}
             />
           )}
@@ -4426,6 +4526,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onReport={() => {
                 setPhoneSheet(null);
                 setShowReport(true);
+              }}
+              onOpenCharacters={() => {
+                setPhoneSheet(null);
+                setShowCharacters(true);
               }}
               onClose={() => setPhoneSheet(null)}
             />
