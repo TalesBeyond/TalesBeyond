@@ -25,6 +25,7 @@ import SoundField from './SoundField.jsx';
 import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import RulesBook from './RulesBook.jsx';
+import StoreModal from './StoreModal.jsx';
 import { useFx } from '../lib/fx.js';
 import { PALETTES } from '../state/theme.js';
 
@@ -154,6 +155,8 @@ const ICON_PATHS = {
   charlog: 'M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 17v-1a6 6 0 0 1 8.5-5.5M12.5 17l.5-2.5 3.5-3.5 2 2-3.5 3.5z',
   players: 'M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1.5 17v-1a5.5 5.5 0 0 1 11 0v1M13 3.4a3 3 0 0 1 0 5.4M18.5 17v-1a5.5 5.5 0 0 0-3.8-5.2',
   invite: 'M7 13a3 3 0 1 1 2.8-4H17v3h-2v2h-2v-2H9.8A3 3 0 0 1 7 13z',
+  store: 'M4 7h12l-1 10H5zM7 7V6a3 3 0 0 1 6 0v1',
+  hero: 'M10 9.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3.5 17.5a6.5 6.5 0 0 1 13 0',
   trash: 'M4 6h12M8 6V4h4v2M5.5 6l.8 11h7.4l.8-11M8.5 9.5v4.5M11.5 9.5v4.5',
   monsters: 'M4 9a6 6 0 0 1 12 0v3l-2 2v3H6v-3l-2-2zM7.5 9.5h.01M12.5 9.5h.01M9 17v-2M11 17v-2',
   token: 'M10 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM6.5 16.5l1.3-6.5h4.4l1.3 6.5M5 16.5h10',
@@ -318,6 +321,7 @@ export default function Toolbar({
   onImport,
   onLeave,
   onReport,
+  onOpenCharacters,
   lastSavedLabel,
   layers,
   layerOrder,
@@ -371,6 +375,7 @@ export default function Toolbar({
   const [showDayNight, setShowDayNight] = useState(false);
   const [showAmbience, setShowAmbience] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showStore, setShowStore] = useState(false);
   // The island whose settings the Islands dialog opens on (the phone's
   // "… settings" button in Edit mode).
   const [islandsFocusId, setIslandsFocusId] = useState(null);
@@ -1248,6 +1253,39 @@ export default function Toolbar({
           <CharacterLog entries={activity} />
         </ToolMenu>
       )}
+
+      {/* The Characters screen (CharacterBuilder.jsx), for players and the DM
+          alike: build a hero, keep it as a .tlsbyd file, bring it to the table. */}
+      {onOpenCharacters && (
+        <div className="toolbar-group">
+          <ToolCard
+            icon={<Icon name="hero" />}
+            label="Characters"
+            onClick={() => {
+              closePopovers();
+              onOpenCharacters();
+            }}
+            title="Create a character, export it as a .tlsbyd file, or upload one"
+          />
+        </div>
+      )}
+
+      {/* The Store (StoreModal.jsx): maps, characters, stories and bundles. */}
+      {isHost && (
+        <div className="toolbar-group">
+          <ToolCard
+            icon={<Icon name="store" />}
+            label="Store"
+            active={showStore}
+            onClick={() => {
+              closePopovers();
+              setShowStore(true);
+            }}
+            title="Maps, characters, stories and bundles for your table"
+          />
+        </div>
+      )}
+      {showStore && <StoreModal onClose={() => setShowStore(false)} />}
 
       {/* The codes sit in the bar when there's room; on a narrower bar the
           same chips fold into an "Invite" menu (see TOOLBAR_DENSITIES). Both

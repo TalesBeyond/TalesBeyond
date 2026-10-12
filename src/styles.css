@@ -3351,6 +3351,10 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   background: #e3d5b0;
   box-shadow: 0 3px 0 rgba(107, 90, 62, 0.22);
 }
+/* Potion bottles are cut out, so they sit on a grey tile instead of the parchment. */
+[data-chapter="potions"] .cbook-row-img,
+[data-chapter="potions"] .cbook-entry-img,
+[data-chapter="potions"] img.cphone-row-img { background: #cfccc6; }
 /* A monster's picture is the token it will be on the map. */
 .cbook-entry-img.round { border-radius: 50%; border: 3px solid var(--pg-leather); }
 .cbook-entry-title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -6176,3 +6180,136 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .side-panel-menu.config-drawer { gap: 14px; }
 .drawer-tool.danger .drawer-tool-icon, .drawer-tool.danger .drawer-tool-name { color: var(--danger); }
 .drawer-tool.danger:hover { border-color: var(--danger); }
+
+/* ---------- Store ---------- */
+/* Sections down the left, the open section's wares in a grid beside them.
+   The wares scroll on their own, so the sections stay in reach. */
+.store { display: grid; grid-template-columns: 190px minmax(0, 1fr); height: min(560px, calc(85vh - 64px)); }
+.store-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 10px;
+  border-right: 1px solid color-mix(in srgb, var(--gold-line) 55%, transparent);
+  background: color-mix(in srgb, var(--ink-950) 55%, transparent);
+}
+.store-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--parchment-300);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.store-nav-item:hover { color: var(--parchment-100); background: var(--ink-800); }
+.store-nav-item.active { color: var(--parchment-100); background: var(--ink-800); border-color: var(--gold-line); }
+.store-nav-item:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.store-nav-count { font-family: var(--font-mono); font-size: 11px; opacity: 0.7; }
+.store-shelf { padding: 18px 20px 22px; min-width: 0; min-height: 0; overflow-y: auto; }
+.store-shelf-head h3 { margin: 0; font-family: var(--font-display); font-size: 20px; color: var(--parchment-100); }
+.store-shelf-head p { margin: 4px 0 16px; font-size: 13px; color: var(--parchment-300); }
+.store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.store-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; text-align: center; }
+.store-frame {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+  background: var(--ink-950);
+  box-shadow: inset 0 0 0 4px var(--ink-900);
+  overflow: hidden;
+}
+.store-frame img { width: 100%; height: 100%; object-fit: contain; }
+.store-item-name { font-size: 13px; color: var(--parchment-100); overflow-wrap: anywhere; }
+.store-item-price { font-family: var(--font-hud); font-weight: 700; font-size: 14px; color: var(--gold-hi); }
+/* A narrow screen: the sections lie in a row over the wares. */
+@media (max-width: 640px) {
+  .store { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .store-shelf { overflow-y: visible; }
+  .store-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--gold-line) 55%, transparent); }
+  .store-nav-item { flex: 1 1 auto; }
+}
+
+/* ---------- Characters screen (CharacterBuilder.jsx) ---------- */
+/* The whole window: a bar of file actions, then the picture and table
+   actions down the left and the hero's card beside them. */
+.hero-screen { position: fixed; inset: 0; z-index: 190; display: flex; flex-direction: column; background: var(--ink-950); color: var(--parchment-100); }
+.hero-screen-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--gold-line);
+  background: var(--ink-900);
+}
+.hero-screen-bar h2 { margin: 0 auto 0 0; font-family: var(--font-display); font-size: 20px; color: var(--parchment-100); }
+.hero-screen-bar .popover-close { font-size: 26px; padding: 0 6px; }
+.hero-screen-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 440px);
+  justify-content: center;
+  align-items: start;
+  gap: 24px;
+  padding: 24px 18px 40px;
+}
+.hero-screen-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.hero-screen-block { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--ink-700); border-radius: 12px; background: var(--ink-900); }
+.hero-screen-block h3 { margin: 0; font-family: var(--font-display); font-size: 16px; color: var(--parchment-100); }
+.hero-screen-block p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--parchment-300); }
+.hero-screen .token-card[aria-pressed='true'] { border-color: var(--gold-hi); background: var(--ink-700); }
+.hero-screen .add-image-drop.chosen { border-style: solid; border-color: var(--gold-hi); }
+.hero-screen-status { margin: 0; padding: 10px 12px; border: 1px solid var(--gold-line); border-radius: 10px; background: var(--ink-900); font-size: 13px; line-height: 1.45; color: var(--parchment-100); }
+.hero-screen-status.error { border-color: #b8322a; }
+.hero-screen-sheet { min-width: 0; }
+/* A narrow screen: the card comes first, the picture and actions under it. */
+@media (max-width: 760px) {
+  .hero-screen-body { grid-template-columns: minmax(0, 1fr); padding: 16px 12px 32px; }
+  .hero-screen-sheet { order: -1; }
+}
+
+/* A hero a player sent in, waiting for the DM (HeroOffers). */
+.hero-offers {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 95;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(520px, calc(100vw - 24px));
+}
+.hero-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--ink-900);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+  color: var(--parchment-100);
+  font-size: 14px;
+}
+.hero-offer img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--parchment-100); object-fit: cover; flex-shrink: 0; }
+.hero-offer-text { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.hero-offer-text span { display: block; font-size: 12.5px; color: var(--parchment-300); }
+.hero-offer-actions { display: flex; gap: 8px; margin-left: auto; }
+.game-screen.phone .hero-offers { bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); }
+
+/* The landing screen's header holds "Create a character" beside "Contact us". */
+.landing-header { gap: 18px; align-items: center; }

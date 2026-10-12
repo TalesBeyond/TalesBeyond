@@ -1240,7 +1240,19 @@ const ATTACK_DICE = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 // `ownAttacks`: a monster's tab. Its attacks aren't weapons out of a bag but
 // its own — a name, dice and bonuses the DM can edit — and `defaultAttacks`
 // are the ones a monster of its kind starts with, to put back in one press.
-export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget, playSoundOnHit, attackerName, ownAttacks = false, defaultAttacks = [] }) {
+// `noTargetsHint`: what to say when there are attacks and nobody to aim them
+// at, or null to say nothing (the Characters screen, which has no map).
+export function BattleEquipmentTab({
+  sheet,
+  updateSheet,
+  targets,
+  onAttackTarget,
+  playSoundOnHit,
+  attackerName,
+  ownAttacks = false,
+  defaultAttacks = [],
+  noTargetsHint = 'There’s nothing to attack in this world yet.',
+}) {
   useCatalog(); // re-render when the catalog's weapons arrive, so stats resolve
   const items = sheet.attacks || [];
   const bagWeapons = normalizeEquipment(sheet.equipment).gear.filter((it) => it.name && it.name.trim());
@@ -1479,7 +1491,7 @@ export function BattleEquipmentTab({ sheet, updateSheet, targets, onAttackTarget
           Equipment comes from the bag. Add a weapon under the <b>Bag</b> tab, then equip it here.
         </Hint>
       )}
-      {items.length > 0 && targets.length === 0 && <Hint className="hint-tight">There’s nothing to attack in this world yet.</Hint>}
+      {items.length > 0 && targets.length === 0 && noTargetsHint && <Hint className="hint-tight">{noTargetsHint}</Hint>}
     </div>
   );
 }

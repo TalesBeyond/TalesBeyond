@@ -33,11 +33,14 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // unsubscribe function carries `sendRoll(roll)` to announce one.
 // onArea / `sendArea(message)`: the same for area-of-effect templates laid on
 // the map (GameView.jsx's "Areas of effect") — announced, never stored.
-export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll, onArea) {
+// onHero / `sendHero(message)`: the same for a premade hero a player offers
+// the DM, and the DM's answer (GameView.jsx's "Premade heroes").
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll, onArea, onHero) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
   if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
+  if (onHero) channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(payload));
   // The DM just hid a monster, chest or door, or the fog of war now covers a
   // token (69_fogged_tokens.sql). Realtime sends no event when a
   // row stops being visible to a subscriber, so the DM's client names the
@@ -219,6 +222,7 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   };
   unsubscribe.sendRoll = (roll) => channel.send({ type: 'broadcast', event: 'roll', payload: roll });
   unsubscribe.sendArea = (message) => channel.send({ type: 'broadcast', event: 'area', payload: message });
+  unsubscribe.sendHero = (message) => channel.send({ type: 'broadcast', event: 'hero', payload: message });
   unsubscribe.sendConceal = (id) => channel.send({ type: 'broadcast', event: 'conceal', payload: { id } });
   return unsubscribe;
 }

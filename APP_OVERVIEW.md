@@ -535,6 +535,44 @@ table has no row on the server, so the button opens an email to
 players are not told. The operator reads reports, removes tables and blocks
 identities with `npm run moderate` — see `MODERATION.md`.
 
+### Store (`StoreModal.jsx`, `data/store.js`)
+
+The DM's **Store** button sits just before Invite in the toolbar. It opens
+a modal with the sections down a side panel — Maps, Characters, Stories,
+Bundles — and the open section's wares beside it, each a framed picture
+with its name and price under it. The shelves are examples only
+(`data/store.js`: made-up names and prices, pictures borrowed from the
+built-in icons and the animated heroes); nothing can be bought yet.
+
+### Characters screen & premade heroes (`CharacterBuilder.jsx`, `lib/heroFile.js`)
+
+A full-window screen for players and the DM alike, opened from **Create a
+character** on the landing screen (no table needed), the toolbar's
+**Characters** tab, and both phone table menus. It shows the same card a hero
+has on the map (`CreatureCard` with the Battle, Spells, Bag and Skills tab
+bodies, every value click-to-edit) over a hero that stands on no map yet:
+`{ name, imageUrl, color, size, maxHp, sheet }`. Its picture is a default
+hero, an animated one, or an image of the user's own (resized and put through
+the picture filter). The hero being worked on is kept in this browser
+(`hearthbound:herodraft`), so it survives closing the screen and joining a
+table.
+
+- **Export .tlsbyd** downloads it: JSON, `{ format: 'talesbeyond-hero',
+  version: 1, hero }`, a built-in picture as its `icon:` reference and an added
+  one as its data URL. **Upload .tlsbyd** loads one back. Nothing in a file is
+  trusted: `sanitizeHero` / `sanitizeSheet` rebuild it field by field within
+  bounds, and its picture is redrawn at token size and scored by the filter.
+- **The DM** places it with **Place on the map**, or uploads a player's file
+  straight onto the map from the Tokens panel (**Upload a premade hero**).
+  `entityFromDraft` takes the draft's `sheet`, `size` and `ownerId`.
+- **A player** can't add a token, so **Send to the DM** offers the hero over
+  the table's channel (a `hero` broadcast, like dice rolls: never stored, and
+  not sent while the DM is away). The DM gets a card (`HeroOffers`) to add it
+  to the map, owned by that player from the start, or decline; the answer
+  comes back as a line in the player's log. A picture of the player's own goes
+  by fingerprint and its bytes through the usual picture exchange. A local
+  demo table has no channel: there the player hands the file to the DM.
+
 ### Hints (`Hints.jsx`)
 
 Wherever someone gets stuck, the app says why something can't be used yet,
@@ -709,6 +747,7 @@ src/
     remoteApi.js           create/join/regenerate/snapshot/CRUD network calls
     realtime.js            Postgres-changes subscription -> reducer actions
     storageUpload.js       Client-side resize + upload to Supabase Storage (unwired)
+    heroFile.js            Premade heroes: the .tlsbyd file, its sanitizer, the offer to the DM
   components/
     Landing.jsx             Host / Join / (local-only) rejoin-as-host screens
     GameView.jsx            Top-level game screen: wires board+panels+toolbar to state
@@ -716,6 +755,7 @@ src/
     Toolbar.jsx             Tools, popovers (map/islands/layers/dice/compendiums), session controls
     TokenSidebar.jsx        Default hero/monster gallery, custom upload, doors & chests
     RightPanel.jsx          Player roster + selected-token inspector (all kinds)
+    CharacterBuilder.jsx    The Characters screen (build, export and upload a hero) and the DM's offer cards
     ChestContentsEditor.jsx Shared chest-contents / droppable-loot item picker
     MerchantShop.jsx        A shopkeeper's stocking editor and its Shop tab (sell / give / buy)
     DroppablesEditor.jsx    Mob loot list: same picker + d20 drop-chance rolling

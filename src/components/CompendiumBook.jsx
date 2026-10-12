@@ -432,7 +432,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   // in a panel along the bottom.
   if (isPhone) {
     return (
-      <div className="cphone" role="dialog" aria-modal="true" aria-label={chapter}>
+      <div className="cphone" data-chapter={kind} role="dialog" aria-modal="true" aria-label={chapter}>
         <header className="cphone-head">
           <h2>{chapter}</h2>
           <button type="button" className="cphone-close" aria-label="Close compendium" onClick={onClose}>
@@ -622,7 +622,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
 
   return (
     <div className="cbook-backdrop" onClick={onClose}>
-      <div className="cbook-stage" role="dialog" aria-modal="true" aria-label={chapter} onClick={(e) => e.stopPropagation()}>
+      <div className="cbook-stage" data-chapter={kind} role="dialog" aria-modal="true" aria-label={chapter} onClick={(e) => e.stopPropagation()}>
         <button type="button" className="cbook-close" aria-label="Close compendium" title="Close" onClick={onClose}>
           &times;
         </button>
