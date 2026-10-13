@@ -3,12 +3,13 @@ import ModalIcon from './ModalIcon.jsx';
 import { Hint } from './Hints.jsx';
 import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
 import { SPRITE_HEROES, spriteForUrl } from '../data/spriteTokens.js';
-import { resizeImageToDataUrl } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
 import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { AMBUSH_ICON, AMBUSH_COLOR, clampAmbushQty } from '../data/ambush.js';
+import BulletinsEditor from './BulletinsEditor.jsx';
+import { BULLETIN_ICON, BULLETIN_COLOR } from '../data/bulletins.js';
 import { NPC_ICON, NPC_COLOR, NPC_MAX_HP } from '../data/tokenKinds.js';
 import { MERCHANTS } from '../data/merchants.js';
 import { ShopWaresEditor } from './MerchantShop.jsx';
@@ -18,11 +19,9 @@ import DiceInput from './DiceInput.jsx';
 import { emitFx } from '../lib/fx.js';
 import { HERO_FILE_EXTENSION, heroFileErrorMessage, heroTokenDraft, readHeroFile } from '../lib/heroFile.js';
 
-const TOKEN_IMAGE_MAX_DIM = 256; // tokens render small; no need to keep a multi-megapixel upload
-
-// One captioned block of the sidebar (Default heroes / Default monsters /
-// Placeable / Add your own image). Always open — the palette is short enough
-// to read at a glance, so there is nothing to fold away.
+// One captioned block of the sidebar (Default heroes / NPC / Placeable).
+// Always open — the palette is short enough to read at a glance, so there is
+// nothing to fold away.
 function SidebarSection({ title, tour, children }) {
   return (
     <section className="sidebar-block" data-tour={tour}>
@@ -51,9 +50,7 @@ function TokenCard({ name, imageUrl, shape, onPlace, label = `Place ${name}`, ti
 }
 
 export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
-  const fileInputRef = useRef(null);
   const heroFileRef = useRef(null);
-  const [pendingKind, setPendingKind] = useState('hero');
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
   const [showDoorModal, setShowDoorModal] = useState(false);
   const [doorName, setDoorName] = useState('Door');
@@ -69,6 +66,11 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   const [ambushName, setAmbushName] = useState('Ambush');
   const [showAmbushModal, setShowAmbushModal] = useState(false);
   const [pendingAmbushMonsters, setPendingAmbushMonsters] = useState([]);
+  const [boardName, setBoardName] = useState('Bulletin board');
+  const [showBoardModal, setShowBoardModal] = useState(false);
+  const [pendingBulletins, setPendingBulletins] = useState([]);
+  // A bulletin typed into the board modal but not pinned yet (BulletinsEditor).
+  const [pendingBulletin, setPendingBulletin] = useState('');
   // The shopkeeper being stocked before it is placed (data/merchants.js), or
   // null: { role, name, wares }.
   const [merchantDraft, setMerchantDraft] = useState(null);
@@ -202,6 +204,24 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
     setShowAmbushModal(false);
   }
 
+  function openBoardModal() {
+    setPendingBulletins([]);
+    setPendingBulletin('');
+    setShowBoardModal(true);
+  }
+
+  function confirmPlaceBoard() {
+    if (pendingBulletin) return;
+    onAddEntity({
+      kind: 'bulletin',
+      name: boardName.trim() || 'Bulletin board',
+      imageUrl: makeIconDataUrl(BULLETIN_ICON, BULLETIN_COLOR),
+      color: BULLETIN_COLOR,
+      bulletins: pendingBulletins,
+    });
+    setShowBoardModal(false);
+  }
+
   function openTrapModal() {
     setTrapDraft(emptyTrapDraft());
     setShowTrapModal(true);
@@ -226,24 +246,6 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
 
   function setTrapField(patch) {
     setTrapDraft((prev) => ({ ...prev, ...patch }));
-  }
-
-  async function handleFileChosen(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    try {
-      const imageUrl = await resizeImageToDataUrl(file, TOKEN_IMAGE_MAX_DIM);
-      onAddEntity({
-        kind: pendingKind,
-        name: file.name.replace(/\.[^/.]+$/, '').slice(0, 24) || 'New token',
-        imageUrl,
-        color: pendingKind === 'mob' ? '#762f2f' : pendingKind === 'npc' ? NPC_COLOR : '#4c7a86',
-        maxHp: pendingKind === 'mob' ? 15 : 20,
-      });
-    } catch (err) {
-      alert(imageErrorMessage(err, 'Could not read that image — try a different file.'));
-    }
   }
 
   // A premade hero (lib/heroFile.js, built on the Characters screen): its
@@ -304,13 +306,14 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   );
   // A placeable is set up before it goes on the map, so each tile opens its
   // own modal: where a door leads, what a chest holds, a trap's save and
-  // damage, an ambush's monsters.
+  // damage, an ambush's monsters, a bulletin board's bulletins.
   const placeableBody = (
     <div className="token-grid placeables">
       <TokenCard name="Door" imageUrl={makeIconDataUrl('door', '#5c4a2e')} shape="square" label="Configure and place a door" title="A way through to another world" onPlace={openDoorModal} />
       <TokenCard name="Chest" imageUrl={makeIconDataUrl('chest', '#c98a3b')} shape="square" label="Configure and place a chest" title="Loot for players to open and take" onPlace={openChestModal} />
       <TokenCard name="Trap" imageUrl={makeIconDataUrl('trap', '#8f1f1f')} shape="square" label="Configure and place a trap" title="Hidden from players until you reveal it" onPlace={openTrapModal} />
       <TokenCard name="Ambush" imageUrl={makeIconDataUrl(AMBUSH_ICON, AMBUSH_COLOR)} shape="square" label="Configure and place an ambush" title="A hidden band of monsters, revealed all at once" onPlace={openAmbushModal} />
+      <TokenCard name="Bulletin board" imageUrl={makeIconDataUrl(BULLETIN_ICON, BULLETIN_COLOR)} shape="square" label="Configure and place a bulletin board" title="News and quests for heroes standing next to it to read" onPlace={openBoardModal} />
     </div>
   );
   // What the door modal holds: with no second world to lead to yet, the way
@@ -400,26 +403,6 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         </div>
       </>
     );
-  const ownImageBody = (
-    <>
-          <div className="side-btn-row">
-            <button type="button" className={`side-btn${pendingKind === 'hero' ? ' active' : ''}`} aria-pressed={pendingKind === 'hero'} onClick={() => setPendingKind('hero')}>
-              Hero
-            </button>
-            <button type="button" className={`side-btn${pendingKind === 'npc' ? ' active' : ''}`} aria-pressed={pendingKind === 'npc'} onClick={() => setPendingKind('npc')}>
-              NPC
-            </button>
-            <button type="button" className={`side-btn${pendingKind === 'mob' ? ' active' : ''}`} aria-pressed={pendingKind === 'mob'} onClick={() => setPendingKind('mob')}>
-              Monster
-            </button>
-          </div>
-          <button type="button" className="add-image-drop" onClick={() => fileInputRef.current?.click()}>
-            Add your own image
-            <span>PNG or JPG, placed on the map</span>
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChosen} />
-    </>
-  );
   const modalsEl = (
     <>
       {showDoorModal && (
@@ -565,6 +548,50 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         </div>
       )}
 
+      {showBoardModal && (
+        <div className="book-backdrop" onClick={() => setShowBoardModal(false)}>
+          <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="book-card-header">
+              <span className="book-title">
+                <ModalIcon name="archive" />Configure Bulletin Board
+              </span>
+              <button className="popover-close" onClick={() => setShowBoardModal(false)} aria-label="Close" title="Close">
+                ×
+              </button>
+            </div>
+            <div style={{ padding: 16, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              <p className="shop-modal-blurb">
+                Pin news, rumours and quests for the party. A player reads the board by clicking it while their hero stands next to it. You can pin more from its inspector later.
+              </p>
+              <label className="field-label">Board name</label>
+              <input className="field" maxLength={60} value={boardName} onChange={(e) => setBoardName(e.target.value)} />
+              <div style={{ marginTop: 12 }}>
+                <BulletinsEditor bulletins={pendingBulletins} onChange={setPendingBulletins} onPendingChange={setPendingBulletin} />
+              </div>
+              <div className="chest-modal-actions">
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowBoardModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  disabled={Boolean(pendingBulletin)}
+                  title={pendingBulletin ? 'Pin what you typed first, or clear it' : undefined}
+                  onClick={confirmPlaceBoard}
+                >
+                  Place board
+                </button>
+              </div>
+              {pendingBulletin && (
+                <p className="chest-modal-pending" role="status">
+                  <b>{pendingBulletin}</b> isn’t pinned yet. Press <b>Pin bulletin</b>, or clear it, before placing the board.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {merchantDraft && (
         <div className="book-backdrop" onClick={() => setMerchantDraft(null)}>
           <div className="book-card fit-modal" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
@@ -692,7 +719,6 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
       ['npc', 'NPCs'],
       ['monsters', 'Monsters'],
       ['place', 'Placeables'],
-      ['own', 'Your own'],
     ];
     return (
       <div className="phone-add">
@@ -736,11 +762,10 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
           )}
           {phoneTab === 'place' && (
             <>
-              <p className="phone-caption phone-caption-flush">Tap a door, chest, trap or ambush to set it up, then place it on the map you’re viewing.</p>
+              <p className="phone-caption phone-caption-flush">Tap a door, chest, trap, ambush or bulletin board to set it up, then place it on the map you’re viewing.</p>
               {placeableBody}
             </>
           )}
-          {phoneTab === 'own' && ownImageBody}
         </div>
         {modalsEl}
       </div>
@@ -765,10 +790,6 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
 
         <SidebarSection title="Placeable" tour="side-placeable">
           {placeableBody}
-        </SidebarSection>
-
-        <SidebarSection title="Add your own image" tour="side-own">
-          {ownImageBody}
         </SidebarSection>
       </div>
       {modalsEl}

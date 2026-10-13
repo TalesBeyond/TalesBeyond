@@ -3,6 +3,7 @@ import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLine
 import { CONDITIONS } from '../data/conditions.js';
 import { isHiddenFromPlayers, isLockedDoor, isLockedChest } from '../data/visibility.js';
 import { ambushMonsterCount } from '../data/ambush.js';
+import { bulletinsOf } from '../data/bulletins.js';
 import { isCreature } from '../data/tokenKinds.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
@@ -57,6 +58,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
+  onOpenBulletinBoard,
   tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw' | 'area' | 'fogofwar'
   zoom = 1,
   onRulerChange,
@@ -377,6 +379,14 @@ export default function MapBoard({
       } else {
         setDragPos(null);
       }
+      return;
+    }
+
+    // A click on a bulletin board (not a drag, which moves it for the DM)
+    // opens it to read.
+    if (current.entity.kind === 'bulletin' && isClick) {
+      setDragPos(null);
+      onOpenBulletinBoard?.(current.entity);
       return;
     }
 
@@ -1406,6 +1416,11 @@ export default function MapBoard({
               {entity.kind === 'ambush' && (
                 <span className="token-count" title={`${ambushMonsterCount(entity)} monsters waiting`}>
                   {ambushMonsterCount(entity)}
+                </span>
+              )}
+              {entity.kind === 'bulletin' && bulletinsOf(entity).length > 0 && (
+                <span className="token-count" title={`${bulletinsOf(entity).length} pinned`}>
+                  {bulletinsOf(entity).length}
                 </span>
               )}
               {entity.kind !== 'door' && entity.initiativeTurn != null && (

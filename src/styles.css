@@ -1350,20 +1350,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .cap-note { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.75; }
 .sidebar-blocks { display: flex; flex-direction: column; gap: 22px; padding: 18px 16px; }
 .sidebar-block { display: flex; flex-direction: column; gap: 10px; }
-.side-btn-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.side-btn {
-  height: 40px;
-  background: var(--ink-900);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
-  color: var(--parchment-100);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.side-btn:hover { border-color: var(--gold-line); }
-.side-btn.active { background: var(--ink-700); border-color: var(--gold-line); }
-.side-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
 .add-image-drop {
   min-height: 76px;
   padding: 10px;
@@ -4225,6 +4211,25 @@ button.card-level.on-dark:hover, button.card-level.on-dark:focus-visible { borde
 }
 /* An animated token's frames (see .token.sprite), in a square the height of the art. */
 .target-card-art .sprite { position: absolute; top: 0; bottom: 0; left: 50%; aspect-ratio: 1; transform: translateX(-50%); }
+/* Change the picture: a pencil in the art's top corner (TokenPictureButton). */
+.card-picture { position: absolute; top: 8px; right: 8px; z-index: 1; padding: 0; border: 0; border-radius: 999px; background: none; line-height: 0; cursor: pointer; }
+.card-picture:disabled { opacity: 0.6; cursor: progress; }
+.card-picture:focus-visible { outline: 2px solid #f2c14e; outline-offset: 2px; }
+.card-picture-badge {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(201, 162, 74, 0.7);
+  border-radius: 999px;
+  background: rgba(42, 32, 22, 0.85);
+  color: #f1e7cf;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.card-picture:hover:not(:disabled) .card-picture-badge,
+.card-picture:focus-visible .card-picture-badge { background: #c9a24a; color: #2a2016; }
 .card-gem-slot { position: absolute; bottom: -26px; z-index: 1; }
 .card-gem-slot.left { left: 10px; }
 .card-gem-slot.right { right: 10px; }
@@ -4618,6 +4623,87 @@ button.card-notes { border-style: solid; }
 .loot-card-face.rarity-very-rare { border-color: #a46bef; box-shadow: 0 0 16px rgba(164, 107, 239, 0.6); }
 .loot-card-face.rarity-very-rare .loot-card-rarity { color: #5b2c9e; }
 @keyframes loot-flip { from { transform: rotateY(180deg); } to { transform: rotateY(0deg); } }
+
+/* ---- Bulletin board (BulletinBoardModal.jsx): the loot reveal's flipping
+   cards, each a pinned notice with a title and its text, over the whole
+   screen. ---- */
+.bulletin-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 8, 6, 0.7);
+}
+.bulletin-reveal {
+  position: relative;
+  left: auto;
+  top: auto;
+  transform: none;
+  width: min(100%, 880px);
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.bulletin-reveal .loot-reveal-head strong { min-width: 0; overflow-wrap: anywhere; }
+.bulletin-cards { gap: 16px; padding: 4px 0; }
+.bulletin-card { width: 196px; height: 264px; }
+.bulletin-card-face {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 22px 12px 12px;
+  border-color: #a9853f;
+  background: linear-gradient(180deg, #f7efdc, #eadfc2);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+.bulletin-card-pin {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
+  border-radius: 50%;
+  background: #b8322a;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.bulletin-card-title {
+  flex-shrink: 0;
+  width: 100%;
+  margin: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #c9b68a;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.bulletin-card-text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding-right: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #3d2f22;
+}
+@media (max-width: 480px) {
+  .bulletin-card { width: calc(50% - 8px); min-width: 140px; height: 240px; }
+}
+
+/* Its editor (BulletinsEditor.jsx): the pinned list, then the form. */
+.bulletin-row { grid-template-columns: 1fr auto auto; }
+.bulletin-row.editing .chest-item-name { color: var(--gold-hi); }
+.bulletin-row-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; font-family: inherit; }
+.bulletins-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
 .inspector-dropcap { display: none; }
 
@@ -5282,6 +5368,10 @@ button.card-notes { border-style: solid; }
 .phone-creature { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 24px; }
 .phone-creature-head { display: flex; align-items: center; gap: 12px; }
 .phone-creature-avatar { width: 56px; height: 56px; }
+/* The DM's avatar is the change-picture button, its pencil on the corner. */
+.phone-creature-picture { position: relative; top: auto; right: auto; flex-shrink: 0; }
+.phone-creature-picture .phone-creature-avatar { display: block; }
+.phone-creature-picture .card-picture-badge { position: absolute; right: -4px; bottom: -4px; width: 24px; height: 24px; }
 .phone-creature-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .phone-creature-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--parchment-100); }
 .phone-creature .card-ed { color: inherit; }
@@ -5402,7 +5492,6 @@ body:has(.game-screen.phone) .book-card {
 .phone-add-body .token-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .phone-add-body .token-grid.merchants { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .phone-add-body .field, .phone-add-body .btn { min-height: 44px; }
-.phone-add-body .side-btn { min-height: 44px; }
 
 /* Edit and Group modes on a phone. */
 .phone-edit-bar {

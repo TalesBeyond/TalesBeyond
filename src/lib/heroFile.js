@@ -34,7 +34,7 @@ import { isImageRef } from './imageCache.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 
 export const HERO_FILE_EXTENSION = '.tlsbyd';
-export const HERO_IMAGE_MAX_DIM = 256; // the size TokenSidebar.jsx keeps an added picture at
+export const HERO_IMAGE_MAX_DIM = 256; // the size a token's own picture is kept at (CreatureCard.jsx's TokenPictureButton)
 
 const FORMAT = 'talesbeyond-hero';
 const VERSION = 1;

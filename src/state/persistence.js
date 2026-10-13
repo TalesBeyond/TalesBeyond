@@ -370,6 +370,31 @@ export function saveLocalAudioVolumes(tableKey, volumes) {
   }
 }
 
+// A cloud table's bulletin boards (lib/boardSync.js): kept in the DM's
+// browser, never in the database. Keyed by the table's id, and tolerant of
+// storage being unavailable like the audio volumes above — the boards then
+// last only until the DM reloads.
+const TABLE_BOARDS_NAMESPACE = 'hearthbound:boards:';
+
+export function loadTableBoards(tableId) {
+  try {
+    const raw = window.localStorage.getItem(TABLE_BOARDS_NAMESPACE + tableId);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((board) => board && typeof board === 'object') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTableBoards(tableId, boards) {
+  try {
+    if (boards.length) window.localStorage.setItem(TABLE_BOARDS_NAMESPACE + tableId, JSON.stringify(boards));
+    else window.localStorage.removeItem(TABLE_BOARDS_NAMESPACE + tableId);
+  } catch {
+    // storage blocked or full - the boards just won't survive a refresh
+  }
+}
+
 // The Draw tool's choices in this browser — the drawing tool, style, Snap to
 // grid, recent colours, and whether drawings are hidden here. Never synced;
 // tolerant of storage being unavailable like the audio volumes above.

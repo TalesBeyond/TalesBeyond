@@ -39,7 +39,7 @@ export const HOST_TOUR = [
     target: 'tokens',
     side: 'right',
     title: 'Tokens',
-    text: 'Opens the panel of everything you can put on the map: heroes, doors, chests, traps and your own images. Click the tab again to fold it away.',
+    text: 'Opens the panel of everything you can put on the map: heroes, NPCs, doors, chests, traps, ambushes and bulletin boards. Click the tab again to fold it away.',
   },
   {
     target: 'mapping',
@@ -138,19 +138,14 @@ export const HOST_TOUR = [
       ['Chest', 'holds loot for players to open and take.'],
       ['Trap', 'hidden from players until you reveal it.'],
       ['Ambush', 'a hidden band of monsters, revealed all at once.'],
+      ['Bulletin board', 'news and quests a hero reads from next to it.'],
     ],
-    side: 'right',
-  },
-  {
-    target: 'side-own',
-    title: 'Add your own image',
-    text: 'Upload a picture from your computer and use it as a hero or monster token.',
     side: 'right',
   },
   {
     target: 'inspector',
     title: 'The character sheet',
-    text: 'Click any token on the map and its sheet opens here: hit points, armor, conditions, and tabs for fighting, magic, the bag and stats. On a hero, “played by” sets which player controls it.',
+    text: 'Click any token on the map and its sheet opens here: hit points, armor, conditions, and tabs for fighting, magic, the bag and stats. On a hero, “played by” sets which player controls it. The pencil on its picture swaps it for an image of your own.',
     side: 'left',
   },
   {

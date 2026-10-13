@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" role="img" aria-label="A wooden bulletin board with notices pinned to it">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="80%">
+      <stop offset="0" stop-color="#5b4630"/>
+      <stop offset="0.55" stop-color="#2e2318"/>
+      <stop offset="1" stop-color="#120e0a"/>
+    </radialGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a6238"/>
+      <stop offset="1" stop-color="#5f4226"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6a4a2a"/>
+      <stop offset="1" stop-color="#3f2c18"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7efdc"/>
+      <stop offset="1" stop-color="#e3d3ad"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="200" fill="url(#bg)"/>
+
+  <!-- posts -->
+  <rect x="92" y="20" width="16" height="180" fill="url(#frame)" stroke="#1b130b" stroke-width="2"/>
+  <rect x="292" y="20" width="16" height="180" fill="url(#frame)" stroke="#1b130b" stroke-width="2"/>
+
+  <!-- little roof -->
+  <path d="M70 34 L200 8 L330 34 L330 44 L200 20 L70 44 Z" fill="url(#frame)" stroke="#1b130b" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- the board -->
+  <rect x="78" y="46" width="244" height="116" rx="3" fill="url(#frame)" stroke="#1b130b" stroke-width="2"/>
+  <rect x="88" y="56" width="224" height="96" fill="url(#wood)" stroke="#2a1c0f" stroke-width="1.5"/>
+  <g stroke="#4a3320" stroke-width="1.5" opacity="0.7">
+    <line x1="88" y1="80" x2="312" y2="80"/>
+    <line x1="88" y1="104" x2="312" y2="104"/>
+    <line x1="88" y1="128" x2="312" y2="128"/>
+  </g>
+
+  <!-- notices -->
+  <g stroke="#3b2c1a" stroke-width="1.2">
+    <rect x="100" y="64" width="58" height="72" fill="url(#paper)" transform="rotate(-4 129 100)"/>
+    <rect x="170" y="62" width="62" height="46" fill="url(#paper)" transform="rotate(3 201 85)"/>
+    <rect x="244" y="66" width="56" height="74" fill="url(#paper)" transform="rotate(5 272 103)"/>
+    <rect x="176" y="112" width="52" height="34" fill="#efe1bd" transform="rotate(-3 202 129)"/>
+  </g>
+  <g stroke="#5b4a34" stroke-width="2" stroke-linecap="round" opacity="0.75">
+    <g transform="rotate(-4 129 100)">
+      <line x1="108" y1="82" x2="150" y2="82"/>
+      <line x1="108" y1="92" x2="146" y2="92"/>
+      <line x1="108" y1="102" x2="150" y2="102"/>
+      <line x1="108" y1="112" x2="138" y2="112"/>
+    </g>
+    <g transform="rotate(3 201 85)">
+      <line x1="178" y1="80" x2="224" y2="80"/>
+      <line x1="178" y1="90" x2="218" y2="90"/>
+      <line x1="178" y1="99" x2="208" y2="99"/>
+    </g>
+    <g transform="rotate(5 272 103)">
+      <line x1="252" y1="84" x2="292" y2="84"/>
+      <line x1="252" y1="94" x2="290" y2="94"/>
+      <line x1="252" y1="104" x2="292" y2="104"/>
+      <line x1="252" y1="114" x2="280" y2="114"/>
+    </g>
+    <g transform="rotate(-3 202 129)">
+      <line x1="184" y1="126" x2="220" y2="126"/>
+      <line x1="184" y1="135" x2="212" y2="135"/>
+    </g>
+  </g>
+
+  <!-- pins -->
+  <g stroke="#3a0f0c" stroke-width="1">
+    <circle cx="128" cy="68" r="4" fill="#b8322a"/>
+    <circle cx="202" cy="66" r="4" fill="#c9a24a"/>
+    <circle cx="274" cy="70" r="4" fill="#b8322a"/>
+    <circle cx="201" cy="116" r="3.5" fill="#2a3a55"/>
+  </g>
+</svg>

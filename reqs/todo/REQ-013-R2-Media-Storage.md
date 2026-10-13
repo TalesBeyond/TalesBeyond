@@ -50,7 +50,7 @@ Moves a cloud table's uploaded media — token images, island backgrounds, and a
 
 ## UI / UX Notes
 
-- No new screens. Upload controls stay where they are: "Add your own image" (`TokenSidebar.jsx`), island background upload (`MapSettingsPopover`, `Toolbar.jsx`), Compendium "Use my own image" (`CompendiumBook.jsx`), and audio upload (`MusicModal.jsx`, `SoundField.jsx`).
+- No new screens. Upload controls stay where they are: a token's own picture (the pencil on the inspector card, `CreatureCard.jsx`'s `TokenPictureButton`), island background upload (`MapSettingsPopover`, `Toolbar.jsx`), Compendium "Use my own image" (`CompendiumBook.jsx`), and audio upload (`MusicModal.jsx`, `SoundField.jsx`).
 - While a file is being fetched, tokens show their kind's default icon (existing `entityImageSrc` fallback in `src/lib/storedImages.js`).
 - An R2 audio file that is missing shows the existing "File expired — re-upload" state (`src/lib/audioEngine.js` `expired`) until self-heal replaces it, then plays without a manual re-upload.
 - A failed upload to the Worker never blocks the DM: the image still reaches players through the peer exchange, and a console warning names the file. Audio upload errors surface through the existing `friendlyAudioError` message.

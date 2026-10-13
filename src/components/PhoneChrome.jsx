@@ -7,7 +7,7 @@ import { isCreature } from '../data/tokenKinds.js';
 import RollModeTabs from './RollModeTabs.jsx';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
-import { GiveChestItemButton, TakeChestItemButton, ChestOpenButton } from './RightPanel.jsx';
+import { GiveChestItemButton, TakeChestItemButton, ChestOpenButton, isChestTooFar, shutChestNote } from './RightPanel.jsx';
 import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
@@ -550,6 +550,7 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
   const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
   const myHero = (heroes || []).find((h) => h.ownerId === meId);
   const showItems = isHost || entity.opened;
+  const tooFar = isChestTooFar(entity, heroes, isHost, meId);
 
   return (
     <PhoneSheet title={entity.name || 'Chest'} onClose={onClose}>
@@ -561,13 +562,12 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
         <ChestOpenButton
           entity={entity}
           isHost={isHost}
+          tooFar={tooFar}
           onUpdate={onUpdate}
           primaryClass="phone-btn-primary phone-btn-block-primary"
           secondaryClass="phone-btn-ghost phone-btn-full"
         />
-        {!showItems && (
-          <p className="phone-caption phone-caption-flush">{entity.locked ? 'It’s locked. Only the DM can unlock it.' : 'Open it to see what’s inside.'}</p>
-        )}
+        {!showItems && <p className="phone-caption phone-caption-flush">{shutChestNote(entity, tooFar)}</p>}
         {showItems && (
           <section className="phone-chest-items" aria-label="Inside">
             <span className="phone-label">

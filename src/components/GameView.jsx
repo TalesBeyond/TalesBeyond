@@ -24,6 +24,9 @@ import { isCreature, isCreatureKind, isDmCreature } from '../data/tokenKinds.js'
 import { clampTrapSize } from '../data/traps.js';
 import { isHiddenFromPlayers, isLockedDoor, entitiesShownTo } from '../data/visibility.js';
 import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.js';
+import { canReadBulletinBoard, isBulletinBoard } from '../data/bulletins.js';
+import { heroWithinReach } from '../data/reach.js';
+import { boardToWire, boardFromWire, boardsIn, withBoardsKept } from '../lib/boardSync.js';
 import {
   isEntityFogged,
   isDoorHomeSideFogged,
@@ -52,6 +55,7 @@ import {
   clearGuestMeta,
   loadLocalAudioVolumes,
   saveLocalAudioVolumes,
+  saveTableBoards,
   loadDrawPrefs,
   loadRevealRolls,
   saveRevealRolls,
@@ -123,7 +127,8 @@ import {
   PhoneEditBar,
 } from './PhoneChrome.jsx';
 import PhoneCreatureSheet from './PhoneCreatureSheet.jsx';
-import { DoorInspector, TrapInspector, AmbushInspector, FogChunkCard } from './RightPanel.jsx';
+import { DoorInspector, TrapInspector, AmbushInspector, BulletinBoardInspector, FogChunkCard } from './RightPanel.jsx';
+import BulletinBoardModal from './BulletinBoardModal.jsx';
 import { PhoneRunTable, PhoneHostMenu } from './PhoneHostScreens.jsx';
 import DiceModal from './DiceModal.jsx';
 import ReportModal from './ReportModal.jsx';
@@ -396,6 +401,10 @@ function toGuestBroadcastAction(action, prevState) {
     default:
       return action;
   }
+}
+
+function heroesIn(state) {
+  return Object.values(state.entities).filter((e) => e.kind === 'hero');
 }
 
 function toGuestSnapshot(fullState) {
@@ -848,6 +857,26 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     .filter((e) => e.kind === 'hero')
     .map((e) => ({ ...e, ownerName: state.players[e.ownerId]?.name }));
 
+  // The bulletin board open to read (BulletinBoardModal.jsx). The DM reads
+  // any board; a player only one a hero of theirs stands next to
+  // (data/bulletins.js), and it shuts if that hero walks off, or the DM
+  // hides or removes the board.
+  const [openBoardId, setOpenBoardId] = useState(null);
+  const openBoardEntity = openBoardId ? layerEntities[openBoardId] : null;
+  const openBoard =
+    openBoardEntity?.kind === 'bulletin' && (isHost || canReadBulletinBoard(openBoardEntity, heroes, me.id)) ? openBoardEntity : null;
+  useEffect(() => {
+    if (openBoardId && !openBoard) setOpenBoardId(null);
+  }, [openBoardId, openBoard]);
+
+  function openBulletinBoard(board) {
+    if (!isHost && !canReadBulletinBoard(board, heroes, me.id)) {
+      emitFx({ type: 'log', text: `${board.name || 'The board'} is too far to read. Move your hero next to it.` });
+      return;
+    }
+    setOpenBoardId(board.id);
+  }
+
   // Roll for Initiative's participant pools — unlike `heroes` above, scoped
   // to whatever the host is currently looking at: an encounter roll is for
   // the scene in front of them, not every hero/monster across every layer.
@@ -893,7 +922,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       try {
         const snapshot = await fetchTableSnapshot(tableId);
         if (seq !== resyncSeq) return; // superseded by a newer drop/recovery
-        dispatch({ type: 'HYDRATE', state: snapshot });
+        // Bulletin boards are not in the database (lib/boardSync.js), so the
+        // ones this browser holds are carried over into the fresh snapshot.
+        dispatch({ type: 'HYDRATE', state: withBoardsKept(snapshot, boardsIn(stateRef.current)) });
         blocked = false;
         setReconnectUi({ blocked: false, resyncFailed: 0 });
       } catch (err) {
@@ -911,6 +942,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     function handleStatusChange(status, isInitialJoin) {
       if (status === 'SUBSCRIBED') {
         hasConnectedOnce = true;
+        // Every time the channel comes up, the DM says every bulletin board
+        // again and a player asks for them (lib/boardSync.js).
+        syncBoardsRef.current();
         if (isInitialJoin) {
           // A fresh channel for this effect run is up — any blocked scrim
           // still showing belongs to a stale run (e.g. `tableId` changed
@@ -948,9 +982,16 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       },
       (roll) => receiveRollRef.current(roll),
       (message) => receiveAreaRef.current(message),
-      (message) => receiveHeroRef.current(message)
+      (message) => receiveHeroRef.current(message),
+      (message) => receiveBoardsRef.current(message)
     );
-    tableChannelRef.current = { sendRoll: unsubscribe.sendRoll, sendArea: unsubscribe.sendArea, sendHero: unsubscribe.sendHero, sendConceal: unsubscribe.sendConceal };
+    tableChannelRef.current = {
+      sendRoll: unsubscribe.sendRoll,
+      sendArea: unsubscribe.sendArea,
+      sendHero: unsubscribe.sendHero,
+      sendConceal: unsubscribe.sendConceal,
+      sendBoards: unsubscribe.sendBoards,
+    };
     return () => {
       tableChannelRef.current = null;
       if (graceTimer) clearTimeout(graceTimer);
@@ -1017,7 +1058,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.entities, isHost]);
   const [rollToasts, setRollToasts] = useState([]);
-  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea, sendHero, sendConceal }
+  const tableChannelRef = useRef(null); // cloud: { sendRoll, sendArea, sendHero, sendConceal, sendBoards }
   function addRoll(entry) {
     setRollLog((prev) => [entry, ...prev].slice(0, 100));
     if (entry.mine) return;
@@ -1094,6 +1135,66 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isRemote) tableChannelRef.current?.sendArea(message);
     else if (isGuest) guestChannelRef.current?.sendArea(message);
   }
+  // ---- Bulletin boards on a cloud table (lib/boardSync.js) ----
+  // A board is never a row in the database. The DM's browser holds every
+  // board (kept across reloads by saveTableBoards) and announces the ones
+  // players may see over the table's channel; a player's browser takes them
+  // from there. A hidden or fogged board is simply not announced.
+  const cloudBoardsHost = isRemote && isHost;
+  const hostBoards = useMemo(() => (cloudBoardsHost ? boardsIn(state) : []), [cloudBoardsHost, state.entities]);
+  const hostBoardsKey = JSON.stringify(hostBoards);
+  const announcedBoardsRef = useRef({}); // id -> the board as last announced
+  // `everything`: say every board again, not only what changed since last time.
+  function announceBoards(everything) {
+    const channel = tableChannelRef.current;
+    if (!cloudBoardsHost || !channel) return;
+    const next = {};
+    for (const board of boardsIn(stateRef.current)) {
+      if (isHiddenFromPlayers(board)) continue;
+      const wire = boardToWire(board);
+      next[board.id] = JSON.stringify(wire);
+      if (everything || announcedBoardsRef.current[board.id] !== next[board.id]) channel.sendBoards({ op: 'set', board: wire });
+    }
+    const gone = Object.keys(announcedBoardsRef.current).some((id) => !next[id]);
+    if (everything || gone) channel.sendBoards({ op: 'only', ids: Object.keys(next) });
+    announcedBoardsRef.current = next;
+  }
+  function receiveBoardsMessage(message) {
+    if (message?.op === 'ask') {
+      announceBoards(true);
+      return;
+    }
+    if (isHost) return; // the DM's browser is where the boards come from
+    const held = stateRef.current.entities;
+    if (message?.op === 'set') {
+      const board = boardFromWire(message.board);
+      // Never over a token that is something else.
+      if (board && (!held[board.id] || isBulletinBoard(held[board.id]))) dispatch({ type: 'ADD_ENTITY', entity: board });
+    } else if (message?.op === 'only' && Array.isArray(message.ids)) {
+      const ids = new Set(message.ids);
+      for (const entity of Object.values(held)) {
+        if (isBulletinBoard(entity) && !ids.has(entity.id)) dispatch({ type: 'REMOVE_ENTITY', id: entity.id });
+      }
+    }
+  }
+  const receiveBoardsRef = useRef(receiveBoardsMessage);
+  receiveBoardsRef.current = receiveBoardsMessage;
+  // Called whenever the table's channel connects.
+  const syncBoardsRef = useRef(null);
+  syncBoardsRef.current = () => {
+    if (isHost) announceBoards(true);
+    else tableChannelRef.current?.sendBoards({ op: 'ask' });
+  };
+  // The DM's boards are saved in this browser and announced as they change
+  // (a short settle, so typing a board's name is not a message per letter).
+  useEffect(() => {
+    if (!cloudBoardsHost) return undefined;
+    saveTableBoards(state.session.tableId, hostBoards);
+    const timer = setTimeout(() => announceBoards(false), 150);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudBoardsHost, hostBoardsKey]);
+
   // ---- Premade heroes (lib/heroFile.js, CharacterBuilder.jsx) ----
   // Anyone at the table builds a hero on the Characters screen. The DM places
   // theirs on the map. A player can't add a token, so theirs is offered to the
@@ -1591,7 +1692,14 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // DM's client works out what the fog of war covers.
     if (isHiddenFromPlayers(entity) || 'hidden' in patch || 'locked' in patch || 'fogged' in patch) return false;
     if (entity.kind === 'chest') {
-      return isChestTogglePatch(entity, patch) || isTakeChestItemPatch(entity, patch);
+      // Opening it takes a hero of theirs standing next to it
+      // (data/reach.js); closing it doesn't. Read from stateRef, not this
+      // render's state: a guest table's DM checks a player's intent from a
+      // handler that outlives the render it was made in.
+      if (isChestTogglePatch(entity, patch)) {
+        return !patch.opened || Boolean(heroWithinReach(entity, heroesIn(stateRef.current), playerId));
+      }
+      return isTakeChestItemPatch(entity, patch);
     }
     if (entity.kind === 'hero' && entity.ownerId === playerId) {
       return isHeroOwnerSheetPatch(entity, patch) || isHeroOwnerLifePatch(entity, patch);
@@ -1664,6 +1772,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       opened: draft.kind === 'chest' ? false : undefined,
       items: draft.kind === 'chest' ? draft.items || [] : undefined,
       ambushMonsters: draft.kind === 'ambush' ? draft.ambushMonsters || [] : undefined,
+      // What is pinned to a bulletin board (data/bulletins.js).
+      bulletins: draft.kind === 'bulletin' ? draft.bulletins || [] : undefined,
       // A shopkeeper's shelves (data/merchants.js). A plain NPC has none.
       shop: draft.kind === 'npc' && draft.shop ? draft.shop : undefined,
       // A trap always starts hidden - the DM reveals it deliberately from
@@ -1752,7 +1862,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     dispatch({ type: 'ADD_ENTITY', entity });
     setSelectedId(entity.id);
     if (isRemote) {
-      addEntityRemote(state.session.tableId, entity).catch(reportError);
+      // A bulletin board is not a row in the database: it reaches players
+      // over the table's channel instead (lib/boardSync.js).
+      if (!isBulletinBoard(entity)) addEntityRemote(state.session.tableId, entity).catch(reportError);
     } else if (isGuestHost) {
       broadcastGuestChange({ type: 'ADD_ENTITY', entity });
     } else {
@@ -1813,8 +1925,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       }
     }
     dispatch({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
-    if (isRemote) moveEntityRemote(id, col, row, islandId, layerId).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
+    if (isRemote) {
+      if (!isBulletinBoard(entity)) moveEntityRemote(id, col, row, islandId, layerId).catch(reportError);
+    } else if (isGuestHost) broadcastGuestChange({ type: 'MOVE_ENTITY', id, col, row, islandId, layerId });
   }
 
   function updateEntity(id, patch) {
@@ -1823,6 +1936,15 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isHost && (patch.ambushMonsters || []).some((m) => needsSharing(m.imageUrl))) {
       shareAmbushMonsters(patch.ambushMonsters)
         .then((ambushMonsters) => updateEntity(id, { ...patch, ambushMonsters }))
+        .catch(shareImageFailed);
+      return;
+    }
+    // A picture the DM picked on a token's card (CreatureCard.jsx's
+    // TokenPictureButton) is swapped for its fingerprint first, like one a
+    // token is placed with.
+    if (isHost && needsSharing(patch.imageUrl)) {
+      storeImage(patch.imageUrl)
+        .then((imageUrl) => updateEntity(id, { ...patch, imageUrl }))
         .catch(shareImageFailed);
       return;
     }
@@ -1848,9 +1970,12 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // enough to matter, debounce the network call here rather than in each
     // caller (Realtime Roadmap §2.4).
     if (isRemote) {
-      // Hiding a revealed trap again cannot be a plain UPDATE - see
-      // hideTrapRemote for why it is a delete + re-insert instead.
-      if (entity.kind === 'trap' && entity.trapRevealed && patch.trapRevealed === false) {
+      if (isBulletinBoard(entity)) {
+        // Not a row in the database: the change above is announced over
+        // the table's channel (lib/boardSync.js).
+      } else if (entity.kind === 'trap' && entity.trapRevealed && patch.trapRevealed === false) {
+        // Hiding a revealed trap again cannot be a plain UPDATE - see
+        // hideTrapRemote for why it is a delete + re-insert instead.
         hideTrapRemote(state.session.tableId, { ...entity, ...patch }).catch(reportError);
       } else if ((patch.hidden === true && !entity.hidden) || (patch.fogged === true && !entity.fogged)) {
         // Hiding a monster, chest or door, or a token the fog of war now
@@ -1873,8 +1998,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     const cascade = audioEnabled ? previewAudioCascade(state, { type: 'REMOVE_ENTITY', id }) : null;
     dispatch({ type: 'REMOVE_ENTITY', id });
     if (selectedId === id) setSelectedId(null);
-    if (isRemote) removeEntityRemote(id).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
+    if (isRemote) {
+      if (!isBulletinBoard(state.entities[id])) removeEntityRemote(id).catch(reportError);
+    } else if (isGuestHost) broadcastGuestChange({ type: 'REMOVE_ENTITY', id });
     if (cascade) dropAudioTracks(cascade.removed, cascade.audio);
   }
 
@@ -2976,6 +3102,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       emitFx({ type: 'log', text: `${doorEntity.name || 'The door'} is locked` });
       return;
     }
+    // Nor does a player open a door from across the map: a hero of theirs
+    // has to stand on its square or the one beside it (data/reach.js). The
+    // hero they just dropped on it is that hero, even before the move shows
+    // in state. A player with no hero on this layer has nobody to walk
+    // there, so they are not held to it and can still follow the party.
+    let heroId = null;
+    if (!isHost) {
+      const myHeroesHere = heroes.filter((h) => h.ownerId === me.id && h.layerId === currentLayerId);
+      const landed = traveller?.kind === 'hero' && traveller.ownerId === me.id ? traveller : null;
+      // `doorEntity` is the door as it stands on this layer, whichever side that is.
+      const near = landed || heroWithinReach({ ...doorEntity, layerId: currentLayerId }, myHeroesHere, me.id);
+      if (!near && myHeroesHere.length) {
+        emitFx({ type: 'log', text: `${doorEntity.name || 'The door'} is too far to open. Move your hero next to it.` });
+        return;
+      }
+      heroId = near?.id || null;
+    }
     // Bidirectional: travel to whichever end of the door isn't the layer
     // currently being viewed from, so the same door works walking in from
     // either side.
@@ -2983,7 +3126,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // Nor does a player go through a door that comes out in a held-back fog
     // chunk: the same log line as a refused move, and no prompt.
     if (!isHost && doorArrivalHeldBack(doorEntity.id, destinationLayerId)) return;
-    setPendingDoor({ door: doorEntity, destinationLayerId, travellerId: isHost ? traveller.id : null });
+    // `travellerId` is the DM's token; `heroId` the player's hero at the door.
+    setPendingDoor({ door: doorEntity, destinationLayerId, travellerId: isHost ? traveller.id : null, heroId });
   }
 
   // For a player: whether walking through this door would land them in a
@@ -3041,7 +3185,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isLockedDoor(rawDoor) || isHiddenFromPlayers(rawDoor)) return;
     // Or held back the far side while the prompt was up.
     if (doorArrivalHeldBack(rawDoor.id, pending.destinationLayerId)) return;
-    const myHero = heroes.find((h) => h.ownerId === me.id);
+    // The hero standing at the door goes through; a player with none on
+    // this layer brings their first one along, as before.
+    const myHero = heroes.find((h) => h.id === pending.heroId && h.ownerId === me.id) || heroes.find((h) => h.ownerId === me.id);
     if (myHero) {
       const arrival = arrivalCellNearDoor(state, rawDoor, pending.destinationLayerId);
       moveEntity(myHero.id, arrival.col, arrival.row, arrival.islandId, pending.destinationLayerId);
@@ -3857,6 +4003,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           customMonsters={customMonsters}
           customAssets={state.customAssets}
           onRevealAmbush={revealAmbush}
+          onReadBulletinBoard={openBulletinBoard}
           collapsed={rightCollapsed}
           onToggleCollapsed={() => togglePanel('right')}
           encounterActor={actor}
@@ -3936,6 +4083,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               canMoveEntity={canMoveEntity}
               isHost={isHost}
               onEnterDoor={enterDoor}
+              onOpenBulletinBoard={openBulletinBoard}
               tool={tool}
               zoom={zoom}
               onRulerChange={setRulerFeet}
@@ -4204,6 +4352,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </div>
         )}
 
+        {openBoard && <BulletinBoardModal board={openBoard} onClose={() => setOpenBoardId(null)} />}
+
         {tourOpen && isHost && !isPhone && <Tour onFinish={closeTour} />}
 
         {/* Heroes players sent in, waiting for the DM's answer. */}
@@ -4322,6 +4472,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                     revealAmbush(id);
                     setPhoneSheet(null);
                   }}
+                />
+              </div>
+            </PhoneSheet>
+          )}
+          {phoneSheet === 'inspect' && selectedEntity?.kind === 'bulletin' && (
+            <PhoneSheet title={selectedEntity.name} onClose={() => setPhoneSheet(null)}>
+              <div className="phone-sheet-pad">
+                <BulletinBoardInspector
+                  key={selectedEntity.id}
+                  entity={selectedEntity}
+                  heroes={heroes}
+                  isHost={isHost}
+                  meId={me.id}
+                  onUpdate={updateEntity}
+                  onRemove={(id) => {
+                    removeEntity(id);
+                    setPhoneSheet(null);
+                  }}
+                  onRead={openBulletinBoard}
                 />
               </div>
             </PhoneSheet>

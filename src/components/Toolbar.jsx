@@ -877,7 +877,7 @@ export default function Toolbar({
           out over the map's left edge and away again. */}
       {rail && isHost && onToggleTokens && (
         <div className="toolbar-group" data-tour="tokens">
-          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, doors, chests, traps and your own images to put on the map" />
+          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, NPCs, doors, chests, traps, ambushes and bulletin boards to put on the map" />
         </div>
       )}
 

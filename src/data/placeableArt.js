@@ -1,5 +1,5 @@
-// The pictures on a door's, chest's, trap's and ambush's inspector card
-// (RightPanel.jsx's PlaceableCard):
+// The pictures on a door's, chest's, trap's, ambush's and bulletin board's
+// inspector card (RightPanel.jsx's PlaceableCard):
 //
 //   src/assets/placeables/door.<ext>          a door
 //   src/assets/placeables/door-locked.<ext>   …locked (optional — falls back to door)
@@ -7,6 +7,7 @@
 //   src/assets/placeables/chest-open.<ext>    …open (optional — falls back to chest)
 //   src/assets/placeables/trap.<ext>          a trap
 //   src/assets/placeables/ambush.<ext>        an ambush
+//   src/assets/placeables/bulletin.<ext>      a bulletin board
 //
 // svg, png, jpg, jpeg and webp all work; the ones that ship are drawn svgs.
 // To swap in your own art, replace a file (one file per name — remove the svg

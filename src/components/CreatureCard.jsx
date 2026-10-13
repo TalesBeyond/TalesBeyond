@@ -7,12 +7,17 @@ import { useFx } from '../lib/fx.js';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 import { spriteForUrl, useSpritePlaying } from '../data/spriteTokens.js';
+import { resizeImageToDataUrl } from '../utils/image.js';
+import { imageErrorMessage } from '../lib/imageSafety.js';
+import { HERO_IMAGE_MAX_DIM } from '../lib/heroFile.js';
 
 // A hero's or monster's whole inspector, drawn as one collectible card: the
 // name on the title bar, the token's art with its armor (shield) and hit
 // point (heart) gems, the life bar, initiative / speed / size, the six
 // ability scores, death saves, conditions, and a tab ribbon whose sections
-// (Battle, Spells, Bag, Loot, Skills, DM) the caller supplies as `tabs`.
+// (Battle, Spells, Bag, Loot, Skills, DM) the caller supplies as `tabs`. The
+// pencil on the art swaps the token's picture for one of the DM's own
+// (TokenPictureButton below).
 //
 // Every value the viewer may change is click-to-edit (Editable below): it
 // shows a pencil on hover, turns into an input on click, and saves on Enter
@@ -230,6 +235,50 @@ export function RemoveTokenButton({ name, onRemove, className = '' }) {
   );
 }
 
+// The DM's "use a picture of my own for this token", a pencil on the card's
+// art. The picture chosen replaces the token's `imageUrl`, so the card and the
+// token on the map both draw it. `children`: what the pencil sits on, where
+// the button is the picture itself (the phone sheet's avatar).
+export function TokenPictureButton({ name, onPick, className = '', children = null }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleFileChosen(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    try {
+      onPick(await resizeImageToDataUrl(file, HERO_IMAGE_MAX_DIM));
+    } catch (err) {
+      alert(imageErrorMessage(err, 'Could not read that image — try a different file.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`card-picture ${className}`}
+        aria-label={`Change ${name}'s picture`}
+        title="Change the picture (PNG or JPG)"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
+        {children}
+        <span className="card-picture-badge" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+          </svg>
+        </span>
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChosen} />
+    </>
+  );
+}
+
 // canEdit: this viewer may edit the card's own fields (the DM). The tab
 // contents handle their own permissions (a hero's owner edits Battle,
 // Spells and Bag). canEditLife: this viewer may change hit points and
@@ -389,6 +438,7 @@ export default function CreatureCard({
               aria-hidden="true"
             />
           )}
+          {canEdit && <TokenPictureButton name={entity.name} onPick={(imageUrl) => onUpdate(entity.id, { imageUrl })} />}
           <span className="card-gem-slot left">
             {canEdit ? (
               <Editable

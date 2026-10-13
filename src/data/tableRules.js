@@ -397,14 +397,14 @@ export const TABLE_RULES = {
       name: 'Doors',
       sub: 'Walk to another world',
       where: 'On the map',
-      text: 'A door leads to another world (a layer). A player clicks it and confirms to step through: their hero lands beside the door on the other side, and the door works both ways. The DM places doors from the Tokens panel and changes layer with the layer strip instead.',
+      text: 'A door leads to another world (a layer). A player clicks it and confirms to step through: their hero lands beside the door on the other side, and the door works both ways. A player can open a door only while their hero stands on its square or the one next to it. The DM places doors from the Tokens panel and changes layer with the layer strip instead.',
     },
     {
       key: 'chest',
       name: 'Chests',
       sub: 'Loot to open and take',
       where: 'On the map',
-      text: 'Select a chest and press Open chest in the Inspector. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
+      text: 'Select a chest and press Open chest in the Inspector. A player can open a chest only while their hero stands on its square or the one next to it. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
     },
     {
       key: 'trap',
@@ -413,6 +413,13 @@ export const TABLE_RULES = {
       where: 'On the map',
       dm: true,
       text: 'A trap does not exist for players until you reveal it. Select it and tick Reveal trap in the Inspector to show it; untick to hide it again.',
+    },
+    {
+      key: 'bulletin',
+      name: 'Bulletin boards',
+      sub: 'News and quests to read',
+      where: 'On the map',
+      text: 'A board the DM pins bulletins to: news, rumours, quests. Click it to read them, each on its own card. A player can read a board only while their hero stands on its square or the one next to it; from further away it stays shut. The DM pins, edits and takes down bulletins in the Inspector, and can hide the whole board from players.',
     },
     {
       key: 'turnorder',
@@ -476,8 +483,7 @@ export const TABLE_RULES = {
       text: 'Everything you can place on the map. The Tokens tab folds the panel out over the left of the map; click the tab again, or the « button, to fold it away. You can drag its edge to make it wider or narrower.',
       items: [
         ['Default heroes', 'ready-made characters.'],
-        ['Placeable', 'doors, chests, traps and ambushes.'],
-        ['Add your own image', 'a picture as a token.'],
+        ['Placeable', 'doors, chests, traps, ambushes and bulletin boards.'],
       ],
     },
     {
@@ -491,7 +497,7 @@ export const TABLE_RULES = {
     {
       key: 'placeable',
       name: 'Placeable',
-      sub: 'Doors, chests, traps and ambushes',
+      sub: 'Doors, chests, traps, ambushes and bulletin boards',
       where: 'Tokens panel',
       dm: true,
       text: 'Things to put on the map. Click one and a window opens to set it up; Place puts it on the map you are viewing.',
@@ -500,15 +506,16 @@ export const TABLE_RULES = {
         ['Chest', 'name it, pick its size and fill it from the compendium, at random or with items of your own.'],
         ['Trap', 'set its save and damage; hidden from players until you reveal it.'],
         ['Ambush', 'name it and choose its monsters; hidden from players until you reveal it.'],
+        ['Bulletin board', 'name it and pin bulletins to it, each a title and some text.'],
       ],
     },
     {
       key: 'ownimage',
-      name: 'Add your own image',
-      sub: 'A picture as a token',
-      where: 'Tokens panel',
+      name: 'Your own picture',
+      sub: 'A picture of yours on a token',
+      where: 'Inspector, the pencil on the picture',
       dm: true,
-      text: 'Upload a picture from your computer and use it as a hero or monster token.',
+      text: 'Select a hero, NPC or monster, then click the pencil on its picture and choose an image from your computer. Its sheet and its token on the map both show it.',
     },
     {
       key: 'inspector',

@@ -75,6 +75,8 @@ export default function CharacterBuilder({ table = null, onClose }) {
       if (Number.isInteger(patch.size)) next.size = Math.max(1, Math.min(4, patch.size));
       const hp = patch.maxHp ?? patch.hp;
       if (Number.isInteger(hp)) next.maxHp = Math.max(1, Math.min(9999, hp));
+      // The pencil on the card's art: the same picture as "Add your own image".
+      if (typeof patch.imageUrl === 'string' && patch.imageUrl) next.imageUrl = patch.imageUrl;
       return next;
     });
   }

@@ -1,5 +1,5 @@
-// What the DM can keep from players: a monster, chest or door hidden until
-// the DM shows it, a door locked until the DM unlocks it, and whatever
+// What the DM can keep from players: a monster, NPC, chest, door or bulletin
+// board hidden until the DM shows it, a door locked until the DM unlocks it, and whatever
 // stands in the fog of war.
 //
 // A hidden token works like an unrevealed trap (traps.js): it doesn't exist
@@ -14,7 +14,7 @@
 
 import { isHiddenTrap } from './traps.js';
 
-export const HIDEABLE_KINDS = ['mob', 'npc', 'chest', 'door'];
+export const HIDEABLE_KINDS = ['mob', 'npc', 'chest', 'door', 'bulletin'];
 
 export function canBeHidden(entity) {
   return HIDEABLE_KINDS.includes(entity?.kind);

@@ -113,6 +113,15 @@ The DM edits everything. A player can only:
    everything": toggling a chest's `opened` state is the one write a
    non-host is allowed (`canUpdateEntity`).
 
+A player opens a door or a chest (and reads a bulletin board) only while a
+hero of theirs stands on its square or the one beside it, diagonals included
+(`src/data/reach.js`). Closing a chest and taking from an open one are not
+held to it, and neither is a player with no hero on the layer they are
+viewing when it comes to doors. The DM is never held to it. It is a rule of
+the table checked by the client (`enterDoor`, `canPlayerUpdateEntity`, which
+the DM's client also applies to a guest table's players); the database does
+not enforce it.
+
 Everything else — placing or removing tokens, editing any stat/sheet/
 condition, chest contents, DM notes/droppables, layers, islands, and
 importing a `.json` table — is host-only, enforced both in the UI
@@ -263,8 +272,11 @@ returns `false` and the map does not hold it at the drop square.
 
 ### Token sidebar (`TokenSidebar.jsx`)
 
-- **Add your own image**: upload any image as a Hero or Monster token
-  (client-resized to 256px before embedding as a data URL).
+- A token's own picture is not added here: the DM places a hero, NPC or
+  monster, then clicks the pencil on its picture on the inspector's card
+  (`CreatureCard.jsx`'s `TokenPictureButton`; the avatar on the phone
+  sheet). The image is client-resized to 256px and replaces the token's
+  `imageUrl`, so the card and the map token both draw it.
 - **Default heroes** (8: Fighter, Wizard, Rogue, Ranger, Bard, Barbarian,
   Cleric, Paladin) and **default monsters** (5: Goblin, Skeleton, Orc,
   Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
@@ -281,7 +293,24 @@ returns `false` and the map does not hold it at the drop square.
   `icon:sprite-<name>:<#color>` (`sprite-warrior`, `sprite-rogue`,
   `sprite-ranger`, `sprite-wizard`, `sprite-bard`, `sprite-barbarian`,
   `sprite-cleric`, `sprite-mage`).
-- **Placeable** tiles (Door, Chest, Trap, Ambush): clicking one opens its
+- **Bulletin board** (`src/data/bulletins.js`, `kind: 'bulletin'`): a
+  placeable the DM pins bulletins to, each a title and some text
+  (`bulletins: [{ id, title, text }]`), from its
+  configuration modal and later from its inspector (shared
+  `BulletinsEditor.jsx`). A board is never written to the database: on a
+  cloud table the DM's browser keeps every board (`saveTableBoards`) and
+  announces the ones players may see over the table's channel
+  (`src/lib/boardSync.js`, the `boards` event in `realtime.js`), so players
+  see boards only while the DM's browser is at the table and the DM has them
+  only in the browser they were made in. A guest or local table carries a
+  board like any other token. (`72_bulletin_boards.sql` is kept, unused, for
+  the day boards are stored in the database instead.) Clicking the token opens `BulletinBoardModal.jsx`:
+  every bulletin a card that flips face-up, like the loot reveal. The DM
+  reads any board; a player only while a hero of theirs stands on its square
+  or the one next to it (`canReadBulletinBoard`, checked by the client in
+  `GameView.jsx`'s `openBulletinBoard`), and the modal shuts if that hero
+  walks off. Only the DM edits it, and can hide it like a chest.
+- **Placeable** tiles (Door, Chest, Trap, Ambush, Bulletin board): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
   to create one) → places a linked pair of door tokens. **Chest**: name +

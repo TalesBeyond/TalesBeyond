@@ -32,6 +32,9 @@ import { useImageCacheVersion } from '../lib/imageCache.js';
 import SoundField from './SoundField.jsx';
 import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { ambushMonsterCount } from '../data/ambush.js';
+import BulletinsEditor from './BulletinsEditor.jsx';
+import { bulletinsOf, canReadBulletinBoard } from '../data/bulletins.js';
+import { heroWithinReach } from '../data/reach.js';
 import { totalToHit, totalDamageLabel, acOf, attackWeapon, attackTargetsFor, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 import RollModeTabs from './RollModeTabs.jsx';
 import { ShopTab } from './MerchantShop.jsx';
@@ -56,6 +59,7 @@ export default function RightPanel({
   customMonsters,
   customAssets,
   onRevealAmbush,
+  onReadBulletinBoard,
   collapsed,
   onToggleCollapsed,
   encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
@@ -160,6 +164,17 @@ export default function RightPanel({
             onRemove={onRemoveEntity}
             onReveal={onRevealAmbush}
           />
+        ) : selectedEntity.kind === 'bulletin' ? (
+          <BulletinBoardInspector
+            key={selectedEntity.id}
+            entity={selectedEntity}
+            heroes={heroes}
+            isHost={isHost}
+            meId={meId}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            onRead={onReadBulletinBoard}
+          />
         ) : (
           <MobInspector
             key={selectedEntity.id}
@@ -251,7 +266,7 @@ function VisibilityToggle({ hidden, onChange, staticTitle }) {
   );
 }
 
-// The card a door, chest, trap or ambush is inspected on — the same
+// The card a door, chest, trap, ambush or bulletin board is inspected on — the same
 // collectible card a hero or monster gets (CreatureCard.jsx's classes): its
 // name on the title bar (click to rename, for the DM) beside its `controls`
 // (the lock and visibility icons below) and the DM's remove-from-table, its
@@ -586,6 +601,48 @@ export function AmbushInspector({ entity, customMonsters, isHost, onUpdate, onRe
   );
 }
 
+// ---------- bulletin board ----------
+
+// A bulletin board (data/bulletins.js): the DM pins, edits and takes down its
+// bulletins here. Reading it is the card modal (BulletinBoardModal.jsx),
+// which a player can open only while a hero of theirs stands next to it.
+export function BulletinBoardInspector({ entity, heroes, isHost, meId, onUpdate, onRemove, onRead }) {
+  const bulletins = bulletinsOf(entity);
+  const canRead = isHost || canReadBulletinBoard(entity, heroes, meId);
+
+  return (
+    <PlaceableCard
+      entity={entity}
+      isHost={isHost}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      art={placeableArt('bulletin')}
+      artLabel="A bulletin board"
+      controls={isHost ? <VisibilityToggle hidden={Boolean(entity.hidden)} onChange={(hidden) => onUpdate(entity.id, { hidden })} /> : null}
+      typeLine={`Bulletin board · square (${entity.col}, ${entity.row})${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      plaques={[{ label: bulletins.length === 1 ? 'Bulletin' : 'Bulletins', value: bulletins.length }]}
+    >
+      <button type="button" className="btn btn-primary btn-block" disabled={!canRead} onClick={() => onRead?.(entity)}>
+        Read the board
+      </button>
+      {!canRead && (
+        <p className="card-tab-note" style={{ margin: '12px 0 0' }}>
+          Move your hero next to the board to read it.
+        </p>
+      )}
+
+      {isHost && (
+        <>
+          <label className="field-label" style={{ marginTop: 14 }}>
+            Bulletins
+          </label>
+          <BulletinsEditor bulletins={bulletins} onChange={(next) => onUpdate(entity.id, { bulletins: next })} />
+        </>
+      )}
+    </PlaceableCard>
+  );
+}
+
 // ---------- chest ----------
 
 function chestCostLabel(gp) {
@@ -682,9 +739,11 @@ export function TakeChestItemButton({ disabled, onTake }) {
 
 // Opens or closes a chest. Anyone may, unless the DM has locked it
 // (data/visibility.js): a locked chest shows players a dead "Locked", and
-// the DM's own button unlocks it as it opens. Shared by the phone chest
-// sheet, which passes its own button classes.
-export function ChestOpenButton({ entity, isHost, onUpdate, primaryClass = 'btn btn-block btn-primary', secondaryClass = 'btn btn-block btn-secondary' }) {
+// the DM's own button unlocks it as it opens. A player also opens it only
+// with a hero of theirs standing next to it (`tooFar`, from
+// isChestTooFar below). Shared by the phone chest sheet, which passes its
+// own button classes.
+export function ChestOpenButton({ entity, isHost, tooFar = false, onUpdate, primaryClass = 'btn btn-block btn-primary', secondaryClass = 'btn btn-block btn-secondary' }) {
   function toggleOpen() {
     const opened = !entity.opened;
     onUpdate(entity.id, { opened, imageUrl: makeIconDataUrl(opened ? 'chest-open' : 'chest', entity.color) });
@@ -696,11 +755,30 @@ export function ChestOpenButton({ entity, isHost, onUpdate, primaryClass = 'btn 
       </button>
     );
   }
+  if (!isHost && !entity.opened && tooFar) {
+    return (
+      <button type="button" className={secondaryClass} disabled>
+        Too far to open
+      </button>
+    );
+  }
   return (
     <button type="button" className={entity.opened ? secondaryClass : primaryClass} onClick={toggleOpen}>
       {entity.opened ? 'Close chest' : entity.locked ? 'Unlock and open chest' : 'Open chest'}
     </button>
   );
+}
+
+// Whether a shut chest is out of this player's reach (data/reach.js): none of
+// their heroes stands on its square or the one beside it. Never so for the DM.
+export function isChestTooFar(entity, heroes, isHost, meId) {
+  return !isHost && !entity.opened && !heroWithinReach(entity, heroes, meId);
+}
+
+// What a player is told under a chest they can't see into yet.
+export function shutChestNote(entity, tooFar) {
+  if (entity.locked) return 'It’s locked. Only the DM can unlock it.';
+  return tooFar ? 'Move your hero next to the chest to open it.' : 'Open it to see what’s inside.';
 }
 
 // A chest's inspector, on the same card (PlaceableCard above): whether it is
@@ -714,6 +792,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
   // A player learns what a chest holds only once it is open.
   const seesInside = isHost || entity.opened;
   const locked = Boolean(entity.locked);
+  const tooFar = isChestTooFar(entity, heroes, isHost, meId);
 
   return (
     <PlaceableCard
@@ -739,7 +818,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
         { label: seesInside ? 'Slots filled' : 'Inside', value: seesInside ? `${items.length}/${capacity}` : '?' },
       ]}
     >
-      <ChestOpenButton entity={entity} isHost={isHost} onUpdate={onUpdate} />
+      <ChestOpenButton entity={entity} isHost={isHost} tooFar={tooFar} onUpdate={onUpdate} />
 
       {isHost && entity.opened && (
         <>
@@ -788,7 +867,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
         </>
       ) : !isHost && !entity.opened ? (
         <p className="card-tab-note" style={{ margin: '12px 0 0' }}>
-          {locked ? 'It’s locked. Only the DM can unlock it.' : 'Open it to see what’s inside.'}
+          {shutChestNote(entity, tooFar)}
         </p>
       ) : (
         <>
