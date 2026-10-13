@@ -916,7 +916,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
       {isHost && tool === 'edit' ? (
         <>
           <label className="field-label" style={{ marginTop: 14 }}>
-            Contents (editing — select the Edit tool to change)
+            Contents (editing — select the Arrange maps tool to change)
           </label>
           <ChestContentsEditor
             items={items}
@@ -934,7 +934,7 @@ function ChestInspector({ entity, tool, heroes, isHost, meId, onUpdate, onRemove
         <>
           <label className="field-label" style={{ marginTop: 14 }}>
             Contents {items.length}/{capacity}
-            {isHost ? ' — switch to the Edit tool to change' : ''}
+            {isHost ? ' — switch to the Arrange maps tool to change' : ''}
           </label>
           {items.length === 0 ? (
             <p className="footer-note" style={{ border: 'none', padding: '4px 0' }}>

@@ -3,6 +3,7 @@ import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLine
 import { CONDITIONS } from '../data/conditions.js';
 import { isHiddenFromPlayers, isLockedDoor, isLockedChest } from '../data/visibility.js';
 import { isGate } from '../data/portals.js';
+import { isCover, coverLevelOf } from '../data/cover.js';
 import { ambushMonsterCount } from '../data/ambush.js';
 import { bulletinsOf } from '../data/bulletins.js';
 import { isCreature } from '../data/tokenKinds.js';
@@ -69,7 +70,7 @@ export default function MapBoard({
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
   plannedMove = null, // phone layout: { entityId, islandId, col, row, confirmLabel, note, onConfirm, onCancel } — a move waiting for "Move here"
   tokenActions = null, // phone layout: the selected token's actions, fanned around it — [{ id, label, icon, primary, onPress }]
-  areas = [], // area-of-effect templates on this layer (utils/areaOfEffect.js), each with `removable` for this viewer
+  areas = [], // area-of-effect templates on this layer (utils/areaOfEffect.js), each with `removable` for this viewer; its covers too (data/cover.js), each with `cover`, its level
   areaDraft = null, // Area tool: the template being aimed
   onAreaAim = null, // (patch) => void — the draft's origin, aim point or angle, from a press or drag
   onRemoveArea = null, // (id) => void
@@ -1150,7 +1151,8 @@ export default function MapBoard({
     const inside = [];
     for (const id of entityOrder) {
       const e = entities[id];
-      if (!isCreature(e)) continue;
+      // A cover (data/cover.js) marks ground: nobody is counted inside it.
+      if (area.cover || !isCreature(e)) continue;
       if (e.id === area.entityId && shape.aim !== 'point') continue;
       const size = e.size || 1;
       let hit = false;
@@ -1166,7 +1168,8 @@ export default function MapBoard({
       isDraft && shape.aim === 'point' && fromToken
         ? { from: toPx(at), to: toPx([outline.cx, outline.cy]), feet: Math.round(Math.hypot(outline.cx - at[0], outline.cy - at[1]) * feet) }
         : null;
-    return { area, isDraft, outline, toPx, scale: r.cellSize, cells, inside, tag, range };
+    const label = area.cover ? coverLevelOf(area.cover).label : areaLabel(area);
+    return { area, isDraft, label, outline, toPx, scale: r.cellSize, cells, inside, tag, range };
   }
 
   const areaViews = [...areas.map((a) => areaView(a, false)), areaDraft && tool === 'area' ? areaView(areaDraft, true) : null].filter(Boolean);
@@ -1337,7 +1340,11 @@ export default function MapBoard({
       {areaViews.length > 0 && (
         <svg className="grid-svg area-layer" width={canvasWidth} height={canvasHeight} aria-hidden="true">
           {areaViews.map((v) => (
-            <g key={v.area.id} className={`area${v.isDraft ? ' draft' : ''}`} style={{ '--area-color': v.area.color || 'var(--gold-hi)' }}>
+            <g
+              key={v.area.id}
+              className={`area${v.isDraft ? ' draft' : ''}${v.area.cover ? ' cover' : ''}${v.area.concealed ? ' dm-hidden' : ''}`}
+              style={{ '--area-color': v.area.color || 'var(--gold-hi)', ...(v.area.cover ? { '--cover-fill': coverLevelOf(v.area.cover).fill } : {}) }}
+            >
               {v.cells.map((c) => (
                 <rect key={`${c.x}:${c.y}`} x={c.x} y={c.y} width={c.size} height={c.size} className="area-cell" />
               ))}
@@ -1362,7 +1369,8 @@ export default function MapBoard({
         .sort((a, b) => tokenStackRank(entities[a]) - tokenStackRank(entities[b]))
         .map((id) => {
           const entity = entities[id];
-          if (!entity) return null;
+          // A cover (data/cover.js) is drawn as a template above, never as a token.
+          if (!entity || isCover(entity)) return null;
           const r = islandRects[entity.islandId];
           if (!r) return null; // entity's island doesn't exist on this layer view
           const islandLeft = (r.x - originX) * zoom;
@@ -1484,23 +1492,23 @@ export default function MapBoard({
       })}
 
       {/* Each template's tag: what it is, whose, how many creatures are inside,
-          and a button to take it off for whoever may. */}
+          and a button to take it off for whoever may. A cover's says its level. */}
       {areaViews.map((v) => (
         <div
           key={v.area.id}
-          className={`area-tag${v.isDraft ? ' draft' : ''}`}
+          className={`area-tag${v.isDraft ? ' draft' : ''}${v.area.cover ? ' cover' : ''}`}
           style={{ left: v.tag[0], top: v.tag[1], '--area-color': v.area.color || 'var(--gold-hi)' }}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           <span className="area-tag-swatch" aria-hidden="true" />
           <span>
-            {areaLabel(v.area)}
-            {v.range ? ` · ${v.range.feet} ft away` : !v.isDraft ? ` · ${v.area.name}` : ''}
+            {v.label}
+            {v.area.cover ? (v.area.concealed ? ' · hidden by fog' : '') : v.range ? ` · ${v.range.feet} ft away` : !v.isDraft ? ` · ${v.area.name}` : ''}
           </span>
           {v.inside.length > 0 && <b title={v.inside.map((e) => e.name).join(', ')}>{v.inside.length} inside</b>}
           {v.area.removable && onRemoveArea && (
-            <button type="button" aria-label={`Remove ${v.area.name}’s ${areaLabel(v.area)}`} title="Remove" onClick={() => onRemoveArea(v.area.id)}>
+            <button type="button" aria-label={v.area.cover ? `Remove this ${v.label.toLowerCase()}` : `Remove ${v.area.name}’s ${v.label}`} title="Remove" onClick={() => onRemoveArea(v.area.id)}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" />
               </svg>

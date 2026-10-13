@@ -1365,6 +1365,12 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .add-image-drop span { display: block; color: var(--parchment-300); }
 .add-image-drop:hover { background: var(--ink-900); }
 .add-image-drop:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
+/* At the top of the Tokens panel (TokenSidebar.jsx): Import hero and Create hero,
+   and the file button of the Import hero window. */
+.hero-actions { display: flex; gap: 8px; }
+.hero-actions .btn { flex: 1; min-width: 0; }
+.hero-import-drop { display: block; width: 100%; }
+.hero-import-drop.chosen { border-style: solid; border-color: var(--gold-hi); }
 
 .section-label {
   font-size: 12px;
@@ -5751,6 +5757,16 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .area.draft .area-outline { stroke-dasharray: 8 6; }
 .area-range { stroke: var(--area-color); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
 .token.in-area { outline: 2px dashed var(--parchment-100); outline-offset: 3px; }
+/* A cover (data/cover.js) is a template that stays: a faint yellow wash, more
+   solid the more cover, inside a yellow outline. The DM sees one the fog of
+   war keeps from players dimmed and dotted. Its tag lets a press through to
+   the map under it, all but the DM's button. */
+.area.cover .area-cell { fill-opacity: var(--cover-fill, 0.17); stroke-opacity: 0.3; }
+.area.cover .area-outline { fill-opacity: 0; }
+.area.cover.dm-hidden { opacity: 0.55; }
+.area.cover.dm-hidden .area-outline { stroke-dasharray: 3 5; }
+.area-tag.cover { pointer-events: none; }
+.area-tag.cover button { pointer-events: auto; }
 .area-tag {
   position: absolute;
   z-index: 44;
@@ -6241,6 +6257,8 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   cursor: pointer;
 }
 .drawer-tool:hover { border-color: var(--gold-line); }
+.drawer-tool:disabled { opacity: 0.6; cursor: default; }
+.drawer-tool:disabled:hover { border-color: var(--ink-700); }
 .drawer-tool.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-800)); }
 .drawer-tool:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
 .drawer-tool-icon { flex-shrink: 0; color: var(--gold-hi); }

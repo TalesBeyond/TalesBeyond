@@ -132,7 +132,7 @@ export function PhoneNav({ isHost, tool, onTool, onOpen, onRecenter }) {
   const tools = isHost
     ? [
         ['play', 'Play'],
-        ['edit', 'Edit'],
+        ['edit', 'Arrange maps'],
         ['ruler', 'Ruler'],
       ]
     : [
@@ -826,7 +826,7 @@ export function PhoneEditBar({ islandName, onSettings, onDraw, onDone }) {
   return (
     <div className="phone-edit-bar" role="status">
       <span className="phone-edit-text">
-        <b>Edit mode.</b> Drag a map to move it; edges snap together where they touch.
+        <b>Arrange maps.</b> Drag a map to move it; edges snap together where they touch.
       </span>
       <div className="phone-edit-actions">
         <button type="button" className="phone-btn-ghost" onClick={onSettings}>

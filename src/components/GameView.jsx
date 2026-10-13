@@ -27,7 +27,8 @@ import { ambushDrafts, placeAroundAmbush, cellsCoveredBy } from '../data/ambush.
 import { canReadBulletinBoard } from '../data/bulletins.js';
 import { PORTAL_ICON, PORTAL_COLOR, isPortal, isGate, portalPartner, portalDestinationName } from '../data/portals.js';
 import { heroWithinReach } from '../data/reach.js';
-import { boardToWire, boardFromWire, boardPatchToWire, boardWithWirePatch, boardsIn, withBoardsKept, isOffDatabase } from '../lib/boardSync.js';
+import { boardToWire, boardFromWire, boardPatchToWire, boardWithWirePatch, boardsIn, withBoardsKept, isOffDatabase, OFF_DATABASE_KINDS } from '../lib/boardSync.js';
+import { COVER_COLOR, coverAsArea, coverFromDraft, coverLevelOf, coverTemplate, isCover } from '../data/cover.js';
 import { createEntityGuard, createEntityOutbox, placeFromMove } from '../lib/fastSync.js';
 import { mapDbEntity, mapClientEntityToDb, ENTITY_ROW_KEYS } from '../lib/mappers.js';
 import {
@@ -190,7 +191,7 @@ function clampZoom(z) {
 function findFreeCell(entities, islandId, cols, rows) {
   const occupied = new Set(
     Object.values(entities)
-      .filter((e) => e.islandId === islandId)
+      .filter((e) => e.islandId === islandId && !isCover(e)) // a cover (data/cover.js) takes up no square
       .map((e) => `${e.col},${e.row}`)
   );
   for (let row = 0; row < rows; row++) {
@@ -235,7 +236,7 @@ function arrivalCellNear(state, layerId, islandId, col, row) {
   const entitiesOnDestination = entitiesVisibleOnLayer(state, layerId, true);
   const occupied = new Set(
     Object.values(entitiesOnDestination)
-      .filter((e) => e.islandId === islandId)
+      .filter((e) => e.islandId === islandId && !isCover(e))
       .map((e) => `${e.col},${e.row}`)
   );
   const candidates = [
@@ -1134,8 +1135,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // or reloads afterwards doesn't get the ones already down.
   const [areas, setAreas] = useState({}); // id -> area
   const [areaDraft, setAreaDraft] = useState(null); // the one being aimed (the Area tool)
-  const [areaPicker, setAreaPicker] = useState(null); // { entityId } while its shape and size are chosen
+  const [areaPicker, setAreaPicker] = useState(null); // { entityId, cover? } while its shape and size are chosen; `cover`: the DM is laying a cover (data/cover.js)
   const [lastArea, setLastArea] = useState(null); // { shape, size, width } — the picker reopens on it
+  const [lastCover, setLastCover] = useState(null); // the same for a cover: { shape, size, width, cover }
   // A message from the channel, or this browser's own: { op: 'set', area } or
   // { op: 'remove', ids, byId }. Only its owner or the DM takes a template off.
   function applyAreaMessage(message) {
@@ -1186,7 +1188,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (!isRemote) return;
     const before = action.type === 'ADD_ENTITY' ? null : stateRef.current.entities[action.id];
     if (action.type !== 'ADD_ENTITY' && !before) return;
-    // A bulletin board or a portal has no row in the database
+    // A bulletin board, a portal or a cover has no row in the database
     // (lib/boardSync.js): it is announced like any other token, but nothing
     // of it is ever waiting to be confirmed.
     const offDatabase = isOffDatabase(before || action.entity);
@@ -1234,7 +1236,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       if (!fromDm || typeof entity?.id !== 'string') return;
       const held = current.entities[entity.id];
       if (held && held.kind !== entity.kind) return;
-      if (entity.kind === 'bulletin' || entity.kind === 'portal') {
+      if (OFF_DATABASE_KINDS.includes(entity.kind)) {
         // Not in the database, so there is nothing to hold it to.
         const board = boardFromWire(entity);
         if (board) dispatch({ type: 'ADD_ENTITY', entity: board });
@@ -1251,7 +1253,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // A token this browser doesn't hold is hidden from it, or already gone.
     if (!entity) return;
     if (isOffDatabase(entity)) {
-      // A bulletin board or a portal is the DM's alone to change.
+      // One with no row in the database is the DM's alone to change.
       if (fromDm) receiveBoardChange(entity, action);
       return;
     }
@@ -1274,7 +1276,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       dispatch({ type: 'UPDATE_ENTITY', id: entity.id, patch });
     }
   }
-  // The DM's change to a bulletin board or a portal this browser holds.
+  // The DM's change to a bulletin board, a portal or a cover this browser holds.
   // Shown as it is said: there is no database row to hold it to afterwards.
   function receiveBoardChange(board, action) {
     if (action.type === 'REMOVE_ENTITY') {
@@ -1290,8 +1292,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const receiveEntityRef = useRef(receiveEntityMessage);
   receiveEntityRef.current = receiveEntityMessage;
 
-  // ---- Bulletin boards and portals on a cloud table (lib/boardSync.js) ----
-  // Neither is ever a row in the database ("board" below means either). The
+  // ---- Bulletin boards, portals and covers on a cloud table (lib/boardSync.js) ----
+  // None is ever a row in the database ("board" below means any of them). The
   // DM's browser holds every board (kept across reloads by saveTableBoards)
   // and announces the ones players may see over the table's channel; a
   // player's browser takes them from there. A hidden or fogged board is
@@ -1431,7 +1433,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       id: 'draft',
       byId: me.id,
       name: player?.name || (isHost ? 'DM' : 'Someone'),
-      color: player?.color || null,
+      color: choice.cover ? COVER_COLOR : player?.color || null,
       layerId: currentLayerId,
       ...choice,
       entityId: areaPicker?.entityId || null,
@@ -1440,7 +1442,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       aim: null,
       angle: -Math.PI / 2,
     };
-    setLastArea(choice);
+    if (choice.cover) setLastCover(choice);
+    else setLastArea(choice);
     setAreaPicker(null);
     if (areaShape(choice.shape).aim === 'self') {
       placeArea(draft);
@@ -1451,6 +1454,13 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   }
   function placeArea(draft = areaDraft) {
     if (!draft) return;
+    // A cover is aimed like any template, then kept as a token (addCover).
+    if (draft.cover) {
+      addCover(draft);
+      setAreaDraft(null);
+      setTool('play');
+      return;
+    }
     const area = { ...draft, id: `${me.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` };
     // A sphere never aimed away from its caster is centred on them.
     const entity = area.entityId ? state.entities[area.entityId] : null;
@@ -1464,7 +1474,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     setTool('play');
   }
   function removeArea(id) {
-    announceArea({ op: 'remove', ids: [id], byId: me.id });
+    // A cover's tag takes its token off.
+    if (isCover(state.entities[id])) removeEntity(id);
+    else announceArea({ op: 'remove', ids: [id], byId: me.id });
   }
   // The draft belongs to the Area tool, and to the layer it was started on.
   useEffect(() => {
@@ -1949,6 +1961,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             trapRevealed: false,
           }
         : {}),
+      // How much cover a cover is, and the template it was laid as (data/cover.js).
+      ...(draft.kind === 'cover' ? { coverLevel: coverLevelOf(draft.coverLevel).key, ...coverTemplate(draft) } : {}),
     };
     // Placed straight into the fog of war, it is fogged from its first write
     // and never reaches a player (the same-write rule, utils/fogOfWar.js).
@@ -2027,6 +2041,33 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       // over the table's channel alone (announced just above).
       if (!isOffDatabase(entity)) addEntityRemote(state.session.tableId, entity).catch(reportError);
     } else if (isGuestHost) {
+      broadcastGuestChange({ type: 'ADD_ENTITY', entity });
+    } else {
+      saveOrWarn(state.session.code, {
+        ...state,
+        entities: { ...state.entities, [entity.id]: entity },
+        entityOrder: [...state.entityOrder, entity.id],
+      });
+    }
+  }
+
+  // A cover (data/cover.js) is aimed as an area of effect is and then kept as
+  // a token the map never draws as one, where it was aimed. `draft`: the Area
+  // tool's, with `cover`, its level.
+  function addCover(draft) {
+    if (!isHost) return;
+    const cover = coverFromDraft(draft, state.layers[draft.layerId]?.islands[draft.islandId]);
+    if (!cover) return;
+    const entity = entityFromDraft(
+      { kind: 'cover', name: coverLevelOf(cover.coverLevel).label, imageUrl: '', color: COVER_COLOR, ...cover },
+      { layerId: draft.layerId, islandId: draft.islandId, col: cover.col, row: cover.row, size: 1 }
+    );
+    announceEntityChange({ type: 'ADD_ENTITY', entity });
+    dispatch({ type: 'ADD_ENTITY', entity });
+    // On a cloud table it has no row in the database (lib/boardSync.js): the
+    // announcement just above is how it reaches players.
+    if (isRemote) return;
+    if (isGuestHost) {
       broadcastGuestChange({ type: 'ADD_ENTITY', entity });
     } else {
       saveOrWarn(state.session.code, {
@@ -4127,15 +4168,31 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     ].filter(Boolean);
   }
 
+  // The covers on the layer in view (data/cover.js), as the templates the map
+  // draws. The DM takes one off, and is shown which the fog of war keeps
+  // from players.
+  const layerCovers = Object.values(layerEntities).flatMap((entity) => {
+    const area = coverAsArea(entity);
+    return area ? [{ ...area, removable: isHost, concealed: isHiddenFromPlayers(entity) }] : [];
+  });
   // The templates on the layer in view; its owner or the DM may take one off.
-  const layerAreas = Object.values(areas)
-    .filter((a) => a.layerId === currentLayerId)
-    .map((a) => ({ ...a, removable: isHost || a.byId === me.id }));
+  // They are drawn over its covers.
+  const layerAreas = [
+    ...layerCovers,
+    ...Object.values(areas)
+      .filter((a) => a.layerId === currentLayerId)
+      .map((a) => ({ ...a, removable: isHost || a.byId === me.id })),
+  ];
   const areaDraftShape = areaDraft ? areaShape(areaDraft.shape) : null;
   const areaCaster = areaDraft?.entityId ? state.entities[areaDraft.entityId] : null;
   const areaReady = Boolean(areaDraft && (areaCaster || (areaDraftShape.aim === 'point' ? areaDraft.aim : areaDraft.origin)));
   const areaPickerEl = areaPicker && (
-    <AreaPicker casterName={state.entities[areaPicker.entityId]?.name || null} initial={lastArea} onAim={startArea} />
+    <AreaPicker
+      cover={Boolean(areaPicker.cover)}
+      casterName={state.entities[areaPicker.entityId]?.name || null}
+      initial={areaPicker.cover ? lastCover : lastArea}
+      onAim={startArea}
+    />
   );
 
   // A guest table lives in the DM's browser: while one is hosted from a
@@ -4208,6 +4265,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onToggleHideDrawings={() => setHideDrawings(!hideDrawings)}
         onToolChange={setTool}
         onArea={() => openAreaPicker(selectedEntity)}
+        onCover={() => setAreaPicker({ entityId: null, cover: true })}
+        layingCover={tool === 'area' && Boolean(areaDraft?.cover)}
         onIslandPatch={(patch) => updateIsland(activeIslandId, patch)}
         session={state.session}
         onRegenerateCode={regenerateCode}
@@ -4234,7 +4293,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onImport={importTable}
         onLeave={leaveTable}
         onReport={() => setShowReport(true)}
-        onOpenCharacters={() => setShowCharacters(true)}
+        onOpenCharacters={isHost ? null : () => setShowCharacters(true)}
         onKickPlayer={isHost ? setPendingKickId : null}
         onStartTour={isHost && !isPhone ? () => setTourOpen(true) : null}
         theme={theme}
@@ -4282,6 +4341,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           onAddEntity={addEntity}
           onAddPortal={addPortalPair}
           onCreateLayer={isHost ? createLayer : null}
+          onOpenCharacters={() => {
+            if (isPhone) setPhoneSheet(null);
+            setShowCharacters(true);
+          }}
           layers={state.layers}
           layerOrder={state.layerOrder}
           currentLayerId={currentLayerId}
@@ -4500,7 +4563,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           {tool === 'area' && areaDraft && (
             <div role="status" className="mode-bar map-mode-bar area-bar">
               <span className="mode-bar-text">
-                <b>{areaLabel(areaDraft)}.</b>{' '}
+                <b>{areaDraft.cover ? coverLevelOf(areaDraft.cover).label : areaLabel(areaDraft)}.</b>{' '}
                 {areaDraftShape.aim === 'point'
                   ? areaCaster
                     ? `Press or drag to the point it is centred on. It starts on ${areaCaster.name}.`
@@ -4520,7 +4583,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
             </div>
           )}
           {!isPhone && isHost && tool === 'edit' && (
-            <ModeBar id="edit" className="map-mode-bar" label="Edit mode." doneLabel="Done" onDone={() => setTool('play')}>
+            <ModeBar id="edit" className="map-mode-bar" label="Arrange maps." doneLabel="Done" onDone={() => setTool('play')}>
               Drag a map to move it. Where edges touch, tokens walk across.
             </ModeBar>
           )}
@@ -4569,7 +4632,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         {!isPhone && rightPanelEl}
 
         {areaPicker && !isPhone && (
-          <ModalShell title="Area of effect" maxWidth={440} onClose={() => setAreaPicker(null)}>
+          <ModalShell title={areaPicker.cover ? 'Cover' : 'Area of effect'} maxWidth={440} onClose={() => setAreaPicker(null)}>
             {areaPickerEl}
           </ModalShell>
         )}
@@ -4769,7 +4832,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           {isHost && <div className="phone-toolbar-host">{toolbarEl}</div>}
           <PhoneNav isHost={isHost} tool={tool} onTool={setTool} onOpen={setPhoneSheet} onRecenter={() => flyToIsland(activeIslandId)} />
           {areaPicker && (
-            <PhoneSheet title="Area of effect" onClose={() => setAreaPicker(null)}>
+            <PhoneSheet title={areaPicker.cover ? 'Cover' : 'Area of effect'} onClose={() => setAreaPicker(null)}>
               {areaPickerEl}
             </PhoneSheet>
           )}
@@ -5035,10 +5098,6 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onReport={() => {
                 setPhoneSheet(null);
                 setShowReport(true);
-              }}
-              onOpenCharacters={() => {
-                setPhoneSheet(null);
-                setShowCharacters(true);
               }}
               onClose={() => setPhoneSheet(null)}
             />

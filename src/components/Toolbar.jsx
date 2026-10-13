@@ -116,6 +116,8 @@ const ICON_PATHS = {
   pan: 'M10 2v16M2 10h16M10 2L7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5',
   ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
   area: 'M3 10L16 4c1.500 3.500 1.500 8.500 0 12z',
+  // Cover: a low wall of bricks.
+  cover: 'M3 6h14v9H3zM3 10.500h14M8 6v4.500M13 6v4.500M10.500 10.500V15',
   group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
   draw: 'M3 17c2-1 3-3 5-3M13 3l4 4-8 8-4 1 1-4z',
   // Fog of war: a covered (hatched) rectangle — not the Fog condition's mist.
@@ -189,9 +191,9 @@ const EXTRA_BOOKS = ['tomes', 'foods', 'spells', 'potions'];
 const OWN_ASSET_TAB = { tomes: 'tome', foods: 'food', spells: 'spell', potions: 'potion' };
 
 // A card in a rail drawer: its icon, its name and a line saying what it does.
-function DrawerCard({ icon, label, text, title, active = false, onClick }) {
+function DrawerCard({ icon, label, text, title, active = false, disabled = false, onClick }) {
   return (
-    <button type="button" className={`drawer-tool${active ? ' active' : ''}`} aria-pressed={active || undefined} onClick={onClick} title={title}>
+    <button type="button" className={`drawer-tool${active ? ' active' : ''}`} aria-pressed={active || undefined} disabled={disabled} onClick={onClick} title={title}>
       <span className="drawer-tool-icon">
         <Icon name={icon} />
       </span>
@@ -217,19 +219,21 @@ const TOOL_ICONS = {
   pan: <Icon name="pan" />,
   ruler: <Icon name="ruler" />,
   area: <Icon name="area" />,
+  cover: <Icon name="cover" />,
   draw: <Icon name="draw" />,
   fogofwar: <Icon name="fogofwar" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', area: 'Area', draw: 'Draw', fogofwar: 'Fog of war' };
+const TOOL_LABELS = { play: 'Play', edit: 'Arrange maps', pan: 'Pan', ruler: 'Ruler', area: 'Area', cover: 'Cover', draw: 'Draw', fogofwar: 'Fog of war' };
 
 // The Tools drawer (rail): each tool with what it does. `dm`: the DM's only.
 const DRAWER_TOOLS = [
   { key: 'play', text: 'Select tokens and drag them around the map. The everyday tool.' },
+  { key: 'edit', text: 'Drag whole maps to move them and line them up.', dm: true },
   { key: 'ruler', text: 'Drag across the map to measure a distance in feet.' },
-  { key: 'area', text: 'Lay a spell’s area on the map: a cone, cube, line, sphere and more.' },
   { key: 'draw', text: 'Sketch on the map. Everyone at the table sees it.', dm: true },
   { key: 'fogofwar', text: 'Cover parts of a map until the party explores them.', dm: true },
-  { key: 'edit', text: 'Drag whole maps to move them and line them up.', dm: true },
+  { key: 'area', text: 'Lay a spell’s area on the map: a cone, cube, line, sphere and more.' },
+  { key: 'cover', text: 'Mark part of a map as quarter, half or full cover.', dm: true },
 ];
 
 // Seats at a table: the DM plus up to nine players.
@@ -298,6 +302,8 @@ export default function Toolbar({
   tool,
   onToolChange,
   onArea, // opens the area-of-effect picker; the Area tool itself starts once a shape is chosen
+  onCover, // DM: opens the same picker to lay a cover (data/cover.js), which the Area tool then aims
+  layingCover = false, // the Area tool is aiming a cover
   revealRolls = false,
   onRevealRollsChange,
   hideDrawings = false,
@@ -429,7 +435,6 @@ export default function Toolbar({
   const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
   const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
   const hintPrefs = useHintPrefs();
-  const [showMusicHint, setShowMusicHint] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Keep the bar on a single row: try each density from roomiest to
@@ -558,6 +563,9 @@ export default function Toolbar({
     setOpenMenu(null);
     action();
   }
+
+  // A cover is aimed with the Area tool, but is its own entry among the tools.
+  const toolInHand = tool === 'area' && layingCover ? 'cover' : tool;
 
   function togglePopover(name) {
     // On the rail these stand in a drawer beside it.
@@ -791,10 +799,10 @@ export default function Toolbar({
       {/* The trigger shows the active tool's icon, so the current mode is
           still visible with the menu folded away. */}
       <ToolMenu
-        icon={TOOL_ICONS[tool] || <Icon name="tools" />}
+        icon={TOOL_ICONS[toolInHand] || <Icon name="tools" />}
         label="Tools"
         tour="tools"
-        title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
+        title={`Tools — current: ${TOOL_LABELS[toolInHand] || tool}`}
         open={rail ? sidePanel === 'tools' : openMenu === 'tools'}
         onToggle={() => (rail ? openSide('tools') : toggleMenu('tools'))}
         onClose={rail ? closeSide : closeMenu}
@@ -806,7 +814,7 @@ export default function Toolbar({
         {rail && (
           <>
             {DRAWER_TOOLS.filter((t) => isHost || !t.dm).map((t) => (
-              <button key={t.key} type="button" className={`drawer-tool${tool === t.key ? ' active' : ''}`} aria-pressed={tool === t.key} onClick={() => (t.key === 'area' ? onArea() : onToolChange(t.key))}>
+              <button key={t.key} type="button" className={`drawer-tool${toolInHand === t.key ? ' active' : ''}`} aria-pressed={toolInHand === t.key} onClick={() => (t.key === 'area' ? onArea() : t.key === 'cover' ? onCover() : onToolChange(t.key))}>
                 <span className="drawer-tool-icon">{TOOL_ICONS[t.key]}</span>
                 <span className="drawer-book-text">
                   <span className="drawer-tool-name">{TOOL_LABELS[t.key]}</span>
@@ -826,6 +834,15 @@ export default function Toolbar({
           onClick={() => pick(() => onToolChange('play'))}
           title="Select and drag tokens"
         />
+        {isHost && (
+          <ToolCard
+            icon={TOOL_ICONS.edit}
+            label="Arrange maps"
+            active={tool === 'edit'}
+            onClick={() => pick(() => onToolChange('edit'))}
+            title="Drag maps around to reposition them"
+          />
+        )}
         {/* Pan and "Hide drawings" are off the desktop bar for now: right-drag
             already moves the map in every tool, and GameView ignores a saved
             "hide drawings" on desktop so nobody is left with drawings hidden
@@ -836,13 +853,6 @@ export default function Toolbar({
           active={tool === 'ruler'}
           onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
-        />
-        <ToolCard
-          icon={TOOL_ICONS.area}
-          label="Area"
-          active={tool === 'area'}
-          onClick={() => pick(onArea)}
-          title="Lay an area of effect on the map — everyone at the table sees it"
         />
         {isHost && (
           <>
@@ -860,14 +870,23 @@ export default function Toolbar({
               onClick={() => pick(() => onToolChange('fogofwar'))}
               title="Fog of war — cover parts of a map until the party explores them"
             />
-            <ToolCard
-              icon={TOOL_ICONS.edit}
-              label="Edit"
-              active={tool === 'edit'}
-              onClick={() => pick(() => onToolChange('edit'))}
-              title="Drag maps around to reposition them"
-            />
           </>
+        )}
+        <ToolCard
+          icon={TOOL_ICONS.area}
+          label="Area"
+          active={toolInHand === 'area'}
+          onClick={() => pick(onArea)}
+          title="Lay an area of effect on the map — everyone at the table sees it"
+        />
+        {isHost && (
+          <ToolCard
+            icon={TOOL_ICONS.cover}
+            label="Cover"
+            active={toolInHand === 'cover'}
+            onClick={() => pick(onCover)}
+            title="Mark part of the map as quarter, half or full cover — everyone at the table sees it"
+          />
         )}
           </>
         )}
@@ -1138,24 +1157,6 @@ export default function Toolbar({
             title="Roll for Initiative"
           />
         )}
-        <span className="toolbar-hint-anchor">
-          <ToolCard
-            icon={<Icon name="music" />}
-            label="Music"
-            tour="music"
-            active={Boolean(audio?.playback?.nowPlaying) || showMusicHint || musicOpen}
-            onClick={audio?.enabled ? (musicOpen ? onCloseMusic : onOpenMusic) : () => {
-              closePanels();
-              setShowMusicHint((s) => !s);
-            }}
-            title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
-          />
-          {showMusicHint && !audio?.enabled && (
-            <div className="toolbar-hint-pop" data-rail-pop="">
-              <Hint>{musicHint}</Hint>
-            </div>
-          )}
-        </span>
         <ToolCard
           icon={<Icon name="dice" />}
           label="Dice"
@@ -1254,8 +1255,9 @@ export default function Toolbar({
         </ToolMenu>
       )}
 
-      {/* The Characters screen (CharacterBuilder.jsx), for players and the DM
-          alike: build a hero, keep it as a .tlsbyd file, bring it to the table. */}
+      {/* The Characters screen (CharacterBuilder.jsx), for a player: build a
+          hero, keep it as a .tlsbyd file, send it to the DM. The DM opens it
+          from the Tokens panel instead (TokenSidebar.jsx's Create hero). */}
       {onOpenCharacters && (
         <div className="toolbar-group">
           <ToolCard
@@ -1420,7 +1422,7 @@ export default function Toolbar({
         icon={<Icon name="config" />}
         label={rail ? 'Config' : 'Configurations'}
         tour="config"
-        title="Save, export, import, close, and hints"
+        title="Music, save, export, import, close, and hints"
         open={rail ? sidePanel === 'configurations' : openMenu === 'configurations'}
         onToggle={() => (rail ? openSide('configurations') : toggleMenu('configurations'))}
         onClose={rail ? closeSide : closeMenu}
@@ -1432,6 +1434,19 @@ export default function Toolbar({
             grouped by what it is for. */}
         {rail && (
           <>
+            {/* Music opens as a side panel in this drawer's place (GameView
+                holds it). Where there is none, the card says why. */}
+            <section className="drawer-section">
+              <span className="section-label">Sound</span>
+              <DrawerCard
+                icon="music"
+                label="Music"
+                text={audio?.enabled ? 'Opens the table’s music in a side panel.' : musicHint}
+                active={Boolean(audio?.playback?.nowPlaying)}
+                disabled={!audio?.enabled}
+                onClick={onOpenMusic}
+              />
+            </section>
             {isHost && (
               <section className="drawer-section">
                 <span className="section-label">Table</span>
@@ -1507,6 +1522,14 @@ export default function Toolbar({
         )}
         {!rail && (
           <>
+        <ToolCard
+          icon={<Icon name="music" />}
+          label="Music"
+          active={Boolean(audio?.playback?.nowPlaying) || musicOpen}
+          disabled={!audio?.enabled}
+          onClick={() => pick(musicOpen ? onCloseMusic : onOpenMusic)}
+          title={audio?.enabled ? 'Table music' : musicHint}
+        />
         {isHost && (
           <>
             <ToolCard icon={<Icon name="save" />} label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
@@ -2119,8 +2142,8 @@ function IslandManagerPopover({
       {parentIds.map((id) => mapRow(id))}
 
       {!side && newMap}
-      <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
-        Switch to <b>Tools → Edit</b>, then drag a map by its background. Where edges touch, tokens walk across.
+      <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Arrange maps' : null} onAction={onSwitchToEdit}>
+        Switch to <b>Tools → Arrange maps</b>, then drag a map by its background. Where edges touch, tokens walk across.
       </Hint>
     </ModalShell>
   );

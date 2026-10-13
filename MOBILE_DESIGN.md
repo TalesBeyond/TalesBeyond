@@ -65,11 +65,11 @@ real-device pass and on REQ-008.
 - **Dice rolls**: other people's rolls land as a card over the top of the map;
   the dice sheet says "Everyone at the table sees your rolls."
 
-**DM** — bottom bar Play · Edit · Ruler · Add · Run table.
+**DM** — bottom bar Play · Arrange maps · Ruler · Add · Run table.
 
 - **Add** (`TokenSidebar` `layout="phone"`): Heroes · Monsters (bestiary, asset
   storage) · Doors · Chests · Traps · Your own.
-- **Edit** mode bar: island settings (opens Mapping → Islands on that island's settings), Group islands, Draw, Done.
+- **Arrange maps** mode bar: island settings (opens Mapping → Islands on that island's settings), Group islands, Draw, Done.
   While it's up, the island chips, mini-map, zoom column, turn order and
   condition banner hide and the bar takes the chips' place (pinch still zooms).
 - **Group islands** (`PhoneGroupSheet`): islands are too small to tap one by one
@@ -115,7 +115,7 @@ Join ──Take a seat──▶ Island view ──token card──▶ Creature s
                        └──⋯ · Leave──▶ Join
 
 DM:
-Host ──Start a guest table──▶ Island view ──Add / Edit / Run table / ⋯──▶ sheets and panels
+Host ──Start a guest table──▶ Island view ──Add / Arrange maps / Run table / ⋯──▶ sheets and panels
 ```
 
 ---

@@ -1,5 +1,6 @@
-// Bulletin boards (data/bulletins.js) and portals (data/portals.js) on a cloud
-// table are never written to the database. The DM's browser keeps them
+// Bulletin boards (data/bulletins.js), portals (data/portals.js) and covers
+// (data/cover.js) on a cloud table are never written to the database ("board"
+// below means any of them). The DM's browser keeps them
 // (state/persistence.js's saveTableBoards) and tells the players' browsers
 // about the ones they may see over the table's channel (lib/realtime.js's
 // 'boards'), like dice rolls:
@@ -16,19 +17,22 @@
 //
 // Each travels as plain fields with its picture as a reference
 // (lib/storedImages.js) and is read back field by field, so whatever arrives
-// on the channel can only ever become a bulletin board or a portal.
+// on the channel can only ever become a bulletin board, a portal or a cover.
 
 import { BULLETIN_COLOR, MAX_BULLETINS, MAX_BULLETIN_TITLE, MAX_BULLETIN_TEXT, bulletinsOf, isBulletinBoard } from '../data/bulletins.js';
 import { PORTAL_COLOR, isPortal } from '../data/portals.js';
+import { COVER_COLOR, coverLevelOf, coverTemplate, isCover } from '../data/cover.js';
 import { toStoredImage, fromStoredImage } from './storedImages.js';
 
 const MAX_ID = 80;
 const MAX_NAME = 80;
 const MAX_SIZE = 4;
 
-// A token of a kind that has no row in the database.
+// The kinds of token that have no row in the database.
+export const OFF_DATABASE_KINDS = ['bulletin', 'portal', 'cover'];
+
 export function isOffDatabase(entity) {
-  return isBulletinBoard(entity) || isPortal(entity);
+  return OFF_DATABASE_KINDS.includes(entity?.kind);
 }
 
 export function boardToWire(board) {
@@ -43,7 +47,9 @@ export function boardToWire(board) {
     size: board.size,
     layerId: board.layerId,
     islandId: board.islandId,
-    ...(isBulletinBoard(board) ? { bulletins: bulletinsOf(board) } : { linkId: board.linkId, locked: Boolean(board.locked) }),
+    ...(isBulletinBoard(board) ? { bulletins: bulletinsOf(board) } : {}),
+    ...(isPortal(board) ? { linkId: board.linkId, locked: Boolean(board.locked) } : {}),
+    ...(isCover(board) ? { coverLevel: board.coverLevel, ...coverTemplate(board) } : {}),
   };
 }
 
@@ -89,8 +95,9 @@ export function boardWithWirePatch(board, wirePatch) {
 // The board or portal a message describes, or null when it doesn't describe one.
 export function boardFromWire(raw) {
   if (!raw || !isId(raw.id) || !isId(raw.layerId) || !isId(raw.islandId) || !isSquare(raw.col) || !isSquare(raw.row)) return null;
-  const kind = raw.kind === 'portal' ? 'portal' : 'bulletin';
-  const color = /^#[0-9a-fA-F]{3,8}$/.test(raw.color || '') ? raw.color : kind === 'portal' ? PORTAL_COLOR : BULLETIN_COLOR;
+  const kind = OFF_DATABASE_KINDS.includes(raw.kind) ? raw.kind : 'bulletin';
+  const ownColor = kind === 'portal' ? PORTAL_COLOR : kind === 'cover' ? COVER_COLOR : BULLETIN_COLOR;
+  const color = /^#[0-9a-fA-F]{3,8}$/.test(raw.color || '') ? raw.color : ownColor;
   const token = {
     id: raw.id,
     kind,
@@ -108,6 +115,12 @@ export function boardFromWire(raw) {
   };
   // A portal's other end (data/portals.js), and whether this end is locked.
   if (kind === 'portal') return { ...token, linkId: isId(raw.linkId) ? raw.linkId : null, locked: Boolean(raw.locked) };
+  // How much cover a cover is, and the template it was laid as
+  // (data/cover.js). It is never drawn as a token, so it has no picture.
+  if (kind === 'cover') {
+    const template = coverTemplate(raw);
+    return template ? { ...token, imageUrl: '', coverLevel: coverLevelOf(raw.coverLevel).key, ...template } : null;
+  }
   const bulletins = (Array.isArray(raw.bulletins) ? raw.bulletins : [])
     .filter((b) => b && isId(b.id))
     .slice(0, MAX_BULLETINS)
@@ -123,7 +136,8 @@ export function boardsIn(state) {
 // A table read from the database has no boards or portals. This puts back the
 // ones this browser holds, where the map they stand on is still there.
 export function withBoardsKept(state, boards) {
-  const kept = boards.filter((b) => isOffDatabase(b) && isId(b.id) && !state.entities[b.id] && state.layers[b.layerId]?.islands?.[b.islandId]);
+  const laid = (b) => !isCover(b) || coverTemplate(b); // a cover with no template can't be drawn or taken off
+  const kept = boards.filter((b) => isOffDatabase(b) && isId(b.id) && laid(b) && !state.entities[b.id] && state.layers[b.layerId]?.islands?.[b.islandId]);
   if (!kept.length) return state;
   return {
     ...state,

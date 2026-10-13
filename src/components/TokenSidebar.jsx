@@ -50,8 +50,11 @@ function TokenCard({ name, imageUrl, shape, onPlace, label = `Place ${name}`, ti
   );
 }
 
-export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
+export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, onOpenCharacters = null, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
   const heroFileRef = useRef(null);
+  // The Import hero window, while it is open: the hero read from the chosen
+  // file, a note about its picture, or why the file could not be read.
+  const [heroImport, setHeroImport] = useState(null); // { hero, note, error }
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
   const [showDoorModal, setShowDoorModal] = useState(false);
   const [doorName, setDoorName] = useState('Door');
@@ -284,20 +287,44 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
   }
 
   // A premade hero (lib/heroFile.js, built on the Characters screen): its
-  // .tlsbyd file goes straight onto the map, with the sheet it was built with.
+  // .tlsbyd file is chosen in the Import hero window, which then puts it on
+  // the map with the sheet it was built with.
   async function handleHeroFileChosen(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    let next;
     try {
       const { hero, pictureError } = await readHeroFile(file);
-      onAddEntity(heroTokenDraft(hero));
-      if (pictureError) alert(`${hero.name} was placed without its picture. ${imageErrorMessage(pictureError, 'The picture in the file could not be read.')}`);
+      const note = pictureError ? `It will be placed without its picture. ${imageErrorMessage(pictureError, 'The picture in the file could not be read.')}` : '';
+      next = { hero, note, error: '' };
     } catch (err) {
-      alert(heroFileErrorMessage(err));
+      next = { hero: null, note: '', error: heroFileErrorMessage(err) };
     }
+    // Nothing to show it in if the window was closed while the file was read.
+    setHeroImport((open) => (open ? next : null));
   }
 
+  function confirmImportHero() {
+    if (!heroImport?.hero) return;
+    onAddEntity(heroTokenDraft(heroImport.hero));
+    setHeroImport(null);
+  }
+
+  // A hero of the table's own, at the top of the panel: one saved to a file
+  // earlier, or a new one built on the Characters screen (CharacterBuilder.jsx).
+  const heroActionsEl = (
+    <div className="hero-actions">
+      <button type="button" className="btn btn-secondary" title={`Put a hero saved as a ${HERO_FILE_EXTENSION} file on the map`} onClick={() => setHeroImport({ hero: null, note: '', error: '' })}>
+        Import hero
+      </button>
+      {onOpenCharacters && (
+        <button type="button" className="btn btn-primary" title="Build a new hero, then place it on the map or save it as a file" onClick={onOpenCharacters}>
+          Create hero
+        </button>
+      )}
+    </div>
+  );
   const heroesBody = (
     <>
           <div className="token-grid">
@@ -311,11 +338,6 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
               />
             ))}
           </div>
-          <button type="button" className="add-image-drop" onClick={() => heroFileRef.current?.click()}>
-            Upload a premade hero
-            <span>A {HERO_FILE_EXTENSION} file from the Characters screen</span>
-          </button>
-          <input ref={heroFileRef} type="file" accept={HERO_FILE_EXTENSION} style={{ display: 'none' }} onChange={handleHeroFileChosen} />
     </>
   );
   const npcBody = (
@@ -726,6 +748,49 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
         </div>
       )}
 
+      {heroImport && (
+        <div className="book-backdrop" onClick={() => setHeroImport(null)}>
+          <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="book-card-header">
+              <span className="book-title">
+                <ModalIcon name="archive" />Import Hero
+              </span>
+              <button className="popover-close" onClick={() => setHeroImport(null)} aria-label="Close" title="Close">
+                ×
+              </button>
+            </div>
+            <div style={{ padding: 16 }}>
+              <p className="shop-modal-blurb">
+                Choose a hero saved as a {HERO_FILE_EXTENSION} file from Create hero. Its token goes on the map you are viewing, with the sheet it was built with.
+              </p>
+              <button type="button" className={`add-image-drop hero-import-drop${heroImport.hero ? ' chosen' : ''}`} onClick={() => heroFileRef.current?.click()}>
+                {heroImport.hero ? heroImport.hero.name : 'Choose a hero file'}
+                <span>{heroImport.hero ? 'Choose another file' : `A ${HERO_FILE_EXTENSION} file from this device`}</span>
+              </button>
+              <input ref={heroFileRef} type="file" accept={HERO_FILE_EXTENSION} style={{ display: 'none' }} onChange={handleHeroFileChosen} />
+              {heroImport.error && (
+                <p className="chest-modal-pending" role="alert">
+                  {heroImport.error}
+                </p>
+              )}
+              {heroImport.note && (
+                <p className="chest-modal-pending" role="status">
+                  {heroImport.note}
+                </p>
+              )}
+              <div className="chest-modal-actions">
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setHeroImport(null)}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" style={{ flex: 1 }} disabled={!heroImport.hero} onClick={confirmImportHero}>
+                  Create token
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showChestModal && (
         <div className="book-backdrop" onClick={() => setShowChestModal(false)}>
           <div className="book-card fit-modal" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
@@ -821,7 +886,8 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
         <div className="phone-add-body sidebar-blocks">
           {phoneTab === 'heroes' && (
             <>
-              <p className="phone-caption phone-caption-flush">Tap a hero to place it on the map you’re viewing.</p>
+              {heroActionsEl}
+              <p className="phone-caption phone-caption-flush">Import a hero from a file or create your own, or tap one below to place it on the map you’re viewing.</p>
               {heroesBody}
             </>
           )}
@@ -864,6 +930,8 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
         </button>
       </div>
       <div className="panel-scroll sidebar-blocks">
+        {heroActionsEl}
+
         <SidebarSection title="Default heroes" tour="side-heroes">
           {heroesBody}
         </SidebarSection>

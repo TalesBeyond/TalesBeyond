@@ -179,7 +179,7 @@ reloads the full snapshot on mount).
 ### Toolbar (`Toolbar.jsx`) — collapsible, icon-card based, no dropdown menus
 
 - **Tool select** (mutually exclusive): **Play** (select/drag tokens,
-  walk through doors) · **Edit** (host-only: drag islands to reposition,
+  walk through doors) · **Arrange maps** (key `edit`; host-only: drag islands to reposition,
   edit chest contents) · **Pan** (click-drag to scroll) · **Ruler**
   (click-drag to measure) · **Fog of war** (host-only, desktop: cover
   parts of a map until the party explores them — see Fog of war below).
@@ -337,6 +337,27 @@ returns `false` and the map does not hold it at the drop square.
   made, on the same `entity` announcements as every other token
   (`announceEntityChange`, `receiveBoardChange`); the `boards` messages
   say it again in full, which is how a player who connects afterwards gets it.
+- **Cover** (`src/data/cover.js`, `kind: 'cover'`): part of a map the DM
+  marks as quarter, half or full cover. It is not a tile in the sidebar: it
+  is laid like an area of effect. The **Cover** tool (DM only) opens
+  `AreaPicker` with `cover` — a level, one of `COVER_SHAPES` (line, square,
+  circle: an area of effect's line, cube and sphere) and a size — and the
+  choice becomes the Area tool's draft with `cover` set, aimed and placed
+  exactly as a spell's template is. **Place** (`placeArea`) then calls
+  `addCover` instead of announcing a template: unlike a template a cover
+  stays, so it is kept as a token holding `coverLevel` and the template it
+  was laid as (`coverShape`, `coverSize`, `coverWidth`, `coverAt`,
+  `coverAngle`), with `col`/`row` the square it starts on. `MapBoard.jsx`
+  never draws it as a token: `GameView` hands the layer's covers to it among
+  the templates (`layerCovers`, `coverAsArea`), drawn under the spells' in a
+  faint yellow wash inside a yellow outline, more solid the more cover, with
+  a tag naming the level. The DM's tag has the button that takes it off
+  (`removeArea` → `removeEntity`); it can't be moved or edited afterwards.
+  It is a marker only: no roll, attack or armour class reads it. It takes up
+  no square (`findFreeCell`, `arrivalCellNear`), and one whose starting
+  square is under the fog of war is kept from players like any fogged token.
+  Like a bulletin board it is never written to the database and travels the
+  same way (`boardSync.js`'s `OFF_DATABASE_KINDS`).
 - **Placeable** tiles (Door, Chest, Trap, Ambush, Bulletin board, Portal): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
@@ -378,7 +399,7 @@ and Bag tabs; anyone else sees plain values with no pencil.
 - **Chest** — name, Open/Close toggle (independent of the active tool), a
   **Give to a player** picker per item once opened (moves the item from
   the chest into a chosen hero's Bag), and contents editing (only while
-  the Edit tool is selected) via the shared `ChestContentsEditor`.
+  the Arrange maps tool is selected) via the shared `ChestContentsEditor`.
 
 **Conditions** (`src/data/conditions.js`): Poisoned, Stunned, Prone,
 Shocked, Bleeding — purely visual/informational badges on hero and mob
@@ -603,8 +624,10 @@ built-in icons and the animated heroes); nothing can be bought yet.
 ### Characters screen & premade heroes (`CharacterBuilder.jsx`, `lib/heroFile.js`)
 
 A full-window screen for players and the DM alike, opened from **Create a
-character** on the landing screen (no table needed), the toolbar's
-**Characters** tab, and both phone table menus. It shows the same card a hero
+character** on the landing screen (no table needed) and, at a table, from
+**Create hero** at the top of the DM's Tokens panel, above the default heroes
+(`TokenSidebar.jsx`, desktop and the phone's Add sheet) or, for a player,
+the toolbar's **Characters** tab and the phone's table menu. It shows the same card a hero
 has on the map (`CreatureCard` with the Battle, Spells, Bag and Skills tab
 bodies, every value click-to-edit) over a hero that stands on no map yet:
 `{ name, imageUrl, color, size, maxHp, sheet }`. Its picture is a default
@@ -619,7 +642,8 @@ table.
   trusted: `sanitizeHero` / `sanitizeSheet` rebuild it field by field within
   bounds, and its picture is redrawn at token size and scored by the filter.
 - **The DM** places it with **Place on the map**, or uploads a player's file
-  straight onto the map from the Tokens panel (**Upload a premade hero**).
+  onto the map from the Tokens panel: **Import hero** opens a window to
+  choose the file, shows the hero it holds, and **Create token** places it.
   `entityFromDraft` takes the draft's `sheet`, `size` and `ownerId`.
 - **A player** can't add a token, so **Send to the DM** offers the hero over
   the table's channel (a `hero` broadcast, like dice rolls: never stored, and

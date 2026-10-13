@@ -27,9 +27,10 @@ export const TABLE_RULES = {
       text: 'Opens the map tools in a drawer beside the rail, each with what it does. The drawer stays open while you work, so the next tool is one press away. The tab shows the icon of the tool you are using, so you can tell which one is on with the drawer closed.',
       items: [
         ['Play', 'select tokens and drag them around.'],
+        ['Arrange maps', 'drag whole maps (DM).'],
         ['Ruler', 'measure a distance.'],
         ['Draw', 'sketch on the map (DM).'],
-        ['Edit', 'drag whole maps (DM).'],
+        ['Cover', 'mark part of a map as cover (DM).'],
       ],
     },
     {
@@ -65,11 +66,11 @@ export const TABLE_RULES = {
     },
     {
       key: 'edit',
-      name: 'Edit',
-      sub: 'Rearrange the maps',
+      name: 'Arrange maps',
+      sub: 'Move the maps around',
       where: 'Tools drawer',
       dm: true,
-      text: 'Drag a map to move it. Where the edges of two maps touch, tokens can walk across. Edit is also the tool that lets you change what is inside a chest. Press Done to go back to Play.',
+      text: 'Drag a map to move it. Where the edges of two maps touch, tokens can walk across. Arrange maps is also the tool that lets you change what is inside a chest. Press Done to go back to Play.',
     },
     {
       key: 'mapping',
@@ -178,7 +179,7 @@ export const TABLE_RULES = {
       key: 'music',
       name: 'Music',
       sub: 'Songs for the table',
-      where: 'Left rail, opens a side panel',
+      where: 'Configurations, opens a side panel',
       text: 'The DM plays songs for the whole table, for one world, or for a single token. Each player sets their own volume. On a guest table the music plays only on the DM’s device, and a local demo table has none.',
     },
     {
@@ -245,10 +246,11 @@ export const TABLE_RULES = {
     {
       key: 'config',
       name: 'Configurations',
-      sub: 'The Config tab: save and housekeeping',
+      sub: 'The Config tab: music, save and housekeeping',
       where: 'Left rail, bottom; opens a side panel',
       text: 'The actions you reach for least often, in one side panel.',
       items: [
+        ['Music', 'open the table’s music in a side panel.'],
         ['Save, Export, Import', 'keep the table safe (DM).'],
         ['Close', 'stop new players joining (DM).'],
         ['Hints', 'turn the small tips on or off.'],
@@ -355,7 +357,7 @@ export const TABLE_RULES = {
       name: 'Maps',
       sub: 'Pieces of the world',
       where: 'On the map',
-      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Edit and click a map’s background, or press a map’s Recenter button in Mapping; a click on a map during play leaves it alone.',
+      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Arrange maps and click a map’s background, or press a map’s Recenter button in Mapping; a click on a map during play leaves it alone.',
     },
     {
       key: 'movetoken',
@@ -404,7 +406,7 @@ export const TABLE_RULES = {
       name: 'Chests',
       sub: 'Loot to open and take',
       where: 'On the map',
-      text: 'Select a chest and press Open chest in the Inspector. A player can open a chest only while their hero stands on its square or the one next to it. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
+      text: 'Select a chest and press Open chest in the Inspector. A player can open a chest only while their hero stands on its square or the one next to it. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Arrange maps tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
     },
     {
       key: 'trap',
@@ -427,6 +429,13 @@ export const TABLE_RULES = {
       sub: 'A way to another map',
       where: 'On the map',
       text: 'A portal is a pair: step into one end and you come out beside the other, wherever it stands — on another layer, on another map of this layer, or across the same map. A player clicks a portal and confirms to step through, and can do so only while their hero stands on its square or the one next to it. The DM drops a hero or monster on a portal to send it through, drags either end to where it should be, and can lock or hide each end. A portal whose other end is hidden leads nowhere for players. Removing one end removes the other.',
+    },
+    {
+      key: 'cover',
+      name: 'Cover',
+      sub: 'Ground to hide behind',
+      where: 'On the map',
+      text: 'A cover marks part of the map as quarter, half or full cover: a low wall, a pillar, an overturned table. Everyone sees its squares in a faint yellow wash inside a yellow outline, more solid the more cover, with a tag naming the level. The app changes no roll for it: what a cover does to an attack is the DM’s to rule. The DM lays one with the Cover tool: pick the level, a shape (a line, a square or a circle) and a size, aim it on the map the way an area of effect is aimed, and press Place. It stays until the DM takes it off with the button on its tag. One that starts under the fog of war is kept from players until that fog is revealed.',
     },
     {
       key: 'turnorder',
@@ -499,7 +508,7 @@ export const TABLE_RULES = {
       sub: 'Ready-made characters',
       where: 'Tokens panel',
       dm: true,
-      text: 'Click a hero to place it on the map you are viewing. Then select it and choose who plays it under played by on its sheet.',
+      text: 'Click a hero to place it on the map you are viewing. Then select it and choose who plays it under played by on its sheet. At the top of the panel, above them, Import hero opens a window to choose a hero saved as a .tlsbyd file and puts its token on the map, and Create hero opens the screen where you build a new one.',
     },
     {
       key: 'placeable',

@@ -29,10 +29,11 @@ export const HOST_TOUR = [
     text: 'What your mouse does on the map. The tab shows the icon of the tool you are using.',
     items: [
       ['Play', 'select tokens and drag them around. The everyday tool.'],
+      ['Arrange maps', 'drag whole maps to rearrange the world.'],
       ['Ruler', 'drag across the map to measure a distance.'],
       ['Draw', 'sketch on the map. Everyone at the table sees it.'],
       ['Fog of war', 'cover parts of a map until the party explores them.'],
-      ['Edit', 'drag whole maps to rearrange the world.'],
+      ['Cover', 'mark part of a map as quarter, half or full cover.'],
     ],
   },
   {
@@ -79,12 +80,6 @@ export const HOST_TOUR = [
     text: 'Start a fight: roll for turn order, then step through each creature’s turn.',
   },
   {
-    target: 'music',
-    side: 'right',
-    title: 'Music',
-    text: 'Songs for the whole table, for one world, or for a single token. Each player sets their own volume.',
-  },
-  {
     target: 'dice',
     side: 'right',
     title: 'Dice',
@@ -112,8 +107,9 @@ export const HOST_TOUR = [
     target: 'config',
     side: 'right',
     title: 'Configurations',
-    text: 'Save and housekeeping.',
+    text: 'Music, save and housekeeping.',
     items: [
+      ['Music', 'songs for the whole table, for one world, or for a single token. Each player sets their own volume.'],
       ['Save', 'save the table now.'],
       ['Export / Import', 'keep a copy of the table as a file, or load one back.'],
       ['Close', 'stop new players from joining.'],
@@ -126,7 +122,7 @@ export const HOST_TOUR = [
   {
     target: 'side-heroes',
     title: 'Default heroes',
-    text: 'Ready-made characters. Click one to place it on the map you are viewing, then choose who plays it.',
+    text: 'Ready-made characters. Click one to place it on the map you are viewing, then choose who plays it. Above them, Import hero brings one in from a file and Create hero builds a new one.',
     side: 'right',
   },
   {
