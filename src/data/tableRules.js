@@ -337,7 +337,7 @@ export const TABLE_RULES = {
       key: 'leave',
       name: 'Leave',
       sub: 'Leave the table',
-      where: 'Configurations menu',
+      where: 'Left rail, under Configurations',
       text: 'Takes you back to the start screen. Your seat is freed. On a guest table the DM is reminded to export first.',
     },
   ],
@@ -422,6 +422,13 @@ export const TABLE_RULES = {
       text: 'A board the DM pins bulletins to: news, rumours, quests. Click it to read them, each on its own card. A player can read a board only while their hero stands on its square or the one next to it; from further away it stays shut. The DM pins, edits and takes down bulletins in the Inspector, and can hide the whole board from players.',
     },
     {
+      key: 'portal',
+      name: 'Portals',
+      sub: 'A way to another map',
+      where: 'On the map',
+      text: 'A portal is a pair: step into one end and you come out beside the other, wherever it stands — on another layer, on another map of this layer, or across the same map. A player clicks a portal and confirms to step through, and can do so only while their hero stands on its square or the one next to it. The DM drops a hero or monster on a portal to send it through, drags either end to where it should be, and can lock or hide each end. A portal whose other end is hidden leads nowhere for players. Removing one end removes the other.',
+    },
+    {
       key: 'turnorder',
       name: 'Turn order',
       sub: 'Whose turn it is',
@@ -483,7 +490,7 @@ export const TABLE_RULES = {
       text: 'Everything you can place on the map. The Tokens tab folds the panel out over the left of the map; click the tab again, or the « button, to fold it away. You can drag its edge to make it wider or narrower.',
       items: [
         ['Default heroes', 'ready-made characters.'],
-        ['Placeable', 'doors, chests, traps, ambushes and bulletin boards.'],
+        ['Placeable', 'doors, chests, traps, ambushes, bulletin boards and portals.'],
       ],
     },
     {
@@ -497,7 +504,7 @@ export const TABLE_RULES = {
     {
       key: 'placeable',
       name: 'Placeable',
-      sub: 'Doors, chests, traps, ambushes and bulletin boards',
+      sub: 'Doors, chests, traps, ambushes, bulletin boards and portals',
       where: 'Tokens panel',
       dm: true,
       text: 'Things to put on the map. Click one and a window opens to set it up; Place puts it on the map you are viewing.',
@@ -507,6 +514,7 @@ export const TABLE_RULES = {
         ['Trap', 'set its save and damage; hidden from players until you reveal it.'],
         ['Ambush', 'name it and choose its monsters; hidden from players until you reveal it.'],
         ['Bulletin board', 'name it and pin bulletins to it, each a title and some text.'],
+        ['Portal', 'name it and pick the map its other end goes on, on this layer or another.'],
       ],
     },
     {

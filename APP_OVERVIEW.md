@@ -113,7 +113,7 @@ The DM edits everything. A player can only:
    everything": toggling a chest's `opened` state is the one write a
    non-host is allowed (`canUpdateEntity`).
 
-A player opens a door or a chest (and reads a bulletin board) only while a
+A player opens a door, a portal or a chest (and reads a bulletin board) only while a
 hero of theirs stands on its square or the one beside it, diagonals included
 (`src/data/reach.js`). Closing a chest and taking from an open one are not
 held to it, and neither is a player with no hero on the layer they are
@@ -299,8 +299,10 @@ returns `false` and the map does not hold it at the drop square.
   configuration modal and later from its inspector (shared
   `BulletinsEditor.jsx`). A board is never written to the database: on a
   cloud table the DM's browser keeps every board (`saveTableBoards`) and
-  announces the ones players may see over the table's channel
-  (`src/lib/boardSync.js`, the `boards` event in `realtime.js`), so players
+  announces the ones players may see over the table's channel — each change
+  as it is made, on the `entity` announcements every token uses, and in full
+  a moment later and to a player who connects afterwards
+  (`src/lib/boardSync.js`, the `boards` event in `realtime.js`) — so players
   see boards only while the DM's browser is at the table and the DM has them
   only in the browser they were made in. A guest or local table carries a
   board like any other token. (`72_bulletin_boards.sql` is kept, unused, for
@@ -310,7 +312,32 @@ returns `false` and the map does not hold it at the drop square.
   or the one next to it (`canReadBulletinBoard`, checked by the client in
   `GameView.jsx`'s `openBulletinBoard`), and the modal shuts if that hero
   walks off. Only the DM edits it, and can hide it like a chest.
-- **Placeable** tiles (Door, Chest, Trap, Ambush, Bulletin board): clicking one opens its
+- **Portal** (`src/data/portals.js`, `kind: 'portal'`): a door that
+  comes out wherever its partner stands. It is placed as a pair of tokens
+  (`GameView.jsx`'s `addPortalPair`): one end on the map in view, the other
+  on the map the DM picks in its modal — any map of any layer, this one
+  included — each holding the other's id as `linkId`. The DM drags either
+  end afterwards (**Show the other end** on its card goes to the partner).
+  It is used exactly as a door is and through the same code (`enterDoor`
+  hands a portal to `enterPortal`, `MapBoard.jsx` treats both as
+  `isGate`): a player clicks it from its square or the one beside it and
+  confirms, and their hero lands on a free square beside the other end
+  (`arrivalCellNear`); onto another layer the player's view follows, onto
+  another map of the same layer that map is brought into view. The DM
+  drops a hero or monster on it to send that token through. Each end has
+  its own lock and its own hiding (`isLockedDoor` covers both kinds); a
+  player can't step into a portal whose other end their client doesn't
+  hold (hidden, or under the fog of war), nor one that comes out in a
+  held-back chunk. Removing one end removes the other (`removeEntity`); an
+  end left alone because its partner's map or layer was deleted leads
+  nowhere until the DM removes it. Like a bulletin board it is never
+  written to the database and is kept with the boards (`boardSync.js`'s
+  `isOffDatabase`), so on a cloud table it is only there while the DM's
+  browser is. Like a board's, its changes reach players live, each as it is
+  made, on the same `entity` announcements as every other token
+  (`announceEntityChange`, `receiveBoardChange`); the `boards` messages
+  say it again in full, which is how a player who connects afterwards gets it.
+- **Placeable** tiles (Door, Chest, Trap, Ambush, Bulletin board, Portal): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
   to create one) → places a linked pair of door tokens. **Chest**: name +
@@ -735,7 +762,23 @@ Conflict handling is last-write-wins per row. Realtime sends nothing when
 a row stops being readable, so a token the DM hides, or one the fog of war
 now covers, leaves players' maps through a `conceal` broadcast naming it
 (the row stays the authority: a client drops the token only if it really
-can no longer read it). This is already a working
+can no longer read it). Every change to a token — placing, moving, editing, removing; heroes,
+monsters, NPCs and shopkeepers, doors, chests, traps — is written to the
+database and also announced over the channel (an `entity` broadcast,
+`src/lib/fastSync.js`), because a change takes seconds to come back out of
+the database and a broadcast a fraction of one. An announcement is a
+preview: each browser keeps a token's fields at the value the newest
+announced change gave them until the database says the same, holding back
+any older value it reports meanwhile, and what the database has not
+confirmed within ten seconds gives way to what it last said (a token
+announced but never written comes off again). What players may not see is
+never announced — it goes through the same filter as a guest table's
+broadcast (`toGuestBroadcastAction`) — and a browser takes an announcement
+only from someone who could have made that change (the DM anything, a
+player what `canPlayerUpdateEntity` allows). A bulletin board or a portal is
+announced the same way though it has no row: nothing confirms it, so nothing
+of it is held back or given way. Their own channel messages (`boardSync.js`)
+say each again in full and carry them to a player who connects later. This is already a working
 WebSocket-based live sync layer — `REALTIME_ROADMAP.md` lays out the
 step-by-step plan for hardening it (reconnect recovery, presence,
 ephemeral live-drag updates, load testing) into full live-service quality.

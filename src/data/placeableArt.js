@@ -8,6 +8,7 @@
 //   src/assets/placeables/trap.<ext>          a trap
 //   src/assets/placeables/ambush.<ext>        an ambush
 //   src/assets/placeables/bulletin.<ext>      a bulletin board
+//   src/assets/placeables/portal.<ext>        a portal (none ships: it shows its icon)
 //
 // svg, png, jpg, jpeg and webp all work; the ones that ship are drawn svgs.
 // To swap in your own art, replace a file (one file per name — remove the svg

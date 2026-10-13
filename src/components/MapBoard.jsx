@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from
 import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { isHiddenFromPlayers, isLockedDoor, isLockedChest } from '../data/visibility.js';
+import { isGate } from '../data/portals.js';
 import { ambushMonsterCount } from '../data/ambush.js';
 import { bulletinsOf } from '../data/bulletins.js';
 import { isCreature } from '../data/tokenKinds.js';
@@ -32,11 +33,11 @@ const FOG_HANDLE_REACH_PX = 8; // how near a press must be to a picked fog chunk
 const FLOAT_MS = 1300; // how long a hit number drifts up over a token
 const ISLAND_SNAP_PX = 20; // un-zoomed pixels — how close an island's edge must get to another's to snap flush
 
-// Paint order among tokens, lowest first: traps underneath, doors on top,
-// everything else (in entityOrder) between.
+// Paint order among tokens, lowest first: traps underneath, doors and
+// portals (data/portals.js) on top, everything else (in entityOrder) between.
 function tokenStackRank(entity) {
   if (entity?.kind === 'trap') return 0;
-  if (entity?.kind === 'door') return 2;
+  if (isGate(entity)) return 2;
   return 1;
 }
 
@@ -236,7 +237,7 @@ export default function MapBoard({
   function findDoorAt(islandId, col, row) {
     for (const id of entityOrder) {
       const e = entities[id];
-      if (e?.kind === 'door' && e.islandId === islandId && e.col === col && e.row === row) return e;
+      if (isGate(e) && e.islandId === islandId && e.col === col && e.row === row) return e; // a door, or a portal's end
     }
     return null;
   }
@@ -302,7 +303,7 @@ export default function MapBoard({
     if (!isHost && isLockedDoor(entity)) return; // a locked door isn't a player's to click: no selection, no "Open the door?"
     onSelectEntity(entity.id);
     const p = getRelativePoint(e.clientX, e.clientY);
-    const locked = entity.kind === 'door' && isDoorOccupied(entity);
+    const locked = isGate(entity) && isDoorOccupied(entity);
     dragRef.current = { id: entity.id, entity, downX: p.x, downY: p.y, locked };
     // Still track the pointer even for a token this viewer can't reposition
     // (a door click-to-enter needs the down/up cycle to detect click-vs-drag),
@@ -366,9 +367,10 @@ export default function MapBoard({
     // then snapped back" instead of "it never moved."
     const allowed = canMoveEntity?.(current.entity);
 
-    if (current.entity.kind === 'door') {
+    if (isGate(current.entity)) {
       // Clicking a door (occupied or not) always offers to open it. Dragging
-      // only repositions it when nothing is currently standing on it.
+      // only repositions it when nothing is currently standing on it. A
+      // portal's end (data/portals.js) is clicked and dragged the same way.
       if (isClick && !isHost) {
         setDragPos(null);
         onEnterDoor?.(current.entity);
@@ -403,16 +405,12 @@ export default function MapBoard({
       return;
     }
     holdDragAt(current.id, size, col, row, found.island.id, found);
-    // Landing a hero token on a door's square (via an actual drag, not a
-    // bare click/reselect) offers to walk through it. The DM gets the same
-    // offer for any hero, monster or NPC they drop on a door.
-    const canUseDoor = isHost ? isCreature(current.entity) : current.entity.kind === 'hero';
-    if (canUseDoor && !isClick) {
+    // The DM dropping a hero, monster or NPC on a door's square (an actual
+    // drag, not a bare click/reselect) offers to send it through. A player's
+    // hero landing on one is only a move: they open a door by clicking it.
+    if (isHost && isCreature(current.entity) && !isClick) {
       const door = findDoorAt(found.island.id, col, row);
-      if (door) {
-        console.log(`${current.entity.name} landed on door "${door.name}" at (${col}, ${row})`);
-        onEnterDoor?.(door, current.entity);
-      }
+      if (door) onEnterDoor?.(door, current.entity);
     }
   }
 
@@ -1386,7 +1384,7 @@ export default function MapBoard({
           return (
             <div
               key={id}
-              className={`token${sprite ? ' sprite' : ''}${entity.kind === 'door' ? ' door' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
+              className={`token${sprite ? ' sprite' : ''}${isGate(entity) ? ' door' : ''}${entity.kind === 'portal' ? ' portal' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
               style={{
                 width: size,
                 height: size,

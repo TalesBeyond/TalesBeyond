@@ -2554,6 +2554,8 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .token.dragging { cursor: grabbing; z-index: 50; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
 .token.selected { box-shadow: 0 0 0 3px var(--ink-950), 0 0 0 5px var(--gold-hi); }
 .token.door { border-radius: 6px; border-style: dashed; }
+/* A portal's end is a door in everything but its shape. */
+.token.door.portal { border-radius: 50%; }
 /* An animated token (data/spriteTokens.js): its picture is a strip of
    --sprite-frames frames side by side. It shows the first one, and plays them
    all while the pointer is over it or it is being dragged. Its picture on the
@@ -6000,7 +6002,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   align-items: flex-start;
   /* The tabs take their height from the window's, so the whole rail fits
      without scrolling on an ordinary screen; on a very short one it scrolls. */
-  --tab-h: clamp(44px, 6.2vh, 60px);
+  --tab-h: clamp(44px, 5.8vh, 60px);
   --tab-gap: clamp(3px, 0.5vh, 5px);
   gap: var(--tab-gap);
   width: var(--rail-w, 100px);
@@ -6062,6 +6064,9 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   line-height: 1.1;
   white-space: nowrap;
 }
+/* Leave, the last tab, under Configurations: it reads as the way out. */
+.toolbar-rail > .toolbar-leave-tab > .tool-card .tool-icon { color: var(--danger); }
+.toolbar-rail > .toolbar-leave-tab > .tool-card:hover:not(:disabled) { border-color: var(--danger); }
 @media (prefers-reduced-motion: reduce) {
   .toolbar-rail .tool-card { transition: none; }
 }
@@ -6265,10 +6270,8 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .side-panel-footer .island-new { margin: 0; }
 .side-panel-footer button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 
-/* The Configurations drawer: cards under headings; Leave reads as the way out. */
+/* The Configurations drawer: cards under headings. */
 .side-panel-menu.config-drawer { gap: 14px; }
-.drawer-tool.danger .drawer-tool-icon, .drawer-tool.danger .drawer-tool-name { color: var(--danger); }
-.drawer-tool.danger:hover { border-color: var(--danger); }
 
 /* ---------- Store ---------- */
 /* Sections down the left, the open section's wares in a grid beside them.

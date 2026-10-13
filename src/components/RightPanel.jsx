@@ -34,6 +34,7 @@ import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { ambushMonsterCount } from '../data/ambush.js';
 import BulletinsEditor from './BulletinsEditor.jsx';
 import { bulletinsOf, canReadBulletinBoard } from '../data/bulletins.js';
+import { portalDestinationName } from '../data/portals.js';
 import { heroWithinReach } from '../data/reach.js';
 import { totalToHit, totalDamageLabel, acOf, attackWeapon, attackTargetsFor, defaultMobAttacks, resolveAttackRoll, ATTACK_BEAT_MS } from '../utils/combat.js';
 import RollModeTabs from './RollModeTabs.jsx';
@@ -60,6 +61,8 @@ export default function RightPanel({
   customAssets,
   onRevealAmbush,
   onReadBulletinBoard,
+  portalPartner,
+  onShowPortalPartner,
   collapsed,
   onToggleCollapsed,
   encounterActor = null, // whose turn it is, while an encounter runs — the creature card previews their attack
@@ -175,6 +178,17 @@ export default function RightPanel({
             onRemove={onRemoveEntity}
             onRead={onReadBulletinBoard}
           />
+        ) : selectedEntity.kind === 'portal' ? (
+          <PortalInspector
+            key={selectedEntity.id}
+            entity={selectedEntity}
+            partner={portalPartner}
+            layers={layers}
+            isHost={isHost}
+            onUpdate={onUpdateEntity}
+            onRemove={onRemoveEntity}
+            onShowPartner={onShowPortalPartner}
+          />
         ) : (
           <MobInspector
             key={selectedEntity.id}
@@ -239,7 +253,7 @@ function CardIconToggle({ on, label, title, onChange, children }) {
   );
 }
 
-// `what`: "door" or "chest", for the tooltip.
+// `what`: "door", "chest" or "portal", for the tooltip.
 function LockToggle({ locked, what, onChange }) {
   return (
     <CardIconToggle
@@ -639,6 +653,53 @@ export function BulletinBoardInspector({ entity, heroes, isHost, meId, onUpdate,
           <BulletinsEditor bulletins={bulletins} onChange={(next) => onUpdate(entity.id, { bulletins: next })} />
         </>
       )}
+    </PlaceableCard>
+  );
+}
+
+// ---------- portal ----------
+
+// One end of a portal (data/portals.js). `partner`: its other end as this
+// viewer's client holds it, or null. The lock and the hiding are this end's
+// alone; taking it off the table takes the other end with it.
+export function PortalInspector({ entity, partner, layers, isHost, onUpdate, onRemove, onShowPartner }) {
+  const locked = Boolean(entity.locked);
+  const destination = portalDestinationName(entity, partner, layers);
+
+  return (
+    <PlaceableCard
+      entity={entity}
+      isHost={isHost}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      art={placeableArt('portal')}
+      artLabel={locked ? 'A locked portal' : 'A portal'}
+      controls={
+        isHost ? (
+          <>
+            <LockToggle locked={locked} what="portal" onChange={(next) => onUpdate(entity.id, { locked: next })} />
+            <VisibilityToggle hidden={Boolean(entity.hidden)} onChange={(hidden) => onUpdate(entity.id, { hidden })} />
+          </>
+        ) : null
+      }
+      typeLine={`Portal · square (${entity.col}, ${entity.row})${locked ? ' · locked' : ''}${isHost && entity.hidden ? ' · hidden from players' : ''}`}
+      plaques={[{ label: 'Leads to', value: destination || (isHost ? 'Nowhere' : 'Nowhere yet'), text: true }]}
+    >
+      {isHost &&
+        (partner ? (
+          <>
+            <button type="button" className="btn btn-secondary btn-block" onClick={() => onShowPartner?.(partner)}>
+              Show the other end
+            </button>
+            <p className="card-tab-note" style={{ margin: '12px 0 0' }}>
+              Drag either end to where it should be. Removing this end removes the other too.
+            </p>
+          </>
+        ) : (
+          <p className="card-tab-note" style={{ margin: 0 }}>
+            Its other end is gone, so it leads nowhere. Remove it and place a new portal.
+          </p>
+        ))}
     </PlaceableCard>
   );
 }

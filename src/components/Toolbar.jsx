@@ -189,9 +189,9 @@ const EXTRA_BOOKS = ['tomes', 'foods', 'spells', 'potions'];
 const OWN_ASSET_TAB = { tomes: 'tome', foods: 'food', spells: 'spell', potions: 'potion' };
 
 // A card in a rail drawer: its icon, its name and a line saying what it does.
-function DrawerCard({ icon, label, text, title, active = false, danger = false, onClick }) {
+function DrawerCard({ icon, label, text, title, active = false, onClick }) {
   return (
-    <button type="button" className={`drawer-tool${active ? ' active' : ''}${danger ? ' danger' : ''}`} aria-pressed={active || undefined} onClick={onClick} title={title}>
+    <button type="button" className={`drawer-tool${active ? ' active' : ''}`} aria-pressed={active || undefined} onClick={onClick} title={title}>
       <span className="drawer-tool-icon">
         <Icon name={icon} />
       </span>
@@ -877,7 +877,7 @@ export default function Toolbar({
           out over the map's left edge and away again. */}
       {rail && isHost && onToggleTokens && (
         <div className="toolbar-group" data-tour="tokens">
-          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, NPCs, doors, chests, traps, ambushes and bulletin boards to put on the map" />
+          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, NPCs, doors, chests, traps, ambushes, bulletin boards and portals to put on the map" />
         </div>
       )}
 
@@ -1413,14 +1413,14 @@ export default function Toolbar({
         />
       </ToolMenu>
 
-      {/* The very last group: save/export/import/close/leave — the
+      {/* The last menu: save/export/import/close — the
           "shutting the book" actions, tucked away since they're reached for
           far less often than anything above. */}
       <ToolMenu
         icon={<Icon name="config" />}
         label={rail ? 'Config' : 'Configurations'}
         tour="config"
-        title="Save, export, import, close, hints, and leave"
+        title="Save, export, import, close, and hints"
         open={rail ? sidePanel === 'configurations' : openMenu === 'configurations'}
         onToggle={() => (rail ? openSide('configurations') : toggleMenu('configurations'))}
         onClose={rail ? closeSide : closeMenu}
@@ -1498,10 +1498,11 @@ export default function Toolbar({
                 </div>
               </section>
             )}
-            <section className="drawer-section">
-              {onReport && <DrawerCard icon="flag" label="Report this table" text="Tells us about content here that breaks the rules." onClick={onReport} />}
-              <DrawerCard icon="leave" label="Leave" text="Leaves this table and goes back to the start." danger onClick={onLeave} />
-            </section>
+            {onReport && (
+              <section className="drawer-section">
+                <DrawerCard icon="flag" label="Report this table" text="Tells us about content here that breaks the rules." onClick={onReport} />
+              </section>
+            )}
           </>
         )}
         {!rail && (
@@ -1562,7 +1563,6 @@ export default function Toolbar({
             ))}
           </div>
         )}
-        {rail && <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />}
         {/* What the tips and the tutorial said, kept to read at any time. */}
         <ToolCard
           icon={<Icon name="rules" />}
@@ -1581,8 +1581,13 @@ export default function Toolbar({
       </ToolMenu>
       {showRules && <RulesBook isHost={isHost} onClose={() => setShowRules(false)} />}
 
-      {/* On the rail, Leave is the last card in Configurations instead. */}
-      {!rail && (
+      {/* Leave is always the last thing on the bar: on the rail, a tab of its
+          own under Configurations. */}
+      {rail ? (
+        <div className="toolbar-group toolbar-leave-tab">
+          <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={onLeave} title="Leave the table" />
+        </div>
+      ) : (
         <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
           <Icon name="leave" />
           <span className="toolbar-leave-label">Leave</span>

@@ -78,6 +78,12 @@ const PATHS = {
       <path d="M15 8l4 4-4 4M19 12H9" />
     </>
   ),
+  portal: (
+    <>
+      <ellipse cx="12" cy="12" rx="6" ry="9" />
+      <path d="M12 12c1.4-1.4 3 .6 1.6 2.4-1.8 2.2-5 .2-3.8-3.2" />
+    </>
+  ),
 };
 
 export default function ModalIcon({ name }) {

@@ -39,7 +39,7 @@ export const HOST_TOUR = [
     target: 'tokens',
     side: 'right',
     title: 'Tokens',
-    text: 'Opens the panel of everything you can put on the map: heroes, NPCs, doors, chests, traps, ambushes and bulletin boards. Click the tab again to fold it away.',
+    text: 'Opens the panel of everything you can put on the map: heroes, NPCs, doors, chests, traps, ambushes, bulletin boards and portals. Click the tab again to fold it away.',
   },
   {
     target: 'mapping',
@@ -139,6 +139,7 @@ export const HOST_TOUR = [
       ['Trap', 'hidden from players until you reveal it.'],
       ['Ambush', 'a hidden band of monsters, revealed all at once.'],
       ['Bulletin board', 'news and quests a hero reads from next to it.'],
+      ['Portal', 'a pair: step into one, come out beside the other, on any map.'],
     ],
     side: 'right',
   },

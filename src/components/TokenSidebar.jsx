@@ -10,6 +10,7 @@ import AmbushMonstersEditor from './AmbushMonstersEditor.jsx';
 import { AMBUSH_ICON, AMBUSH_COLOR, clampAmbushQty } from '../data/ambush.js';
 import BulletinsEditor from './BulletinsEditor.jsx';
 import { BULLETIN_ICON, BULLETIN_COLOR } from '../data/bulletins.js';
+import { PORTAL_ICON, PORTAL_COLOR, MAX_PORTAL_NAME } from '../data/portals.js';
 import { NPC_ICON, NPC_COLOR, NPC_MAX_HP } from '../data/tokenKinds.js';
 import { MERCHANTS } from '../data/merchants.js';
 import { ShopWaresEditor } from './MerchantShop.jsx';
@@ -49,7 +50,7 @@ function TokenCard({ name, imageUrl, shape, onPlace, label = `Place ${name}`, ti
   );
 }
 
-export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
+export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
   const heroFileRef = useRef(null);
   const otherLayerIds = (layerOrder || []).filter((id) => id !== currentLayerId);
   const [showDoorModal, setShowDoorModal] = useState(false);
@@ -71,6 +72,25 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   const [pendingBulletins, setPendingBulletins] = useState([]);
   // A bulletin typed into the board modal but not pinned yet (BulletinsEditor).
   const [pendingBulletin, setPendingBulletin] = useState('');
+  const [portalName, setPortalName] = useState('Portal');
+  const [showPortalModal, setShowPortalModal] = useState(false);
+  // Where a portal's other end goes: one of portalMaps' values, or ''.
+  const [portalTarget, setPortalTarget] = useState('');
+  // Every map a portal's other end can stand on (data/portals.js): each map
+  // of each layer, the layer in view first.
+  const portalLayers = [currentLayerId, ...otherLayerIds]
+    .filter((layerId) => layers?.[layerId])
+    .map((layerId) => ({
+      layerId,
+      name: `${layers[layerId].name || 'Untitled layer'}${layerId === currentLayerId ? ' (this layer)' : ''}`,
+      maps: (layers[layerId].islandOrder || []).map((islandId) => ({
+        value: `${layerId}|${islandId}`,
+        layerId,
+        islandId,
+        name: layers[layerId].islands?.[islandId]?.name || 'Untitled map',
+      })),
+    }));
+  const portalMaps = portalLayers.flatMap((layer) => layer.maps);
   // The shopkeeper being stocked before it is placed (data/merchants.js), or
   // null: { role, name, wares }.
   const [merchantDraft, setMerchantDraft] = useState(null);
@@ -222,6 +242,21 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
     setShowBoardModal(false);
   }
 
+  function openPortalModal() {
+    // A map picked last time may have been deleted since.
+    if (portalTarget && !portalMaps.some((map) => map.value === portalTarget)) setPortalTarget('');
+    setShowPortalModal(true);
+  }
+
+  // A portal goes down as a pair (GameView.jsx's addPortalPair): one end on
+  // the map in view, the other on the map picked here.
+  function confirmPlacePortal() {
+    const target = portalMaps.find((map) => map.value === portalTarget);
+    if (!target) return;
+    onAddPortal?.({ name: portalName, layerId: target.layerId, islandId: target.islandId });
+    setShowPortalModal(false);
+  }
+
   function openTrapModal() {
     setTrapDraft(emptyTrapDraft());
     setShowTrapModal(true);
@@ -306,7 +341,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
   );
   // A placeable is set up before it goes on the map, so each tile opens its
   // own modal: where a door leads, what a chest holds, a trap's save and
-  // damage, an ambush's monsters, a bulletin board's bulletins.
+  // damage, an ambush's monsters, a bulletin board's bulletins, where a portal's other end goes.
   const placeableBody = (
     <div className="token-grid placeables">
       <TokenCard name="Door" imageUrl={makeIconDataUrl('door', '#5c4a2e')} shape="square" label="Configure and place a door" title="A way through to another world" onPlace={openDoorModal} />
@@ -314,6 +349,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
       <TokenCard name="Trap" imageUrl={makeIconDataUrl('trap', '#8f1f1f')} shape="square" label="Configure and place a trap" title="Hidden from players until you reveal it" onPlace={openTrapModal} />
       <TokenCard name="Ambush" imageUrl={makeIconDataUrl(AMBUSH_ICON, AMBUSH_COLOR)} shape="square" label="Configure and place an ambush" title="A hidden band of monsters, revealed all at once" onPlace={openAmbushModal} />
       <TokenCard name="Bulletin board" imageUrl={makeIconDataUrl(BULLETIN_ICON, BULLETIN_COLOR)} shape="square" label="Configure and place a bulletin board" title="News and quests for heroes standing next to it to read" onPlace={openBoardModal} />
+      <TokenCard name="Portal" imageUrl={makeIconDataUrl(PORTAL_ICON, PORTAL_COLOR)} shape="square" label="Configure and place a portal" title="A pair of portals: step into one, come out beside the other, on any map of any layer" onPlace={openPortalModal} />
     </div>
   );
   // What the door modal holds: with no second world to lead to yet, the way
@@ -592,6 +628,52 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
         </div>
       )}
 
+      {showPortalModal && (
+        <div className="book-backdrop" onClick={() => setShowPortalModal(false)}>
+          <div className="book-card" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="book-card-header">
+              <span className="book-title">
+                <ModalIcon name="portal" />Configure Portal
+              </span>
+              <button className="popover-close" onClick={() => setShowPortalModal(false)} aria-label="Close" title="Close">
+                ×
+              </button>
+            </div>
+            <div style={{ padding: 16 }}>
+              <p className="shop-modal-blurb">
+                A portal is a pair. One end lands on the map you’re viewing, the other on the map you pick. Whoever steps into one comes out beside the other.
+              </p>
+              <label className="field-label">Portal name</label>
+              <input className="field" maxLength={MAX_PORTAL_NAME} value={portalName} onChange={(e) => setPortalName(e.target.value)} autoFocus />
+
+              <label className="field-label" style={{ marginTop: 8 }}>Other end goes on</label>
+              <select className="field" value={portalTarget} onChange={(e) => setPortalTarget(e.target.value)}>
+                <option value="">Choose a map…</option>
+                {portalLayers.map((layer) => (
+                  <optgroup key={layer.layerId} label={layer.name}>
+                    {layer.maps.map((map) => (
+                      <option key={map.value} value={map.value}>
+                        {map.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+
+              {!portalTarget && <Hint className="hint-tight">Pick the map the other end stands on: any map of any layer, this one included. You can drag both ends afterwards.</Hint>}
+              <div className="chest-modal-actions">
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowPortalModal(false)}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" style={{ flex: 1 }} disabled={!portalTarget} title={portalTarget ? undefined : 'Choose where the other end goes first'} onClick={confirmPlacePortal}>
+                  Place portal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {merchantDraft && (
         <div className="book-backdrop" onClick={() => setMerchantDraft(null)}>
           <div className="book-card fit-modal" style={{ background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }} onClick={(e) => e.stopPropagation()}>
@@ -762,7 +844,7 @@ export default function TokenSidebar({ onAddEntity, onCreateLayer, layers, layer
           )}
           {phoneTab === 'place' && (
             <>
-              <p className="phone-caption phone-caption-flush">Tap a door, chest, trap, ambush or bulletin board to set it up, then place it on the map you’re viewing.</p>
+              <p className="phone-caption phone-caption-flush">Tap a door, chest, trap, ambush, bulletin board or portal to set it up, then place it on the map you’re viewing.</p>
               {placeableBody}
             </>
           )}

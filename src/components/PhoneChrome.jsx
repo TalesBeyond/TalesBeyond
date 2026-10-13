@@ -509,11 +509,12 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
 
 // `travellerName` is set when the DM is sending a token through (they
 // dropped it on the door); otherwise it is a player walking their own hero.
-export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIslandName, peopleThere, travellerName = null, onWalk, onCancel }) {
+// `what`: 'Door', or 'Portal' for a portal's end (data/portals.js).
+export function PhoneDoorSheet({ door, what = 'Door', doorIslandName, destLayerName, destIslandName, peopleThere, travellerName = null, onWalk, onCancel }) {
   return (
-    <PhoneSheet title={door.name || 'Door'} onClose={onCancel}>
+    <PhoneSheet title={door.name || what} onClose={onCancel}>
       <div className="phone-sheet-pad">
-        <p className="phone-caption phone-caption-flush">Door{doorIslandName ? ` · ${doorIslandName}` : ''}</p>
+        <p className="phone-caption phone-caption-flush">{what}{doorIslandName ? ` · ${doorIslandName}` : ''}</p>
         <div className="phone-door-dest">
           <span className="phone-label">Leads to</span>
           <b>
@@ -532,7 +533,7 @@ export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIsland
         </button>
         <p className="phone-caption phone-caption-flush">
           {travellerName
-            ? `${travellerName} steps through to the other side${door.locked ? ' — the door stays locked for players' : ''}. Everyone else stays here.`
+            ? `${travellerName} steps through to the other side${door.locked ? ` — the ${what.toLowerCase()} stays locked for players` : ''}. Everyone else stays here.`
             : 'Your hero steps through to the other side. Everyone else stays here until they walk through too.'}
         </p>
       </div>

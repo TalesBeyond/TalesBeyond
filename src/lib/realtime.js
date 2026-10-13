@@ -35,15 +35,18 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // the map (GameView.jsx's "Areas of effect") — announced, never stored.
 // onHero / `sendHero(message)`: the same for a premade hero a player offers
 // the DM, and the DM's answer (GameView.jsx's "Premade heroes").
-// onBoards / `sendBoards(message)`: the same for bulletin boards, which are
-// never rows in the database (lib/boardSync.js).
-export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll, onArea, onHero, onBoards) {
+// onBoards / `sendBoards(message)`: the same for bulletin boards and portals,
+// which are never rows in the database (lib/boardSync.js).
+// onEntity / `sendEntity(message)`: a change to a token, announced as well as
+// written to the database so it shows at once (lib/fastSync.js).
+export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll, onArea, onHero, onBoards, onEntity) {
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
   if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
   if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
   if (onHero) channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(payload));
   if (onBoards) channel.on('broadcast', { event: 'boards' }, ({ payload }) => onBoards(payload));
+  if (onEntity) channel.on('broadcast', { event: 'entity' }, ({ payload }) => onEntity(payload));
   // The DM just hid a monster, chest or door, or the fog of war now covers a
   // token (69_fogged_tokens.sql). Realtime sends no event when a
   // row stops being visible to a subscriber, so the DM's client names the
@@ -231,5 +234,6 @@ export function subscribeToTable(tableId, dispatch, onStatusChange, presence, on
   unsubscribe.sendHero = (message) => channel.send({ type: 'broadcast', event: 'hero', payload: message });
   unsubscribe.sendConceal = (id) => channel.send({ type: 'broadcast', event: 'conceal', payload: { id } });
   unsubscribe.sendBoards = (message) => channel.send({ type: 'broadcast', event: 'boards', payload: message });
+  unsubscribe.sendEntity = (message) => channel.send({ type: 'broadcast', event: 'entity', payload: message });
   return unsubscribe;
 }
