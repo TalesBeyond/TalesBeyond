@@ -1121,6 +1121,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   const entityOutboxRef = useRef(null);
   function addRoll(entry) {
     setRollLog((prev) => [entry, ...prev].slice(0, 100));
+    // A natural 20 or 1 gets its sound on every screen that sees the roll. The
+    // roller's own plays it as the big die lands (FxLayer.jsx); the others,
+    // which show no die, as the roll arrives.
+    if (!entry.mine && entry.flag === 'Natural 20') playSfx('nat20');
+    if (!entry.mine && entry.flag === 'Natural 1') playSfx('nat1');
     if (entry.mine) return;
     setRollToasts((prev) => [entry, ...prev].slice(0, 3));
     setTimeout(() => setRollToasts((prev) => prev.filter((t) => t.id !== entry.id)), 6000);
@@ -2982,13 +2987,47 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }
 
-  function updateIsland(islandId, patch) {
+  // Downloads a whole layer (the Layers list's Download map) as one PNG, the
+  // same picture downloadIslandImage makes for a group but without the grid
+  // lines: every map on the layer drawn where it sits, just its background,
+  // the gaps transparent.
+  async function downloadLayerImage(layerId) {
+    const layer = state.layers[layerId];
+    const islands = (layer?.islandOrder || []).map((id) => layer.islands[id]).filter(Boolean);
+    if (!islands.length) return;
+    // A layer not in view may not have its pictures loaded yet: asking for
+    // them starts the load, so wait a moment for them rather than export
+    // blank maps in their place.
+    const resolved = () => islands.map((i) => ({ ...i, backgroundImage: resolveImage(i.backgroundImage) }));
+    const missing = (list) => list.some((i, k) => islands[k].backgroundImage && !i.backgroundImage);
+    let ready = resolved();
+    for (let tries = 0; tries < 30 && missing(ready); tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      ready = resolved();
+    }
+    if (missing(ready)) {
+      alert("Some of this layer's map pictures haven't loaded yet. Try again in a moment.");
+      return;
+    }
+    try {
+      const dataUrl = await renderIslandsTemplateToDataUrl(ready, { grid: false });
+      const { width, height } = islandsTemplateSize(islands);
+      const filename = `${(layer.name || 'layer').trim().replace(/[^a-z0-9_-]+/gi, '_') || 'layer'}_${width}x${height}.png`;
+      downloadDataUrl(dataUrl, filename);
+    } catch {
+      alert("Could not export this layer's image — a background image could not be loaded.");
+    }
+  }
+
+  // `layerId`: the island's layer, when it isn't the one in view (a layer's
+  // settings, in the Layers list, change every map on it).
+  function updateIsland(islandId, patch, layerId = currentLayerId) {
     if (!isHost) return;
     if (needsSharing(patch.backgroundImage)) {
       const picked = patch.backgroundImage;
       setStoringBackgrounds((all) => ({ ...all, [islandId]: picked }));
       storeImage(picked)
-        .then((backgroundImage) => updateIsland(islandId, { ...patch, backgroundImage }))
+        .then((backgroundImage) => updateIsland(islandId, { ...patch, backgroundImage }, layerId))
         .catch(shareImageFailed)
         .finally(() =>
           setStoringBackgrounds((all) => {
@@ -2999,9 +3038,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         );
       return;
     }
-    dispatch({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
+    dispatch({ type: 'UPDATE_ISLAND', layerId, islandId, patch });
     if (isRemote) updateIslandRemote(islandId, patch).catch(reportError);
-    else if (isGuestHost) broadcastGuestChange({ type: 'UPDATE_ISLAND', layerId: currentLayerId, islandId, patch });
+    else if (isGuestHost) broadcastGuestChange({ type: 'UPDATE_ISLAND', layerId, islandId, patch });
   }
 
   // The table's in-game clock (null removes it). Host-only, like every other
@@ -4355,6 +4394,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onSwitchLayer={setHostViewLayerId}
         onCreateLayer={createLayer}
         onRemoveLayer={removeLayer}
+        onDownloadLayerImage={downloadLayerImage}
+        onUpdateLayer={updateLayer}
         activeIslandId={activeIslandId}
         onRecenterIsland={recenterOnMap}
         onCreateIsland={createIsland}

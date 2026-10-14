@@ -88,7 +88,7 @@ export const TABLE_RULES = {
       sub: 'Separate worlds in one table',
       where: 'World drawer → World maps, Layers tab',
       dm: true,
-      text: 'A layer is its own world: another floor, another town. Add, rename and remove layers here. The strip above the map switches the layer you are looking at, and the number on each tab is how many players are on it. A player only ever sees the layer they are on.',
+      text: 'A layer is its own world: another floor, another town. Add, rename and remove layers here. The strip above the map switches the layer you are looking at, and the number on each tab is how many players are on it. A player only ever sees the layer they are on. Download map, beside a layer\'s name, saves every map on that layer as one PNG of their backgrounds, without grid lines, each map where it sits. Settings, beside it, works like a map\'s Settings for the whole layer: its name, feet per square and grid lines (set on every map on it), and a background image laid over all its maps at once, each getting its own part, which Remove image takes off them all. Width and height stay with each map. Changes save themselves as you make them.',
     },
     {
       key: 'world',

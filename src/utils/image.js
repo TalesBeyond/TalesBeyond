@@ -69,6 +69,8 @@ export function islandsBounds(islands) {
 // sliceImageForIslands cuts an upload along the same rectangles.
 // Rejects if a background image fails to load, so the caller can surface
 // an error instead of silently exporting a blank template.
+// `grid: false` leaves the grid lines out: just the backgrounds (a whole
+// layer's picture, GameView's downloadLayerImage).
 // The pixel size of that PNG, which is also the size a picture painted over
 // it should keep: { width, height, scale }.
 export function islandsTemplateSize(islands) {
@@ -77,7 +79,7 @@ export function islandsTemplateSize(islands) {
   return { width: Math.round(width * scale), height: Math.round(height * scale), scale };
 }
 
-export async function renderIslandsTemplateToDataUrl(islands) {
+export async function renderIslandsTemplateToDataUrl(islands, { grid = true } = {}) {
   const { minX, minY } = islandsBounds(islands);
   const size = islandsTemplateSize(islands);
   const { scale } = size;
@@ -98,6 +100,7 @@ export async function renderIslandsTemplateToDataUrl(islands) {
       ctx.fillStyle = '#f2e9d4'; // --parchment-100, matches .grid-wrap's own background
       ctx.fillRect(left, top, w, h);
     }
+    if (!grid) continue;
     ctx.strokeStyle = 'rgba(23,20,15,0.28)';
     for (let v = 0; v <= island.cols; v++) {
       ctx.lineWidth = v % 5 === 0 ? 1.4 : 0.7;

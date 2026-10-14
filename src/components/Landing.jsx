@@ -278,6 +278,9 @@ function HostForm({ onEnter }) {
     if (hostChoice === 'resumeGuest') {
       return <GuestResumeForm onEnter={onEnter} onBack={() => setHostChoice(null)} />;
     }
+    if (hostChoice === 'quickCampaign') {
+      return <QuickCampaignForm onEnter={onEnter} onBack={() => setHostChoice(null)} />;
+    }
     if (hostChoice === 'account') {
       return (
         <>
@@ -329,6 +332,14 @@ function HostForm({ onEnter }) {
           style={{ marginTop: 8 }}
         >
           Resume guest session
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          onClick={() => setHostChoice('quickCampaign')}
+          style={{ marginTop: 8 }}
+        >
+          New here? Try a quick campaign
         </button>
         <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
           A guest table needs no account — but nothing about it is saved on our end. You'll need to
@@ -912,6 +923,69 @@ function GuestHostForm({ onEnter, onBack }) {
       <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
         Nothing about this table is saved on our end — export it (Toolbar) before you close it if you
         want to pick it back up later. Your private DM code is the "Host key" button once you're in.
+      </p>
+      <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+        <button type="button" className="link-btn" onClick={onBack}>
+          ← Back
+        </button>
+      </p>
+    </form>
+  );
+}
+
+// The quick campaign (data/quickCampaign.js): a ready-made world opened as a
+// guest table, for someone trying the app for the first time. They are its
+// DM, with heroes waiting to hand to the friends they invite.
+function QuickCampaignForm({ onEnter, onBack }) {
+  const { agreed } = useContext(ConsentContext);
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(PLAYER_COLORS[0]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!agreed) return;
+    if (!name.trim()) {
+      setError('Enter a name for yourself as the host.');
+      return;
+    }
+    setError('');
+    setBusy(true);
+    try {
+      const { createQuickCampaignTable } = await import('../data/quickCampaign.js');
+      const { state, me } = await createQuickCampaignTable({ hostName: name.trim(), hostColor: color });
+      markGuestActive(state.session.code);
+      onEnter({ state, me, mode: 'guest' });
+    } catch (err) {
+      setError(err.message || 'Could not open the campaign.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      {error && <div className="error-note">{error}</div>}
+      <p className="footer-note" style={{ border: 'none', padding: '0 2px 12px', margin: 0 }}>
+        A small world, ready to play: a town with an inn, a blacksmith and a three-floor library, fields, a
+        dark forest and a crypt below — with a few monsters about and heroes waiting. You are the Dungeon
+        Master: share the player code to invite friends, and give each of them a hero.
+      </p>
+
+      <label className="field-label">Your name (as Dungeon Master)</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mara" />
+
+      <label className="field-label">Your color</label>
+      <ColorPicker value={color} onChange={setColor} />
+
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
+        {busy ? 'Opening the campaign…' : 'Start the campaign'}
+      </button>
+      <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
+        It opens as a guest table: nothing is saved on our end, so export it (Toolbar) before you close it if
+        you want to pick it back up later.
       </p>
       <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
         <button type="button" className="link-btn" onClick={onBack}>

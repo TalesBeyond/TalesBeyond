@@ -2565,7 +2565,7 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
    --sprite-frames frames side by side. It shows the first one, and plays them
    all while the pointer is over it or it is being dragged. Its picture on the
    inspector's card plays along (.playing, set while the map token plays). */
-.token.sprite, .token-card .sprite, .target-card-art .sprite {
+.token.sprite, .token-card .sprite, .target-card-art .sprite, .store-frame .sprite {
   background-repeat: no-repeat;
   background-size: calc(var(--sprite-frames) * 100%) 100%;
   background-position: 0 0;
@@ -2574,12 +2574,12 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 /* The figure stands on the map as it is, with no disc behind it, so the
    token's rim and shadow go too. The selection ring stays. */
 .token.sprite:not(.selected) { box-shadow: none; }
-.token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing {
+.token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing, .store-item:hover .sprite, .store-item:focus-within .sprite {
   animation: sprite-play 0.6s steps(var(--sprite-frames), jump-none) infinite;
 }
 @keyframes sprite-play { from { background-position: 0 0; } to { background-position: 100% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing { animation: none; }
+  .token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing, .store-item:hover .sprite, .store-item:focus-within .sprite { animation: none; }
 }
 /* A token players can't see (an unrevealed trap, or a monster, chest or door
    the DM has hidden): only the DM's client ever has it, so ghost it to tell
@@ -4527,7 +4527,8 @@ button.card-notes { border-style: solid; }
   transform: translate(-50%, -50%);
   animation: nat-pop 2s ease forwards;
 }
-.nat-moment.nat-20, .nat-moment.nat-1 { animation-duration: 2.5s; }
+/* A natural 20 or 1 lingers (FxLayer.jsx's NAT_MS). */
+.nat-moment.natural { animation-name: nat-pop-long; animation-duration: 3.9s; }
 .nat-moment polygon { stroke-width: 2; stroke-linejoin: round; transition: fill 0.15s ease, stroke 0.15s ease; }
 .nat-moment .nat-edges { fill: none; stroke-width: 1.5; }
 .nat-moment text { font-family: var(--font-hud); font-weight: 700; font-size: 20px; }
@@ -4556,6 +4557,24 @@ button.card-notes { border-style: solid; }
 .nat-1 .nat-edges { stroke: #b23a3a; }
 .nat-1 .nat-crack { fill: none; stroke: #0d0b08; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .nat-1 text { fill: #f2b8b0; }
+/* The modifier stands just right of the die, so the die itself stays centred. */
+.nat-roll { position: relative; display: block; line-height: 0; }
+.nat-mod {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 6px;
+  transform: translateY(-50%);
+  font-family: var(--font-hud);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: #f2e9d4;
+  text-shadow: 0 2px 0 #000, 0 0 6px #000;
+  animation: nat-mod-in 0.28s ease-out;
+}
+@keyframes nat-mod-in { from { opacity: 0; transform: translate(-8px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }
 .nat-label { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; text-shadow: 0 2px 0 #000, 0 0 4px #000; }
 .nat-label strong { font-family: var(--font-display-caps); font-size: 22px; font-weight: 700; }
 .nat-detail { font-family: var(--font-hud); font-size: 15px; font-weight: 700; color: #f2e9d4; }
@@ -4564,11 +4583,20 @@ button.card-notes { border-style: solid; }
 .die-high .nat-caption { color: #9fe8d2; }
 .nat-20 .nat-label strong { color: #e0b25a; }
 .nat-1 .nat-label strong { color: #f2b8b0; }
+/* Both timed to come in by 0.5s, settle by 0.7s and fade out over the last
+   0.4s: the 2s die, and the 3.9s natural one that holds until 3.5s. */
 @keyframes nat-pop {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-160deg); }
   25% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(8deg); }
   35% { transform: translate(-50%, -50%) scale(1) rotate(0); }
   80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); }
+}
+@keyframes nat-pop-long {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-160deg); }
+  12.8% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(8deg); }
+  17.9% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  89.7% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); }
 }
 @keyframes die-land { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
@@ -4715,10 +4743,10 @@ button.card-notes { border-style: solid; }
 .inspector-dropcap { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .token.acting::after, .token .token-hpbar.critical, .encounter-end.mine, .target-hp-preview, .nat-moment.landed svg { animation: none; }
+  .token.acting::after, .token .token-hpbar.critical, .encounter-end.mine, .target-hp-preview, .nat-moment.landed svg, .nat-mod { animation: none; }
   .token .token-hpbar-ghost, .target-hp-ghost { transition: none; }
   .target-card-hp.critical { animation: none; }
-  .hit-float, .turn-banner-ribbon, .nat-moment { animation-name: hit-fade; }
+  .hit-float, .turn-banner-ribbon, .nat-moment, .nat-moment.natural { animation-name: hit-fade; }
   .loot-card { animation-duration: 0.01s; }
 }
 @keyframes hit-fade { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; } }
@@ -6403,7 +6431,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   box-shadow: inset 0 0 0 4px var(--ink-900);
   overflow: hidden;
 }
-.store-frame img { width: 100%; height: 100%; object-fit: contain; }
+.store-frame img, .store-frame .sprite { width: 100%; height: 100%; object-fit: contain; }
 .store-item-name { font-size: 13px; color: var(--parchment-100); overflow-wrap: anywhere; }
 .store-item-price { font-family: var(--font-hud); font-weight: 700; font-size: 14px; color: var(--gold-hi); }
 /* A narrow screen: the sections lie in a row over the wares. */

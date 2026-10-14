@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
 import { Hint } from './Hints.jsx';
 import { DEFAULT_HEROES, makeIconDataUrl } from '../data/defaultTokens.js';
-import { SPRITE_HEROES, spriteForUrl } from '../data/spriteTokens.js';
+import { spriteForUrl, useOwnedSpriteHeroes } from '../data/spriteTokens.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import { CHEST_SIZES } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
@@ -52,6 +52,8 @@ function TokenCard({ name, imageUrl, shape, onPlace, label = `Place ${name}`, ti
 
 export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, onOpenCharacters = null, layers, layerOrder, currentLayerId, isHost, customAssets, collapsed, onToggleCollapsed, layout = 'panel' }) {
   const heroFileRef = useRef(null);
+  // The animated heroes this browser has: the Warrior, and any added from the Store.
+  const spriteHeroes = useOwnedSpriteHeroes();
   // The Import hero window, while it is open: the hero read from the chosen
   // file, a note about its picture, or why the file could not be read.
   const [heroImport, setHeroImport] = useState(null); // { hero, note, error }
@@ -328,7 +330,7 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
   const heroesBody = (
     <>
           <div className="token-grid">
-            {[...DEFAULT_HEROES, ...SPRITE_HEROES].map((h) => (
+            {[...DEFAULT_HEROES, ...spriteHeroes].map((h) => (
               <TokenCard
                 key={h.key}
                 name={h.name}

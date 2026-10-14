@@ -132,6 +132,7 @@ export function resolveAttackRoll(attack, target, { attackerName, playSounds = f
   emitFx({
     type: 'die',
     value: d20,
+    modifier: toHitMod,
     detail: `${twice ? `${rollMode} ${throws.join(' / ')} · ` : ''}${d20} ${toHitMod < 0 ? '−' : '+'} ${Math.abs(toHitMod)} = ${attackTotal} vs AC ${targetAC}`,
     caption: hit ? 'Hit' : 'Miss',
   });

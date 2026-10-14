@@ -3,7 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
 import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
-import { clampGridDims, clampFeetPerSquare, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare, islandFeet, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
 import { resolveImage } from '../lib/imageCache.js';
 import { islandsBounds, resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
@@ -339,6 +339,8 @@ export default function Toolbar({
   onSwitchLayer,
   onCreateLayer,
   onRemoveLayer,
+  onDownloadLayerImage,
+  onUpdateLayer,
   activeIslandId,
   onRecenterIsland,
   onCreateIsland,
@@ -715,6 +717,16 @@ export default function Toolbar({
     return { [islandId]: await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78) };
   }
 
+  // The same for a whole layer's background image, picked in the layer's
+  // settings (Layers list): laid over every map on the layer together, each
+  // getting its own part — the shape the layer's Download map exports.
+  async function prepareLayerBackground(layerId, file, placement = null, placements = null) {
+    const target = layers?.[layerId];
+    const members = (target?.islandOrder || []).map((id) => target.islands[id]).filter(Boolean);
+    if (members.length > 1 || placement) return sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78, placement, placements);
+    return { [members[0].id]: await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78) };
+  }
+
   function handleImportFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -866,6 +878,11 @@ export default function Toolbar({
           onSwitchLayer={onSwitchLayer}
           onCreateLayer={onCreateLayer}
           onRemoveLayer={onRemoveLayer}
+          onDownloadLayerImage={onDownloadLayerImage}
+          onUpdateLayer={onUpdateLayer}
+          onUpdateLayerIsland={onUpdateIsland ? (layerId, islandId, patch) => onUpdateIsland(islandId, patch, layerId) : null}
+          onPreviewIslands={onPreviewIslands}
+          onPrepareBackground={prepareLayerBackground}
           onClose={rail ? closeSide : () => setShowLayers(false)}
         />
       )}
@@ -1939,12 +1956,19 @@ function LayerSwitcherPopover({
   onSwitchLayer,
   onCreateLayer,
   onRemoveLayer,
+  onDownloadLayerImage,
+  onUpdateLayer,
+  onUpdateLayerIsland,
+  onPreviewIslands,
+  onPrepareBackground,
   onClose,
   side = false,
   sideTabs = null,
   sideEnter = true,
   sideHeaderAction = null,
 }) {
+  // The layer whose settings (LayerSettings) are open.
+  const [openId, setOpenId] = useState(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
@@ -2028,7 +2052,8 @@ function LayerSwitcherPopover({
         const isBase = i === 0;
         const isCurrent = id === currentLayerId;
         return (
-          <div key={id} className="player-row" style={{ justifyContent: 'space-between' }}>
+          <React.Fragment key={id}>
+          <div className="player-row" style={{ justifyContent: 'space-between' }}>
             <span className="player-name">
               {layer.name} <span className="player-tag">{layerPlayerCounts?.[id] || 0}</span>
             </span>
@@ -2043,16 +2068,48 @@ function LayerSwitcherPopover({
               >
                 {isCurrent ? 'Viewing' : 'Switch'}
               </button>
+              {onDownloadLayerImage && (
+                <button
+                  className="btn btn-secondary btn-sm btn-icon"
+                  aria-label={`Download ${layer.name} as an image`}
+                  title="Download map: every map on this layer as one PNG (backgrounds, no grid), each where it sits"
+                  onClick={() => onDownloadLayerImage(id)}
+                >
+                  <Icon name="mapdownload" />
+                </button>
+              )}
+              {onUpdateLayer && onUpdateLayerIsland && (
+                <button
+                  className={`btn btn-secondary btn-sm btn-icon ${openId === id ? 'active' : ''}`}
+                  aria-expanded={openId === id}
+                  aria-label={`Settings for ${layer.name}`}
+                  onClick={() => setOpenId(openId === id ? null : id)}
+                  title="Settings: name, feet per square, background image and grid lines, for every map on this layer"
+                >
+                  <Icon name="config" />
+                </button>
+              )}
               <button
-                className="btn btn-danger btn-sm"
+                className="btn btn-danger btn-sm btn-icon"
                 disabled={isBase}
+                aria-label={`Delete ${layer.name}`}
                 title={isBase ? 'The base layer cannot be removed' : 'Delete this layer'}
                 onClick={() => onRemoveLayer(id)}
               >
-                Delete
+                <Icon name="trash" />
               </button>
             </div>
           </div>
+          {openId === id && onUpdateLayer && onUpdateLayerIsland && (
+            <LayerSettings
+              layer={layer}
+              onPatchLayer={(patch) => onUpdateLayer(id, patch)}
+              onPatchMap={(islandId, patch) => onUpdateLayerIsland(id, islandId, patch)}
+              onPreview={onPreviewIslands}
+              onPrepareBackground={(file, placement, placements) => onPrepareBackground(id, file, placement, placements)}
+            />
+          )}
+          </React.Fragment>
         );
       })}
 
@@ -2577,11 +2634,238 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
           This takes the picture off {groupName ? 'every map in the group' : 'the map'} for everyone, and it cannot be undone.
         </span>
       )}
+      <GridLinesField
+        strength={lineStrength}
+        color={lineColor}
+        onStrength={setLineStrength}
+        onColor={setLineColor}
+        image={resolveImage(island.backgroundImage)}
+        note={`Heavier or coloured lines keep the grid readable over a background image.${groupName ? ' They are used for every map in the group.' : ''}`}
+      />
+      {groupName && (
+        <span className="island-row-note">
+          This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
+        </span>
+      )}
+      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
+    </div>
+  );
+}
+
+// A layer's own settings, opened from its row in the Layers list: the same
+// system as a map's (IslandSettings above), for the whole layer at once.
+// Its name is the layer's; feet per square and grid lines are set on every
+// map on it; a background image is laid over all of its maps together, each
+// getting its own part (the shape the layer's Download map exports), and
+// Remove image takes it off them all. A layer has no size of its own, so
+// width and height stay with each map. Every change saves itself, a moment
+// after the last one, like a map's.
+// `onPatchLayer(patch)`: the layer itself. `onPatchMap(islandId, patch)`: one
+// of its maps. `onPrepareBackground(file, placement, placements)`: the picked
+// picture cut into each map's part, { [islandId]: dataUrl }.
+function LayerSettings({ layer, onPatchLayer, onPatchMap, onPreview = null, onPrepareBackground }) {
+  const maps = (layer.islandOrder || []).map((id) => layer.islands[id]).filter(Boolean);
+  const startFeet = islandFeet(layer, maps[0]?.id);
+  const startLines = normalizeGridLines(maps[0]?.gridLines || {});
+  const [name, setName] = useState(layer.name);
+  const [feet, setFeet] = useState(startFeet);
+  const [lineStrength, setLineStrength] = useState(startLines?.strength || 'light');
+  const [lineColor, setLineColor] = useState(startLines?.color || null);
+  // Feet and grid lines go on to every map only once they are changed here,
+  // so opening the settings leaves maps that differ as they are.
+  const [feetTouched, setFeetTouched] = useState(false);
+  const [linesTouched, setLinesTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [fit, setFit] = useState(null); // as in IslandSettings
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const fileRef = useRef(null);
+
+  const nextName = name.trim() || layer.name;
+  const parsedFeet = parseInt(feet, 10);
+  const nextFeet = Number.isNaN(parsedFeet) ? startFeet : clampFeetPerSquare(parsedFeet);
+  const lines = normalizeGridLines({ strength: lineStrength, color: lineColor });
+  const linesJson = JSON.stringify(lines);
+  const feetTargets = feetTouched ? maps.filter((m) => islandFeet(layer, m.id) !== nextFeet) : [];
+  const lineTargets = linesTouched ? maps.filter((m) => JSON.stringify(normalizeGridLines(m.gridLines || {})) !== linesJson) : [];
+  const nameChanged = nextName !== layer.name;
+  const unsaved = nameChanged || feetTargets.length > 0 || lineTargets.length > 0;
+  const unsavedKey = JSON.stringify([nextName, nextFeet, feetTargets.map((m) => m.id), linesJson, lineTargets.map((m) => m.id)]);
+
+  const saveRef = useRef(null);
+  saveRef.current = () => {
+    // One patch for the layer: a local table saves each patch over the last.
+    const layerPatch = {};
+    if (nameChanged) layerPatch.name = nextName;
+    // The layer's own feet stand for maps from before each map had its own.
+    if (feetTargets.length && (layer.feetPerSquare || 5) !== nextFeet) layerPatch.feetPerSquare = nextFeet;
+    if (Object.keys(layerPatch).length) onPatchLayer(layerPatch);
+    for (const m of feetTargets) onPatchMap(m.id, { feetPerSquare: nextFeet });
+    for (const m of lineTargets) onPatchMap(m.id, { gridLines: lines });
+  };
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const timer = setTimeout(() => saveRef.current(), ISLAND_AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [unsavedKey]);
+  useEffect(() => () => saveRef.current(), []);
+
+  // The map shows the new grid lines, and a picture being laid, ahead of the save.
+  useEffect(() => {
+    if (!onPreview) return;
+    const previews = {};
+    if (linesTouched) for (const m of maps) previews[m.id] = { gridLines: lines };
+    if (fit) {
+      const { minX, minY } = islandsBounds(maps);
+      for (const m of maps) {
+        const at = fit.placements[m.id] || fit.place;
+        const backgroundFit = { x: at.x - ((m.x || 0) - minX), y: at.y - ((m.y || 0) - minY), width: at.width, height: at.height };
+        previews[m.id] = { ...previews[m.id], backgroundImage: fit.url, backgroundFit };
+      }
+    }
+    onPreview(Object.keys(previews).length ? previews : null);
+  }, [linesTouched, linesJson, fit]);
+  useEffect(() => () => onPreview?.(null), []);
+  const fitRef = useRef(null);
+  fitRef.current = fit;
+  useEffect(() => () => fitRef.current && URL.revokeObjectURL(fitRef.current.url), []);
+
+  function commit() {
+    saveRef.current();
+    setName(nextName);
+    setFeet(nextFeet);
+  }
+  const commitOnEnter = (e) => {
+    if (e.key === 'Enter') commit();
+  };
+
+  async function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !maps.length) return;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const loading = new Image();
+        loading.onload = () => resolve(loading);
+        loading.onerror = reject;
+        loading.src = url;
+      });
+      const place = defaultImagePlacement(img.naturalWidth, img.naturalHeight, maps);
+      if (fit) URL.revokeObjectURL(fit.url);
+      setFit({ file, url, imageWidth: img.naturalWidth, imageHeight: img.naturalHeight, place, placements: {}, initial: place });
+    } catch {
+      URL.revokeObjectURL(url);
+      alert('Could not read that image — try a different file.');
+    }
+  }
+  function closeFit() {
+    if (fit) URL.revokeObjectURL(fit.url);
+    setFit(null);
+  }
+  async function saveFit() {
+    if (!fit || busy) return;
+    setBusy(true);
+    try {
+      const untouched = JSON.stringify(fit.place) === JSON.stringify(fit.initial) && !Object.keys(fit.placements).length;
+      const images = await onPrepareBackground(fit.file, maps.length < 2 && untouched ? null : fit.place, fit.placements);
+      for (const [islandId, backgroundImage] of Object.entries(images)) onPatchMap(islandId, { backgroundImage });
+      closeFit();
+    } catch (err) {
+      alert(imageErrorMessage(err, 'Could not read that image — try a different file.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const withImage = maps.filter((m) => m.backgroundImage);
+  function removeBackground() {
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      return;
+    }
+    setConfirmRemove(false);
+    for (const m of withImage) onPatchMap(m.id, { backgroundImage: null });
+  }
+
+  return (
+    <div className="island-settings">
+      <label className="field-label">Name</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
+      <label className="field-label">Feet per square</label>
+      <input
+        className="field"
+        type="number"
+        min="1"
+        value={feet}
+        onChange={(e) => {
+          setFeet(e.target.value);
+          setFeetTouched(true);
+        }}
+        onKeyDown={commitOnEnter}
+        onBlur={commit}
+      />
+      <label className="field-label">Background image</label>
+      {fit ? (
+        <MapImageFit
+          url={fit.url}
+          imageWidth={fit.imageWidth}
+          imageHeight={fit.imageHeight}
+          islands={maps}
+          place={fit.place}
+          placements={fit.placements}
+          onChange={(place, placements) => setFit((current) => current && { ...current, place, placements })}
+          onCancel={closeFit}
+          onUse={saveFit}
+          busy={busy}
+          groupName={maps.length > 1 ? layer.name : null}
+          wholeName={maps.length > 1 ? 'the layer' : null}
+        />
+      ) : (
+        <div className="field-row">
+          <button className="btn btn-secondary" disabled={busy || !maps.length} onClick={() => fileRef.current?.click()}>
+            {withImage.length ? 'Replace image' : 'Upload image'}
+          </button>
+          {withImage.length > 0 && (
+            <button className={`btn ${confirmRemove ? 'btn-danger' : 'btn-secondary'}`} disabled={busy} onClick={removeBackground} onBlur={() => setConfirmRemove(false)}>
+              {confirmRemove ? 'Click again to remove' : 'Remove image'}
+            </button>
+          )}
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+      {confirmRemove && <span className="island-row-note">This takes the picture off every map on the layer for everyone, and it cannot be undone.</span>}
+      <GridLinesField
+        strength={lineStrength}
+        color={lineColor}
+        onStrength={(strength) => {
+          setLineStrength(strength);
+          setLinesTouched(true);
+        }}
+        onColor={(color) => {
+          setLineColor(color);
+          setLinesTouched(true);
+        }}
+        image={resolveImage(maps[0]?.backgroundImage)}
+        note="Heavier or coloured lines keep the grid readable over a background image."
+      />
+      <span className="island-row-note">
+        Feet per square, grid lines and a background image are set on every map on this layer; an image is spread across them all, so use the layer’s <b>Download map</b> to get its shape first. Width and height belong to each map, in World maps.
+      </span>
+      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
+    </div>
+  );
+}
+
+// The Grid lines part of a map's or a layer's settings: how heavy, what
+// colour, and a strip of grid drawn that way over `image`.
+function GridLinesField({ strength, color, onStrength, onColor, image, note }) {
+  const custom = color && !GRID_LINE_COLORS.some((c) => c.value === color);
+  return (
+    <>
       <label className="field-label grid-lines-label">Grid lines</label>
       <div className="grid-lines-row">
         <div className="side-tabs grid-lines-strength" role="group" aria-label="Grid line strength">
           {GRID_LINE_STRENGTHS.map((s) => (
-            <button key={s.key} type="button" aria-pressed={lineStrength === s.key} className={lineStrength === s.key ? 'active' : ''} onClick={() => setLineStrength(s.key)}>
+            <button key={s.key} type="button" aria-pressed={strength === s.key} className={strength === s.key ? 'active' : ''} onClick={() => onStrength(s.key)}>
               {s.label}
             </button>
           ))}
@@ -2591,34 +2875,22 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
             <button
               key={c.label}
               type="button"
-              className={`grid-swatch${lineColor === c.value ? ' active' : ''}`}
+              className={`grid-swatch${color === c.value ? ' active' : ''}`}
               style={{ '--swatch': c.value || '#17140f' }}
-              aria-pressed={lineColor === c.value}
+              aria-pressed={color === c.value}
               aria-label={c.label}
               title={c.label}
-              onClick={() => setLineColor(c.value)}
+              onClick={() => onColor(c.value)}
             />
           ))}
-          <label
-            className={`grid-swatch custom${lineColor && !GRID_LINE_COLORS.some((c) => c.value === lineColor) ? ' active' : ''}`}
-            style={lineColor && !GRID_LINE_COLORS.some((c) => c.value === lineColor) ? { '--swatch': lineColor } : undefined}
-            title="Another colour"
-          >
-            <input type="color" aria-label="Another colour" value={lineColor || '#17140f'} onChange={(e) => setLineColor(e.target.value.toLowerCase())} />
+          <label className={`grid-swatch custom${custom ? ' active' : ''}`} style={custom ? { '--swatch': color } : undefined} title="Another colour">
+            <input type="color" aria-label="Another colour" value={color || '#17140f'} onChange={(e) => onColor(e.target.value.toLowerCase())} />
           </label>
         </div>
       </div>
-      <GridLinesPreview lines={lines} image={resolveImage(island.backgroundImage)} />
-      <span className="island-row-note">
-        Heavier or coloured lines keep the grid readable over a background image.{groupName ? ' They are used for every map in the group.' : ''}
-      </span>
-      {groupName && (
-        <span className="island-row-note">
-          This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
-        </span>
-      )}
-      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
-    </div>
+      <GridLinesPreview lines={normalizeGridLines({ strength, color })} image={image} />
+      {note && <span className="island-row-note">{note}</span>}
+    </>
   );
 }
 

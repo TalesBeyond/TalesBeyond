@@ -45,8 +45,15 @@ export function setDeviceMuted(muted) {
     /* storage unavailable */
   }
   if (!muted) return;
-  for (const id of Object.keys(playing)) playing[id].gain.gain.value = 0;
-  for (const id of Object.keys(fallbackPlayers)) fallbackPlayers[id].pause();
+  // A scheduled fade would otherwise carry on over the silence.
+  for (const id of Object.keys(playing)) {
+    playing[id].gain.gain.cancelScheduledValues(0);
+    playing[id].gain.gain.value = 0;
+  }
+  for (const id of Object.keys(fallbackPlayers)) {
+    clearInterval(fallbackFades[id]);
+    fallbackPlayers[id].pause();
+  }
 }
 
 export function setSfxVolume(id, value) {
@@ -109,8 +116,9 @@ async function playBuffered(c, effect) {
       /* already ended */
     }
   }
+  const volume = getSfxVolume(effect.id);
   const gain = c.createGain();
-  gain.gain.value = getSfxVolume(effect.id);
+  gain.gain.value = volume;
   gain.connect(c.destination);
   const source = c.createBufferSource();
   source.buffer = buffer;
@@ -122,13 +130,20 @@ async function playBuffered(c, effect) {
     gain.disconnect();
   };
   const start = c.currentTime;
-  source.start(start);
-  // An effect cut short (defaultAudio.js's maxSeconds) fades to silence over
-  // its last fadeSeconds instead of stopping dead.
+  // An effect trimmed at the front (defaultAudio.js's startSeconds) starts
+  // that far into the file.
+  source.start(start, effect.startSeconds || 0);
+  // fadeInSeconds: it rises from silence instead of starting at full volume.
+  if (effect.fadeInSeconds) {
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(volume, start + effect.fadeInSeconds);
+  }
+  // An effect cut short (defaultAudio.js's maxSeconds, counted from where it
+  // starts) fades to silence over its last fadeSeconds instead of stopping dead.
   if (effect.maxSeconds) {
     const end = start + effect.maxSeconds;
     if (effect.fadeSeconds) {
-      gain.gain.setValueAtTime(gain.gain.value, end - effect.fadeSeconds);
+      gain.gain.setValueAtTime(volume, end - effect.fadeSeconds);
       gain.gain.linearRampToValueAtTime(0, end);
     }
     source.stop(end);
@@ -143,22 +158,29 @@ function playFallback(effect) {
     const audio = fallbackPlayers[effect.id];
     const volume = getSfxVolume(effect.id);
     audio.volume = volume;
-    audio.currentTime = 0;
+    audio.currentTime = effect.startSeconds || 0;
     audio.play().catch(() => {});
     clearInterval(fallbackFades[effect.id]);
-    if (effect.maxSeconds) {
-      // Same cut-and-fade as the Web Audio path, stepped by hand.
+    if (effect.maxSeconds || effect.fadeInSeconds) {
+      // Same fade-in and cut-and-fade as the Web Audio path, stepped by hand.
+      const fadeInMs = (effect.fadeInSeconds || 0) * 1000;
       const fadeMs = (effect.fadeSeconds || 0) * 1000;
       const startedAt = Date.now();
+      if (fadeInMs) audio.volume = 0;
       fallbackFades[effect.id] = setInterval(() => {
-        const left = effect.maxSeconds * 1000 - (Date.now() - startedAt);
+        const elapsed = Date.now() - startedAt;
+        const left = effect.maxSeconds ? effect.maxSeconds * 1000 - elapsed : Infinity;
         if (left <= 0) {
           clearInterval(fallbackFades[effect.id]);
           audio.pause();
           audio.volume = volume;
-        } else if (fadeMs && left < fadeMs) {
-          audio.volume = volume * (left / fadeMs);
+          return;
         }
+        let level = 1;
+        if (fadeInMs && elapsed < fadeInMs) level = Math.min(level, elapsed / fadeInMs);
+        if (fadeMs && left < fadeMs) level = Math.min(level, left / fadeMs);
+        audio.volume = volume * level;
+        if (left === Infinity && elapsed >= fadeInMs) clearInterval(fallbackFades[effect.id]);
       }, 40);
     }
   } catch {
@@ -176,6 +198,34 @@ export function playSfx(id) {
     return;
   }
   playBuffered(c, effect).catch(() => playFallback(effect));
+}
+
+// Fetches and decodes an effect ahead of time, so a playSfx that has to land
+// on a cue (the natural 20 fanfare on the die freezing) starts on it.
+export function preloadSfx(id) {
+  const effect = SOUND_EFFECTS.find((s) => s.id === id);
+  const c = effect && context();
+  if (c) loadBuffer(c, effect).catch(() => {});
+}
+
+// Ends an effect that is still playing, with a quick fade rather than a click.
+export function stopSfx(id) {
+  const entry = playing[id];
+  if (entry) {
+    const now = entry.gain.context.currentTime;
+    try {
+      entry.gain.gain.cancelScheduledValues(now);
+      entry.gain.gain.setValueAtTime(entry.gain.gain.value, now);
+      entry.gain.gain.linearRampToValueAtTime(0, now + 0.12);
+      entry.source.stop(now + 0.12);
+    } catch {
+      /* already ended */
+    }
+  }
+  if (fallbackPlayers[id]) {
+    clearInterval(fallbackFades[id]);
+    fallbackPlayers[id].pause();
+  }
 }
 
 export const playDiceSound = () => playSfx('dice');

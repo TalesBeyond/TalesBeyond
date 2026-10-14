@@ -131,8 +131,10 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
     emitFx({ type: 'log', tone: 'roll', text: `You rolled ${result.title}: ${result.total}${result.flag ? ` (${result.flag})` : ''}` });
     const dice = describePool(pool, modifier) + (mode === 'advantage' ? ' (advantage)' : mode === 'disadvantage' ? ' (disadvantage)' : '');
     emitFx({ type: 'rolled', what: name.trim() || null, dice, detail: result.detail, total: result.total, flag: result.flag });
-    // The big die over the table (FxLayer.jsx) — see rollPool's `moment`.
-    if (moment) emitFx({ type: 'die', ...moment, detail: `${result.title} · total ${result.total}` });
+    // The big die over the table (FxLayer.jsx) — see rollPool's `moment` —
+    // with what the rest of the roll adds beside it: the modifier, and with
+    // mixed dice around a single d20, the other dice too.
+    if (moment) emitFx({ type: 'die', ...moment, modifier: result.total - moment.value, detail: `${result.title} · total ${result.total}` });
   }
 
   function loadSaved(s) {
