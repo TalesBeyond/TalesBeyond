@@ -7,6 +7,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { attachImageExchange } from './imageExchange.js';
+import { scrubInbound } from './inboundSafety.js';
 
 function channelNameFor(code) {
   return `guest:${code.toUpperCase()}`;
@@ -49,13 +50,15 @@ export function subscribeToGuestTable(
   }
 
   if (onStateChange) {
-    channel.on('broadcast', { event: 'state_change' }, ({ payload }) => onStateChange(payload.action));
+    // Whatever another browser sends is scrubbed before it is used
+    // (inboundSafety.js), here and in every handler below that takes state.
+    channel.on('broadcast', { event: 'state_change' }, ({ payload }) => onStateChange(scrubInbound(payload.action)));
   }
   if (onIntent) {
-    channel.on('broadcast', { event: 'intent' }, ({ payload }) => onIntent(payload.action, payload.senderId));
+    channel.on('broadcast', { event: 'intent' }, ({ payload }) => onIntent(scrubInbound(payload.action), payload.senderId));
   }
   if (onPlayerJoin) {
-    channel.on('broadcast', { event: 'player_join' }, ({ payload }) => onPlayerJoin(payload));
+    channel.on('broadcast', { event: 'player_join' }, ({ payload }) => onPlayerJoin(scrubInbound(payload)));
   }
   if (onStateRequest) {
     channel.on('broadcast', { event: 'state_request' }, ({ payload }) => onStateRequest(payload.requesterId));
@@ -63,20 +66,20 @@ export function subscribeToGuestTable(
   // Dice rolls anyone at the table announces (GameView.jsx's announceRoll) —
   // not state, so every client just shows them.
   if (onRoll) {
-    channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
+    channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(scrubInbound(payload)));
   }
   // Area-of-effect templates anyone lays on the map (GameView.jsx's "Areas
   // of effect") — like rolls, announced to everyone and never part of state.
   if (onArea) {
-    channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
+    channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(scrubInbound(payload)));
   }
   // A premade hero a player offers the DM, and the DM's answer (GameView.jsx's
   // "Premade heroes"). Like rolls, never part of state.
   if (onHero) {
-    channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(payload));
+    channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(scrubInbound(payload)));
   }
   if (onStateSnapshot) {
-    channel.on('broadcast', { event: 'state_snapshot' }, ({ payload }) => onStateSnapshot(payload.state, payload.forId));
+    channel.on('broadcast', { event: 'state_snapshot' }, ({ payload }) => onStateSnapshot(scrubInbound(payload.state), payload.forId));
   }
 
   channel.subscribe((status) => {
@@ -148,7 +151,7 @@ export function requestGuestJoin(code, { name, color }, timeoutMs = 1500) {
     channel
       .on('broadcast', { event: 'player_join_ack' }, ({ payload }) => {
         if (payload.requestId !== requestId) return;
-        finish({ playerId: payload.playerId, state: payload.state });
+        finish({ playerId: payload.playerId, state: scrubInbound(payload.state) });
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {

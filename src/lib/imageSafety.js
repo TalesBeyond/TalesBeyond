@@ -1,9 +1,12 @@
 // The picture filter behind the Terms of Use's ban on pornographic content
 // (LegalPage.jsx, section 6). Every picture is scored in this browser by a
 // small image classifier (NSFWJS on TensorFlow.js) before it is used: when a
-// DM picks one (utils/image.js, imageCache.js storeImage) and again when a
-// browser receives one from another (imageCache.js acceptImage), so a DM
-// whose own check was switched off still cannot show it to anyone else.
+// DM picks one (utils/image.js, imageCache.js storeImage), again when a
+// browser receives one from another (imageCache.js acceptImage), and when one
+// that is already part of a table is about to be drawn (imageCache.js
+// resolveImage: an imported table, a saved local table, anything another
+// browser sent). So a DM whose own check was switched off still cannot show
+// a picture to anyone else.
 // The picture never leaves the device for this; nothing is sent anywhere.
 //
 // It finds pornography and explicit drawings. It does not tell a person's
@@ -196,6 +199,14 @@ export async function isImageAllowed(source, mode = 'upload', hash = null) {
   return !isBlocked(result, mode);
 }
 
+// Data URLs that passed assertImageAllowed in this browser, so the screen can
+// show one straight away without scoring it a second time (imageCache.js).
+const picked = new Set();
+
+export function wasPickedHere(dataUrl) {
+  return picked.has(dataUrl);
+}
+
 // For a picture a DM picked: resolves when it may be used, rejects with
 // BlockedImageError when it may not, or ImageCheckUnavailableError when it
 // could not be checked. Either way it is not used: a check that can be
@@ -204,6 +215,7 @@ export async function assertImageAllowed(source, hash = null) {
   setStatus({ busy: status.busy + 1 });
   try {
     if (!(await isImageAllowed(source, 'upload', hash))) throw new BlockedImageError();
+    if (typeof source === 'string') picked.add(source);
   } finally {
     setStatus({ busy: status.busy - 1 });
   }

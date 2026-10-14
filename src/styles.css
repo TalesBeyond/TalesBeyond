@@ -1016,20 +1016,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
   cursor: pointer;
 }
 .draw-swatch.active { border-color: var(--parchment-100); box-shadow: 0 0 0 2px var(--gold-line); }
-.draw-widths { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.draw-width {
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  background: var(--ink-800);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
-  cursor: pointer;
-}
-.draw-width > span:first-child { display: block; width: 100%; border-radius: 999px; }
-.draw-width.active { border-color: var(--gold-line); background: var(--ink-700); }
 .draw-fill { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
 .draw-fill input { margin-top: 2px; accent-color: var(--gold-hi); }
 .draw-fill small { display: block; font-size: 11px; color: var(--parchment-300); }
@@ -5598,7 +5584,8 @@ body:has(.game-screen.phone) .book-card {
 .phone-sheet-drawstyle .draw-style { gap: 14px; }
 .phone-sheet-drawstyle .draw-wheel { width: 200px; height: 200px; }
 .phone-sheet-drawstyle .draw-swatch { width: 36px; height: 36px; }
-.phone-sheet-drawstyle .draw-width { height: 44px; }
+.phone-sheet-drawstyle .draw-tool-slider { font-size: 13px; }
+.phone-sheet-drawstyle .draw-tool-slider input { height: 28px; }
 .phone-sheet-drawstyle .draw-clear { margin-top: 8px; }
 .phone-sheet-drawstyle .draw-clear-option { min-height: 52px; }
 .phone-sheet-drawstyle .draw-clear-actions .btn { min-height: 44px; }

@@ -12,7 +12,7 @@ import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
 import { useHintPrefs } from './Hints.jsx';
-import { useImageCacheVersion } from '../lib/imageCache.js';
+import { resolveImage, useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 
 // The phone layout: the map first. GameView swaps its desktop chrome (toolbar,
@@ -253,6 +253,7 @@ function LayerThumb({ layer }) {
 // ---------- atlas: every island on the layer ----------
 
 export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLabel, onPick, onClose, onManageIslands, onManageLayers }) {
+  useImageCacheVersion(); // redraw when a map's picture arrives or is cleared to show
   const [box, setBox] = useState({ w: 358, h: 300 });
   const ref = React.useRef(null);
   useEffect(() => {
@@ -299,7 +300,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
                 ...p,
                 width: i.cols * i.cellSize * scale,
                 height: i.rows * i.cellSize * scale,
-                backgroundImage: i.backgroundImage ? `url(${i.backgroundImage})` : undefined,
+                backgroundImage: resolveImage(i.backgroundImage) ? `url(${resolveImage(i.backgroundImage)})` : undefined,
               }}
               onClick={() => onPick(id)}
               aria-label={`Go to ${i.name}`}
@@ -334,7 +335,7 @@ export function PhoneAtlas({ layer, entities, activeIslandId, myHeroId, layerLab
             return (
               <li key={id}>
                 <button type="button" onClick={() => onPick(id)}>
-                  <span className={`phone-atlas-swatch${id === activeIslandId ? ' active' : ''}`} style={{ backgroundImage: i.backgroundImage ? `url(${i.backgroundImage})` : undefined }} aria-hidden="true" />
+                  <span className={`phone-atlas-swatch${id === activeIslandId ? ' active' : ''}`} style={{ backgroundImage: resolveImage(i.backgroundImage) ? `url(${resolveImage(i.backgroundImage)})` : undefined }} aria-hidden="true" />
                   <span className="phone-atlas-row-text">
                     <b>{i.name}</b>
                     <span>

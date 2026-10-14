@@ -489,9 +489,9 @@ map; every seated player sees the result, and only the DM can draw.
   drawing it touches, whole). A press in Draw always draws, even on a token;
   right-drag still pans.
 - **Style**: a colour wheel with brightness, 8 swatches and the last 5
-  colours used; 4 thicknesses, and with the Pencil a Brush size slider beside
-  the bar, 1 to 100% of a brush 3 squares wide (a style's `width` is then a
-  number of squares); a see-through
+  colours used; a Thickness slider, 1 to 100% of a brush 3 squares wide (a
+  style's `width` is a number of squares), which the Pencil also has beside
+  the bar as Brush size; a see-through
   fill for circles and rectangles. **Snap to grid** puts line ends and circle centres on grid
   corners or square centres, radii on whole squares and rectangle corners on
   grid corners. A feet label (the ruler's look) shows while drawing or
@@ -591,6 +591,21 @@ is sent anywhere for this.
   never asked for again this session; its token shows its kind's default
   icon and a notice says a picture was blocked on this device. If the check
   cannot run here, the picture is shown.
+- **When a picture that is already part of a table is drawn**
+  (`resolveImage`, which every token and map background goes through): a
+  local table's embedded pictures, a table imported from a file, or
+  anything another browser put in the shared state. Only three kinds are
+  drawn: the app's own art (built-in icons, bundled files, the default
+  catalog), a picture picked and passed in this browser, and a data URL the
+  filter has scored. A link to a picture elsewhere on the web is never
+  loaded.
+- **Colours** are the one other way a picture could arrive (CSS accepts
+  `url(…)` where it accepts a colour), so everything from outside this
+  browser — cloud rows and guest-table messages — goes through
+  `scrubInbound` (`lib/inboundSafety.js`), which replaces anything that is
+  not a plain colour with grey.
+- `uploadImage` (`lib/storageUpload.js`, not wired into the UI) runs the
+  same check before it uploads.
 - **Limits** are `LIMITS` at the top of `imageSafety.js`: how sure the
   classifier must be, with more room for received pictures than picked ones.
   A large picture is also scored in quarters.

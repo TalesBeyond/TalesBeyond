@@ -6,6 +6,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { resizeImageToCanvas } from '../utils/image.js';
+import { assertImageAllowed } from './imageSafety.js';
 
 function resizeImageFile(file, maxDim) {
   return resizeImageToCanvas(file, maxDim).then(
@@ -46,6 +47,7 @@ const IMMUTABLE_CACHE_SECONDS = '31536000';
 export async function uploadImage(file, bucket, tableId, maxDim = 512) {
   await assertCanUpload();
   const blob = await resizeImageFile(file, maxDim);
+  await assertImageAllowed(blob); // the picture filter (imageSafety.js)
   const path = `${tableId}/${randomFileName('webp')}`;
   const { error } = await supabase.storage.from(bucket).upload(path, blob, {
     contentType: 'image/webp',

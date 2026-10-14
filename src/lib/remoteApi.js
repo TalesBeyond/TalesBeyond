@@ -28,6 +28,7 @@ import {
 } from './mappers.js';
 import { customAssetDataToDb } from './storedImages.js';
 import { LEGAL } from '../data/legal.js';
+import { scrubInbound } from './inboundSafety.js';
 
 // dmNotes/droppables live in their own host-only-readable table (see
 // 15_entity_dm_data_privacy.sql) instead of on `entities` — split a patch
@@ -326,7 +327,9 @@ export async function fetchTableSnapshot(tableId) {
     entityOrder.push(row.id);
   }
 
-  return {
+  // Every row here was written by some browser at the table, so the whole
+  // snapshot is scrubbed before it is used (inboundSafety.js).
+  return scrubInbound({
     session: {
       code: codeRow.code,
       tableId: table.id,
@@ -353,7 +356,7 @@ export async function fetchTableSnapshot(tableId) {
       playback: { nowPlaying: audioPlayback?.nowPlaying ?? null, resume: audioPlayback?.resume ?? {} },
     },
     players,
-  };
+  });
 }
 
 // ---- Audio (38_synced_table_audio.sql) ----

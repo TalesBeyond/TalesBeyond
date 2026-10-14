@@ -12,7 +12,8 @@
 // `checked` so it is not scored again.
 
 import { useSyncExternalStore } from 'react';
-import { assertImageAllowed, checkReceivedImage } from './imageSafety.js';
+import { iconRefForUrl } from '../data/defaultTokens.js';
+import { assertImageAllowed, checkReceivedImage, wasPickedHere } from './imageSafety.js';
 
 const PREFIX = 'img:';
 const REF_RE = /^img:[0-9a-f]{64}$/;
@@ -178,11 +179,63 @@ export async function keepBundledImage(hash, blob) {
   remember(hash, blob);
 }
 
-// What an <img src> / CSS url() should use for an image value: anything that
-// isn't a fingerprint is returned as is; a fingerprint gives its object URL,
-// or null while the picture is still being found (the call starts that).
+// --- Pictures that are not fingerprints ----------------------------------------
+// A local table keeps its pictures as data URLs, and a table that came from a
+// file or from another browser can hold anything at all. Only three kinds are
+// ever drawn: the app's own art, a data URL the picture filter has scored,
+// and nothing else — a link to a picture elsewhere on the web is never loaded.
+
+// The default catalog's pictures (lib/catalog.js): only the admin script can
+// write those buckets.
+const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_PROJECT_URL;
+const CATALOG_PREFIX = SUPABASE_URL ? `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/catalog-` : null;
+
+const inline = new Map(); // data URL -> 'pending' | 'ok' | 'blocked'
+
+function isOwnPicture(value) {
+  return (
+    Boolean(iconRefForUrl(value)) || // a built-in icon
+    value.startsWith('blob:') || // made by this page: a picture being fitted, or one from the cache above
+    (value.startsWith('/') && !value.startsWith('//')) || // a file shipped with the app
+    value.startsWith(`${globalThis.location?.origin}/`) ||
+    Boolean(CATALOG_PREFIX && value.startsWith(CATALOG_PREFIX)) ||
+    wasPickedHere(value) // picked in this browser a moment ago, and passed
+  );
+}
+
+async function scoreInline(value) {
+  let verdict = 'blocked'; // what cannot even be read as a picture is not shown
+  try {
+    const blob = await (await fetch(value)).blob();
+    verdict = (await checkReceivedImage(blob, null)) === 'blocked' ? 'blocked' : 'ok';
+  } catch {
+    // stays blocked
+  }
+  inline.set(value, verdict);
+  notify();
+}
+
+function resolveInline(value) {
+  if (isOwnPicture(value)) return value;
+  if (!value.startsWith('data:image/')) return null;
+  const verdict = inline.get(value);
+  if (verdict === 'ok') return value;
+  if (!verdict) {
+    inline.set(value, 'pending');
+    scoreInline(value);
+  }
+  return null;
+}
+
+// What an <img src> / CSS url() should use for an image value, or null while
+// it is not (or not yet) to be drawn; callers fall back to a default icon and
+// re-render through useImageCacheVersion(). A fingerprint gives its object
+// URL once the picture has been found (the call starts that). Anything else
+// is drawn only if it is the app's own art or the picture filter has scored
+// it (the call starts that too).
 export function resolveImage(value) {
-  if (!isImageRef(value)) return value || null;
+  if (typeof value !== 'string' || !value) return null;
+  if (!isImageRef(value)) return resolveInline(value);
   const hash = value.slice(PREFIX.length);
   if (blocked.has(hash)) return null;
   const url = urls.get(hash);
