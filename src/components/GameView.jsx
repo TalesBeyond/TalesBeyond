@@ -109,7 +109,7 @@ import TokenSidebar from './TokenSidebar.jsx';
 import RightPanel from './RightPanel.jsx';
 import Toolbar from './Toolbar.jsx';
 import PanelResizer from './PanelResizer.jsx';
-import ClockModal from './ClockModal.jsx';
+import ClockForm from './ClockForm.jsx';
 import { useCatalog } from '../lib/catalog.js';
 import { useDayPhase } from '../state/useGameClock.js';
 import { withClockRunning } from '../utils/gameClock.js';
@@ -4324,6 +4324,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         clock={state.clock}
         onAddEntity={addEntity}
         onOpenClock={() => setShowClockModal(true)}
+        onUpdateClock={updateClock}
         audio={audioApi}
         musicHint={isGuest ? 'On a guest table the music plays only on the DM’s own device.' : 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.'}
         onOpenMusic={() => {
@@ -4480,7 +4481,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
                 {isHost && <StripSaved label={savedAgo} secondsLeft={autosaveSecondsLeft} />}
                 {state.clock && (
                   <span className="strip-clock">
-                    <ClockReadout clock={state.clock} isHost={isHost} onOpen={() => setShowClockModal(true)} onSetRunning={setClockRunning} phaseOverride={state.dayNightOverride} />
+                    <ClockReadout clock={state.clock} isHost={isHost} onOpen={() => emitFx({ type: 'open', panel: 'clock' })} onSetRunning={setClockRunning} phaseOverride={state.dayNightOverride} />
                   </span>
                 )}
               </>
@@ -4716,19 +4717,23 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           <ReportModal mode={mode} tableId={state.session.tableId} code={state.session.code} onClose={() => setShowReport(false)} />
         )}
 
-        {showClockModal && isHost && (
-          <ClockModal
-            clock={state.clock}
-            onSave={(clock) => {
-              updateClock(clock);
-              setShowClockModal(false);
-            }}
-            onRemove={() => {
-              updateClock(null);
-              setShowClockModal(false);
-            }}
-            onClose={() => setShowClockModal(false)}
-          />
+        {/* On the rail the clock is set in the World drawer (Toolbar's "Set
+            world clock"); a phone, which has no drawer, keeps this dialog. */}
+        {showClockModal && isHost && isPhone && (
+          <ModalShell title="Ingame time" icon="clock" closeLabel="Close" onClose={() => setShowClockModal(false)}>
+            <ClockForm
+              clock={state.clock}
+              onSave={(clock) => {
+                updateClock(clock);
+                setShowClockModal(false);
+              }}
+              onRemove={() => {
+                updateClock(null);
+                setShowClockModal(false);
+              }}
+              onCancel={() => setShowClockModal(false)}
+            />
+          </ModalShell>
         )}
 
         {/* Drawers keep their preferred width, clamped by CSS — no resizing.

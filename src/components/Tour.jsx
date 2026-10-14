@@ -44,21 +44,12 @@ export const HOST_TOUR = [
     text: 'Opens the panel of everything you can put on the map: heroes, NPCs, doors, chests, traps, ambushes, bulletin boards and portals. Click the tab again to fold it away.',
   },
   {
-    target: 'mapping',
-    side: 'right',
-    title: 'Mapping',
-    text: 'Where you build the world your players walk through.',
-    items: [
-      ['World maps', 'the rooms and areas of this world. Add one, give it sub maps, resize it, give it a background.'],
-      ['Layers', 'separate worlds in the same table: another floor, another town.'],
-    ],
-  },
-  {
     target: 'world',
     side: 'right',
-    title: 'World state',
-    text: 'The mood of the scene.',
+    title: 'World',
+    text: 'The world your players walk through, and the mood of the scene.',
     items: [
+      ['World maps', 'the rooms and areas of this world, and its layers: other floors, other towns. Opens in the same panel.'],
       ['Ingame time', 'the table’s clock, and how fast it runs.'],
       ['Day / night', 'set dawn, day, dusk or night by hand.'],
       ...(MUSIC_ENABLED ? [['Ambience', 'the sound players hear in this world.']] : []),

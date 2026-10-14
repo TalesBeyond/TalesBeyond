@@ -6295,6 +6295,50 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .drawer-section + .drawer-section { padding-top: 14px; border-top: 1px solid var(--ink-700); }
 .drawer-section > .section-label { margin: 0; }
 
+/* An expansion panel in a drawer (the World drawer's "Set world clock"):
+   a drawer-tool-like header that unfolds its settings underneath. */
+.drawer-expander { border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-800); }
+.drawer-expander:hover, .drawer-expander.open { border-color: var(--gold-line); }
+.drawer-expander-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-expander-head:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+/* The header row: the fold button, and an action beside it (the clock's
+   remove), which can't sit inside the fold button. */
+.drawer-expander-top { display: flex; align-items: center; cursor: pointer; }
+.drawer-expander-top > .drawer-expander-head { flex: 1; min-width: 0; }
+.drawer-expander-action { flex-shrink: 0; margin-right: 10px; }
+.drawer-expander-top > .drawer-expander-chevron { margin-right: 14px; }
+.drawer-expander-head .drawer-book-text { flex: 1; min-width: 0; }
+.drawer-expander.open .drawer-tool-name { color: var(--gold-hi); }
+.drawer-expander-chevron { flex-shrink: 0; color: var(--parchment-300); transition: transform 0.15s ease; }
+.drawer-expander.open .drawer-expander-chevron { transform: rotate(90deg); }
+.drawer-expander-body { padding: 12px 14px 14px; border-top: 1px solid var(--ink-700); }
+.drawer-tool-icon > img { display: block; }
+
+/* The clock's settings (ClockForm), narrow enough for a side panel: the
+   columns may shrink below the time inputs' natural width, and the
+   Remove / Cancel / Save row shares the width evenly. */
+.clock-form .two-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.clock-form .field { min-width: 0; padding-left: 10px; padding-right: 10px; }
+.clock-form-actions { display: flex; gap: 8px; margin-top: 16px; }
+.clock-form-actions .btn { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-expander-chevron { transition: none; }
+}
+
 /* A side panel's footer (ModalShell `footer`): pinned under the scrolling
    body. The Mapping drawer keeps + New map there, and the form it opens;
    Initiative and Dice keep their roll buttons there. */

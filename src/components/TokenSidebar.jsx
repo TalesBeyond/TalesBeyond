@@ -414,7 +414,7 @@ export default function TokenSidebar({ onAddEntity, onAddPortal, onCreateLayer, 
               <>Add a second world now, or later from the <b>worlds</b> button at the top.</>
             ) : (
               <>
-                Add a second world here, or later in <b>Mapping → Layers</b>.
+                Add a second world here, or later in <b>World → World maps → Layers</b>.
               </>
             )}
           </Hint>

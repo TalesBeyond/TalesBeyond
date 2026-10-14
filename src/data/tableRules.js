@@ -75,22 +75,10 @@ export const TABLE_RULES = {
       text: 'Drag a map to move it. Where the edges of two maps touch, tokens can walk across. Arrange maps is also the tool that lets you change what is inside a chest. Press Done to go back to Play.',
     },
     {
-      key: 'mapping',
-      name: 'Mapping',
-      sub: 'Build the world',
-      where: 'Left rail',
-      dm: true,
-      text: 'Where you build the places your players walk through.',
-      items: [
-        ['World maps', 'the rooms and areas of this world.'],
-        ['Layers', 'separate worlds in the same table.'],
-      ],
-    },
-    {
       key: 'islands',
       name: 'World maps',
       sub: 'The rooms and areas of a world',
-      where: 'Mapping drawer',
+      where: 'World drawer → World maps',
       dm: true,
       text: 'Lists the maps on the layer you are viewing. Beside each name are four icon buttons: Recenter brings that map (or its whole group) to the middle of the view and makes it the active one, Download map saves it as an image, Settings opens its name, width, height, feet per square, background image and grid lines, and Delete removes it. Download map saves the map as a PNG with its grid, so you can paint over it in an image editor and upload it back in Settings. For a map in a group it saves the whole group as one picture, and an image uploaded to any map in the group is spread across all of them the same way. Grid lines sets how heavy the map’s grid is drawn (Light, Strong or Bold) and in which colour, for when the lines get lost over a background image; a strip under the buttons shows the result, and a map in a group shares its grid lines with the rest of the group. Remove image takes a map’s background off again (click it twice: it cannot be undone); for a map in a group it comes off every map in the group. A map’s Settings have no Save button: each change shows on the map straight away and is saved by itself. A background image is the exception: once you pick one, a small plan of the map (or of the whole group) opens with the picture under it. Drag it, size it with the Width and Height sliders, or start from Fit width, Fit height, Stretch or Centre; the map shows the result as you go, and Use this picture saves it. When a picture is the right size but its art still sits off the maps (one redrawn from the downloaded map rather than painted over it), Snap each map to its art finds every map’s own piece and fits it to that map; Move then picks a single map to shift by itself. + New map, at the foot of the drawer, adds a map of its own. + Sub map adds a new map that belongs to the one you clicked: it lands beside it and is grouped with it, so the two move together and share the parent’s name and conditions. A map with sub maps shows how many it has; click its name to unfold them. Detach turns a sub map back into a map of its own.',
     },
@@ -98,20 +86,21 @@ export const TABLE_RULES = {
       key: 'layers',
       name: 'Layers',
       sub: 'Separate worlds in one table',
-      where: 'Mapping drawer',
+      where: 'World drawer → World maps, Layers tab',
       dm: true,
       text: 'A layer is its own world: another floor, another town. Add, rename and remove layers here. The strip above the map switches the layer you are looking at, and the number on each tab is how many players are on it. A player only ever sees the layer they are on.',
     },
     {
       key: 'world',
-      name: 'World state',
-      sub: 'The World tab: the mood of the scene',
+      name: 'World',
+      sub: 'The World tab: the maps and the mood of the scene',
       where: 'Left rail',
       dm: true,
       text: MUSIC_ENABLED
-        ? 'Time, light and sound for the table, in one drawer beside the rail. Day / night and Ambience are set right there; the clock opens its own dialog.'
-        : 'Time and light for the table, in one drawer beside the rail. Day / night is set right there; the clock opens its own dialog.',
+        ? 'The world’s maps, and its time, light and sound, in one drawer beside the rail. World maps opens the maps and layers in the drawer’s place; the world button at its top comes back. The clock’s settings fold out under Set world clock.'
+        : 'The world’s maps, and its time and light, in one drawer beside the rail. World maps opens the maps and layers in the drawer’s place; the world button at its top comes back. The clock’s settings fold out under Set world clock.',
       items: [
+        ['World maps', 'the maps of this layer, and the layers.'],
         ['Ingame time', 'the table’s clock.'],
         ['Day / night', 'set the phase by hand.'],
         ...(MUSIC_ENABLED ? [['Ambience', 'the sound in this world.']] : []),
@@ -121,9 +110,9 @@ export const TABLE_RULES = {
       key: 'clock',
       name: 'Ingame time',
       sub: 'The table’s clock',
-      where: 'World drawer',
+      where: 'World drawer, under Set world clock',
       dm: true,
-      text: 'Set the in-game time, how fast it ticks, and the day/night cycle. Once a clock is set, the readout above the map is how every player sees the time.',
+      text: 'Set the in-game time, how fast it ticks, and the day/night cycle. Once a clock is set, the readout above the map is how every player sees the time; clicking it opens these settings again.',
     },
     {
       key: 'daynight',
@@ -373,7 +362,7 @@ export const TABLE_RULES = {
       name: 'Maps',
       sub: 'Pieces of the world',
       where: 'On the map',
-      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Arrange maps and click a map’s background, or press a map’s Recenter button in Mapping; a click on a map during play leaves it alone.',
+      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Arrange maps and click a map’s background, or press a map’s Recenter button in World → World maps; a click on a map during play leaves it alone.',
     },
     {
       key: 'movetoken',

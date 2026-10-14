@@ -21,6 +21,7 @@ import { shopPrice, entryGoods, knowsSpell, sheetWithGoods, sourceEntries, clean
 import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
+import ClockForm from './ClockForm.jsx';
 import SoundField from './SoundField.jsx';
 import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
@@ -316,7 +317,8 @@ export default function Toolbar({
   onSaveNow,
   autosaveSecondsLeft,
   clock,
-  onOpenClock,
+  onOpenClock, // a phone's clock dialog; the rail sets the clock in the World drawer
+  onUpdateClock,
   audio,
   onOpenMusic,
   musicHint = 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.',
@@ -422,6 +424,17 @@ export default function Toolbar({
   // Opens a side panel without folding it away again if it is the one open.
   function showSide(name) {
     if (sidePanel !== name) openSide(name);
+  }
+  // The World drawer's "Set world clock" panel, folded until asked for.
+  const [clockExpanded, setClockExpanded] = useState(false);
+  // The World drawer's "Set day / night" panel, folded until asked for.
+  const [dayNightExpanded, setDayNightExpanded] = useState(false);
+  // Anything that asks to set the clock (the readout above the map, a hint):
+  // on the rail, the World drawer with that panel unfolded.
+  function openClock() {
+    if (!rail) return onOpenClock?.();
+    showSide('world');
+    setClockExpanded(true);
   }
   useEffect(() => {
     if (tokensOpen || musicOpen) setSidePanel(null);
@@ -628,7 +641,7 @@ export default function Toolbar({
       setIslandsFocusId(event.islandId || null);
       togglePopover('islands');
     } else if (['layers', 'initiative', 'assetStorage', 'ambience'].includes(event.panel)) togglePopover(event.panel);
-    else if (event.panel === 'clock') onOpenClock?.();
+    else if (event.panel === 'clock') openClock();
     else if (event.panel === 'bestiary') {
       const open = showMonsterCompendium;
       togglePopover(null);
@@ -780,9 +793,16 @@ export default function Toolbar({
     </Tip>
   );
 
-  // The Mapping drawer holds World maps and Layers behind one switch.
+  // The World maps panel's way back to the World drawer it was opened from.
+  const backToWorld = (
+    <button type="button" className="side-panel-head-btn" onClick={() => swapSide('world')} title="Back to World" aria-label="Back to World">
+      <Icon name="world" />
+    </button>
+  );
+
+  // The World maps panel holds World maps and Layers behind one switch.
   const mappingTabs = rail ? (
-    <div className="side-tabs drawer-tabs" role="tablist" aria-label="Mapping">
+    <div className="side-tabs drawer-tabs" role="tablist" aria-label="World maps">
       {[
         ['maps', 'World maps'],
         ['layers', 'Layers'],
@@ -793,6 +813,64 @@ export default function Toolbar({
       ))}
     </div>
   ) : null;
+
+  // World maps and Layers. On the rail they are one side panel opened from
+  // the World drawer's World maps button, standing in the drawer's place —
+  // its header's world button goes back. Elsewhere they are the Mapping
+  // menu's dialogs.
+  const mappingPanels = (
+    <>
+      {islandsOpen && (
+        <IslandManagerPopover
+          // Asked to open on one map's settings: start afresh on it.
+          key={islandsFocusId || 'maps'}
+          side={rail}
+          sideTabs={mappingTabs}
+          sideEnter={panelEnter}
+          sideHeaderAction={rail ? backToWorld : null}
+          islands={layer.islands}
+          islandOrder={layer.islandOrder}
+          islandGroups={layer.islandGroups || {}}
+          activeIslandId={activeIslandId}
+          onRecenterIsland={onRecenterIsland}
+          onCreateIsland={onCreateIsland}
+          onRemoveIsland={onRemoveIsland}
+          onDetachIsland={onDetachIsland}
+          onRenameGroup={onRenameGroup}
+          onIslandConditions={onIslandConditions}
+          onGroupConditions={onGroupConditions}
+          onUpdateIsland={onUpdateIsland}
+          onPreviewIslands={onPreviewIslands}
+          onPrepareBackground={prepareIslandBackground}
+          onDownloadIslandImage={onDownloadIslandImage}
+          focusIslandId={islandsFocusId}
+          layerFeet={layer.feetPerSquare || 5}
+          onSwitchToEdit={() => {
+            onToolChange('edit');
+            if (rail) closeSide();
+            else setShowIslands(false);
+          }}
+          onClose={rail ? closeSide : () => setShowIslands(false)}
+        />
+      )}
+      {layersOpen && (
+        <LayerSwitcherPopover
+          side={rail}
+          sideTabs={mappingTabs}
+          sideEnter={panelEnter}
+          sideHeaderAction={rail ? backToWorld : null}
+          layers={layers}
+          layerOrder={layerOrder}
+          currentLayerId={currentLayerId}
+          layerPlayerCounts={layerPlayerCounts}
+          onSwitchLayer={onSwitchLayer}
+          onCreateLayer={onCreateLayer}
+          onRemoveLayer={onRemoveLayer}
+          onClose={rail ? closeSide : () => setShowLayers(false)}
+        />
+      )}
+    </>
+  );
 
   if (collapsed) {
     return (
@@ -916,67 +994,20 @@ export default function Toolbar({
         </div>
       )}
 
-      {isHost && (
+      {/* On the rail World maps and Layers have no tab of their own: the
+          World drawer's World maps button opens them in its place. */}
+      {isHost && rail && mappingPanels}
+      {isHost && !rail && (
         <ToolMenu
           icon={<Icon name="mapping" />}
           label="Mapping"
           tour="mapping"
           title="World maps and layers"
-          active={rail ? sidePanel === 'mapping' : showIslands || showLayers}
-          open={!rail && openMenu === 'mapping'}
-          onToggle={() => (rail ? openSide('mapping') : toggleMenu('mapping'))}
+          active={showIslands || showLayers}
+          open={openMenu === 'mapping'}
+          onToggle={() => toggleMenu('mapping')}
           onClose={closeMenu}
-          popovers={
-            <>
-              {islandsOpen && (
-                <IslandManagerPopover
-                  // Asked to open on one map's settings: start afresh on it.
-                  key={islandsFocusId || 'maps'}
-                  side={rail}
-                  sideTabs={mappingTabs}
-                  sideEnter={panelEnter}
-                  islands={layer.islands}
-                  islandOrder={layer.islandOrder}
-                  islandGroups={layer.islandGroups || {}}
-                  activeIslandId={activeIslandId}
-                  onRecenterIsland={onRecenterIsland}
-                  onCreateIsland={onCreateIsland}
-                  onRemoveIsland={onRemoveIsland}
-                  onDetachIsland={onDetachIsland}
-                  onRenameGroup={onRenameGroup}
-                  onIslandConditions={onIslandConditions}
-                  onGroupConditions={onGroupConditions}
-                  onUpdateIsland={onUpdateIsland}
-                  onPreviewIslands={onPreviewIslands}
-                  onPrepareBackground={prepareIslandBackground}
-                  onDownloadIslandImage={onDownloadIslandImage}
-                  focusIslandId={islandsFocusId}
-                  layerFeet={layer.feetPerSquare || 5}
-                  onSwitchToEdit={() => {
-                    onToolChange('edit');
-                    if (rail) closeSide();
-                    else setShowIslands(false);
-                  }}
-                  onClose={rail ? closeSide : () => setShowIslands(false)}
-                />
-              )}
-              {layersOpen && (
-                <LayerSwitcherPopover
-                  side={rail}
-                  sideTabs={mappingTabs}
-                  sideEnter={panelEnter}
-                  layers={layers}
-                  layerOrder={layerOrder}
-                  currentLayerId={currentLayerId}
-                  layerPlayerCounts={layerPlayerCounts}
-                  onSwitchLayer={onSwitchLayer}
-                  onCreateLayer={onCreateLayer}
-                  onRemoveLayer={onRemoveLayer}
-                  onClose={rail ? closeSide : () => setShowLayers(false)}
-                />
-              )}
-            </>
-          }
+          popovers={mappingPanels}
         >
           <ToolCard icon={<Icon name="islands" />} label="World maps" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} map(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
@@ -989,7 +1020,7 @@ export default function Toolbar({
           label={rail ? 'World' : 'World state'}
           tour="world"
           title={MUSIC_ENABLED ? "In-game time, day / night and the world's ambience" : 'In-game time and day / night'}
-          active={!rail && (showDayNight || showAmbience)}
+          active={rail ? sidePanel === 'mapping' : showDayNight || showAmbience}
           open={rail ? sidePanel === 'world' : openMenu === 'world'}
           onToggle={() => (rail ? openSide('world') : toggleMenu('world'))}
           onClose={rail ? closeSide : closeMenu}
@@ -1014,32 +1045,91 @@ export default function Toolbar({
             )
           }
         >
-          {/* In the drawer all three are laid out at once: the clock's
-              button, then the day / night and ambience controls themselves. */}
+          {/* In the drawer it is all laid out at once: World maps (which
+              opens its own panel in the drawer's place), the clock's settings
+              (folded under "Set world clock"), then the day / night and
+              ambience controls. */}
           {rail && (
             <>
               <section className="drawer-section">
-                <span className="section-label">Ingame time</span>
-                <button type="button" className="drawer-tool" onClick={onOpenClock} title="Set the in-game time, tick speed, and day/night cycle">
+                <span className="section-label">Maps</span>
+                <button
+                  type="button"
+                  className="drawer-tool"
+                  data-tour="mapping"
+                  onClick={() => {
+                    switchMapTab('maps');
+                    swapSide('mapping');
+                  }}
+                  title="The maps on this layer, and the layers themselves"
+                >
                   <span className="drawer-tool-icon">
-                    <Icon name="clock" />
+                    <Icon name="islands" />
                   </span>
                   <span className="drawer-book-text">
-                    <span className="drawer-tool-name">{clock ? 'Change the clock' : 'Set a clock'}</span>
-                    <span className="drawer-tool-sub">The table’s time, how fast it runs, and the day / night cycle.</span>
+                    <span className="drawer-tool-name">World maps</span>
+                    <span className="drawer-tool-sub">
+                      {(layer.islandOrder || []).length} map(s) on this layer, and {(layerOrder || []).length} layer(s).
+                    </span>
                   </span>
                 </button>
               </section>
               <section className="drawer-section">
+                <span className="section-label">Ingame time</span>
+                {/* Save and Cancel leave it open; while there is a clock, the
+                    trash in its header removes it. The form mounts only while
+                    unfolded, so it opens on the clock's current time. */}
+                <DrawerExpander
+                  icon={<Icon name="clock" />}
+                  title="Set world clock"
+                  sub="The table’s time, how fast it runs, and the day / night cycle."
+                  hint="Set the in-game time, tick speed, and day/night cycle"
+                  open={clockExpanded}
+                  onToggle={() => setClockExpanded((o) => !o)}
+                  action={
+                    clock && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm btn-icon"
+                        aria-label="Remove the clock"
+                        title="Remove the clock from this table"
+                        onClick={() => onUpdateClock?.(null)}
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    )
+                  }
+                >
+                  <ClockForm clock={clock} onSave={(next) => onUpdateClock?.(next)} />
+                </DrawerExpander>
+              </section>
+              <section className="drawer-section">
                 <span className="section-label">Day / night</span>
-                <DayNightControls
-                  override={dayNightOverride}
-                  hasClock={Boolean(clock)}
-                  hasCycle={Boolean(clock?.cycle?.enabled)}
-                  onSelect={(phase) => onSetDayNightOverride(phase)}
-                  island={activeIsland}
-                  onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
-                />
+                <DrawerExpander
+                  icon={dayPhase ? <img src={DAY_PHASES[dayPhase].imageUrl} alt="" width={26} height={26} /> : <Icon name="daynight" />}
+                  title="Set day / night"
+                  sub={
+                    dayNightOverride
+                      ? `Set by hand: ${DAY_PHASES[dayNightOverride].label}.`
+                      : clock?.cycle?.enabled
+                        ? dayPhase
+                          ? `Following the clock: ${DAY_PHASES[dayPhase].label}.`
+                          : 'Following the clock.'
+                        : 'No day/night cycle is running.'
+                  }
+                  hint="Change the day/night phase by hand, and whether this map follows it"
+                  open={dayNightExpanded}
+                  onToggle={() => setDayNightExpanded((o) => !o)}
+                >
+                  <DayNightControls
+                    override={dayNightOverride}
+                    hasClock={Boolean(clock)}
+                    hasCycle={Boolean(clock?.cycle?.enabled)}
+                    onSelect={(phase) => onSetDayNightOverride(phase)}
+                    island={activeIsland}
+                    onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
+                  />
+                </DrawerExpander>
               </section>
               {MUSIC_ENABLED && (
                 <section className="drawer-section">
@@ -1703,6 +1793,37 @@ function DayNightPopover({ onClose, ...controls }) {
   );
 }
 
+// An expansion panel in a side-panel drawer (the World drawer's "Set world
+// clock" and "Set day / night"): a header that folds `children` away, with an
+// optional `action` button before the chevron. A click anywhere on the header
+// row folds it — the button inside is what keyboards and screen readers use,
+// and its click bubbles up to the row; the action's own click doesn't.
+// `children` mount only while it is open.
+function DrawerExpander({ icon, title, sub, hint, open, onToggle, action = null, children }) {
+  return (
+    <div className={`drawer-expander${open ? ' open' : ''}`}>
+      <div className="drawer-expander-top" onClick={onToggle}>
+        <button type="button" className="drawer-expander-head" aria-expanded={open} title={hint}>
+          <span className="drawer-tool-icon">{icon}</span>
+          <span className="drawer-book-text">
+            <span className="drawer-tool-name">{title}</span>
+            {sub && <span className="drawer-tool-sub">{sub}</span>}
+          </span>
+        </button>
+        {action && (
+          <span className="drawer-expander-action" onClick={(e) => e.stopPropagation()}>
+            {action}
+          </span>
+        )}
+        <span className="drawer-expander-chevron" aria-hidden="true">
+          ▸
+        </span>
+      </div>
+      {open && <div className="drawer-expander-body">{children}</div>}
+    </div>
+  );
+}
+
 // The controls themselves: in the popover above, and laid straight into the
 // World drawer on the rail.
 function DayNightControls({ override, hasClock, hasCycle, onSelect, island, onIslandDayNight }) {
@@ -1822,6 +1943,7 @@ function LayerSwitcherPopover({
   side = false,
   sideTabs = null,
   sideEnter = true,
+  sideHeaderAction = null,
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -1890,12 +2012,13 @@ function LayerSwitcherPopover({
 
   return (
     <ModalShell
-      title={side ? 'Mapping' : 'Layers'}
+      title={side ? 'World maps' : 'Layers'}
       icon={side ? 'islands' : 'layers'}
-      closeLabel={side ? 'Close Mapping' : 'Close layers panel'}
+      closeLabel={side ? 'Close World maps' : 'Close layers panel'}
       side={side}
       enter={sideEnter}
       footer={side ? newLayer : null}
+      headerAction={sideHeaderAction}
       onClose={onClose}
     >
       {sideTabs}
@@ -1962,10 +2085,12 @@ function IslandManagerPopover({
   layerFeet = 5,
   onSwitchToEdit,
   onClose,
-  // On the rail the manager stands in the Mapping drawer, under its switch.
+  // On the rail the manager stands in the World maps panel (opened from the
+  // World drawer), under its switch.
   side = false,
   sideTabs = null,
   sideEnter = true,
+  sideHeaderAction = null,
 }) {
   // The island whose settings (name, size, background) are open.
   const [openId, setOpenId] = useState(focusIslandId);
@@ -2224,13 +2349,14 @@ function IslandManagerPopover({
 
   return (
     <ModalShell
-      title={side ? 'Mapping' : 'World maps'}
+      title="World maps"
       icon="islands"
-      closeLabel={side ? 'Close Mapping' : 'Close world maps panel'}
+      closeLabel={side ? 'Close World maps' : 'Close world maps panel'}
       maxWidth={560}
       side={side}
       enter={sideEnter}
       footer={side ? newMap : null}
+      headerAction={sideHeaderAction}
       onClose={onClose}
     >
       {sideTabs}
