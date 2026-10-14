@@ -35,6 +35,7 @@ import {
   isEntityFogged,
   isDoorHomeSideFogged,
   isDoorTargetSideFogged,
+  isPortalEndFogged,
   isFogChunkOccupied,
   fogChunksToRevealOnEnter,
   isHeldBackDestination,
@@ -286,8 +287,11 @@ function entitiesVisibleOnLayer(state, layerId, showHidden) {
     if (entity.layerId === layerId) {
       // A door with one side wholly in the fog of war and the other clear is
       // not a fogged token (utils/fogOfWar.js), but a player's screen still
-      // leaves out the side that has no clear square.
+      // leaves out the side that has no clear square. A portal end in fog
+      // whose other end is clear is the same: the player holds it, so the
+      // portal can be used from the clear end, but it isn't drawn.
       if (!showHidden && entity.kind === 'door' && isDoorHomeSideFogged(entity, state)) continue;
+      if (!showHidden && entity.kind === 'portal' && isPortalEndFogged(entity, state)) continue;
       result[id] = entity;
     } else if (entity.kind === 'door' && entity.targetLayerId === layerId) {
       if (!showHidden && isDoorTargetSideFogged(entity, state)) continue;
@@ -1993,7 +1997,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // where it stands (or how many squares it covers, or a door's other side)
   // carries its new `fogged` in the same write, so a token moved into fog is
   // never readable there, and one moved out arrives already where it stands.
-  const FOG_PLACEMENT_KEYS = ['col', 'row', 'size', 'islandId', 'layerId', 'targetCol', 'targetRow', 'targetLayerId'];
+  const FOG_PLACEMENT_KEYS = ['col', 'row', 'size', 'islandId', 'layerId', 'targetCol', 'targetRow', 'targetLayerId', 'linkId'];
 
   function withFoggedStamp(entity, patch) {
     if (!isHost || 'fogged' in patch || !FOG_PLACEMENT_KEYS.some((key) => key in patch)) return patch;
@@ -2769,6 +2773,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // write that never landed is put right. Each correction goes through
   // updateEntity, which sends 'conceal' for a newly fogged token on a cloud
   // table. Two DM tabs may both run it: they write the same values.
+  // A portal end's answer also depends on its other end (utils/fogOfWar.js),
+  // so moving, linking, hiding or removing one end checks both again.
+  const portalFogKey = useMemo(
+    () =>
+      JSON.stringify(
+        state.entityOrder
+          .map((id) => state.entities[id])
+          .filter((entity) => entity?.kind === 'portal')
+          .map((p) => [p.id, p.layerId, p.islandId, p.col, p.row, p.size, p.linkId, Boolean(p.hidden)])
+      ),
+    [state.entities, state.entityOrder]
+  );
   useEffect(() => {
     if (!isHost) return;
     const current = stateRef.current;
@@ -2779,7 +2795,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
       if (fogged !== Boolean(entity.fogged)) updateEntity(id, { fogged });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHost, state.layers, state.fogChunks, state.fogChunkOrder]);
+  }, [isHost, state.layers, state.fogChunks, state.fogChunkOrder, portalFogKey]);
 
   // The island "Fog whole island" would cover: the active one, which a
   // press on a map with the Fog of war tool makes that map.
