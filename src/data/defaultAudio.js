@@ -15,6 +15,12 @@
 // 1 MB); the pre-commit hook (.githooks/pre-commit) blocks audio over 2 MB,
 // since a committed file stays in git history forever.
 
+// Off for now: the table has only the built-in sound effects. No music of
+// any kind (world, ambience, token sounds, the encounter theme), and no
+// audio file can be uploaded from anywhere. Turning this back on restores it
+// all — the code paths are only hidden, not removed.
+export const MUSIC_ENABLED = false;
+
 import diceRollUrl from '../assets/audio/dice-roll.mp3';
 import swordSliceUrl from '../assets/audio/sword-slice.mp3';
 import swooshMissUrl from '../assets/audio/swoosh-miss.mp3';

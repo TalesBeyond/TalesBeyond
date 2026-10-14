@@ -11,6 +11,8 @@
 // Keep it in step with the screen: an entry that names a button the table
 // no longer has is worse than no entry.
 
+import { MUSIC_ENABLED } from './defaultAudio.js';
+
 export const RULE_CHAPTERS = [
   { key: 'toolbar', label: 'Rail', title: 'The Rail' },
   { key: 'map', label: 'Map', title: 'The Map' },
@@ -106,11 +108,13 @@ export const TABLE_RULES = {
       sub: 'The World tab: the mood of the scene',
       where: 'Left rail',
       dm: true,
-      text: 'Time, light and sound for the table, in one drawer beside the rail. Day / night and Ambience are set right there; the clock opens its own dialog.',
+      text: MUSIC_ENABLED
+        ? 'Time, light and sound for the table, in one drawer beside the rail. Day / night and Ambience are set right there; the clock opens its own dialog.'
+        : 'Time and light for the table, in one drawer beside the rail. Day / night is set right there; the clock opens its own dialog.',
       items: [
         ['Ingame time', 'the table’s clock.'],
         ['Day / night', 'set the phase by hand.'],
-        ['Ambience', 'the sound in this world.'],
+        ...(MUSIC_ENABLED ? [['Ambience', 'the sound in this world.']] : []),
       ],
     },
     {
@@ -129,14 +133,18 @@ export const TABLE_RULES = {
       dm: true,
       text: 'Pick a phase by hand to override the clock, or hand it back to the clock. You can also set whether the map you are on follows the clock, is always day, or is always night.',
     },
-    {
-      key: 'ambience',
-      name: 'Ambience',
-      sub: 'The sound of this world',
-      where: 'World drawer',
-      dm: true,
-      text: 'The sound players hear while they are in the world you are viewing.',
-    },
+    ...(MUSIC_ENABLED
+      ? [
+          {
+            key: 'ambience',
+            name: 'Ambience',
+            sub: 'The sound of this world',
+            where: 'World drawer',
+            dm: true,
+            text: 'The sound players hear while they are in the world you are viewing.',
+          },
+        ]
+      : []),
     {
       key: 'compendium',
       name: 'Compendium',
@@ -175,13 +183,21 @@ export const TABLE_RULES = {
       dm: true,
       text: 'Opens in a drawer beside the rail, so the map stays in view while you pick who fights. Rolls turn order for the heroes and monsters in the world you are viewing. Start encounter begins the fight: the turn order appears along the top of the map and each creature takes its turn.',
     },
-    {
-      key: 'music',
-      name: 'Music',
-      sub: 'Songs for the table',
-      where: 'Configurations, opens a side panel',
-      text: 'The DM plays songs for the whole table, for one world, or for a single token. Each player sets their own volume. On a guest table the music plays only on the DM’s device, and a local demo table has none.',
-    },
+    MUSIC_ENABLED
+      ? {
+          key: 'music',
+          name: 'Music',
+          sub: 'Songs for the table',
+          where: 'Configurations, opens a side panel',
+          text: 'The DM plays songs for the whole table, for one world, or for a single token. Each player sets their own volume. On a guest table the music plays only on the DM’s device, and a local demo table has none.',
+        }
+      : {
+          key: 'music',
+          name: 'Sound effects',
+          sub: 'Dice, hits, misses and the like',
+          where: 'Configurations, opens a side panel',
+          text: 'The sounds the table makes as you play. Each one has its own volume, and yours changes only what you hear.',
+        },
     {
       key: 'dice',
       name: 'Dice',
@@ -193,14 +209,14 @@ export const TABLE_RULES = {
       key: 'rolllog',
       name: 'Roll log',
       sub: 'Every roll this session',
-      where: 'Logs tab, a side panel',
-      text: 'Every roll made at the table this session, with who rolled it. The Logs panel stays open beside the rail while you play. The badge on the tab counts what you have not looked at yet.',
+      where: 'Logs button, top of the Dice panel',
+      text: 'Every roll made at the table this session, with who rolled it. It opens in the Dice panel’s place, and the dice button at its top goes back. The badge on the Logs button counts what you have not looked at yet.',
     },
     {
       key: 'charlog',
       name: 'Character log',
       sub: 'What players changed',
-      where: 'Logs tab, a side panel',
+      where: 'Logs button, top of the Dice panel',
       dm: true,
       text: 'What each player changed on their own hero this session: hit points, items, coins, weapons and spells. It shares the Logs panel with the roll log; switch between them at the top of the panel. Only the DM sees it.',
     },
@@ -246,11 +262,11 @@ export const TABLE_RULES = {
     {
       key: 'config',
       name: 'Configurations',
-      sub: 'The Config tab: music, save and housekeeping',
+      sub: MUSIC_ENABLED ? 'The Config tab: music, save and housekeeping' : 'The Config tab: sound effects, save and housekeeping',
       where: 'Left rail, bottom; opens a side panel',
       text: 'The actions you reach for least often, in one side panel.',
       items: [
-        ['Music', 'open the table’s music in a side panel.'],
+        MUSIC_ENABLED ? ['Music', 'open the table’s music in a side panel.'] : ['Sound effects', 'your own volume for each sound effect, in a side panel.'],
         ['Save, Export, Import', 'keep the table safe (DM).'],
         ['Close', 'stop new players joining (DM).'],
         ['Hints', 'turn the small tips on or off.'],
@@ -478,7 +494,7 @@ export const TABLE_RULES = {
       sub: 'Stop the fight',
       where: 'Bottom right, during a fight',
       dm: true,
-      text: 'Ends the fight for everyone. The turn order and the encounter music stop.',
+      text: MUSIC_ENABLED ? 'Ends the fight for everyone. The turn order and the encounter music stop.' : 'Ends the fight for everyone. The turn order stops.',
     },
     {
       key: 'rolltoast',
@@ -602,10 +618,10 @@ export const TABLE_RULES = {
     {
       key: 'dmtab',
       name: 'DM tab',
-      sub: 'Private notes and sound',
+      sub: MUSIC_ENABLED ? 'Private notes and sound' : 'Private notes',
       where: 'Inspector tabs',
       dm: true,
-      text: 'Notes only you can read, and a sound tied to the token that you play and everyone hears.',
+      text: MUSIC_ENABLED ? 'Notes only you can read, and a sound tied to the token that you play and everyone hears.' : 'Notes only you can read.',
     },
     {
       key: 'remove',

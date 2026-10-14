@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 
 // The first-table tutorial: a short guided tour for a DM the first time
 // they open a table on this device (desktop layout). Each step lights up
@@ -60,7 +61,7 @@ export const HOST_TOUR = [
     items: [
       ['Ingame time', 'the table’s clock, and how fast it runs.'],
       ['Day / night', 'set dawn, day, dusk or night by hand.'],
-      ['Ambience', 'the sound players hear in this world.'],
+      ...(MUSIC_ENABLED ? [['Ambience', 'the sound players hear in this world.']] : []),
     ],
   },
   {
@@ -83,13 +84,7 @@ export const HOST_TOUR = [
     target: 'dice',
     side: 'right',
     title: 'Dice',
-    text: 'Roll any dice. Your rolls stay hidden from players unless you choose to reveal them.',
-  },
-  {
-    target: 'rolls',
-    side: 'right',
-    title: 'Logs',
-    text: 'Two logs in one panel. The roll log has every roll made at the table this session, with who rolled it. The character log shows what each player changed on their own hero: hit points, items, coins, spells. Only you can see that one.',
+    text: 'Roll any dice. Your rolls stay hidden from players unless you choose to reveal them. The Logs button at the top of the dice panel opens two logs: every roll made at the table this session, and what each player changed on their own hero (only you see that one).',
   },
   {
     target: 'codes',
@@ -107,9 +102,9 @@ export const HOST_TOUR = [
     target: 'config',
     side: 'right',
     title: 'Configurations',
-    text: 'Music, save and housekeeping.',
+    text: MUSIC_ENABLED ? 'Music, save and housekeeping.' : 'Sound effects, save and housekeeping.',
     items: [
-      ['Music', 'songs for the whole table, for one world, or for a single token. Each player sets their own volume.'],
+      MUSIC_ENABLED ? ['Music', 'songs for the whole table, for one world, or for a single token. Each player sets their own volume.'] : ['Sound effects', 'your own volume for each sound effect.'],
       ['Save', 'save the table now.'],
       ['Export / Import', 'keep a copy of the table as a file, or load one back.'],
       ['Close', 'stop new players from joining.'],

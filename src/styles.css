@@ -6135,8 +6135,30 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 @media (prefers-reduced-motion: reduce) {
   .side-panel { animation: none; }
 }
+.side-panel.no-enter { animation: none; }
 .side-panel > .book-card-header { flex-shrink: 0; }
 .side-panel-body { flex: 1; min-height: 0; overflow-y: auto; }
+/* A button beside a panel's close button (ModalShell's headerAction): the
+   Dice panel's Logs, with its count of what's new, and Logs' way back. */
+.book-card-header-end { display: flex; align-items: center; gap: 2px; }
+.side-panel-head-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin: -8px 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--parchment-300);
+  cursor: pointer;
+}
+.side-panel-head-btn:hover { background: var(--ink-700); color: var(--parchment-100); }
+.side-panel-head-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
+.side-panel-head-btn .tool-card-badge { top: -2px; right: -4px; }
 /* MusicModal's own wrapper adds nothing when it is a side panel. */
 .side-panel-host { display: contents; }
 

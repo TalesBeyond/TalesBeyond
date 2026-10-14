@@ -3,7 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import { playDiceSound, playSfx, getSfxVolume, setSfxVolume, isDeviceMuted, setDeviceMuted } from '../lib/sfx.js';
 import { emitFx, useFx, takeCrit } from '../lib/fx.js';
 import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
-import { DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
+import { DEMO_MUSIC, ENCOUNTER_MUSIC, MUSIC_ENABLED, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
 import { DEFAULT_DRAW_STYLE, withRecentColour } from '../utils/drawing.js';
@@ -696,6 +696,9 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // anywhere, so players hear nothing); guest players and local demo tables
   // have no audio, and there the Music button is disabled.
   const audioEnabled = isRemote || isGuestHost;
+  // The Music panel. With music off (MUSIC_ENABLED) it holds only the sound
+  // effects' volumes, which are this device's own, so it opens on any table.
+  const musicPanelEnabled = audioEnabled || !MUSIC_ENABLED;
   const audioScope = isRemote ? state.session.tableId : state.session.audioScope || state.session.code;
   const [showMusicModal, setShowMusicModal] = useState(false);
   // This browser's volume for the encounter theme (set in the Music modal).
@@ -739,7 +742,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     onRemoveSaved: (id) => setDiceSaved((prev) => prev.filter((x) => x.id !== id)),
   };
   const { blocked: audioBlocked, unlock: unlockAudio, expired: expiredAudio } = useTableAudio({
-    enabled: audioEnabled,
+    enabled: audioEnabled && MUSIC_ENABLED,
     playback: state.audio?.playback,
     tracks: state.audio?.tracks,
     currentLayerId,
@@ -747,7 +750,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     localVolumes: localAudioVolumes,
     checkFiles: isGuest,
     // The encounter's own theme, for everyone at the table while a fight runs.
-    override: state.encounter && encounterMusicOn ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
+    override: MUSIC_ENABLED && state.encounter && encounterMusicOn ? { url: ENCOUNTER_MUSIC.url, volume: encounterMusicVolume } : null,
     muted: deviceMuted,
   });
 
@@ -4328,7 +4331,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           setShowMusicModal(true);
           if (!isPhone) setLeftCollapsed(true);
         }}
-        musicOpen={showMusicModal && audioEnabled}
+        musicOpen={showMusicModal && musicPanelEnabled}
         onCloseMusic={() => setShowMusicModal(false)}
         onSetClockRunning={setClockRunning}
         dayPhase={tablePhase}
@@ -4682,7 +4685,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           </ModalShell>
         )}
 
-        {showMusicModal && audioEnabled && (
+        {showMusicModal && musicPanelEnabled && (
           <MusicModal
             audio={audioApi}
             worldTrack={worldTrack}
@@ -5156,7 +5159,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               islandName={activeIsland?.name}
               islandDayNight={activeIsland?.dayNight || 'cycle'}
               onIslandDayNight={(dayNight) => updateIsland(activeIslandId, { dayNight })}
-              audioEnabled={audioEnabled}
+              audioEnabled={musicPanelEnabled}
               onOpenMusic={() => setShowMusicModal(true)}
               onOpenDice={() => setPhoneSheet('dice')}
               onOpenParty={() => setPhoneSheet('party')}

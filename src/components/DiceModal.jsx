@@ -103,7 +103,7 @@ function rollPool(pool, modifier, mode, name) {
 // demo table: nobody else is connected).
 // `side`: on the desktop rail the roller stands beside the rail as a side
 // panel rather than a centred dialog.
-export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose, share = 'local', side = false }) {
+export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose, share = 'local', side = false, enter = true, headerAction = null }) {
   useCatalog(); // re-render when the catalog's dice pictures arrive
   const [pool, setPool] = useState({ 20: 1 });
   const [modifier, setModifier] = useState(0);
@@ -166,7 +166,7 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
   );
 
   return (
-    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} footer={side ? rollRow : null} onClose={onClose}>
+    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} enter={enter} footer={side ? rollRow : null} headerAction={headerAction} onClose={onClose}>
       <div className="dm-main">
         <div className="dm-left">
           <div>

@@ -26,6 +26,7 @@ import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import RulesBook from './RulesBook.jsx';
 import StoreModal from './StoreModal.jsx';
+import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 import { useFx } from '../lib/fx.js';
 import { PALETTES } from '../state/theme.js';
 
@@ -396,12 +397,25 @@ export default function Toolbar({
   const [sidePanel, setSidePanel] = useState(null);
   const [logTab, setLogTab] = useState('rolls'); // 'rolls' | 'heroes', inside the Logs panel
   const [mapTab, setMapTab] = useState('maps'); // 'maps' | 'layers', inside the Mapping drawer
+  // Whether the side panel slides in. Opening one from the rail does; swapping
+  // what stands in the same place — the Mapping drawer's tabs, Dice ⇄ Logs —
+  // doesn't, so it reads as the same panel changing.
+  const [panelEnter, setPanelEnter] = useState(true);
+  function switchMapTab(tab) {
+    setMapTab(tab);
+    setPanelEnter(false);
+  }
   const closeSide = useCallback(() => setSidePanel(null), []);
+  function swapSide(name) {
+    setSidePanel(name);
+    setPanelEnter(false);
+  }
   function openSide(name) {
     const opening = sidePanel !== name;
     setOpenMenu(null);
     setSidePanel(opening ? name : null);
     if (!opening) return;
+    setPanelEnter(true);
     if (tokensOpen) onToggleTokens?.();
     if (musicOpen) onCloseMusic?.();
   }
@@ -434,6 +448,8 @@ export default function Toolbar({
   const unseenActivity = activitySeenAt < 0 ? activity.length : activitySeenAt;
   const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
   const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
+  // The count on the Dice panel's Logs button: both logs' news.
+  const logsUnseen = (rollLogOpen ? 0 : unseenRolls) + (activityLog && !activityOpen ? unseenActivity : 0);
   const hintPrefs = useHintPrefs();
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
@@ -578,7 +594,7 @@ export default function Toolbar({
     if (rail && (name === 'islands' || name === 'layers' || name === 'initiative')) {
       closePopovers();
       if (name !== 'islands') setIslandsFocusId(null);
-      if (name !== 'initiative') setMapTab(name === 'layers' ? 'layers' : 'maps');
+      if (name !== 'initiative') switchMapTab(name === 'layers' ? 'layers' : 'maps');
       showSide(name === 'initiative' ? 'initiative' : 'mapping');
       return;
     }
@@ -771,7 +787,7 @@ export default function Toolbar({
         ['maps', 'World maps'],
         ['layers', 'Layers'],
       ].map(([key, text]) => (
-        <button key={key} type="button" role="tab" aria-selected={mapTab === key} className={mapTab === key ? 'active' : ''} onClick={() => setMapTab(key)}>
+        <button key={key} type="button" role="tab" aria-selected={mapTab === key} className={mapTab === key ? 'active' : ''} onClick={() => switchMapTab(key)}>
           {text}
         </button>
       ))}
@@ -918,6 +934,7 @@ export default function Toolbar({
                   key={islandsFocusId || 'maps'}
                   side={rail}
                   sideTabs={mappingTabs}
+                  sideEnter={panelEnter}
                   islands={layer.islands}
                   islandOrder={layer.islandOrder}
                   islandGroups={layer.islandGroups || {}}
@@ -947,6 +964,7 @@ export default function Toolbar({
                 <LayerSwitcherPopover
                   side={rail}
                   sideTabs={mappingTabs}
+                  sideEnter={panelEnter}
                   layers={layers}
                   layerOrder={layerOrder}
                   currentLayerId={currentLayerId}
@@ -970,7 +988,7 @@ export default function Toolbar({
           icon={<Icon name="world" />}
           label={rail ? 'World' : 'World state'}
           tour="world"
-          title="In-game time, day / night and the world's ambience"
+          title={MUSIC_ENABLED ? "In-game time, day / night and the world's ambience" : 'In-game time and day / night'}
           active={!rail && (showDayNight || showAmbience)}
           open={rail ? sidePanel === 'world' : openMenu === 'world'}
           onToggle={() => (rail ? openSide('world') : toggleMenu('world'))}
@@ -991,7 +1009,7 @@ export default function Toolbar({
                   onClose={() => setShowDayNight(false)}
                 />
               )}
-              {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
+              {MUSIC_ENABLED && showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
             </>
             )
           }
@@ -1023,10 +1041,12 @@ export default function Toolbar({
                   onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
                 />
               </section>
-              <section className="drawer-section">
-                <span className="section-label">Ambience</span>
-                <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players in this world`} />
-              </section>
+              {MUSIC_ENABLED && (
+                <section className="drawer-section">
+                  <span className="section-label">Ambience</span>
+                  <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players in this world`} />
+                </section>
+              )}
             </>
           )}
           {!rail && (
@@ -1040,13 +1060,15 @@ export default function Toolbar({
             onClick={() => togglePopover('dayNight')}
             title="Change the day/night phase by hand, and whether this map follows it"
           />
-          <ToolCard
-            icon={<Icon name="music" />}
-            label="Ambience"
-            active={showAmbience}
-            onClick={() => togglePopover('ambience')}
-            title="The sound that plays for players in this world"
-          />
+          {MUSIC_ENABLED && (
+            <ToolCard
+              icon={<Icon name="music" />}
+              label="Ambience"
+              active={showAmbience}
+              onClick={() => togglePopover('ambience')}
+              title="The sound that plays for players in this world"
+            />
+          )}
             </>
           )}
         </ToolMenu>
@@ -1157,31 +1179,58 @@ export default function Toolbar({
             title="Roll for Initiative"
           />
         )}
+        {/* On the rail the Logs panel has no tab of its own: it opens from
+            the Dice panel's header, in the Dice panel's place, so the Dice
+            tab stays lit while it is open. */}
         <ToolCard
           icon={<Icon name="dice" />}
           label="Dice"
           tour="dice"
-          active={rail ? sidePanel === 'dice' : showDice}
+          active={rail ? sidePanel === 'dice' || sidePanel === 'logs' : showDice}
           onClick={() => (rail ? openSide('dice') : togglePopover('dice'))}
           title="Roll the dice"
         />
-        {(rail ? sidePanel === 'dice' : showDice) && <DiceModal {...dice} side={rail} onClose={rail ? closeSide : () => setShowDice(false)} />}
+        {(rail ? sidePanel === 'dice' : showDice) && (
+          <DiceModal
+            {...dice}
+            side={rail}
+            enter={panelEnter}
+            headerAction={
+              rail && (
+                <button
+                  type="button"
+                  className="side-panel-head-btn"
+                  data-tour="rolls"
+                  onClick={() => swapSide('logs')}
+                  title={activityLog ? 'The roll log and the character log' : 'Every roll at the table this session'}
+                  aria-label={logsUnseen ? `Logs, ${logsUnseen} new` : 'Logs'}
+                >
+                  <Icon name="rolllog" />
+                  {logsUnseen > 0 && <span className="tool-card-badge">{logsUnseen > 9 ? '9+' : logsUnseen}</span>}
+                </button>
+              )
+            }
+            onClose={rail ? closeSide : () => setShowDice(false)}
+          />
+        )}
       </div>
 
-      {/* On the rail the roll log and the character log share one tab and
-          one side panel; the DM switches between them inside it. */}
-      {rail && (
-        <ToolMenu
-          icon={<Icon name="rolllog" />}
-          label="Logs"
-          tour="rolls"
-          title={activityLog ? 'The roll log and the character log' : 'Every roll at the table this session'}
-          open={sidePanel === 'logs'}
-          onToggle={() => openSide('logs')}
+      {/* The roll log and the character log share one side panel; the DM
+          switches between them inside it. */}
+      {rail && sidePanel === 'logs' && (
+        <ModalShell
+          side
+          title="Logs"
+          closeLabel="Close Logs"
+          enter={panelEnter}
+          headerAction={
+            <button type="button" className="side-panel-head-btn" onClick={() => swapSide('dice')} title="Back to the dice" aria-label="Back to the dice">
+              <Icon name="dice" />
+            </button>
+          }
           onClose={closeSide}
-          panel={{ title: 'Logs' }}
-          badge={(rollLogOpen ? 0 : unseenRolls) + (activityLog && !activityOpen ? unseenActivity : 0)}
         >
+          <div className="side-panel-menu">
           {activityLog && (
             <div className="side-tabs" role="tablist" aria-label="Logs">
               {[
@@ -1210,7 +1259,8 @@ export default function Toolbar({
               <RollLog entries={rollLog} />
             </>
           )}
-        </ToolMenu>
+          </div>
+        </ModalShell>
       )}
 
       {/* This session's rolls — everyone's, and the DM's own (marked when
@@ -1440,10 +1490,10 @@ export default function Toolbar({
               <span className="section-label">Sound</span>
               <DrawerCard
                 icon="music"
-                label="Music"
-                text={audio?.enabled ? 'Opens the table’s music in a side panel.' : musicHint}
-                active={Boolean(audio?.playback?.nowPlaying)}
-                disabled={!audio?.enabled}
+                label={MUSIC_ENABLED ? 'Music' : 'Sound effects'}
+                text={!MUSIC_ENABLED ? 'Your own volume for each sound effect, in a side panel.' : audio?.enabled ? 'Opens the table’s music in a side panel.' : musicHint}
+                active={MUSIC_ENABLED && Boolean(audio?.playback?.nowPlaying)}
+                disabled={MUSIC_ENABLED && !audio?.enabled}
                 onClick={onOpenMusic}
               />
             </section>
@@ -1524,11 +1574,11 @@ export default function Toolbar({
           <>
         <ToolCard
           icon={<Icon name="music" />}
-          label="Music"
-          active={Boolean(audio?.playback?.nowPlaying) || musicOpen}
-          disabled={!audio?.enabled}
+          label={MUSIC_ENABLED ? 'Music' : 'Sounds'}
+          active={(MUSIC_ENABLED && Boolean(audio?.playback?.nowPlaying)) || musicOpen}
+          disabled={MUSIC_ENABLED && !audio?.enabled}
           onClick={() => pick(musicOpen ? onCloseMusic : onOpenMusic)}
-          title={audio?.enabled ? 'Table music' : musicHint}
+          title={!MUSIC_ENABLED ? 'Sound effect volumes' : audio?.enabled ? 'Table music' : musicHint}
         />
         {isHost && (
           <>
@@ -1771,21 +1821,83 @@ function LayerSwitcherPopover({
   onClose,
   side = false,
   sideTabs = null,
+  sideEnter = true,
 }) {
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
 
-  function addLayer() {
-    if (!name.trim()) return;
-    onCreateLayer({ name: name.trim(), cols, rows });
+  function closeAdding() {
+    setAdding(false);
     setName('');
     setCols(20);
     setRows(15);
   }
 
+  function addLayer() {
+    if (!name.trim()) return;
+    onCreateLayer({ name: name.trim(), cols, rows });
+    closeAdding();
+  }
+
+  // + New layer, and the form it unfolds into — like World maps' + New map:
+  // the Mapping drawer's footer, or the end of the dialog's list.
+  const newLayer = adding ? (
+    <div className="island-settings island-new">
+      <div className="section-label" style={{ marginTop: 0 }}>
+        New layer
+      </div>
+      <label className="field-label">Name</label>
+      <input
+        className="field"
+        value={name}
+        autoFocus
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') addLayer();
+          else if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeAdding();
+          }
+        }}
+        placeholder="e.g. The Crypt Below"
+      />
+      <div className="field-row">
+        <div>
+          <label className="field-label">Width</label>
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+        </div>
+        <div>
+          <label className="field-label">Height</label>
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
+        </div>
+      </div>
+      <div className="field-row">
+        <button className="btn btn-secondary" onClick={closeAdding}>
+          Cancel
+        </button>
+        <button className="btn btn-primary" onClick={addLayer} disabled={!name.trim()}>
+          Add layer
+        </button>
+      </div>
+    </div>
+  ) : (
+    <button className={`btn ${side ? 'btn-primary' : 'btn-secondary'} btn-block`} onClick={() => setAdding(true)} style={side ? undefined : { marginTop: 10 }}>
+      + New layer
+    </button>
+  );
+
   return (
-    <ModalShell title={side ? 'Mapping' : 'Layers'} icon="layers" closeLabel={side ? 'Close Mapping' : 'Close layers panel'} side={side} onClose={onClose}>
+    <ModalShell
+      title={side ? 'Mapping' : 'Layers'}
+      icon={side ? 'islands' : 'layers'}
+      closeLabel={side ? 'Close Mapping' : 'Close layers panel'}
+      side={side}
+      enter={sideEnter}
+      footer={side ? newLayer : null}
+      onClose={onClose}
+    >
       {sideTabs}
       {(layerOrder || []).map((id, i) => {
         const layer = layers?.[id];
@@ -1825,25 +1937,7 @@ function LayerSwitcherPopover({
         <Hint className="hint-tight">The first world is the base — new players land there, so it can’t be deleted.</Hint>
       )}
 
-      <div className="divider-word">new layer</div>
-
-      <label className="field-label">Name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. The Crypt Below" />
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
-        </div>
-        <div>
-          <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
-        </div>
-      </div>
-
-      <button className="btn btn-primary btn-block" onClick={addLayer} style={{ marginTop: 8 }}>
-        + Add layer
-      </button>
+      {!side && newLayer}
     </ModalShell>
   );
 }
@@ -1871,6 +1965,7 @@ function IslandManagerPopover({
   // On the rail the manager stands in the Mapping drawer, under its switch.
   side = false,
   sideTabs = null,
+  sideEnter = true,
 }) {
   // The island whose settings (name, size, background) are open.
   const [openId, setOpenId] = useState(focusIslandId);
@@ -2134,6 +2229,7 @@ function IslandManagerPopover({
       closeLabel={side ? 'Close Mapping' : 'Close world maps panel'}
       maxWidth={560}
       side={side}
+      enter={sideEnter}
       footer={side ? newMap : null}
       onClose={onClose}
     >

@@ -2,18 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import ModalIcon from './ModalIcon.jsx';
 
-// Shared frame for the book-style modals: dimmed backdrop, titled header with
-// an icon badge and close button, scrolling body. Portaled to <body> so it
-// centers on the screen no matter where the trigger lives. Click outside or
-// Escape closes it.
-//
-// `side`: the same header and body as a side panel instead — standing beside
-// the toolbar rail, over the left of the map, with no backdrop. A click on the
-// map or the inspector closes it (useCloseOnOutsideClick), as do its tab and
-// its close button; Escape doesn't. Every side panel is the same width
-// (.side-panel in styles.css).
-// `footer`: a side panel's foot, pinned under the scrolling body — for the
-// one action that should stay in reach however long the list above it grows.
 // Where a click counts as "outside" a side panel: the map and the inspector.
 // Clicks anywhere else leave it open — the rail, whose tabs open and close the
 // panels themselves, and the dialogs, confirms and menus a panel opens, which
@@ -35,7 +23,21 @@ export function useCloseOnOutsideClick(ref, onClose, enabled = true) {
   }, [ref, onClose, enabled]);
 }
 
-export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth = 480, flush = false, side = false, footer = null, onClose, children }) {
+// Shared frame for the book-style modals: dimmed backdrop, titled header with
+// an icon badge and close button, scrolling body. Portaled to <body> so it
+// centers on the screen no matter where the trigger lives. Click outside or
+// Escape closes it.
+//
+// `side`: the same header and body as a side panel instead — standing beside
+// the toolbar rail, over the left of the map, with no backdrop. A click on the
+// map or the inspector closes it (useCloseOnOutsideClick), as do its tab and
+// its close button; Escape doesn't. Every side panel is the same width
+// (.side-panel in styles.css). `enter={false}` skips its slide-in, for a panel
+// that replaces another in the same place (the Mapping drawer's tabs).
+// `footer`: a side panel's foot, pinned under the scrolling body — for the
+// one action that should stay in reach however long the list above it grows.
+// `headerAction`: a button beside the close button (the Dice panel's Logs).
+export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth = 480, flush = false, side = false, enter = true, footer = null, headerAction = null, onClose, children }) {
   const sideRef = useRef(null);
   useCloseOnOutsideClick(sideRef, onClose, side);
   useEffect(() => {
@@ -47,21 +49,31 @@ export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose, side]);
 
+  const closeButton = (
+    <button className="popover-close" onClick={onClose} aria-label={closeLabel} title="Close">
+      ×
+    </button>
+  );
   const header = (
     <div className="book-card-header">
       <span className="book-title">
         {icon && <ModalIcon name={icon} />}
         {title}
       </span>
-      <button className="popover-close" onClick={onClose} aria-label={closeLabel} title="Close">
-        ×
-      </button>
+      {headerAction ? (
+        <span className="book-card-header-end">
+          {headerAction}
+          {closeButton}
+        </span>
+      ) : (
+        closeButton
+      )}
     </div>
   );
 
   if (side) {
     return createPortal(
-      <aside className="side-panel" role="dialog" aria-label={title} ref={sideRef}>
+      <aside className={`side-panel${enter ? '' : ' no-enter'}`} role="dialog" aria-label={title} ref={sideRef}>
         {header}
         <div className="side-panel-body" style={{ padding: flush ? 0 : 16 }}>
           {children}
