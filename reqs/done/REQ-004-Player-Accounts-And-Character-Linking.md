@@ -4,7 +4,7 @@
 | ----- | ----- |
 | ID | REQ-004 |
 | Title | Player Accounts & Character Linking |
-| Status | Todo (Slice 3 shipped as Kick) |
+| Status | Done (awaiting the developer's Smoke Test) |
 | Phase | Auth hardening |
 | Tier | Core |
 | Area | Auth / cloud mode |
@@ -50,6 +50,7 @@ is unaffected.
 - `entities.owner_id references players(id) on delete set null` (`01_schema.sql:65`): kicking a stale seat un-assigns (not deletes) any hero it still owns.
 - A player who signs up produces a brand-new `players` row that counts toward `enforce_table_capacity`'s 10-seat cap alongside their old guest row, until the DM kicks it.
 - `config.toml`'s `enable_signup = true` / `enable_confirmations = false` already cover email/password sign-up project-wide, as for REQ-003 hosts, including the same live-project "Confirm email" caveat resolved by hand in **Authentication → Providers → Email**.
+- **Host sign-in is switched off for now** (`SHOW_HOST_LOGIN = false`, `Landing.jsx`), so the Host tab offers only guest tables to a signed-out visitor. Player sign-in on the Join tab is not behind that switch. Once any session exists (an account, or the anonymous session a guest player gets), `HostForm` shows `HostTablesList` with "Create a new table". That was already true for anonymous sessions before REQ-004.
 - The repo has zero test files or runner. Verification is the manual **Smoke Test** below.
 
 ## Architectural decisions
@@ -140,7 +141,7 @@ Step IDs aren't renumbered, so done steps keep theirs. S009 was added on 2026-10
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S008 | D | Glossary + Pitfalls update | "Kick" is already in the glossary. Add "Guest player" and "Player account" to `reqs/GLOSSARY.md`, and update "Host account"'s file reference to `signUp`/`signIn`. Update `PITFALLS.md` #6: players now have the same account-based recovery path hosts got in REQ-003, and signing up on a browser replaces its anonymous identity. | S010 | `reqs/GLOSSARY.md`, `PITFALLS.md` |
+| ✅ | S008 | D | Glossary + Pitfalls update | Added "Guest player" and "Player account" to `reqs/GLOSSARY.md` ("Kick" was already there), and updated "Host account" for `signUp`/`signIn`/`signOut` and the shared account. `PITFALLS.md` #6 is now ✅ for hosts and players, listing the accepted guest and anonymous-host limitations; #11 now names REQ-004. | S010 | `reqs/GLOSSARY.md`, `PITFALLS.md` |
 
 ### Dependency graph
 
@@ -195,14 +196,14 @@ S005 → S006 → S007            (done)
 7. As a guest, join a table and have the DM assign you a hero via "Played by". Sign up for an account and rejoin the same table by code (producing a second seat); as the DM, open that hero's "Played by" select and confirm the new seat appears and can be selected. *(AC7)*
 8. As the DM, kick the old, now-stale guest seat; confirm it disappears from the roster and frees a capacity slot, and that a non-host player has no Kick control. *(AC8, regression)*
 9. Repeat step 1 in local demo mode (no Supabase configured) and confirm nothing changed: no account prompt appears anywhere. *(AC9)*
-10. Sign in as a host on "Host a table", then switch to "Join a table". Confirm both tabs show "Signed in as `<host email>` · Not you? Sign out". Click it on the Join tab and confirm the Host tab is signed out too. *(AC10)*
-11. *Only if S011 was built:* in a browser whose anonymous session hosts a table, start signing up on the Join tab. Confirm the warning names the table count; Cancel keeps the anonymous session and the table, and Continue signs up. Repeat on the Host tab. *(AC11)*
+10. Sign in to an account on "Join a table", then switch to "Host a table". Confirm both tabs show "Signed in as `<email>` · Not you? Sign out". Click it on the Join tab and confirm the Host tab is signed out too. *(AC10)*
+11. In a browser whose anonymous session hosts a cloud table, start signing up on the Join tab. Confirm the warning names the table count; Cancel keeps the anonymous session and the table, and Continue signs up. (The Host tab shares `AccountForm`, but it can only be reached there while `SHOW_HOST_LOGIN` is on.) *(AC11)*
 
 ## Size
 
 | T-Shirt Size | Estimated Hours | Notes |
 | ------------ | --------------- | ----- |
-| M | 10–13 (+1 if S011) | Slice 3 is done. What remains is two auth helpers, the second `JoinForm` branch with its "Your tables" list, the Leave exemption, and the "Signed in as" line. S011 adds about an hour if Q4's check calls for it. |
+| M | 10–13 (+1 for S011) | Slice 3 shipped earlier as Kick. Slices 1–2 cover two auth helpers, the second `JoinForm` branch with its "Your tables" list, the Leave exemption, the "Signed in as" line, and S011's warning. |
 
 ## Considered And Rejected
 
@@ -220,3 +221,4 @@ S005 → S006 → S007            (done)
 | 2026-10-08 | Claude | Paths updated for the reqs/ rename. |
 | 2026-10-14 | Claude | Status review against the code. Slice 3 is done, shipped as Kick (`056_host_kick_player.sql`, `5dc3d67`) with a confirm dialog and a kicked-player notice, so Q1 is resolved and "notify a removed player" is no longer out of scope. Slices 1–2 not started. Found and planned for: Leave deleting a non-host's seat (new S009, account players keep theirs), `ensureAnonymousSession()`'s cache surviving sign-out (S001 adds `signOut()`), one session shared by host and player roles (Q3), signing up replacing a legacy anonymous host identity (Q4), terms acceptance on Resume (`071`), bans, closed tables, Resume after a code regenerate, and the REQ-015 overlap on player entry paths. Name/color optional on resume. Refreshed line numbers. |
 | 2026-10-14 | Blaxine / Claude | Q2 resolved: only the DM's Kick frees an account player's seat. Q3 resolved: one session per browser, plus a "Signed in as `<email>` · Not you? Sign out" line on both landing tabs (new S010, AC10). Q4: decision rule agreed. A SQL check of the live project decides whether to build the anonymous-host warning (new conditional S011, AC11). Smoke Test steps 10–11 added. |
+| 2026-10-14 | Claude | Implemented. Slice 1 (`3869be7`): S001, S002, S009. Slice 2 (`099c992`): S003, S004, S010, S011, with S011 built without waiting on Q4's check, since it only shows on browsers that need it. Docs: S008. Signed-out guests still see the code form first, with sign-up/log-in one click away, to keep AC1's "zero added friction". Noted the `SHOW_HOST_LOGIN` switch, which limits AC10/AC11's Host-tab half. Moved to `reqs/done/`; ACs are left for the developer's Smoke Test. |
