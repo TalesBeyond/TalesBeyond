@@ -102,7 +102,7 @@ import {
   fetchTableSnapshot,
 } from '../lib/remoteApi.js';
 import MapBoard from './MapBoard.jsx';
-import ModalShell from './ModalShell.jsx';
+import ModalShell, { useCloseOnOutsideClick } from './ModalShell.jsx';
 import AreaPicker from './AreaPicker.jsx';
 import { MAX_AREAS, areaShape, areaLabel, sanitizeArea } from '../utils/areaOfEffect.js';
 import TokenSidebar from './TokenSidebar.jsx';
@@ -306,11 +306,13 @@ function entitiesVisibleOnLayer(state, layerId, showHidden) {
   return result;
 }
 
-// The side panels can be dragged wider or narrower. The widths are a
-// per-viewer convenience, so they live in this browser's localStorage and
-// the game still works (at the defaults) if that is unavailable.
+// The inspector panel can be dragged wider or narrower. Its width is a
+// per-viewer convenience, so it lives in this browser's localStorage and
+// the game still works (at the default) if that is unavailable. The Tokens
+// panel is fixed at the width of the rail's side panels (.side-panel).
 const PANEL_WIDTHS_KEY = 'hearthbound:panelwidths';
-const DEFAULT_PANEL_WIDTHS = { left: 248, right: 344 };
+const TOKENS_PANEL_WIDTH = 340;
+const DEFAULT_PANEL_WIDTHS = { left: TOKENS_PANEL_WIDTH, right: 344 };
 const PANEL_MIN = 220;
 const PANEL_MAX = 640;
 const MAP_MIN_WIDTH = 360; // never let the panels squeeze the map below this
@@ -324,10 +326,9 @@ const DRAWER_LAYOUT_BELOW = 1200;
 function loadPanelWidths() {
   try {
     const saved = JSON.parse(localStorage.getItem(PANEL_WIDTHS_KEY));
-    const left = Number(saved?.left);
     const right = Number(saved?.right);
     return {
-      left: Number.isFinite(left) ? Math.min(PANEL_MAX, Math.max(PANEL_MIN, left)) : DEFAULT_PANEL_WIDTHS.left,
+      left: TOKENS_PANEL_WIDTH,
       right: Number.isFinite(right) ? Math.min(PANEL_MAX, Math.max(PANEL_MIN, right)) : DEFAULT_PANEL_WIDTHS.right,
     };
   } catch {
@@ -3957,6 +3958,10 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     if (isPhone) setPhoneSheet('add');
     else if (leftCollapsed) togglePanel('left');
   });
+  // The Tokens flyout closes on a click on the map or the inspector, like the
+  // rail's side panels. A token dragged out of it starts inside it, so stays.
+  const tokensFlyoutRef = useRef(null);
+  useCloseOnOutsideClick(tokensFlyoutRef, () => setLeftCollapsed(true), !isPhone && isHost && !leftCollapsed);
 
   // The zoom that fits a whole island inside the stage, less its padding.
   function fitZoomFor(island) {
@@ -4280,7 +4285,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // A player has no Tokens panel (placing tokens is the DM's), so only the
   // right panel shares the room with the map.
   // The Tokens flyout lies over the map, so it takes no room from it either.
-  const shownPanelWidths = { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth - RAIL_WIDTH, false, rightCollapsed), left: isHost ? panelWidths.left : 0 };
+  const shownPanelWidths = { ...fitPanelWidths({ ...panelWidths, left: 0 }, viewportWidth - RAIL_WIDTH, false, rightCollapsed), left: isHost ? TOKENS_PANEL_WIDTH : 0 };
 
   // The toolbar spans the whole window above the panels rather than sitting
   // in the map's column: its commands are table-wide, and the full width is
@@ -4453,7 +4458,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         className={`game-layout${isPhone ? ' phone-layout' : drawerLayout ? ' drawers' : ''}${!isPhone ? ' no-left' : ''}${!isPhone && rightCollapsed ? ' right-collapsed' : ''}`}
         style={{ '--left-w': `${shownPanelWidths.left}px`, '--right-w': `${shownPanelWidths.right}px` }}
       >
-        {!isPhone && isHost && !leftCollapsed && <div className="tokens-flyout">{tokenSidebarEl}</div>}
+        {!isPhone && isHost && !leftCollapsed && <div className="tokens-flyout" ref={tokensFlyoutRef}>{tokenSidebarEl}</div>}
 
         <div className="game-center">
           {!isPhone && (
@@ -4723,16 +4728,8 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
           />
         )}
 
-        {/* Drawers keep their preferred width, clamped by CSS — no resizing. */}
-        {!isPhone && isHost && !leftCollapsed && (
-          <PanelResizer
-            side="left"
-            width={shownPanelWidths.left}
-            label="Resize tokens panel"
-            onResize={(w) => resizePanel('left', w)}
-            onReset={() => resizePanel('left', DEFAULT_PANEL_WIDTHS.left)}
-          />
-        )}
+        {/* Drawers keep their preferred width, clamped by CSS — no resizing.
+            The Tokens flyout is a fixed width, like the rail's side panels. */}
         {!isPhone && !rightCollapsed && !drawerLayout && (
           <PanelResizer
             side="right"

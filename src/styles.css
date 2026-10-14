@@ -524,12 +524,12 @@ input, select {
 .game-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: var(--left-w, 260px) 1fr var(--right-w, 340px);
+  grid-template-columns: var(--left-w, 340px) 1fr var(--right-w, 340px);
   min-height: 0;
   position: relative;
 }
 .game-layout.left-collapsed { grid-template-columns: 36px 1fr var(--right-w, 340px); }
-.game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
+.game-layout.right-collapsed { grid-template-columns: var(--left-w, 340px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
 
 /* A player's layout: no Tokens panel, so the map starts at the left edge. */
@@ -564,7 +564,7 @@ input, select {
   bottom: 0;
   left: 0;
   z-index: 60;
-  width: min(var(--left-w, 260px), calc(100% - 96px));
+  width: min(var(--left-w, 340px), calc(100% - 96px));
   border-right-color: var(--gold-line);
   box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
   animation: drawer-in-left 0.18s ease-out;
@@ -626,7 +626,6 @@ input, select {
   touch-action: none;
   outline: none;
 }
-.panel-resizer.left { left: calc(var(--left-w, 260px) - 5px); }
 .panel-resizer.right { right: calc(var(--right-w, 340px) - 5px); }
 .panel-resizer::after {
   content: '';
@@ -6095,7 +6094,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   left: 0;
   z-index: 60;
   display: flex;
-  width: min(var(--left-w, 260px), calc(100% - 96px));
+  width: min(var(--left-w, 340px), calc(100% - 96px));
   box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
   animation: drawer-in-left 0.18s ease-out;
 }
@@ -6125,7 +6124,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   bottom: 0;
   left: var(--rail-w);
   z-index: 90;
-  width: min(var(--side-w, 340px), calc(100vw - var(--rail-w) - 96px));
+  width: min(340px, calc(100vw - var(--rail-w) - 96px));
   display: flex;
   flex-direction: column;
   background: var(--panel-bg);

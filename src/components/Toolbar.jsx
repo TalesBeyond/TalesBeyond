@@ -63,9 +63,9 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title, badge,
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
 // tour: the name the tutorial (Tour.jsx) finds this button by.
-// panel: { title, icon, width } — the entry opens as a side panel beside the
-// rail instead of a menu (ModalShell's `side`). A panel stays open while the
-// table is played, so a click elsewhere or Escape doesn't close it.
+// panel: { title, icon } — the entry opens as a side panel beside the
+// rail instead of a menu (ModalShell's `side`). It closes on a click on the
+// map or the inspector, not on Escape or a click elsewhere.
 function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge, tour, panel = null }) {
   const ref = useRef(null);
 
@@ -89,7 +89,7 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
     <div className={`toolbar-group ${className}`} ref={ref} data-tour={tour}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
       {open && panel && (
-        <ModalShell side title={panel.title} icon={panel.icon} width={panel.width} closeLabel={`Close ${panel.title}`} onClose={onClose}>
+        <ModalShell side title={panel.title} icon={panel.icon} closeLabel={`Close ${panel.title}`} onClose={onClose}>
           <div className={`side-panel-menu${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>
         </ModalShell>
       )}
@@ -806,7 +806,7 @@ export default function Toolbar({
         open={rail ? sidePanel === 'tools' : openMenu === 'tools'}
         onToggle={() => (rail ? openSide('tools') : toggleMenu('tools'))}
         onClose={rail ? closeSide : closeMenu}
-        panel={rail ? { title: 'Tools', width: 320 } : null}
+        panel={rail ? { title: 'Tools' } : null}
         menuClassName={rail ? 'book-drawer tools-drawer' : ''}
       >
         {/* In the drawer each tool says what it does, and the drawer stays
@@ -975,7 +975,7 @@ export default function Toolbar({
           open={rail ? sidePanel === 'world' : openMenu === 'world'}
           onToggle={() => (rail ? openSide('world') : toggleMenu('world'))}
           onClose={rail ? closeSide : closeMenu}
-          panel={rail ? { title: 'World', width: 360 } : null}
+          panel={rail ? { title: 'World' } : null}
           menuClassName={rail ? 'book-drawer world-drawer' : ''}
           popovers={
             !rail && (
@@ -1078,7 +1078,7 @@ export default function Toolbar({
           open={rail ? sidePanel === 'compendium' : openMenu === 'compendium'}
           onToggle={() => (rail ? openSide('compendium') : toggleMenu('compendium'))}
           onClose={rail ? closeSide : closeMenu}
-          panel={rail ? { title: 'Compendium', width: 340 } : null}
+          panel={rail ? { title: 'Compendium' } : null}
           menuClassName={rail ? 'book-drawer' : ''}
         >
           {rail && (
@@ -1179,7 +1179,7 @@ export default function Toolbar({
           open={sidePanel === 'logs'}
           onToggle={() => openSide('logs')}
           onClose={closeSide}
-          panel={{ title: 'Logs', width: 360 }}
+          panel={{ title: 'Logs' }}
           badge={(rollLogOpen ? 0 : unseenRolls) + (activityLog && !activityOpen ? unseenActivity : 0)}
         >
           {activityLog && (
@@ -1392,7 +1392,7 @@ export default function Toolbar({
         open={rail ? sidePanel === 'players' : openMenu === 'players'}
         onToggle={() => (rail ? openSide('players') : toggleMenu('players'))}
         onClose={rail ? closeSide : closeMenu}
-        panel={rail ? { title: 'Players', width: 340 } : null}
+        panel={rail ? { title: 'Players' } : null}
         menuClassName="players-menu"
         align="end"
       >
@@ -1426,7 +1426,7 @@ export default function Toolbar({
         open={rail ? sidePanel === 'configurations' : openMenu === 'configurations'}
         onToggle={() => (rail ? openSide('configurations') : toggleMenu('configurations'))}
         onClose={rail ? closeSide : closeMenu}
-        panel={rail ? { title: 'Configurations', width: 340 } : null}
+        panel={rail ? { title: 'Configurations' } : null}
         menuClassName={rail ? 'config-menu book-drawer config-drawer' : 'config-menu'}
         align="end"
       >
@@ -1785,7 +1785,7 @@ function LayerSwitcherPopover({
   }
 
   return (
-    <ModalShell title={side ? 'Mapping' : 'Layers'} icon="layers" closeLabel={side ? 'Close Mapping' : 'Close layers panel'} side={side} width={440} onClose={onClose}>
+    <ModalShell title={side ? 'Mapping' : 'Layers'} icon="layers" closeLabel={side ? 'Close Mapping' : 'Close layers panel'} side={side} onClose={onClose}>
       {sideTabs}
       {(layerOrder || []).map((id, i) => {
         const layer = layers?.[id];
@@ -2134,7 +2134,6 @@ function IslandManagerPopover({
       closeLabel={side ? 'Close Mapping' : 'Close world maps panel'}
       maxWidth={560}
       side={side}
-      width={440}
       footer={side ? newMap : null}
       onClose={onClose}
     >
@@ -2546,7 +2545,7 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
   );
 
   return (
-    <ModalShell title="Roll for Initiative" icon="bolt" closeLabel="Close initiative roller" maxWidth={440} side={side} width={380} footer={side ? rollRow : null} onClose={onClose}>
+    <ModalShell title="Roll for Initiative" icon="bolt" closeLabel="Close initiative roller" maxWidth={440} side={side} footer={side ? rollRow : null} onClose={onClose}>
           <InitiativeGroup
             title="Players"
             entities={heroes}

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import ModalIcon from './ModalIcon.jsx';
 
@@ -8,12 +8,36 @@ import ModalIcon from './ModalIcon.jsx';
 // Escape closes it.
 //
 // `side`: the same header and body as a side panel instead — standing beside
-// the toolbar rail, over the left of the map, with no backdrop. It stays open
-// while the table is played (a click on the map doesn't close it, nor does
-// Escape) until its tab or its close button is pressed. `width` is its width.
+// the toolbar rail, over the left of the map, with no backdrop. A click on the
+// map or the inspector closes it (useCloseOnOutsideClick), as do its tab and
+// its close button; Escape doesn't. Every side panel is the same width
+// (.side-panel in styles.css).
 // `footer`: a side panel's foot, pinned under the scrolling body — for the
 // one action that should stay in reach however long the list above it grows.
-export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth = 480, flush = false, side = false, width = 340, footer = null, onClose, children }) {
+// Where a click counts as "outside" a side panel: the map and the inspector.
+// Clicks anywhere else leave it open — the rail, whose tabs open and close the
+// panels themselves, and the dialogs, confirms and menus a panel opens, which
+// aren't inside it.
+const OUTSIDE_SIDE_PANEL = '.game-center, .panel.right';
+
+// Closes the side panel `ref` points at when the table is clicked outside it.
+export function useCloseOnOutsideClick(ref, onClose, enabled = true) {
+  useEffect(() => {
+    if (!enabled) return undefined;
+    function onPointerDown(e) {
+      const target = e.target;
+      if (!(target instanceof Element) || ref.current?.contains(target)) return;
+      if (target.closest(OUTSIDE_SIDE_PANEL)) onClose();
+    }
+    // Capture phase: the map stops some of its pointer events from bubbling.
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [ref, onClose, enabled]);
+}
+
+export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth = 480, flush = false, side = false, footer = null, onClose, children }) {
+  const sideRef = useRef(null);
+  useCloseOnOutsideClick(sideRef, onClose, side);
   useEffect(() => {
     if (side) return undefined;
     function onKeyDown(e) {
@@ -37,7 +61,7 @@ export default function ModalShell({ title, icon, closeLabel = 'Close', maxWidth
 
   if (side) {
     return createPortal(
-      <aside className="side-panel" role="dialog" aria-label={title} style={{ '--side-w': `${width}px` }}>
+      <aside className="side-panel" role="dialog" aria-label={title} ref={sideRef}>
         {header}
         <div className="side-panel-body" style={{ padding: flush ? 0 : 16 }}>
           {children}

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
+import { useCloseOnOutsideClick } from './ModalShell.jsx';
 import { DebouncedRange, CatalogSongSelect, DemoTrackPicker } from './SoundField.jsx';
 import { isCatalogTrack } from '../lib/audioEngine.js';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
@@ -44,13 +45,17 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
   const used = audio.usedBytes;
   const pct = Math.min(100, (used / AUDIO_TABLE_QUOTA_BYTES) * 100);
 
+  const sideRef = useRef(null);
+  useCloseOnOutsideClick(sideRef, onClose, side);
+
   return (
     <div className={side ? 'side-panel-host' : 'book-backdrop'} onClick={side ? undefined : onClose}>
       <div
         className={side ? 'side-panel' : 'book-card'}
         role="dialog"
         aria-label="Music"
-        style={side ? { '--side-w': '420px' } : { maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
+        ref={sideRef}
+        style={side ? undefined : { maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">

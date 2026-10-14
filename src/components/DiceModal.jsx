@@ -166,7 +166,7 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
   );
 
   return (
-    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} width={400} footer={side ? rollRow : null} onClose={onClose}>
+    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} footer={side ? rollRow : null} onClose={onClose}>
       <div className="dm-main">
         <div className="dm-left">
           <div>
