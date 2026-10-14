@@ -10,7 +10,7 @@ The growth estimates are not measurements. They come from the code and the publi
 - Moving to Cloudflare with R2 would also cost $0/month, plus about $10/year for a domain. It saves nothing today.
 - Free should carry the app to a few dozen active groups. Past that, the realistic bill is Supabase Pro at $25/month, not hundreds.
 - R2 delays that $25; it does not avoid it.
-- The cheapest thing to do now is set long cache headers on uploads (see [Stretching the free tier](#stretching-the-free-tier)).
+- The cheapest fix, long cache headers on uploads, is done (see [Stretching the free tier](#stretching-the-free-tier)). REQ-013 (R2) is parked until the limits below get close.
 
 ## What runs where
 
@@ -134,7 +134,7 @@ R2 is only worth doing earlier than that if file storage or egress is the single
 
 These cost nothing and need no migration.
 
-- **Long cache headers on uploads.** The upload calls in `src/lib/storageUpload.js` don't set `cacheControl`, so files get Supabase's 1-hour default and returning players download maps and audio again every session. File names are random and never reused, so a one-year cache is safe and cuts repeat egress to near zero.
+- **Long cache headers on uploads.** *Done 2026-10-14.* The upload calls in `src/lib/storageUpload.js` now set `cacheControl` to one year (`IMMUTABLE_CACHE_SECONDS`) instead of Supabase's 1-hour default, so returning players no longer download a table's audio again every session. File names are random and never reused, so the long cache is safe. Files uploaded before this keep the 1-hour header until they are replaced.
 - **A per-user storage cap**, rather than only per-table, to close the 20 tables × 50 MB case.
 - **A tighter audio limit**, such as a smaller quota or MP3 only, since audio dominates both storage and egress.
 

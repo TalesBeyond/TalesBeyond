@@ -31,6 +31,12 @@ function randomFileName(ext) {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
 }
 
+// Every upload gets a fresh random name and is never overwritten (`upsert:
+// false`), so its bytes never change: browsers and the CDN may keep it for a
+// year. Supabase's default is one hour, which made every returning player
+// download the table's audio again each session (HOSTING_COSTS.md).
+const IMMUTABLE_CACHE_SECONDS = '31536000';
+
 /**
  * @param {File} file - user-selected image file
  * @param {'token-art' | 'map-backgrounds'} bucket
@@ -43,6 +49,7 @@ export async function uploadImage(file, bucket, tableId, maxDim = 512) {
   const path = `${tableId}/${randomFileName('webp')}`;
   const { error } = await supabase.storage.from(bucket).upload(path, blob, {
     contentType: 'image/webp',
+    cacheControl: IMMUTABLE_CACHE_SECONDS,
     upsert: false,
   });
   if (error) throw new Error(`upload to ${bucket}: ${error.message}`);
@@ -92,7 +99,7 @@ export async function uploadAudio(file, tableId) {
   await assertCanUpload();
   const mime = audioMime(file);
   const path = `${tableId}/${randomFileName(AUDIO_TYPES[mime])}`;
-  const { error: uploadError } = await supabase.storage.from(AUDIO_BUCKET).upload(path, file, { contentType: mime, upsert: false });
+  const { error: uploadError } = await supabase.storage.from(AUDIO_BUCKET).upload(path, file, { contentType: mime, cacheControl: IMMUTABLE_CACHE_SECONDS, upsert: false });
   if (uploadError) throw new Error(`upload to ${AUDIO_BUCKET}: ${uploadError.message}`);
   const { data } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, storagePath: path, mime, sizeBytes: file.size };
