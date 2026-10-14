@@ -71,7 +71,9 @@ export function useSpritePlaying(entityId) {
   return useSyncExternalStore(subscribe, () => playing.hover === entityId || playing.drag === entityId);
 }
 
-// Placed from the Default heroes gallery, after DEFAULT_HEROES.
+// Every animated hero. Only the owned ones (useOwnedSpriteHeroes below) are
+// placed from the Default heroes gallery, after DEFAULT_HEROES; the rest wait
+// on the Store's Characters shelf (data/store.js).
 export const SPRITE_HEROES = [
   { key: 'sprite-warrior', name: 'Sprite Warrior', color: '#2f3a4f', icon: 'sprite-warrior' },
   { key: 'sprite-rogue', name: 'Sprite Rogue', color: '#2f3a4f', icon: 'sprite-rogue' },
@@ -82,3 +84,56 @@ export const SPRITE_HEROES = [
   { key: 'sprite-cleric', name: 'Sprite Cleric', color: '#2f3a4f', icon: 'sprite-cleric' },
   { key: 'sprite-mage', name: 'Sprite Mage', color: '#2f3a4f', icon: 'sprite-mage' },
 ].map((h) => ({ ...h, imageUrl: makeIconDataUrl(h.icon, h.color) }));
+
+// ---- Which animated heroes this browser has ----
+// The Warrior comes with the app; the others are added from the Store. For
+// now (testing, nothing is bought) the Store's Add button just adds one, and
+// the list is kept in this browser only — nothing is synced. A token already
+// on the map keeps its picture and animation whether or not its hero is owned.
+
+const STARTER_SPRITE_KEYS = ['sprite-warrior'];
+const OWNED_SPRITES_KEY = 'hearthbound:ownedSprites';
+
+// The heroes the Store sells: every animated hero that doesn't come with the app.
+export const STORE_SPRITE_HEROES = SPRITE_HEROES.filter((h) => !STARTER_SPRITE_KEYS.includes(h.key));
+
+function loadAddedSpriteKeys() {
+  try {
+    const keys = JSON.parse(window.localStorage.getItem(OWNED_SPRITES_KEY));
+    return Array.isArray(keys) ? keys.filter((key) => STORE_SPRITE_HEROES.some((h) => h.key === key)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function ownedHeroes(addedKeys) {
+  return SPRITE_HEROES.filter((h) => STARTER_SPRITE_KEYS.includes(h.key) || addedKeys.includes(h.key));
+}
+
+let addedSpriteKeys = loadAddedSpriteKeys();
+let ownedSpriteHeroes = ownedHeroes(addedSpriteKeys);
+const ownedListeners = new Set();
+
+// Adds a Store hero to the Default heroes gallery (and the Characters
+// screen's looks).
+export function addSpriteHero(key) {
+  if (addedSpriteKeys.includes(key) || !STORE_SPRITE_HEROES.some((h) => h.key === key)) return;
+  addedSpriteKeys = [...addedSpriteKeys, key];
+  ownedSpriteHeroes = ownedHeroes(addedSpriteKeys);
+  try {
+    window.localStorage.setItem(OWNED_SPRITES_KEY, JSON.stringify(addedSpriteKeys));
+  } catch {
+    // storage blocked or full: the hero is only added until the page closes
+  }
+  ownedListeners.forEach((listener) => listener());
+}
+
+function subscribeOwned(listener) {
+  ownedListeners.add(listener);
+  return () => ownedListeners.delete(listener);
+}
+
+// The animated heroes this browser has, in SPRITE_HEROES order.
+export function useOwnedSpriteHeroes() {
+  return useSyncExternalStore(subscribeOwned, () => ownedSpriteHeroes);
+}

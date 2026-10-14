@@ -524,12 +524,12 @@ input, select {
 .game-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: var(--left-w, 260px) 1fr var(--right-w, 340px);
+  grid-template-columns: var(--left-w, 340px) 1fr var(--right-w, 340px);
   min-height: 0;
   position: relative;
 }
 .game-layout.left-collapsed { grid-template-columns: 36px 1fr var(--right-w, 340px); }
-.game-layout.right-collapsed { grid-template-columns: var(--left-w, 260px) 1fr 36px; }
+.game-layout.right-collapsed { grid-template-columns: var(--left-w, 340px) 1fr 36px; }
 .game-layout.left-collapsed.right-collapsed { grid-template-columns: 36px 1fr 36px; }
 
 /* A player's layout: no Tokens panel, so the map starts at the left edge. */
@@ -564,7 +564,7 @@ input, select {
   bottom: 0;
   left: 0;
   z-index: 60;
-  width: min(var(--left-w, 260px), calc(100% - 96px));
+  width: min(var(--left-w, 340px), calc(100% - 96px));
   border-right-color: var(--gold-line);
   box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
   animation: drawer-in-left 0.18s ease-out;
@@ -626,7 +626,6 @@ input, select {
   touch-action: none;
   outline: none;
 }
-.panel-resizer.left { left: calc(var(--left-w, 260px) - 5px); }
 .panel-resizer.right { right: calc(var(--right-w, 340px) - 5px); }
 .panel-resizer::after {
   content: '';
@@ -1350,20 +1349,6 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .cap-note { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.75; }
 .sidebar-blocks { display: flex; flex-direction: column; gap: 22px; padding: 18px 16px; }
 .sidebar-block { display: flex; flex-direction: column; gap: 10px; }
-.side-btn-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.side-btn {
-  height: 40px;
-  background: var(--ink-900);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
-  color: var(--parchment-100);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.side-btn:hover { border-color: var(--gold-line); }
-.side-btn.active { background: var(--ink-700); border-color: var(--gold-line); }
-.side-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
 .add-image-drop {
   min-height: 76px;
   padding: 10px;
@@ -1379,6 +1364,12 @@ body.panel-resizing { cursor: col-resize; user-select: none; }
 .add-image-drop span { display: block; color: var(--parchment-300); }
 .add-image-drop:hover { background: var(--ink-900); }
 .add-image-drop:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 2px; }
+/* At the top of the Tokens panel (TokenSidebar.jsx): Import hero and Create hero,
+   and the file button of the Import hero window. */
+.hero-actions { display: flex; gap: 8px; }
+.hero-actions .btn { flex: 1; min-width: 0; }
+.hero-import-drop { display: block; width: 100%; }
+.hero-import-drop.chosen { border-style: solid; border-color: var(--gold-hi); }
 
 .section-label {
   font-size: 12px;
@@ -2568,11 +2559,13 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 .token.dragging { cursor: grabbing; z-index: 50; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
 .token.selected { box-shadow: 0 0 0 3px var(--ink-950), 0 0 0 5px var(--gold-hi); }
 .token.door { border-radius: 6px; border-style: dashed; }
+/* A portal's end is a door in everything but its shape. */
+.token.door.portal { border-radius: 50%; }
 /* An animated token (data/spriteTokens.js): its picture is a strip of
    --sprite-frames frames side by side. It shows the first one, and plays them
    all while the pointer is over it or it is being dragged. Its picture on the
    inspector's card plays along (.playing, set while the map token plays). */
-.token.sprite, .token-card .sprite, .target-card-art .sprite {
+.token.sprite, .token-card .sprite, .target-card-art .sprite, .store-frame .sprite {
   background-repeat: no-repeat;
   background-size: calc(var(--sprite-frames) * 100%) 100%;
   background-position: 0 0;
@@ -2581,12 +2574,12 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
 /* The figure stands on the map as it is, with no disc behind it, so the
    token's rim and shadow go too. The selection ring stays. */
 .token.sprite:not(.selected) { box-shadow: none; }
-.token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing {
+.token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing, .store-item:hover .sprite, .store-item:focus-within .sprite {
   animation: sprite-play 0.6s steps(var(--sprite-frames), jump-none) infinite;
 }
 @keyframes sprite-play { from { background-position: 0 0; } to { background-position: 100% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing { animation: none; }
+  .token.sprite:hover, .token.sprite.dragging, .token-card:hover .sprite, .token-card:focus-visible .sprite, .target-card-art .sprite.playing, .store-item:hover .sprite, .store-item:focus-within .sprite { animation: none; }
 }
 /* A token players can't see (an unrevealed trap, or a monster, chest or door
    the DM has hidden): only the DM's client ever has it, so ghost it to tell
@@ -4225,6 +4218,25 @@ button.card-level.on-dark:hover, button.card-level.on-dark:focus-visible { borde
 }
 /* An animated token's frames (see .token.sprite), in a square the height of the art. */
 .target-card-art .sprite { position: absolute; top: 0; bottom: 0; left: 50%; aspect-ratio: 1; transform: translateX(-50%); }
+/* Change the picture: a pencil in the art's top corner (TokenPictureButton). */
+.card-picture { position: absolute; top: 8px; right: 8px; z-index: 1; padding: 0; border: 0; border-radius: 999px; background: none; line-height: 0; cursor: pointer; }
+.card-picture:disabled { opacity: 0.6; cursor: progress; }
+.card-picture:focus-visible { outline: 2px solid #f2c14e; outline-offset: 2px; }
+.card-picture-badge {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(201, 162, 74, 0.7);
+  border-radius: 999px;
+  background: rgba(42, 32, 22, 0.85);
+  color: #f1e7cf;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.card-picture:hover:not(:disabled) .card-picture-badge,
+.card-picture:focus-visible .card-picture-badge { background: #c9a24a; color: #2a2016; }
 .card-gem-slot { position: absolute; bottom: -26px; z-index: 1; }
 .card-gem-slot.left { left: 10px; }
 .card-gem-slot.right { right: 10px; }
@@ -4515,7 +4527,8 @@ button.card-notes { border-style: solid; }
   transform: translate(-50%, -50%);
   animation: nat-pop 2s ease forwards;
 }
-.nat-moment.nat-20, .nat-moment.nat-1 { animation-duration: 2.5s; }
+/* A natural 20 or 1 lingers (FxLayer.jsx's NAT_MS). */
+.nat-moment.natural { animation-name: nat-pop-long; animation-duration: 3.9s; }
 .nat-moment polygon { stroke-width: 2; stroke-linejoin: round; transition: fill 0.15s ease, stroke 0.15s ease; }
 .nat-moment .nat-edges { fill: none; stroke-width: 1.5; }
 .nat-moment text { font-family: var(--font-hud); font-weight: 700; font-size: 20px; }
@@ -4544,6 +4557,24 @@ button.card-notes { border-style: solid; }
 .nat-1 .nat-edges { stroke: #b23a3a; }
 .nat-1 .nat-crack { fill: none; stroke: #0d0b08; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .nat-1 text { fill: #f2b8b0; }
+/* The modifier stands just right of the die, so the die itself stays centred. */
+.nat-roll { position: relative; display: block; line-height: 0; }
+.nat-mod {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 6px;
+  transform: translateY(-50%);
+  font-family: var(--font-hud);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: #f2e9d4;
+  text-shadow: 0 2px 0 #000, 0 0 6px #000;
+  animation: nat-mod-in 0.28s ease-out;
+}
+@keyframes nat-mod-in { from { opacity: 0; transform: translate(-8px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }
 .nat-label { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; text-shadow: 0 2px 0 #000, 0 0 4px #000; }
 .nat-label strong { font-family: var(--font-display-caps); font-size: 22px; font-weight: 700; }
 .nat-detail { font-family: var(--font-hud); font-size: 15px; font-weight: 700; color: #f2e9d4; }
@@ -4552,11 +4583,20 @@ button.card-notes { border-style: solid; }
 .die-high .nat-caption { color: #9fe8d2; }
 .nat-20 .nat-label strong { color: #e0b25a; }
 .nat-1 .nat-label strong { color: #f2b8b0; }
+/* Both timed to come in by 0.5s, settle by 0.7s and fade out over the last
+   0.4s: the 2s die, and the 3.9s natural one that holds until 3.5s. */
 @keyframes nat-pop {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-160deg); }
   25% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(8deg); }
   35% { transform: translate(-50%, -50%) scale(1) rotate(0); }
   80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); }
+}
+@keyframes nat-pop-long {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-160deg); }
+  12.8% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(8deg); }
+  17.9% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  89.7% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); }
 }
 @keyframes die-land { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
@@ -4619,13 +4659,94 @@ button.card-notes { border-style: solid; }
 .loot-card-face.rarity-very-rare .loot-card-rarity { color: #5b2c9e; }
 @keyframes loot-flip { from { transform: rotateY(180deg); } to { transform: rotateY(0deg); } }
 
+/* ---- Bulletin board (BulletinBoardModal.jsx): the loot reveal's flipping
+   cards, each a pinned notice with a title and its text, over the whole
+   screen. ---- */
+.bulletin-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 8, 6, 0.7);
+}
+.bulletin-reveal {
+  position: relative;
+  left: auto;
+  top: auto;
+  transform: none;
+  width: min(100%, 880px);
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.bulletin-reveal .loot-reveal-head strong { min-width: 0; overflow-wrap: anywhere; }
+.bulletin-cards { gap: 16px; padding: 4px 0; }
+.bulletin-card { width: 196px; height: 264px; }
+.bulletin-card-face {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 22px 12px 12px;
+  border-color: #a9853f;
+  background: linear-gradient(180deg, #f7efdc, #eadfc2);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+.bulletin-card-pin {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
+  border-radius: 50%;
+  background: #b8322a;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.bulletin-card-title {
+  flex-shrink: 0;
+  width: 100%;
+  margin: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #c9b68a;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.bulletin-card-text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding-right: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #3d2f22;
+}
+@media (max-width: 480px) {
+  .bulletin-card { width: calc(50% - 8px); min-width: 140px; height: 240px; }
+}
+
+/* Its editor (BulletinsEditor.jsx): the pinned list, then the form. */
+.bulletin-row { grid-template-columns: 1fr auto auto; }
+.bulletin-row.editing .chest-item-name { color: var(--gold-hi); }
+.bulletin-row-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; font-family: inherit; }
+.bulletins-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
 .inspector-dropcap { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .token.acting::after, .token .token-hpbar.critical, .encounter-end.mine, .target-hp-preview, .nat-moment.landed svg { animation: none; }
+  .token.acting::after, .token .token-hpbar.critical, .encounter-end.mine, .target-hp-preview, .nat-moment.landed svg, .nat-mod { animation: none; }
   .token .token-hpbar-ghost, .target-hp-ghost { transition: none; }
   .target-card-hp.critical { animation: none; }
-  .hit-float, .turn-banner-ribbon, .nat-moment { animation-name: hit-fade; }
+  .hit-float, .turn-banner-ribbon, .nat-moment, .nat-moment.natural { animation-name: hit-fade; }
   .loot-card { animation-duration: 0.01s; }
 }
 @keyframes hit-fade { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; } }
@@ -5282,6 +5403,10 @@ button.card-notes { border-style: solid; }
 .phone-creature { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 24px; }
 .phone-creature-head { display: flex; align-items: center; gap: 12px; }
 .phone-creature-avatar { width: 56px; height: 56px; }
+/* The DM's avatar is the change-picture button, its pencil on the corner. */
+.phone-creature-picture { position: relative; top: auto; right: auto; flex-shrink: 0; }
+.phone-creature-picture .phone-creature-avatar { display: block; }
+.phone-creature-picture .card-picture-badge { position: absolute; right: -4px; bottom: -4px; width: 24px; height: 24px; }
 .phone-creature-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .phone-creature-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--parchment-100); }
 .phone-creature .card-ed { color: inherit; }
@@ -5402,7 +5527,6 @@ body:has(.game-screen.phone) .book-card {
 .phone-add-body .token-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .phone-add-body .token-grid.merchants { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .phone-add-body .field, .phone-add-body .btn { min-height: 44px; }
-.phone-add-body .side-btn { min-height: 44px; }
 
 /* Edit and Group modes on a phone. */
 .phone-edit-bar {
@@ -5660,6 +5784,16 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .area.draft .area-outline { stroke-dasharray: 8 6; }
 .area-range { stroke: var(--area-color); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
 .token.in-area { outline: 2px dashed var(--parchment-100); outline-offset: 3px; }
+/* A cover (data/cover.js) is a template that stays: a faint yellow wash, more
+   solid the more cover, inside a yellow outline. The DM sees one the fog of
+   war keeps from players dimmed and dotted. Its tag lets a press through to
+   the map under it, all but the DM's button. */
+.area.cover .area-cell { fill-opacity: var(--cover-fill, 0.17); stroke-opacity: 0.3; }
+.area.cover .area-outline { fill-opacity: 0; }
+.area.cover.dm-hidden { opacity: 0.55; }
+.area.cover.dm-hidden .area-outline { stroke-dasharray: 3 5; }
+.area-tag.cover { pointer-events: none; }
+.area-tag.cover button { pointer-events: auto; }
 .area-tag {
   position: absolute;
   z-index: 44;
@@ -5911,7 +6045,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   align-items: flex-start;
   /* The tabs take their height from the window's, so the whole rail fits
      without scrolling on an ordinary screen; on a very short one it scrolls. */
-  --tab-h: clamp(44px, 6.2vh, 60px);
+  --tab-h: clamp(44px, 5.8vh, 60px);
   --tab-gap: clamp(3px, 0.5vh, 5px);
   gap: var(--tab-gap);
   width: var(--rail-w, 100px);
@@ -5973,6 +6107,9 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   line-height: 1.1;
   white-space: nowrap;
 }
+/* Leave, the last tab, under Configurations: it reads as the way out. */
+.toolbar-rail > .toolbar-leave-tab > .tool-card .tool-icon { color: var(--danger); }
+.toolbar-rail > .toolbar-leave-tab > .tool-card:hover:not(:disabled) { border-color: var(--danger); }
 @media (prefers-reduced-motion: reduce) {
   .toolbar-rail .tool-card { transition: none; }
 }
@@ -5985,7 +6122,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   left: 0;
   z-index: 60;
   display: flex;
-  width: min(var(--left-w, 260px), calc(100% - 96px));
+  width: min(var(--left-w, 340px), calc(100% - 96px));
   box-shadow: 24px 0 48px -16px rgba(0, 0, 0, 0.65);
   animation: drawer-in-left 0.18s ease-out;
 }
@@ -6015,7 +6152,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   bottom: 0;
   left: var(--rail-w);
   z-index: 90;
-  width: min(var(--side-w, 340px), calc(100vw - var(--rail-w) - 96px));
+  width: min(340px, calc(100vw - var(--rail-w) - 96px));
   display: flex;
   flex-direction: column;
   background: var(--panel-bg);
@@ -6026,8 +6163,30 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 @media (prefers-reduced-motion: reduce) {
   .side-panel { animation: none; }
 }
+.side-panel.no-enter { animation: none; }
 .side-panel > .book-card-header { flex-shrink: 0; }
 .side-panel-body { flex: 1; min-height: 0; overflow-y: auto; }
+/* A button beside a panel's close button (ModalShell's headerAction): the
+   Dice panel's Logs, with its count of what's new, and Logs' way back. */
+.book-card-header-end { display: flex; align-items: center; gap: 2px; }
+.side-panel-head-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin: -8px 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--parchment-300);
+  cursor: pointer;
+}
+.side-panel-head-btn:hover { background: var(--ink-700); color: var(--parchment-100); }
+.side-panel-head-btn:focus-visible { outline: 2px solid var(--parchment-300); outline-offset: 1px; }
+.side-panel-head-btn .tool-card-badge { top: -2px; right: -4px; }
 /* MusicModal's own wrapper adds nothing when it is a side panel. */
 .side-panel-host { display: contents; }
 
@@ -6147,6 +6306,8 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   cursor: pointer;
 }
 .drawer-tool:hover { border-color: var(--gold-line); }
+.drawer-tool:disabled { opacity: 0.6; cursor: default; }
+.drawer-tool:disabled:hover { border-color: var(--ink-700); }
 .drawer-tool.active { border-color: var(--gold-hi); background: color-mix(in srgb, var(--gold-hi) 14%, var(--ink-800)); }
 .drawer-tool:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
 .drawer-tool-icon { flex-shrink: 0; color: var(--gold-hi); }
@@ -6162,6 +6323,50 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .drawer-section + .drawer-section { padding-top: 14px; border-top: 1px solid var(--ink-700); }
 .drawer-section > .section-label { margin: 0; }
 
+/* An expansion panel in a drawer (the World drawer's "Set world clock"):
+   a drawer-tool-like header that unfolds its settings underneath. */
+.drawer-expander { border: 1px solid var(--ink-700); border-radius: 10px; background: var(--ink-800); }
+.drawer-expander:hover, .drawer-expander.open { border-color: var(--gold-line); }
+.drawer-expander-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--parchment-100);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-expander-head:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+/* The header row: the fold button, and an action beside it (the clock's
+   remove), which can't sit inside the fold button. */
+.drawer-expander-top { display: flex; align-items: center; cursor: pointer; }
+.drawer-expander-top > .drawer-expander-head { flex: 1; min-width: 0; }
+.drawer-expander-action { flex-shrink: 0; margin-right: 10px; }
+.drawer-expander-top > .drawer-expander-chevron { margin-right: 14px; }
+.drawer-expander-head .drawer-book-text { flex: 1; min-width: 0; }
+.drawer-expander.open .drawer-tool-name { color: var(--gold-hi); }
+.drawer-expander-chevron { flex-shrink: 0; color: var(--parchment-300); transition: transform 0.15s ease; }
+.drawer-expander.open .drawer-expander-chevron { transform: rotate(90deg); }
+.drawer-expander-body { padding: 12px 14px 14px; border-top: 1px solid var(--ink-700); }
+.drawer-tool-icon > img { display: block; }
+
+/* The clock's settings (ClockForm), narrow enough for a side panel: the
+   columns may shrink below the time inputs' natural width, and the
+   Remove / Cancel / Save row shares the width evenly. */
+.clock-form .two-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.clock-form .field { min-width: 0; padding-left: 10px; padding-right: 10px; }
+.clock-form-actions { display: flex; gap: 8px; margin-top: 16px; }
+.clock-form-actions .btn { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-expander-chevron { transition: none; }
+}
+
 /* A side panel's footer (ModalShell `footer`): pinned under the scrolling
    body. The Mapping drawer keeps + New map there, and the form it opens;
    Initiative and Dice keep their roll buttons there. */
@@ -6176,10 +6381,8 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .side-panel-footer .island-new { margin: 0; }
 .side-panel-footer button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 
-/* The Configurations drawer: cards under headings; Leave reads as the way out. */
+/* The Configurations drawer: cards under headings. */
 .side-panel-menu.config-drawer { gap: 14px; }
-.drawer-tool.danger .drawer-tool-icon, .drawer-tool.danger .drawer-tool-name { color: var(--danger); }
-.drawer-tool.danger:hover { border-color: var(--danger); }
 
 /* ---------- Store ---------- */
 /* Sections down the left, the open section's wares in a grid beside them.
@@ -6228,7 +6431,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
   box-shadow: inset 0 0 0 4px var(--ink-900);
   overflow: hidden;
 }
-.store-frame img { width: 100%; height: 100%; object-fit: contain; }
+.store-frame img, .store-frame .sprite { width: 100%; height: 100%; object-fit: contain; }
 .store-item-name { font-size: 13px; color: var(--parchment-100); overflow-wrap: anywhere; }
 .store-item-price { font-family: var(--font-hud); font-weight: 700; font-size: 14px; color: var(--gold-hi); }
 /* A narrow screen: the sections lie in a row over the wares. */

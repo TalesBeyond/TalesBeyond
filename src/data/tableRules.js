@@ -11,6 +11,8 @@
 // Keep it in step with the screen: an entry that names a button the table
 // no longer has is worse than no entry.
 
+import { MUSIC_ENABLED } from './defaultAudio.js';
+
 export const RULE_CHAPTERS = [
   { key: 'toolbar', label: 'Rail', title: 'The Rail' },
   { key: 'map', label: 'Map', title: 'The Map' },
@@ -27,9 +29,10 @@ export const TABLE_RULES = {
       text: 'Opens the map tools in a drawer beside the rail, each with what it does. The drawer stays open while you work, so the next tool is one press away. The tab shows the icon of the tool you are using, so you can tell which one is on with the drawer closed.',
       items: [
         ['Play', 'select tokens and drag them around.'],
+        ['Arrange maps', 'drag whole maps (DM).'],
         ['Ruler', 'measure a distance.'],
         ['Draw', 'sketch on the map (DM).'],
-        ['Edit', 'drag whole maps (DM).'],
+        ['Cover', 'mark part of a map as cover (DM).'],
       ],
     },
     {
@@ -65,29 +68,17 @@ export const TABLE_RULES = {
     },
     {
       key: 'edit',
-      name: 'Edit',
-      sub: 'Rearrange the maps',
+      name: 'Arrange maps',
+      sub: 'Move the maps around',
       where: 'Tools drawer',
       dm: true,
-      text: 'Drag a map to move it. Where the edges of two maps touch, tokens can walk across. Edit is also the tool that lets you change what is inside a chest. Press Done to go back to Play.',
-    },
-    {
-      key: 'mapping',
-      name: 'Mapping',
-      sub: 'Build the world',
-      where: 'Left rail',
-      dm: true,
-      text: 'Where you build the places your players walk through.',
-      items: [
-        ['World maps', 'the rooms and areas of this world.'],
-        ['Layers', 'separate worlds in the same table.'],
-      ],
+      text: 'Drag a map to move it. Where the edges of two maps touch, tokens can walk across. Arrange maps is also the tool that lets you change what is inside a chest. Press Done to go back to Play.',
     },
     {
       key: 'islands',
       name: 'World maps',
       sub: 'The rooms and areas of a world',
-      where: 'Mapping drawer',
+      where: 'World drawer → World maps',
       dm: true,
       text: 'Lists the maps on the layer you are viewing. Beside each name are four icon buttons: Recenter brings that map (or its whole group) to the middle of the view and makes it the active one, Download map saves it as an image, Settings opens its name, width, height, feet per square, background image and grid lines, and Delete removes it. Download map saves the map as a PNG with its grid, so you can paint over it in an image editor and upload it back in Settings. For a map in a group it saves the whole group as one picture, and an image uploaded to any map in the group is spread across all of them the same way. Grid lines sets how heavy the map’s grid is drawn (Light, Strong or Bold) and in which colour, for when the lines get lost over a background image; a strip under the buttons shows the result, and a map in a group shares its grid lines with the rest of the group. Remove image takes a map’s background off again (click it twice: it cannot be undone); for a map in a group it comes off every map in the group. A map’s Settings have no Save button: each change shows on the map straight away and is saved by itself. A background image is the exception: once you pick one, a small plan of the map (or of the whole group) opens with the picture under it. Drag it, size it with the Width and Height sliders, or start from Fit width, Fit height, Stretch or Centre; the map shows the result as you go, and Use this picture saves it. When a picture is the right size but its art still sits off the maps (one redrawn from the downloaded map rather than painted over it), Snap each map to its art finds every map’s own piece and fits it to that map; Move then picks a single map to shift by itself. + New map, at the foot of the drawer, adds a map of its own. + Sub map adds a new map that belongs to the one you clicked: it lands beside it and is grouped with it, so the two move together and share the parent’s name and conditions. A map with sub maps shows how many it has; click its name to unfold them. Detach turns a sub map back into a map of its own.',
     },
@@ -95,30 +86,33 @@ export const TABLE_RULES = {
       key: 'layers',
       name: 'Layers',
       sub: 'Separate worlds in one table',
-      where: 'Mapping drawer',
+      where: 'World drawer → World maps, Layers tab',
       dm: true,
-      text: 'A layer is its own world: another floor, another town. Add, rename and remove layers here. The strip above the map switches the layer you are looking at, and the number on each tab is how many players are on it. A player only ever sees the layer they are on.',
+      text: 'A layer is its own world: another floor, another town. Add, rename and remove layers here. The strip above the map switches the layer you are looking at, and the number on each tab is how many players are on it. A player only ever sees the layer they are on. Download map, beside a layer\'s name, saves every map on that layer as one PNG of their backgrounds, without grid lines, each map where it sits. Settings, beside it, works like a map\'s Settings for the whole layer: its name, feet per square and grid lines (set on every map on it), and a background image laid over all its maps at once, each getting its own part, which Remove image takes off them all. Width and height stay with each map. Changes save themselves as you make them.',
     },
     {
       key: 'world',
-      name: 'World state',
-      sub: 'The World tab: the mood of the scene',
+      name: 'World',
+      sub: 'The World tab: the maps and the mood of the scene',
       where: 'Left rail',
       dm: true,
-      text: 'Time, light and sound for the table, in one drawer beside the rail. Day / night and Ambience are set right there; the clock opens its own dialog.',
+      text: MUSIC_ENABLED
+        ? 'The world’s maps, and its time, light and sound, in one drawer beside the rail. World maps opens the maps and layers in the drawer’s place; the world button at its top comes back. The clock’s settings fold out under Set world clock.'
+        : 'The world’s maps, and its time and light, in one drawer beside the rail. World maps opens the maps and layers in the drawer’s place; the world button at its top comes back. The clock’s settings fold out under Set world clock.',
       items: [
+        ['World maps', 'the maps of this layer, and the layers.'],
         ['Ingame time', 'the table’s clock.'],
         ['Day / night', 'set the phase by hand.'],
-        ['Ambience', 'the sound in this world.'],
+        ...(MUSIC_ENABLED ? [['Ambience', 'the sound in this world.']] : []),
       ],
     },
     {
       key: 'clock',
       name: 'Ingame time',
       sub: 'The table’s clock',
-      where: 'World drawer',
+      where: 'World drawer, under Set world clock',
       dm: true,
-      text: 'Set the in-game time, how fast it ticks, and the day/night cycle. Once a clock is set, the readout above the map is how every player sees the time.',
+      text: 'Set the in-game time, how fast it ticks, and the day/night cycle. Once a clock is set, the readout above the map is how every player sees the time; clicking it opens these settings again.',
     },
     {
       key: 'daynight',
@@ -128,14 +122,18 @@ export const TABLE_RULES = {
       dm: true,
       text: 'Pick a phase by hand to override the clock, or hand it back to the clock. You can also set whether the map you are on follows the clock, is always day, or is always night.',
     },
-    {
-      key: 'ambience',
-      name: 'Ambience',
-      sub: 'The sound of this world',
-      where: 'World drawer',
-      dm: true,
-      text: 'The sound players hear while they are in the world you are viewing.',
-    },
+    ...(MUSIC_ENABLED
+      ? [
+          {
+            key: 'ambience',
+            name: 'Ambience',
+            sub: 'The sound of this world',
+            where: 'World drawer',
+            dm: true,
+            text: 'The sound players hear while they are in the world you are viewing.',
+          },
+        ]
+      : []),
     {
       key: 'compendium',
       name: 'Compendium',
@@ -174,13 +172,21 @@ export const TABLE_RULES = {
       dm: true,
       text: 'Opens in a drawer beside the rail, so the map stays in view while you pick who fights. Rolls turn order for the heroes and monsters in the world you are viewing. Start encounter begins the fight: the turn order appears along the top of the map and each creature takes its turn.',
     },
-    {
-      key: 'music',
-      name: 'Music',
-      sub: 'Songs for the table',
-      where: 'Left rail, opens a side panel',
-      text: 'The DM plays songs for the whole table, for one world, or for a single token. Each player sets their own volume. On a guest table the music plays only on the DM’s device, and a local demo table has none.',
-    },
+    MUSIC_ENABLED
+      ? {
+          key: 'music',
+          name: 'Music',
+          sub: 'Songs for the table',
+          where: 'Configurations, opens a side panel',
+          text: 'The DM plays songs for the whole table, for one world, or for a single token. Each player sets their own volume. On a guest table the music plays only on the DM’s device, and a local demo table has none.',
+        }
+      : {
+          key: 'music',
+          name: 'Sound effects',
+          sub: 'Dice, hits, misses and the like',
+          where: 'Configurations, opens a side panel',
+          text: 'The sounds the table makes as you play. Each one has its own volume, and yours changes only what you hear.',
+        },
     {
       key: 'dice',
       name: 'Dice',
@@ -192,14 +198,14 @@ export const TABLE_RULES = {
       key: 'rolllog',
       name: 'Roll log',
       sub: 'Every roll this session',
-      where: 'Logs tab, a side panel',
-      text: 'Every roll made at the table this session, with who rolled it. The Logs panel stays open beside the rail while you play. The badge on the tab counts what you have not looked at yet.',
+      where: 'Logs button, top of the Dice panel',
+      text: 'Every roll made at the table this session, with who rolled it. It opens in the Dice panel’s place, and the dice button at its top goes back. The badge on the Logs button counts what you have not looked at yet.',
     },
     {
       key: 'charlog',
       name: 'Character log',
       sub: 'What players changed',
-      where: 'Logs tab, a side panel',
+      where: 'Logs button, top of the Dice panel',
       dm: true,
       text: 'What each player changed on their own hero this session: hit points, items, coins, weapons and spells. It shares the Logs panel with the roll log; switch between them at the top of the panel. Only the DM sees it.',
     },
@@ -245,10 +251,11 @@ export const TABLE_RULES = {
     {
       key: 'config',
       name: 'Configurations',
-      sub: 'The Config tab: save and housekeeping',
+      sub: MUSIC_ENABLED ? 'The Config tab: music, save and housekeeping' : 'The Config tab: sound effects, save and housekeeping',
       where: 'Left rail, bottom; opens a side panel',
       text: 'The actions you reach for least often, in one side panel.',
       items: [
+        MUSIC_ENABLED ? ['Music', 'open the table’s music in a side panel.'] : ['Sound effects', 'your own volume for each sound effect, in a side panel.'],
         ['Save, Export, Import', 'keep the table safe (DM).'],
         ['Close', 'stop new players joining (DM).'],
         ['Hints', 'turn the small tips on or off.'],
@@ -337,7 +344,7 @@ export const TABLE_RULES = {
       key: 'leave',
       name: 'Leave',
       sub: 'Leave the table',
-      where: 'Configurations menu',
+      where: 'Left rail, under Configurations',
       text: 'Takes you back to the start screen. Your seat is freed. On a guest table the DM is reminded to export first.',
     },
   ],
@@ -355,7 +362,7 @@ export const TABLE_RULES = {
       name: 'Maps',
       sub: 'Pieces of the world',
       where: 'On the map',
-      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Edit and click a map’s background, or press a map’s Recenter button in Mapping; a click on a map during play leaves it alone.',
+      text: 'A world is made of maps, each with its own grid. One of them is the active map: new tokens land there, and Recenter scrolls back to it. To change it, switch to Tools → Arrange maps and click a map’s background, or press a map’s Recenter button in World → World maps; a click on a map during play leaves it alone.',
     },
     {
       key: 'movetoken',
@@ -397,14 +404,14 @@ export const TABLE_RULES = {
       name: 'Doors',
       sub: 'Walk to another world',
       where: 'On the map',
-      text: 'A door leads to another world (a layer). A player clicks it and confirms to step through: their hero lands beside the door on the other side, and the door works both ways. The DM places doors from the Tokens panel and changes layer with the layer strip instead.',
+      text: 'A door leads to another world (a layer). A player clicks it and confirms to step through: their hero lands beside the door on the other side, and the door works both ways. A player can open a door only while their hero stands on its square or the one next to it. The DM places doors from the Tokens panel and changes layer with the layer strip instead.',
     },
     {
       key: 'chest',
       name: 'Chests',
       sub: 'Loot to open and take',
       where: 'On the map',
-      text: 'Select a chest and press Open chest in the Inspector. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Edit tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
+      text: 'Select a chest and press Open chest in the Inspector. A player can open a chest only while their hero stands on its square or the one next to it. Once it is open, a player takes items into their own hero’s bag, and the DM can give an item to any hero. The DM changes what is inside with the Arrange maps tool: From the compendium lists a chapter (Weapons, Items, Tomes, Food & drink, Potions or Ingredients) to browse or search, + 1 at random adds one of what the list shows, and Custom item is for anything else. A tome, a dish, a potion or an ingredient taken from a chest lands under Other items in the Bag; everything else under Weapons & gear.',
     },
     {
       key: 'trap',
@@ -413,6 +420,27 @@ export const TABLE_RULES = {
       where: 'On the map',
       dm: true,
       text: 'A trap does not exist for players until you reveal it. Select it and tick Reveal trap in the Inspector to show it; untick to hide it again.',
+    },
+    {
+      key: 'bulletin',
+      name: 'Bulletin boards',
+      sub: 'News and quests to read',
+      where: 'On the map',
+      text: 'A board the DM pins bulletins to: news, rumours, quests. Click it to read them, each on its own card. A player can read a board only while their hero stands on its square or the one next to it; from further away it stays shut. The DM pins, edits and takes down bulletins in the Inspector, and can hide the whole board from players.',
+    },
+    {
+      key: 'portal',
+      name: 'Portals',
+      sub: 'A way to another map',
+      where: 'On the map',
+      text: 'A portal is a pair: step into one end and you come out beside the other, wherever it stands — on another layer, on another map of this layer, or across the same map. A player clicks a portal and confirms to step through, and can do so only while their hero stands on its square or the one next to it. The DM drops a hero or monster on a portal to send it through, drags either end to where it should be, and can lock or hide each end. A portal whose other end is hidden leads nowhere for players. Removing one end removes the other.',
+    },
+    {
+      key: 'cover',
+      name: 'Cover',
+      sub: 'Ground to hide behind',
+      where: 'On the map',
+      text: 'A cover marks part of the map as quarter, half or full cover: a low wall, a pillar, an overturned table. Everyone sees its squares in a faint yellow wash inside a yellow outline, more solid the more cover, with a tag naming the level. The app changes no roll for it: what a cover does to an attack is the DM’s to rule. The DM lays one with the Cover tool: pick the level, a shape (a line, a square or a circle) and a size, aim it on the map the way an area of effect is aimed, and press Place. It stays until the DM takes it off with the button on its tag. One that starts under the fog of war is kept from players until that fog is revealed.',
     },
     {
       key: 'turnorder',
@@ -455,7 +483,7 @@ export const TABLE_RULES = {
       sub: 'Stop the fight',
       where: 'Bottom right, during a fight',
       dm: true,
-      text: 'Ends the fight for everyone. The turn order and the encounter music stop.',
+      text: MUSIC_ENABLED ? 'Ends the fight for everyone. The turn order and the encounter music stop.' : 'Ends the fight for everyone. The turn order stops.',
     },
     {
       key: 'rolltoast',
@@ -476,8 +504,7 @@ export const TABLE_RULES = {
       text: 'Everything you can place on the map. The Tokens tab folds the panel out over the left of the map; click the tab again, or the « button, to fold it away. You can drag its edge to make it wider or narrower.',
       items: [
         ['Default heroes', 'ready-made characters.'],
-        ['Placeable', 'doors, chests, traps and ambushes.'],
-        ['Add your own image', 'a picture as a token.'],
+        ['Placeable', 'doors, chests, traps, ambushes, bulletin boards and portals.'],
       ],
     },
     {
@@ -486,12 +513,12 @@ export const TABLE_RULES = {
       sub: 'Ready-made characters',
       where: 'Tokens panel',
       dm: true,
-      text: 'Click a hero to place it on the map you are viewing. Then select it and choose who plays it under played by on its sheet.',
+      text: 'Click a hero to place it on the map you are viewing. Then select it and choose who plays it under played by on its sheet. At the top of the panel, above them, Import hero opens a window to choose a hero saved as a .tlsbyd file and puts its token on the map, and Create hero opens the screen where you build a new one.',
     },
     {
       key: 'placeable',
       name: 'Placeable',
-      sub: 'Doors, chests, traps and ambushes',
+      sub: 'Doors, chests, traps, ambushes, bulletin boards and portals',
       where: 'Tokens panel',
       dm: true,
       text: 'Things to put on the map. Click one and a window opens to set it up; Place puts it on the map you are viewing.',
@@ -500,15 +527,17 @@ export const TABLE_RULES = {
         ['Chest', 'name it, pick its size and fill it from the compendium, at random or with items of your own.'],
         ['Trap', 'set its save and damage; hidden from players until you reveal it.'],
         ['Ambush', 'name it and choose its monsters; hidden from players until you reveal it.'],
+        ['Bulletin board', 'name it and pin bulletins to it, each a title and some text.'],
+        ['Portal', 'name it and pick the map its other end goes on, on this layer or another.'],
       ],
     },
     {
       key: 'ownimage',
-      name: 'Add your own image',
-      sub: 'A picture as a token',
-      where: 'Tokens panel',
+      name: 'Your own picture',
+      sub: 'A picture of yours on a token',
+      where: 'Inspector, the pencil on the picture',
       dm: true,
-      text: 'Upload a picture from your computer and use it as a hero or monster token.',
+      text: 'Select a hero, NPC or monster, then click the pencil on its picture and choose an image from your computer. Its sheet and its token on the map both show it.',
     },
     {
       key: 'inspector',
@@ -578,10 +607,10 @@ export const TABLE_RULES = {
     {
       key: 'dmtab',
       name: 'DM tab',
-      sub: 'Private notes and sound',
+      sub: MUSIC_ENABLED ? 'Private notes and sound' : 'Private notes',
       where: 'Inspector tabs',
       dm: true,
-      text: 'Notes only you can read, and a sound tied to the token that you play and everyone hears.',
+      text: MUSIC_ENABLED ? 'Notes only you can read, and a sound tied to the token that you play and everyone hears.' : 'Notes only you can read.',
     },
     {
       key: 'remove',

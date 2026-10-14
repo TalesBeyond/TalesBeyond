@@ -7,7 +7,7 @@ import { isCreature } from '../data/tokenKinds.js';
 import RollModeTabs from './RollModeTabs.jsx';
 import { CHEST_SIZES, chestSlotCount } from '../data/chests.js';
 import ChestContentsEditor from './ChestContentsEditor.jsx';
-import { GiveChestItemButton, TakeChestItemButton, ChestOpenButton } from './RightPanel.jsx';
+import { GiveChestItemButton, TakeChestItemButton, ChestOpenButton, isChestTooFar, shutChestNote } from './RightPanel.jsx';
 import ClockReadout from './ClockReadout.jsx';
 import { SOUND_EFFECTS } from '../data/defaultAudio.js';
 import { playDiceSound, getSfxVolume, setSfxVolume } from '../lib/sfx.js';
@@ -132,7 +132,7 @@ export function PhoneNav({ isHost, tool, onTool, onOpen, onRecenter }) {
   const tools = isHost
     ? [
         ['play', 'Play'],
-        ['edit', 'Edit'],
+        ['edit', 'Arrange maps'],
         ['ruler', 'Ruler'],
       ]
     : [
@@ -509,11 +509,12 @@ export function PhoneTargetSheet({ actor, target, getTarget, onDamage, onClose }
 
 // `travellerName` is set when the DM is sending a token through (they
 // dropped it on the door); otherwise it is a player walking their own hero.
-export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIslandName, peopleThere, travellerName = null, onWalk, onCancel }) {
+// `what`: 'Door', or 'Portal' for a portal's end (data/portals.js).
+export function PhoneDoorSheet({ door, what = 'Door', doorIslandName, destLayerName, destIslandName, peopleThere, travellerName = null, onWalk, onCancel }) {
   return (
-    <PhoneSheet title={door.name || 'Door'} onClose={onCancel}>
+    <PhoneSheet title={door.name || what} onClose={onCancel}>
       <div className="phone-sheet-pad">
-        <p className="phone-caption phone-caption-flush">Door{doorIslandName ? ` · ${doorIslandName}` : ''}</p>
+        <p className="phone-caption phone-caption-flush">{what}{doorIslandName ? ` · ${doorIslandName}` : ''}</p>
         <div className="phone-door-dest">
           <span className="phone-label">Leads to</span>
           <b>
@@ -532,7 +533,7 @@ export function PhoneDoorSheet({ door, doorIslandName, destLayerName, destIsland
         </button>
         <p className="phone-caption phone-caption-flush">
           {travellerName
-            ? `${travellerName} steps through to the other side${door.locked ? ' — the door stays locked for players' : ''}. Everyone else stays here.`
+            ? `${travellerName} steps through to the other side${door.locked ? ` — the ${what.toLowerCase()} stays locked for players` : ''}. Everyone else stays here.`
             : 'Your hero steps through to the other side. Everyone else stays here until they walk through too.'}
         </p>
       </div>
@@ -550,6 +551,7 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
   const sizeLabel = CHEST_SIZES.find((s) => s.key === entity.chestSize)?.label || 'Small';
   const myHero = (heroes || []).find((h) => h.ownerId === meId);
   const showItems = isHost || entity.opened;
+  const tooFar = isChestTooFar(entity, heroes, isHost, meId);
 
   return (
     <PhoneSheet title={entity.name || 'Chest'} onClose={onClose}>
@@ -561,13 +563,12 @@ export function PhoneChestSheet({ entity, islandName, isHost, heroes, meId, onUp
         <ChestOpenButton
           entity={entity}
           isHost={isHost}
+          tooFar={tooFar}
           onUpdate={onUpdate}
           primaryClass="phone-btn-primary phone-btn-block-primary"
           secondaryClass="phone-btn-ghost phone-btn-full"
         />
-        {!showItems && (
-          <p className="phone-caption phone-caption-flush">{entity.locked ? 'It’s locked. Only the DM can unlock it.' : 'Open it to see what’s inside.'}</p>
-        )}
+        {!showItems && <p className="phone-caption phone-caption-flush">{shutChestNote(entity, tooFar)}</p>}
         {showItems && (
           <section className="phone-chest-items" aria-label="Inside">
             <span className="phone-label">
@@ -825,7 +826,7 @@ export function PhoneEditBar({ islandName, onSettings, onDraw, onDone }) {
   return (
     <div className="phone-edit-bar" role="status">
       <span className="phone-edit-text">
-        <b>Edit mode.</b> Drag a map to move it; edges snap together where they touch.
+        <b>Arrange maps.</b> Drag a map to move it; edges snap together where they touch.
       </span>
       <div className="phone-edit-actions">
         <button type="button" className="phone-btn-ghost" onClick={onSettings}>

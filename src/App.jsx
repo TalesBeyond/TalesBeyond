@@ -4,13 +4,22 @@ import GameView from './components/GameView.jsx';
 import LegalPage from './components/LegalPage.jsx';
 import { legalDocFromHash } from './data/legal.js';
 import { GameProvider } from './state/store.jsx';
-import { loadSession, loadCurrentPointer, saveCurrentPointer, clearCurrentPointer } from './state/persistence.js';
+import { loadSession, loadCurrentPointer, saveCurrentPointer, clearCurrentPointer, loadTableBoards } from './state/persistence.js';
+import { withBoardsKept } from './lib/boardSync.js';
 import { migrateLegacyState } from './state/migrate.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { ensureAnonymousSession } from './lib/auth.js';
 import { fetchTableSnapshot } from './lib/remoteApi.js';
 import { useTheme } from './state/theme.js';
 import { loadCatalog } from './lib/catalog.js';
+
+// A cloud table's bulletin boards are kept in the DM's browser, not in the
+// database (lib/boardSync.js), so the DM's table opens with them put back.
+function withHostBoards(entry) {
+  const { state, me, mode } = entry;
+  if (mode !== 'remote' || me.id !== state.session.hostPlayerId) return entry;
+  return { ...entry, state: withBoardsKept(state, loadTableBoards(state.session.tableId)) };
+}
 
 export default function App() {
   const [entry, setEntry] = useState(null); // { state, me, mode }
@@ -52,7 +61,7 @@ export default function App() {
           await ensureAnonymousSession();
           const state = await fetchTableSnapshot(pointer.tableId);
           const player = state.players[pointer.playerId];
-          if (!cancelled && player) setEntry({ state, me: player, mode: 'remote' });
+          if (!cancelled && player) setEntry(withHostBoards({ state, me: player, mode: 'remote' }));
           else if (!cancelled) clearCurrentPointer();
         } catch {
           if (!cancelled) clearCurrentPointer();
@@ -87,7 +96,7 @@ export default function App() {
       playerId: me.id,
     });
     setNotice(null);
-    setEntry({ state, me, mode });
+    setEntry(withHostBoards({ state, me, mode }));
   }
 
   function handleLeave(reason) {

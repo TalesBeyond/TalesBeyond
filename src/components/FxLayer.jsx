@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useFx, rarityOf, RARITY_LABELS } from '../lib/fx.js';
-import { playSfx } from '../lib/sfx.js';
+import { playSfx, preloadSfx, stopSfx } from '../lib/sfx.js';
 
 // Full-map moments drawn over the stage (lib/fx.js): the turn banner that
 // sweeps across when a new turn starts, the big die that tumbles and lands on
@@ -8,9 +8,18 @@ import { playSfx } from '../lib/sfx.js';
 // here writes state.
 
 const BANNER_MS = 1800;
-const DIE_MS = 2000; // an ordinary result
-const NAT_MS = 2500; // a natural 20 or 1 lingers a little longer
+// How long the big die is on screen, fade included; styles.css .nat-moment's
+// animations match. An ordinary result is gone at 2s; a natural 20 or 1
+// stays 3.5s, then fades over 0.4s — and its sound (defaultAudio.js 'nat20'
+// / 'nat1') lasts from its landing to the end: NAT_MS − TUMBLE_MS.
+const DIE_MS = 2000;
+const NAT_MS = 3900;
 const TUMBLE_MS = 480; // faces flicker past before it lands
+
+// A single d20 showing 20 or 1.
+function isNatural({ value, sides = 20, min = 1, max = 20 }) {
+  return sides === 20 && min === 1 && max === 20 && (value === 20 || value === 1);
+}
 
 export default function FxLayer() {
   const [banner, setBanner] = useState(null);
@@ -28,10 +37,7 @@ export default function FxLayer() {
 
   useFx((event) => {
     if (event.type === 'banner') show(setBanner, 'banner', event, BANNER_MS);
-    else if (event.type === 'die') {
-      const extreme = event.value >= (event.max ?? 20) || event.value <= (event.min ?? 1);
-      show(setDie, 'die', event, extreme ? NAT_MS : DIE_MS);
-    }
+    else if (event.type === 'die') show(setDie, 'die', event, isNatural(event) ? NAT_MS : DIE_MS);
     else if (event.type === 'loot') {
       show(setLoot, 'loot', event, 0);
       if (event.items?.length) playSfx('page');
@@ -48,7 +54,7 @@ export default function FxLayer() {
           </div>
         </div>
       )}
-      {die && <RollDie key={die.key} value={die.value} sides={die.sides} min={die.min} max={die.max} detail={die.detail} caption={die.caption} />}
+      {die && <RollDie key={die.key} value={die.value} sides={die.sides} min={die.min} max={die.max} modifier={die.modifier} detail={die.detail} caption={die.caption} />}
       {loot && <LootReveal key={loot.key} title={loot.title} items={loot.items || []} onClose={() => setLoot(null)} />}
     </>
   );
@@ -82,41 +88,57 @@ export function dieTier(value, min = 1, max = 20) {
   return value < (min + max) / 2 ? 'die-low' : 'die-high';
 }
 
-function RollDie({ value, sides = 20, min = 1, max = 20, detail, caption }) {
+// `modifier`: what is added to the face, shown beside the die once it lands
+// ("12" then "+ 3"), so the total under it adds up at a glance.
+function RollDie({ value, sides = 20, min = 1, max = 20, modifier = 0, detail, caption }) {
   const shape = DIE_SHAPES[sides] || DIE_SHAPES[20];
   const randomFace = () => min + Math.floor(Math.random() * (max - min + 1));
   const [face, setFace] = useState(randomFace);
   const [landed, setLanded] = useState(false);
+  const isD20 = sides === 20 && min === 1 && max === 20;
+  // A natural 20's fanfare or a natural 1's whoosh (defaultAudio.js 'nat20' /
+  // 'nat1') plays from the moment the die freezes on its face until the die
+  // leaves the screen.
+  const sound = !isD20 ? null : value === 20 ? 'nat20' : value === 1 ? 'nat1' : null;
   useEffect(() => {
+    if (sound) preloadSfx(sound);
     const flicker = setInterval(() => setFace(randomFace()), 70);
     const land = setTimeout(() => {
       clearInterval(flicker);
       setFace(value);
       setLanded(true);
+      if (sound) playSfx(sound);
     }, TUMBLE_MS);
     return () => {
       clearInterval(flicker);
       clearTimeout(land);
+      if (sound) stopSfx(sound);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const tier = landed ? dieTier(value, min, max) : 'die-rolling';
-  const isD20 = sides === 20 && min === 1 && max === 20;
   const label = !landed ? null : isD20 ? (value === 20 ? 'Natural 20' : value === 1 ? 'Natural 1' : null) : value >= max ? 'Max roll' : value <= min ? 'Lowest roll' : null;
   const cracked = landed && isD20 && value === 1;
   const digits = String(face).length;
   return (
-    <div className={`nat-moment ${tier}${landed ? ' landed' : ''}`} role="status" aria-label={`Rolled ${value} on ${isD20 ? 'a d20' : `d${sides}`}${detail ? `, ${detail}` : ''}`}>
-      <svg width="150" height="150" viewBox="0 0 88 88" aria-hidden="true">
-        <polygon className="nat-face" points={shape.face} />
-        {shape.inner && <polygon className="nat-inner" points={shape.inner} />}
-        {shape.edges && <path className="nat-edges" d={shape.edges} />}
-        {cracked && <path className="nat-crack" d="M30 10l6 14-5 8 8 10-3 12 6 10" />}
-        <text x={cracked ? 50 : 44} y={shape.textY} textAnchor="middle" style={{ fontSize: digits > 2 ? 15 : 20 }}>
-          {face}
-        </text>
-      </svg>
+    <div className={`nat-moment ${tier}${landed ? ' landed' : ''}${isNatural({ value, sides, min, max }) ? ' natural' : ''}`} role="status" aria-label={`Rolled ${value} on ${isD20 ? 'a d20' : `d${sides}`}${detail ? `, ${detail}` : ''}`}>
+      <span className="nat-roll">
+        <svg width="150" height="150" viewBox="0 0 88 88" aria-hidden="true">
+          <polygon className="nat-face" points={shape.face} />
+          {shape.inner && <polygon className="nat-inner" points={shape.inner} />}
+          {shape.edges && <path className="nat-edges" d={shape.edges} />}
+          {cracked && <path className="nat-crack" d="M30 10l6 14-5 8 8 10-3 12 6 10" />}
+          <text x={cracked ? 50 : 44} y={shape.textY} textAnchor="middle" style={{ fontSize: digits > 2 ? 15 : 20 }}>
+            {face}
+          </text>
+        </svg>
+        {landed && modifier !== 0 && (
+          <span className="nat-mod" aria-hidden="true">
+            {modifier > 0 ? '+' : '−'} {Math.abs(modifier)}
+          </span>
+        )}
+      </span>
       {landed && (label || detail || caption) && (
         <span className="nat-label">
           {label && <strong>{label}</strong>}

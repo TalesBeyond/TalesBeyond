@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { isCatalogTrack } from '../lib/audioEngine.js';
-import { DEMO_MUSIC } from '../data/defaultAudio.js';
+import { DEMO_MUSIC, MUSIC_ENABLED } from '../data/defaultAudio.js';
 
 // "Choose from catalog…": attaches one of the Default catalog's songs to a
 // target. Renders nothing while the catalog has no songs.
@@ -98,7 +98,7 @@ export default function SoundField({ audio, targetKind, targetId, label = 'Sound
   const fileRef = useRef(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  if (!audio?.isHost) return null;
+  if (!MUSIC_ENABLED || !audio?.isHost) return null;
 
   const track = audio.findTrack(targetKind, targetId);
   const expired = track ? audio.expired.has(track.id) : false;

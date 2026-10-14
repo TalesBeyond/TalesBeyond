@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import CreatureCard from './CreatureCard.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab } from './RightPanel.jsx';
 import { DEFAULT_HEROES } from '../data/defaultTokens.js';
-import { SPRITE_HEROES, spriteForUrl } from '../data/spriteTokens.js';
+import { SPRITE_HEROES, spriteForUrl, useOwnedSpriteHeroes } from '../data/spriteTokens.js';
 import { resizeImageToDataUrl } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import { useImageCacheVersion } from '../lib/imageCache.js';
@@ -19,7 +19,9 @@ import {
   saveHeroDraft,
 } from '../lib/heroFile.js';
 
-const LOOKS = [...DEFAULT_HEROES, ...SPRITE_HEROES];
+// Every built-in picture, owned or not: a hero wearing any of them (say, one
+// from a file, in an animated look still in the Store) isn't using its own image.
+const BUILT_IN_LOOKS = [...DEFAULT_HEROES, ...SPRITE_HEROES];
 
 // The Characters screen: anyone, a player or the DM, at a table or before
 // joining one, builds a hero on the same card a hero has on the map (its
@@ -46,6 +48,8 @@ export default function CharacterBuilder({ table = null, onClose }) {
   const [busy, setBusy] = useState(null); // what the screen is waiting on, in words
   const fileRef = useRef(null);
   const pictureRef = useRef(null);
+  // The looks to pick from: the plain heroes and the animated ones this browser has.
+  const looks = [...DEFAULT_HEROES, ...useOwnedSpriteHeroes()];
 
   useEffect(() => {
     const timer = setTimeout(() => saveHeroDraft(hero), 300);
@@ -75,6 +79,8 @@ export default function CharacterBuilder({ table = null, onClose }) {
       if (Number.isInteger(patch.size)) next.size = Math.max(1, Math.min(4, patch.size));
       const hp = patch.maxHp ?? patch.hp;
       if (Number.isInteger(hp)) next.maxHp = Math.max(1, Math.min(9999, hp));
+      // The pencil on the card's art: the same picture as "Add your own image".
+      if (typeof patch.imageUrl === 'string' && patch.imageUrl) next.imageUrl = patch.imageUrl;
       return next;
     });
   }
@@ -161,7 +167,7 @@ export default function CharacterBuilder({ table = null, onClose }) {
     { key: 'bag', label: 'Bag', content: <BagTab sheet={sheet} updateSheet={updateSheet} /> },
     { key: 'skills', label: 'Skills', content: <SavesSkillsTab sheet={sheet} updateSheet={updateSheet} /> },
   ];
-  const ownPicture = !LOOKS.some((look) => look.imageUrl === hero.imageUrl);
+  const ownPicture = !BUILT_IN_LOOKS.some((look) => look.imageUrl === hero.imageUrl);
 
   return createPortal(
     <div className="hero-screen" role="dialog" aria-label="Create a character">
@@ -194,7 +200,7 @@ export default function CharacterBuilder({ table = null, onClose }) {
             <h3>Picture</h3>
             <p>How the hero looks on the map.</p>
             <div className="token-grid">
-              {LOOKS.map((look) => {
+              {looks.map((look) => {
                 const sprite = spriteForUrl(look.imageUrl);
                 return (
                   <button

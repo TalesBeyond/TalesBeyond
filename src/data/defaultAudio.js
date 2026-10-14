@@ -15,11 +15,19 @@
 // 1 MB); the pre-commit hook (.githooks/pre-commit) blocks audio over 2 MB,
 // since a committed file stays in git history forever.
 
+// Off for now: the table has only the built-in sound effects. No music of
+// any kind (world, ambience, token sounds, the encounter theme), and no
+// audio file can be uploaded from anywhere. Turning this back on restores it
+// all — the code paths are only hidden, not removed.
+export const MUSIC_ENABLED = false;
+
 import diceRollUrl from '../assets/audio/dice-roll.mp3';
 import swordSliceUrl from '../assets/audio/sword-slice.mp3';
 import swooshMissUrl from '../assets/audio/swoosh-miss.mp3';
 import pageFlipUrl from '../assets/audio/page-flip.mp3';
 import turnStartUrl from '../assets/audio/turn-start.mp3';
+import natural20Url from '../assets/audio/natural-20.mp3';
+import natural1Url from '../assets/audio/natural-1.mp3';
 import villageConsortUrl from '../assets/audio/music/village-consort.mp3';
 import bossFightUrl from '../assets/audio/music/boss-fight.mp3';
 
@@ -71,6 +79,35 @@ export const SOUND_EFFECTS = [
     // Cut to its first 2 seconds, fading out over the last half second.
     maxSeconds: 2,
     fadeSeconds: 0.5,
+  },
+  {
+    id: 'nat20',
+    name: 'Natural 20',
+    when: 'Plays when anyone at the table rolls a natural 20 that you can see',
+    description: 'An epic flute fanfare.',
+    source: { ...PIXABAY, author: 'BreakzStudios', url: 'https://pixabay.com/sound-effects/film-special-effects-epic-flute-reveal-logo-201062/' },
+    url: natural20Url,
+    // Starts 2 seconds into the file. On the roller's screen it plays from the
+    // moment the big die freezes on 20 until the die leaves (FxLayer.jsx:
+    // NAT_MS − TUMBLE_MS = 3.42s), fading in, then out with the die over its
+    // last 0.4s.
+    startSeconds: 2,
+    maxSeconds: 3.42,
+    fadeInSeconds: 0.2,
+    fadeSeconds: 0.4,
+  },
+  {
+    id: 'nat1',
+    name: 'Natural 1',
+    when: 'Plays when anyone at the table rolls a natural 1 that you can see',
+    description: 'A heavy, epic whoosh.',
+    source: { ...PIXABAY, author: 'Dragon Studio', url: 'https://pixabay.com/sound-effects/film-special-effects-epic-whoosh-478371/' },
+    url: natural1Url,
+    // Timed like the natural 20 (above) from the die freezing on 1, untrimmed:
+    // the whole file is about 2.5s, so it ends on its own before the die goes.
+    maxSeconds: 3.42,
+    fadeInSeconds: 0.2,
+    fadeSeconds: 0.4,
   },
 ];
 

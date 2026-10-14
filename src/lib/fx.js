@@ -12,7 +12,8 @@ import { useEffect, useRef } from 'react';
 //
 // Event shapes:
 //   { type: 'float', entityId, kind: 'miss' }             — a MISS over a token
-//   { type: 'die', value, sides?, min?, max?, detail?, caption? } — the big die (a d20 by default)
+//   { type: 'die', value, sides?, min?, max?, modifier?, detail?, caption? } — the big die (a d20 by default);
+//     modifier is what's added to the face, shown beside it ("+ 3")
 //   { type: 'banner', title, sub, tone: 'ally'|'enemy'|'mine' }
 //   { type: 'loot', title, items: [{ name, qty }] }
 //   { type: 'log', text, tone?: 'hit'|'miss'|'heal'|'turn'|'roll' }

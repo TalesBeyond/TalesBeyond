@@ -122,7 +122,7 @@ Capacity is hard-capped at **10 occupants** (`MAX_PLAYERS = 10`, 1 host + 9 play
 Mode toggle between **Host a table** and **Join a table**. Host form collects DM name, color, map name, and W×H. Join form collects invite code, name, color.
 
 ### 4.2 Game view (three-column layout)
-- **Left panel — Tokens:** upload-and-place your own image (as Hero or Monster), plus scrollable galleries of default heroes and monsters, each with a one-click "Place" button.
+- **Left panel — Tokens:** scrollable galleries of default heroes and monsters, each with a one-click "Place" button. A token's own image is set afterwards, from the pencil on its picture in the inspector.
 - **Center — Toolbar + Stage:** tool switch (Move / Ruler), map name button (opens map settings popover), autosave status, Save/Export/Import buttons, invite code with copy button, host-only New Code / Close Table controls, and Leave. Below it, the scrollable stage containing the grid.
 - **Players (toolbar button beside Configurations):** "N/10 players"; opens the live player list (host tagged, disconnected players tagged "away" rather than removed).
 - **Roll log (toolbar button after Dice):** this session's dice rolls, with a count of new rolls from others since it was last opened.

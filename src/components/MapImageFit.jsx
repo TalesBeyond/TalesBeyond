@@ -34,7 +34,10 @@ const MAX_PERCENT = 400;
 // `place`: the placement above, for every map that has none of its own.
 // `placements`: { [islandId]: the same }, the maps laid on their own.
 // `onChange(place, placements)`.
-export default function MapImageFit({ url, imageWidth, imageHeight, islands, place, placements = {}, onChange, onCancel, onUse, busy = false, groupName = null }) {
+// `wholeName`: what the maps are together, in the notes ('the layer' for a
+// layer's settings); 'the group' or 'the map' otherwise.
+export default function MapImageFit({ url, imageWidth, imageHeight, islands, place, placements = {}, onChange, onCancel, onUse, busy = false, groupName = null, wholeName = null }) {
+  const whole = wholeName || (groupName ? 'the group' : 'the map');
   const svgRef = useRef(null);
   const dragRef = useRef(null);
   const clipId = useId().replace(/:/g, '');
@@ -235,8 +238,8 @@ export default function MapImageFit({ url, imageWidth, imageHeight, islands, pla
       <span className="island-row-note">
         This picture is {imageWidth} × {imageHeight}.{' '}
         {fits
-          ? `That is the shape of ${groupName ? 'the group' : 'the map'}.${several ? ' If the art still sits off the maps, it was not drawn exactly over the downloaded picture: Snap each map to its art lines every map up with its own piece.' : ''}`
-          : `${groupName ? 'The group' : 'The map'} is ${wanted.width} × ${wanted.height}, a different shape, so move and size it to fit. Download map gives a picture of the exact shape to paint over.`}
+          ? `That is the shape of ${whole}.${several ? ' If the art still sits off the maps, it was not drawn exactly over the downloaded picture: Snap each map to its art lines every map up with its own piece.' : ''}`
+          : `${whole.charAt(0).toUpperCase()}${whole.slice(1)} is ${wanted.width} × ${wanted.height}, a different shape, so move and size it to fit. Download map gives a picture of the exact shape to paint over.`}
       </span>
       <div className="field-row image-fit-actions">
         <button type="button" className="btn btn-secondary" disabled={busy} onClick={onCancel}>

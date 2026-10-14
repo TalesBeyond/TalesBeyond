@@ -103,7 +103,7 @@ function rollPool(pool, modifier, mode, name) {
 // demo table: nobody else is connected).
 // `side`: on the desktop rail the roller stands beside the rail as a side
 // panel rather than a centred dialog.
-export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose, share = 'local', side = false }) {
+export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, onRemoveSaved, onClose, share = 'local', side = false, enter = true, headerAction = null }) {
   useCatalog(); // re-render when the catalog's dice pictures arrive
   const [pool, setPool] = useState({ 20: 1 });
   const [modifier, setModifier] = useState(0);
@@ -131,8 +131,10 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
     emitFx({ type: 'log', tone: 'roll', text: `You rolled ${result.title}: ${result.total}${result.flag ? ` (${result.flag})` : ''}` });
     const dice = describePool(pool, modifier) + (mode === 'advantage' ? ' (advantage)' : mode === 'disadvantage' ? ' (disadvantage)' : '');
     emitFx({ type: 'rolled', what: name.trim() || null, dice, detail: result.detail, total: result.total, flag: result.flag });
-    // The big die over the table (FxLayer.jsx) — see rollPool's `moment`.
-    if (moment) emitFx({ type: 'die', ...moment, detail: `${result.title} · total ${result.total}` });
+    // The big die over the table (FxLayer.jsx) — see rollPool's `moment` —
+    // with what the rest of the roll adds beside it: the modifier, and with
+    // mixed dice around a single d20, the other dice too.
+    if (moment) emitFx({ type: 'die', ...moment, modifier: result.total - moment.value, detail: `${result.title} · total ${result.total}` });
   }
 
   function loadSaved(s) {
@@ -166,7 +168,7 @@ export default function DiceModal({ saved, rolls, onRoll, onClearRolls, onSave, 
   );
 
   return (
-    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} width={400} footer={side ? rollRow : null} onClose={onClose}>
+    <ModalShell title="Roll the dice" icon="dice" closeLabel="Close dice roller" maxWidth={900} flush side={side} enter={enter} footer={side ? rollRow : null} headerAction={headerAction} onClose={onClose}>
       <div className="dm-main">
         <div className="dm-left">
           <div>

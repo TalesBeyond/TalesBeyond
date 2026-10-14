@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
 import ModalIcon from './ModalIcon.jsx';
+import { useCloseOnOutsideClick } from './ModalShell.jsx';
 import { DebouncedRange, CatalogSongSelect, DemoTrackPicker } from './SoundField.jsx';
 import { isCatalogTrack } from '../lib/audioEngine.js';
 import { AUDIO_TABLE_QUOTA_BYTES } from '../lib/storageUpload.js';
 import { getSfxVolume, setSfxVolume, playSfx } from '../lib/sfx.js';
-import { SOUND_EFFECTS, DEMO_MUSIC, ENCOUNTER_MUSIC, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
+import { SOUND_EFFECTS, DEMO_MUSIC, ENCOUNTER_MUSIC, MUSIC_ENABLED, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 
 function formatSeconds(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -44,21 +45,42 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
   const used = audio.usedBytes;
   const pct = Math.min(100, (used / AUDIO_TABLE_QUOTA_BYTES) * 100);
 
+  const sideRef = useRef(null);
+  useCloseOnOutsideClick(sideRef, onClose, side);
+
   return (
     <div className={side ? 'side-panel-host' : 'book-backdrop'} onClick={side ? undefined : onClose}>
       <div
         className={side ? 'side-panel' : 'book-card'}
         role="dialog"
-        aria-label="Music"
-        style={side ? { '--side-w': '420px' } : { maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
+        aria-label={MUSIC_ENABLED ? 'Music' : 'Sound effects'}
+        ref={sideRef}
+        style={side ? undefined : { maxWidth: 560, background: 'linear-gradient(180deg, var(--ink-900), var(--ink-800))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="book-card-header">
-          <span className="book-title"><ModalIcon name="music" />Music</span>
+          <span className="book-title"><ModalIcon name="music" />{MUSIC_ENABLED ? 'Music' : 'Sound effects'}</span>
           <button className="popover-close" onClick={onClose} aria-label="Close" title="Close">
             ×
           </button>
         </div>
+        {/* Music off (MUSIC_ENABLED): only the built-in sound effects — no
+            tabs, no music rows, nothing to upload. */}
+        {!MUSIC_ENABLED ? (
+          <div style={{ padding: 16, flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {SOUND_EFFECTS.map((effect) => (
+              <SoundEffectRow key={effect.id} effect={effect} />
+            ))}
+            <p className="footer-note" style={{ border: 'none', padding: 0 }}>
+              Each volume is yours alone — it changes only what you hear. The built-in sound effects come from{' '}
+              <a href="https://pixabay.com/" target="_blank" rel="noopener noreferrer">
+                Pixabay
+              </a>
+              . Open a sound to see where it comes from.
+            </p>
+          </div>
+        ) : (
+        <>
         <div className="music-tabs" role="tablist" aria-label="Music">
           {[
             ['user', 'Your music', userRows.filter((r) => r.track).length],
@@ -120,6 +142,8 @@ export default function MusicModal({ audio, worldTrack, worldTargetId, layers, l
             </>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

@@ -163,6 +163,21 @@ export async function storeImage(source) {
   return PREFIX + hash;
 }
 
+// Keeps one of the app's own bundled pictures (the quick campaign's maps,
+// data/quickCampaign.js) under the fingerprint the campaign's state already
+// uses. They ship with the build, so they skip the picture filter. Rejects
+// if the bytes don't match the fingerprint.
+export async function keepBundledImage(hash, blob) {
+  if ((await hashBlob(blob)) !== hash) throw new Error('A bundled picture does not match its fingerprint');
+  try {
+    if (!(await idbGet(hash))) await idbPut(hash, blob, true);
+  } catch {
+    // storage blocked: it is still shown here this session (players can't be sent it)
+  }
+  blocked.delete(hash);
+  remember(hash, blob);
+}
+
 // What an <img src> / CSS url() should use for an image value: anything that
 // isn't a fingerprint is returned as is; a fingerprint gives its object URL,
 // or null while the picture is still being found (the call starts that).

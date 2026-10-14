@@ -1,0 +1,2629 @@
+{
+ "layers": {
+  "addba8e7-4ed6-423c-ad88-6fae0c422f5c": {
+   "id": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "name": "The Sunken Crypt",
+   "feetPerSquare": 5,
+   "islands": {
+    "e12b6d1f-3ee7-4ad1-a88a-2b86d0ea03cf": {
+     "id": "e12b6d1f-3ee7-4ad1-a88a-2b86d0ea03cf",
+     "name": "Crypt Entrance",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:0f862274edaeedcc597ea2e59bf05834ba4adff4386efdeb8ae79bde78815102",
+     "x": 1746,
+     "y": 609,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "0c618701-ff8f-4235-b297-77a4bc5998ac": {
+     "id": "0c618701-ff8f-4235-b297-77a4bc5998ac",
+     "name": "Crypt Hall",
+     "cols": 19,
+     "rows": 4,
+     "cellSize": 42,
+     "backgroundImage": "img:c9bf87b511164b194b74430b5f2d01339980258ab55124627110693691a43c6e",
+     "x": 2586,
+     "y": 905,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "e141ad2a-f597-4499-beba-bef77b6e8391": {
+     "id": "e141ad2a-f597-4499-beba-bef77b6e8391",
+     "name": "Narrow Passage",
+     "cols": 4,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:b77da9e80aeb42088b25f388380f7a3eb089f1fed9e96db2ccadbfa4bff52751",
+     "x": 3216,
+     "y": 1073,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "26fe8d58-35c1-41b7-9037-d7ef9e1188f2": {
+     "id": "26fe8d58-35c1-41b7-9037-d7ef9e1188f2",
+     "name": "Tomb Chamber",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:7fd40504171353dc9c0c242ff6070f7b0286dfd93bdf2f62faa33c48e6c61b74",
+     "x": 3384,
+     "y": 1218,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "84fbd792-7805-4505-a39f-423c8eff74f8": {
+     "id": "84fbd792-7805-4505-a39f-423c8eff74f8",
+     "name": "Fields",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:dcb7b25a89f238948b59c83381f9e994a128bdad9c00ae309517a98609e6eb70",
+     "x": 906,
+     "y": 609,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "bdb97045-7221-4860-a690-dc4bdaf8908a": {
+     "id": "bdb97045-7221-4860-a690-dc4bdaf8908a",
+     "name": "North Fields",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:09bb3885bbdea906c4a905fae9706f0f2269e6dd8d1195cf6253ebb083b2f2e9",
+     "x": 906,
+     "y": -21,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "314784a1-36bf-4e78-9bbb-048c2d0bef16": {
+     "id": "314784a1-36bf-4e78-9bbb-048c2d0bef16",
+     "name": "Town Road",
+     "cols": 20,
+     "rows": 8,
+     "cellSize": 42,
+     "backgroundImage": "img:c7da1bfd4ead6f2b04f007a1cf98f5ab30d7f3d2eea36a7510c2958e92262a2c",
+     "x": 66,
+     "y": 776,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    },
+    "2ec72665-92af-4ece-ba8e-3d21f4a05817": {
+     "id": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+     "name": "The Town",
+     "cols": 25,
+     "rows": 25,
+     "cellSize": 42,
+     "backgroundImage": "img:b8fd9107ec5efd59d8265c2253a029458f9f5e5fbbc46ed2e3ac92ae0619cf77",
+     "x": -984,
+     "y": 320,
+     "feetPerSquare": 5,
+     "gridLines": {
+      "strength": "light",
+      "color": "#ffffff"
+     }
+    }
+   },
+   "islandOrder": [
+    "e12b6d1f-3ee7-4ad1-a88a-2b86d0ea03cf",
+    "0c618701-ff8f-4235-b297-77a4bc5998ac",
+    "e141ad2a-f597-4499-beba-bef77b6e8391",
+    "26fe8d58-35c1-41b7-9037-d7ef9e1188f2",
+    "84fbd792-7805-4505-a39f-423c8eff74f8",
+    "bdb97045-7221-4860-a690-dc4bdaf8908a",
+    "314784a1-36bf-4e78-9bbb-048c2d0bef16",
+    "2ec72665-92af-4ece-ba8e-3d21f4a05817"
+   ],
+   "islandGroups": {
+    "94264b33-279c-4022-8fe3-4df56652af90": {
+     "id": "94264b33-279c-4022-8fe3-4df56652af90",
+     "name": "The Sunken Crypt",
+     "islandIds": [
+      "e12b6d1f-3ee7-4ad1-a88a-2b86d0ea03cf",
+      "0c618701-ff8f-4235-b297-77a4bc5998ac",
+      "e141ad2a-f597-4499-beba-bef77b6e8391",
+      "26fe8d58-35c1-41b7-9037-d7ef9e1188f2",
+      "84fbd792-7805-4505-a39f-423c8eff74f8",
+      "bdb97045-7221-4860-a690-dc4bdaf8908a",
+      "314784a1-36bf-4e78-9bbb-048c2d0bef16",
+      "2ec72665-92af-4ece-ba8e-3d21f4a05817"
+     ],
+     "conditions": []
+    }
+   }
+  },
+  "53380e22-90a7-4d14-a354-179b32dc3d34": {
+   "id": "53380e22-90a7-4d14-a354-179b32dc3d34",
+   "name": "Dark Forest",
+   "feetPerSquare": 5,
+   "islands": {
+    "2c78f59a-1bc6-437e-bb48-67ba080e7faa": {
+     "id": "2c78f59a-1bc6-437e-bb48-67ba080e7faa",
+     "name": "Dark Forest",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:6985fc8cd78da314546abe52e5efa3417ab65da2d6c557b9cd23d3ddd03943b4",
+     "x": 0,
+     "y": 0,
+     "gridLines": {
+      "strength": "light",
+      "color": "#b8b7b7"
+     }
+    }
+   },
+   "islandOrder": [
+    "2c78f59a-1bc6-437e-bb48-67ba080e7faa"
+   ],
+   "islandGroups": {}
+  },
+  "d0170409-c318-42c1-aadd-261995f067c0": {
+   "id": "d0170409-c318-42c1-aadd-261995f067c0",
+   "name": "Blacksmith",
+   "feetPerSquare": 5,
+   "islands": {
+    "9f40fb1f-cd54-4ec4-b3ab-d5d0d4bb8a96": {
+     "id": "9f40fb1f-cd54-4ec4-b3ab-d5d0d4bb8a96",
+     "name": "Blacksmith",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:8b1c65ca4b6f8cd4f72cdeee7f00e04167ea56295b7b0d48607dc80b3ce7cddd",
+     "x": 0,
+     "y": 0
+    }
+   },
+   "islandOrder": [
+    "9f40fb1f-cd54-4ec4-b3ab-d5d0d4bb8a96"
+   ],
+   "islandGroups": {}
+  },
+  "5473e80a-aad8-4069-8cc7-3c94006c9cf4": {
+   "id": "5473e80a-aad8-4069-8cc7-3c94006c9cf4",
+   "name": "Inn",
+   "feetPerSquare": 5,
+   "islands": {
+    "0cff3fbd-bc8e-4392-97a9-e253e9cd4784": {
+     "id": "0cff3fbd-bc8e-4392-97a9-e253e9cd4784",
+     "name": "Inn",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:e855d9dbdb98f6b6b2a070f53e97208a94884a7ab8de4f8dcc3a9389375ff2aa",
+     "x": 0,
+     "y": 0
+    }
+   },
+   "islandOrder": [
+    "0cff3fbd-bc8e-4392-97a9-e253e9cd4784"
+   ],
+   "islandGroups": {}
+  },
+  "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed": {
+   "id": "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed",
+   "name": "Library",
+   "feetPerSquare": 5,
+   "islands": {
+    "7900515a-3d54-4858-92dc-ab2916afd54f": {
+     "id": "7900515a-3d54-4858-92dc-ab2916afd54f",
+     "name": "Library",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:ba66d90faa8f2717d69e30bcf05661d6dc6460bd9e09f2425ccaf520caea5d8a",
+     "x": 0,
+     "y": 0
+    }
+   },
+   "islandOrder": [
+    "7900515a-3d54-4858-92dc-ab2916afd54f"
+   ],
+   "islandGroups": {}
+  },
+  "ae077af9-72e8-47e5-a4f7-db2110168cb0": {
+   "id": "ae077af9-72e8-47e5-a4f7-db2110168cb0",
+   "name": "Library – Second Floor",
+   "feetPerSquare": 5,
+   "islands": {
+    "b6c2d9b0-482a-4bef-b568-f601e718f4ef": {
+     "id": "b6c2d9b0-482a-4bef-b568-f601e718f4ef",
+     "name": "Library – Second Floor",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:9c89443658b5fd5f7967bb94b01eea37144d922f30dfe7cde7e693bec8831f30",
+     "x": 0,
+     "y": 0
+    }
+   },
+   "islandOrder": [
+    "b6c2d9b0-482a-4bef-b568-f601e718f4ef"
+   ],
+   "islandGroups": {}
+  },
+  "fc5b66bc-801d-4e66-9249-1c3adba05cac": {
+   "id": "fc5b66bc-801d-4e66-9249-1c3adba05cac",
+   "name": "Library – Basement",
+   "feetPerSquare": 5,
+   "islands": {
+    "b3e35ff9-a508-47bc-b1b9-b129ca89dae0": {
+     "id": "b3e35ff9-a508-47bc-b1b9-b129ca89dae0",
+     "name": "Library – Basement",
+     "cols": 20,
+     "rows": 15,
+     "cellSize": 42,
+     "backgroundImage": "img:4eee96e0880f7d8ea61f0289eb56078a4f5ec4e9bcb04c9afef3bd5edeabd192",
+     "x": 0,
+     "y": 0
+    }
+   },
+   "islandOrder": [
+    "b3e35ff9-a508-47bc-b1b9-b129ca89dae0"
+   ],
+   "islandGroups": {}
+  }
+ },
+ "layerOrder": [
+  "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+  "53380e22-90a7-4d14-a354-179b32dc3d34",
+  "d0170409-c318-42c1-aadd-261995f067c0",
+  "5473e80a-aad8-4069-8cc7-3c94006c9cf4",
+  "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed",
+  "ae077af9-72e8-47e5-a4f7-db2110168cb0",
+  "fc5b66bc-801d-4e66-9249-1c3adba05cac"
+ ],
+ "clock": null,
+ "dayNightOverride": null,
+ "encounter": null,
+ "entities": {
+  "90b9969b-00a2-48f1-8111-562b438b1737": {
+   "id": "90b9969b-00a2-48f1-8111-562b438b1737",
+   "kind": "door",
+   "name": "Library",
+   "imageUrl": "icon:door:#5c4a2e",
+   "color": "#5c4a2e",
+   "col": 10,
+   "row": 5,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed",
+   "targetCol": 0,
+   "targetRow": 0
+  },
+  "360d5281-6d0e-4944-9b55-2eefcc765720": {
+   "id": "360d5281-6d0e-4944-9b55-2eefcc765720",
+   "kind": "door",
+   "name": "Dark Forest",
+   "imageUrl": "icon:door:#5c4a2e",
+   "color": "#5c4a2e",
+   "col": 3,
+   "row": 0,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "84fbd792-7805-4505-a39f-423c8eff74f8",
+   "targetLayerId": "53380e22-90a7-4d14-a354-179b32dc3d34",
+   "targetCol": 0,
+   "targetRow": 0,
+   "hidden": false,
+   "locked": false
+  },
+  "dae561b2-0120-4268-9246-f0ac802865f5": {
+   "id": "dae561b2-0120-4268-9246-f0ac802865f5",
+   "kind": "door",
+   "name": "Inn",
+   "imageUrl": "icon:door:#5c4a2e",
+   "color": "#5c4a2e",
+   "col": 12,
+   "row": 18,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": "5473e80a-aad8-4069-8cc7-3c94006c9cf4",
+   "targetCol": 0,
+   "targetRow": 0
+  },
+  "30478931-378e-49e5-a772-5c3f89e8772e": {
+   "id": "30478931-378e-49e5-a772-5c3f89e8772e",
+   "kind": "hero",
+   "name": "Fighter",
+   "imageUrl": "icon:shield:#8f3a20",
+   "color": "#8f3a20",
+   "col": 10,
+   "row": 14,
+   "size": 1,
+   "hp": 20,
+   "maxHp": 20,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "",
+   "sheet": {
+    "level": 1,
+    "armorClass": 10,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 10,
+     "dex": 10,
+     "con": 10,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   }
+  },
+  "ea693f9d-6149-46ea-9c87-82a1ef640479": {
+   "id": "ea693f9d-6149-46ea-9c87-82a1ef640479",
+   "kind": "hero",
+   "name": "Bard",
+   "imageUrl": "icon:lute:#a9853f",
+   "color": "#a9853f",
+   "col": 14,
+   "row": 12,
+   "size": 1,
+   "hp": 20,
+   "maxHp": 20,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "",
+   "sheet": {
+    "level": 1,
+    "armorClass": 10,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 10,
+     "dex": 10,
+     "con": 10,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   }
+  },
+  "16c40e62-f6c6-4a85-8dd1-dafaca636358": {
+   "id": "16c40e62-f6c6-4a85-8dd1-dafaca636358",
+   "kind": "hero",
+   "name": "Sprite Warrior",
+   "imageUrl": "icon:sprite-warrior:#2f3a4f",
+   "color": "#2f3a4f",
+   "col": 3,
+   "row": 1,
+   "size": 1,
+   "hp": 20,
+   "maxHp": 20,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "84fbd792-7805-4505-a39f-423c8eff74f8",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "",
+   "sheet": {
+    "level": 1,
+    "armorClass": 10,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 10,
+     "dex": 10,
+     "con": 10,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "initiativeRoll": null,
+   "initiativeTurn": null
+  },
+  "f4ee4677-03a1-48a9-a1a9-92bb47639784": {
+   "id": "f4ee4677-03a1-48a9-a1a9-92bb47639784",
+   "kind": "door",
+   "name": "Stairs Up",
+   "imageUrl": "icon:door:#5c4a2e",
+   "color": "#5c4a2e",
+   "col": 7,
+   "row": 1,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed",
+   "islandId": "7900515a-3d54-4858-92dc-ab2916afd54f",
+   "targetLayerId": "ae077af9-72e8-47e5-a4f7-db2110168cb0",
+   "targetCol": 0,
+   "targetRow": 0
+  },
+  "04ca9ef9-1ff3-4f33-aaf8-624fa15f027a": {
+   "id": "04ca9ef9-1ff3-4f33-aaf8-624fa15f027a",
+   "kind": "door",
+   "name": "Stairs Down",
+   "imageUrl": "icon:door:#5c4a2e",
+   "color": "#5c4a2e",
+   "col": 2,
+   "row": 12,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed",
+   "islandId": "7900515a-3d54-4858-92dc-ab2916afd54f",
+   "targetLayerId": "fc5b66bc-801d-4e66-9249-1c3adba05cac",
+   "targetCol": 0,
+   "targetRow": 0
+  },
+  "ac7ccf35-bc7e-4388-be63-b67ce117411e": {
+   "id": "ac7ccf35-bc7e-4388-be63-b67ce117411e",
+   "kind": "chest",
+   "name": "Chest",
+   "imageUrl": "icon:chest:#c98a3b",
+   "color": "#c98a3b",
+   "col": 16,
+   "row": 3,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "ae077af9-72e8-47e5-a4f7-db2110168cb0",
+   "islandId": "b6c2d9b0-482a-4bef-b568-f601e718f4ef",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "chestSize": "small",
+   "opened": false,
+   "items": [
+    {
+     "id": "chestitem_1792004767146_b5hgl",
+     "name": "The Fall of the Nine Crowns",
+     "qty": 1,
+     "cost": 25,
+     "numberOfDice": 0,
+     "diceType": null,
+     "modifier": 0,
+     "source": "tomes"
+    }
+   ],
+   "locked": true,
+   "hidden": false
+  },
+  "b6d65988-5004-4ad7-9936-7ceea358c476": {
+   "id": "b6d65988-5004-4ad7-9936-7ceea358c476",
+   "kind": "npc",
+   "name": "Weapon Salesman",
+   "imageUrl": "icon:anvil:#6b2a22",
+   "color": "#6b2a22",
+   "col": 11,
+   "row": 6,
+   "size": 1,
+   "hp": 20,
+   "maxHp": 20,
+   "armorClass": 10,
+   "ownerId": null,
+   "layerId": "d0170409-c318-42c1-aadd-261995f067c0",
+   "islandId": "9f40fb1f-cd54-4ec4-b3ab-d5d0d4bb8a96",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "",
+   "mobSheet": {
+    "level": 1,
+    "armorClass": 10,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 10,
+     "dex": 10,
+     "con": 10,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "shop": {
+    "role": "weapons",
+    "wares": [
+     {
+      "id": "ware_1792004848663_pcldm",
+      "name": "Club",
+      "price": 1,
+      "source": "weapons",
+      "meta": "1d4 · melee"
+     },
+     {
+      "id": "ware_1792004849024_mql0j",
+      "name": "+2 Handaxe",
+      "price": 5,
+      "source": "weapons",
+      "meta": "1d6+2 · melee"
+     },
+     {
+      "id": "ware_1792004849024_gk8n9",
+      "name": "+2 Dagger",
+      "price": 2,
+      "source": "weapons",
+      "meta": "1d4+2 · melee"
+     },
+     {
+      "id": "ware_1792004849024_v1jsd",
+      "name": "+1 Morningstar",
+      "price": 15,
+      "source": "weapons",
+      "meta": "1d8+1 · melee"
+     },
+     {
+      "id": "ware_1792004849024_3kgty",
+      "name": "+2 Quarterstaff",
+      "price": 1,
+      "source": "weapons",
+      "meta": "1d6+2 · melee"
+     },
+     {
+      "id": "ware_1792004849024_evm0x",
+      "name": "+1 War Pick",
+      "price": 5,
+      "source": "weapons",
+      "meta": "1d8+1 · melee"
+     },
+     {
+      "id": "ware_1792004849024_91vde",
+      "name": "+2 Greatsword",
+      "price": 50,
+      "source": "weapons",
+      "meta": "2d6+2 · melee"
+     },
+     {
+      "id": "ware_1792004849024_7x5hp",
+      "name": "Spear",
+      "price": 1,
+      "source": "weapons",
+      "meta": "1d6 · melee"
+     },
+     {
+      "id": "ware_1792004849024_kraeq",
+      "name": "+2 Spear",
+      "price": 1,
+      "source": "weapons",
+      "meta": "1d6+2 · melee"
+     },
+     {
+      "id": "ware_1792004849024_tc808",
+      "name": "Handaxe",
+      "price": 5,
+      "source": "weapons",
+      "meta": "1d6 · melee"
+     },
+     {
+      "id": "ware_1792004849024_985gr",
+      "name": "+2 Light Crossbow",
+      "price": 25,
+      "source": "weapons",
+      "meta": "1d8+2 · ranged"
+     }
+    ]
+   }
+  },
+  "8d08f0f1-f93d-4343-a643-b28a83c52913": {
+   "id": "8d08f0f1-f93d-4343-a643-b28a83c52913",
+   "kind": "npc",
+   "name": "Food Salesman",
+   "imageUrl": "icon:mug:#8a5a2b",
+   "color": "#8a5a2b",
+   "col": 8,
+   "row": 1,
+   "size": 1,
+   "hp": 20,
+   "maxHp": 20,
+   "armorClass": 10,
+   "ownerId": null,
+   "layerId": "5473e80a-aad8-4069-8cc7-3c94006c9cf4",
+   "islandId": "0cff3fbd-bc8e-4392-97a9-e253e9cd4784",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "",
+   "mobSheet": {
+    "level": 1,
+    "armorClass": 10,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 10,
+     "dex": 10,
+     "con": 10,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "shop": {
+    "role": "food",
+    "wares": [
+     {
+      "id": "ware_1792004862537_shzdz",
+      "name": "Sailor’s grog",
+      "price": 1,
+      "source": "foods",
+      "meta": "drink"
+     },
+     {
+      "id": "ware_1792004862537_3mab0",
+      "name": "Fruit cordial",
+      "price": 1,
+      "source": "foods",
+      "meta": "drink"
+     },
+     {
+      "id": "ware_1792004862537_ttowd",
+      "name": "Hard tack",
+      "price": 1,
+      "source": "foods",
+      "meta": "food"
+     },
+     {
+      "id": "ware_1792004862537_mbwbl",
+      "name": "Pickled vegetables (jar)",
+      "price": 1,
+      "source": "foods",
+      "meta": "food"
+     },
+     {
+      "id": "ware_1792004862537_f0sur",
+      "name": "Stout, mug",
+      "price": 1,
+      "source": "foods",
+      "meta": "drink"
+     },
+     {
+      "id": "ware_1792004862537_bejzs",
+      "name": "Honey (jar)",
+      "price": 1,
+      "source": "foods",
+      "meta": "food"
+     },
+     {
+      "id": "ware_1792004862537_6fihh",
+      "name": "Boiled eggs (three)",
+      "price": 1,
+      "source": "foods",
+      "meta": "food"
+     },
+     {
+      "id": "ware_1792004862537_ickz7",
+      "name": "Sausage link",
+      "price": 1,
+      "source": "foods",
+      "meta": "food"
+     },
+     {
+      "id": "ware_1792004862537_z7jhr",
+      "name": "Mead, mug",
+      "price": 1,
+      "source": "foods",
+      "meta": "drink"
+     },
+     {
+      "id": "ware_1792004862537_jg5ei",
+      "name": "Cider, mug",
+      "price": 1,
+      "source": "foods",
+      "meta": "drink"
+     }
+    ]
+   }
+  },
+  "6aa2322b-8bb5-48d3-a6c5-a4533ca871a1": {
+   "id": "6aa2322b-8bb5-48d3-a6c5-a4533ca871a1",
+   "kind": "npc",
+   "name": "Librarian",
+   "imageUrl": "icon:book:#3d4f6b",
+   "color": "#3d4f6b",
+   "col": 12,
+   "row": 2,
+   "size": 1,
+   "hp": 20,
+   "maxHp": 20,
+   "armorClass": 10,
+   "ownerId": null,
+   "layerId": "96bdfdc0-83eb-4286-ab18-5cd7cf9d08ed",
+   "islandId": "7900515a-3d54-4858-92dc-ab2916afd54f",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "",
+   "mobSheet": {
+    "level": 1,
+    "armorClass": 10,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 10,
+     "dex": 10,
+     "con": 10,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "shop": {
+    "role": "tomes",
+    "wares": [
+     {
+      "id": "ware_1792004877573_fxtxt",
+      "name": "The Long Song of Ember and Ash",
+      "price": 55,
+      "source": "tomes",
+      "meta": "songs · Unknown"
+     },
+     {
+      "id": "ware_1792004877573_ftw61",
+      "name": "A Short Reckoning of the Long Winter",
+      "price": 15,
+      "source": "tomes",
+      "meta": "history · Brother Odo of Farrowmere"
+     },
+     {
+      "id": "ware_1792004877573_vc4o4",
+      "name": "Laments of the Grey Coast",
+      "price": 11,
+      "source": "tomes",
+      "meta": "songs · Sorrel Dunmere"
+     },
+     {
+      "id": "ware_1792004877573_lco23",
+      "name": "Verses for a Sleeping Dragon",
+      "price": 40,
+      "source": "tomes",
+      "meta": "songs · Elian Starling"
+     },
+     {
+      "id": "ware_1792004877573_7p6r8",
+      "name": "The Ledger of Lost Cities",
+      "price": 40,
+      "source": "tomes",
+      "meta": "history · Ysolde Marrin"
+     },
+     {
+      "id": "ware_1792004877573_3ptfm",
+      "name": "A Year in the Fen",
+      "price": 12,
+      "source": "tomes",
+      "meta": "nature · Wilmot Reedy"
+     },
+     {
+      "id": "ware_1792004877573_ceea4",
+      "name": "Borders, Marches and Disputed Ground",
+      "price": 22,
+      "source": "tomes",
+      "meta": "law · Surveyor Hale Brandt"
+     },
+     {
+      "id": "ware_1792004877573_ub0b8",
+      "name": "Weather Signs of the Northern Sky",
+      "price": 9,
+      "source": "tomes",
+      "meta": "nature · Shepherd Alder Voss"
+     },
+     {
+      "id": "ware_1792004877573_eu62m",
+      "name": "Dialogues with a Doubting Knight",
+      "price": 22,
+      "source": "tomes",
+      "meta": "religion · Prior Alaric Senn"
+     },
+     {
+      "id": "ware_1792004877573_cl7q9",
+      "name": "Sayings of the Wandering Saint",
+      "price": 14,
+      "source": "tomes",
+      "meta": "religion · Collected by Brother Lume"
+     }
+    ]
+   }
+  },
+  "2809ea0c-2102-40e2-ba79-7ef1e85bfcf0": {
+   "id": "2809ea0c-2102-40e2-ba79-7ef1e85bfcf0",
+   "kind": "door",
+   "name": "Blacksmith",
+   "imageUrl": "icon:door:#5c4a2e",
+   "color": "#5c4a2e",
+   "col": 15,
+   "row": 10,
+   "size": 1,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": "d0170409-c318-42c1-aadd-261995f067c0",
+   "targetCol": 0,
+   "targetRow": 0
+  },
+  "b887e44a-e950-4cdc-bd3f-507339ea63cb": {
+   "id": "b887e44a-e950-4cdc-bd3f-507339ea63cb",
+   "kind": "mob",
+   "name": "Giant Rat",
+   "imageUrl": "icon:paw:#6b5a3e",
+   "color": "#6b5a3e",
+   "col": 17,
+   "row": 12,
+   "size": 1,
+   "hp": 7,
+   "maxHp": 7,
+   "armorClass": 12,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "Bite +4, 1d4+2 piercing.",
+   "mobSheet": {
+    "level": 1,
+    "armorClass": 12,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 7,
+     "dex": 15,
+     "con": 11,
+     "int": 2,
+     "wis": 10,
+     "cha": 4
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [
+     {
+      "weaponName": "Bite",
+      "numberOfDice": 1,
+      "diceType": "d4",
+      "additionalModifier": 4,
+      "additionalDamage": 2
+     }
+    ],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "droppables": [],
+   "initiativeRoll": null,
+   "initiativeTurn": null
+  },
+  "7691f21d-0527-421e-a87e-83979c60be73": {
+   "id": "7691f21d-0527-421e-a87e-83979c60be73",
+   "kind": "mob",
+   "name": "Kobold",
+   "imageUrl": "icon:dagger:#8f3a20",
+   "color": "#8f3a20",
+   "col": 17,
+   "row": 10,
+   "size": 1,
+   "hp": 5,
+   "maxHp": 5,
+   "armorClass": 12,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "Dagger +4, 1d4+2 piercing. Sling +4, 1d4+2 bludgeoning.",
+   "mobSheet": {
+    "level": 1,
+    "armorClass": 12,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 7,
+     "dex": 15,
+     "con": 9,
+     "int": 8,
+     "wis": 7,
+     "cha": 8
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [
+     {
+      "weaponName": "Dagger",
+      "numberOfDice": 1,
+      "diceType": "d4",
+      "additionalModifier": 4,
+      "additionalDamage": 2
+     },
+     {
+      "weaponName": "Sling",
+      "numberOfDice": 1,
+      "diceType": "d4",
+      "additionalModifier": 4,
+      "additionalDamage": 2
+     }
+    ],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "droppables": [],
+   "initiativeRoll": null,
+   "initiativeTurn": null
+  },
+  "41a5a1b5-0a40-43c3-b5b4-cf408fa977cc": {
+   "id": "41a5a1b5-0a40-43c3-b5b4-cf408fa977cc",
+   "kind": "mob",
+   "name": "Bandit",
+   "imageUrl": "icon:dagger:#5c5648",
+   "color": "#5c5648",
+   "col": 18,
+   "row": 11,
+   "size": 1,
+   "hp": 11,
+   "maxHp": 11,
+   "armorClass": 12,
+   "ownerId": null,
+   "layerId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+   "islandId": "2ec72665-92af-4ece-ba8e-3d21f4a05817",
+   "targetLayerId": null,
+   "targetCol": null,
+   "targetRow": null,
+   "conditions": [],
+   "dmNotes": "Scimitar +3, 1d6+1 slashing. Light crossbow +3, 1d8+1 piercing.",
+   "mobSheet": {
+    "level": 1,
+    "armorClass": 12,
+    "initiative": 0,
+    "speed": 30,
+    "deathSaves": {
+     "successes": 0,
+     "failures": 0
+    },
+    "proficiencyBonus": 2,
+    "abilities": {
+     "str": 11,
+     "dex": 12,
+     "con": 12,
+     "int": 10,
+     "wis": 10,
+     "cha": 10
+    },
+    "savingThrows": {
+     "str": {
+      "proficient": false,
+      "value": 0
+     },
+     "dex": {
+      "proficient": false,
+      "value": 0
+     },
+     "con": {
+      "proficient": false,
+      "value": 0
+     },
+     "int": {
+      "proficient": false,
+      "value": 0
+     },
+     "wis": {
+      "proficient": false,
+      "value": 0
+     },
+     "cha": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "skills": {
+     "acrobatics": {
+      "proficient": false,
+      "value": 0
+     },
+     "animalHandling": {
+      "proficient": false,
+      "value": 0
+     },
+     "arcana": {
+      "proficient": false,
+      "value": 0
+     },
+     "athletics": {
+      "proficient": false,
+      "value": 0
+     },
+     "deception": {
+      "proficient": false,
+      "value": 0
+     },
+     "history": {
+      "proficient": false,
+      "value": 0
+     },
+     "insight": {
+      "proficient": false,
+      "value": 0
+     },
+     "intimidation": {
+      "proficient": false,
+      "value": 0
+     },
+     "investigation": {
+      "proficient": false,
+      "value": 0
+     },
+     "medicine": {
+      "proficient": false,
+      "value": 0
+     },
+     "nature": {
+      "proficient": false,
+      "value": 0
+     },
+     "perception": {
+      "proficient": false,
+      "value": 0
+     },
+     "performance": {
+      "proficient": false,
+      "value": 0
+     },
+     "persuasion": {
+      "proficient": false,
+      "value": 0
+     },
+     "religion": {
+      "proficient": false,
+      "value": 0
+     },
+     "sleightOfHand": {
+      "proficient": false,
+      "value": 0
+     },
+     "stealth": {
+      "proficient": false,
+      "value": 0
+     },
+     "survival": {
+      "proficient": false,
+      "value": 0
+     }
+    },
+    "attacks": [
+     {
+      "weaponName": "Scimitar",
+      "numberOfDice": 1,
+      "diceType": "d6",
+      "additionalModifier": 3,
+      "additionalDamage": 1
+     },
+     {
+      "weaponName": "Light crossbow",
+      "numberOfDice": 1,
+      "diceType": "d8",
+      "additionalModifier": 3,
+      "additionalDamage": 1
+     }
+    ],
+    "equipment": {
+     "gear": [],
+     "other": []
+    },
+    "currency": {
+     "bronze": 0,
+     "silver": 0,
+     "gold": 0
+    },
+    "spellcasting": {
+     "class": "",
+     "ability": "",
+     "saveDC": 0,
+     "attackBonus": 0,
+     "levels": {
+      "0": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "1": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "2": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "3": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "4": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "5": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "6": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "7": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "8": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      },
+      "9": {
+       "slotsTotal": 0,
+       "slotsExpended": 0,
+       "spells": []
+      }
+     }
+    }
+   },
+   "droppables": [],
+   "initiativeRoll": null,
+   "initiativeTurn": null
+  }
+ },
+ "entityOrder": [
+  "90b9969b-00a2-48f1-8111-562b438b1737",
+  "360d5281-6d0e-4944-9b55-2eefcc765720",
+  "dae561b2-0120-4268-9246-f0ac802865f5",
+  "30478931-378e-49e5-a772-5c3f89e8772e",
+  "ea693f9d-6149-46ea-9c87-82a1ef640479",
+  "16c40e62-f6c6-4a85-8dd1-dafaca636358",
+  "f4ee4677-03a1-48a9-a1a9-92bb47639784",
+  "04ca9ef9-1ff3-4f33-aaf8-624fa15f027a",
+  "ac7ccf35-bc7e-4388-be63-b67ce117411e",
+  "b6d65988-5004-4ad7-9936-7ceea358c476",
+  "8d08f0f1-f93d-4343-a643-b28a83c52913",
+  "6aa2322b-8bb5-48d3-a6c5-a4533ca871a1",
+  "2809ea0c-2102-40e2-ba79-7ef1e85bfcf0",
+  "b887e44a-e950-4cdc-bd3f-507339ea63cb",
+  "7691f21d-0527-421e-a87e-83979c60be73",
+  "41a5a1b5-0a40-43c3-b5b4-cf408fa977cc"
+ ],
+ "customAssets": {},
+ "customAssetOrder": [],
+ "audio": {
+  "tracks": {
+   "f3a631ec-34a6-45f9-ae8d-50d65505d831": {
+    "id": "f3a631ec-34a6-45f9-ae8d-50d65505d831",
+    "targetKind": "layer",
+    "targetId": "addba8e7-4ed6-423c-ad88-6fae0c422f5c",
+    "name": "Village Consort",
+    "url": "builtin:village-consort",
+    "storagePath": "",
+    "mime": "audio/mpeg",
+    "sizeBytes": 0,
+    "baseVolume": 1,
+    "loop": true
+   }
+  },
+  "trackOrder": [
+   "f3a631ec-34a6-45f9-ae8d-50d65505d831"
+  ],
+  "playback": {
+   "nowPlaying": null,
+   "resume": {}
+  }
+ },
+ "drawings": {},
+ "drawingOrder": [],
+ "fogChunks": {},
+ "fogChunkOrder": []
+}

@@ -113,6 +113,15 @@ The DM edits everything. A player can only:
    everything": toggling a chest's `opened` state is the one write a
    non-host is allowed (`canUpdateEntity`).
 
+A player opens a door, a portal or a chest (and reads a bulletin board) only while a
+hero of theirs stands on its square or the one beside it, diagonals included
+(`src/data/reach.js`). Closing a chest and taking from an open one are not
+held to it, and neither is a player with no hero on the layer they are
+viewing when it comes to doors. The DM is never held to it. It is a rule of
+the table checked by the client (`enterDoor`, `canPlayerUpdateEntity`, which
+the DM's client also applies to a guest table's players); the database does
+not enforce it.
+
 Everything else — placing or removing tokens, editing any stat/sheet/
 condition, chest contents, DM notes/droppables, layers, islands, and
 importing a `.json` table — is host-only, enforced both in the UI
@@ -170,7 +179,7 @@ reloads the full snapshot on mount).
 ### Toolbar (`Toolbar.jsx`) — collapsible, icon-card based, no dropdown menus
 
 - **Tool select** (mutually exclusive): **Play** (select/drag tokens,
-  walk through doors) · **Edit** (host-only: drag islands to reposition,
+  walk through doors) · **Arrange maps** (key `edit`; host-only: drag islands to reposition,
   edit chest contents) · **Pan** (click-drag to scroll) · **Ruler**
   (click-drag to measure) · **Fog of war** (host-only, desktop: cover
   parts of a map until the party explores them — see Fog of war below).
@@ -263,8 +272,11 @@ returns `false` and the map does not hold it at the drop square.
 
 ### Token sidebar (`TokenSidebar.jsx`)
 
-- **Add your own image**: upload any image as a Hero or Monster token
-  (client-resized to 256px before embedding as a data URL).
+- A token's own picture is not added here: the DM places a hero, NPC or
+  monster, then clicks the pencil on its picture on the inspector's card
+  (`CreatureCard.jsx`'s `TokenPictureButton`; the avatar on the phone
+  sheet). The image is client-resized to 256px and replaces the token's
+  `imageUrl`, so the card and the map token both draw it.
 - **Default heroes** (8: Fighter, Wizard, Rogue, Ranger, Bard, Barbarian,
   Cleric, Paladin) and **default monsters** (5: Goblin, Skeleton, Orc,
   Dire Wolf, Young Dragon) — hand-drawn inline-SVG icons
@@ -281,7 +293,72 @@ returns `false` and the map does not hold it at the drop square.
   `icon:sprite-<name>:<#color>` (`sprite-warrior`, `sprite-rogue`,
   `sprite-ranger`, `sprite-wizard`, `sprite-bard`, `sprite-barbarian`,
   `sprite-cleric`, `sprite-mage`).
-- **Placeable** tiles (Door, Chest, Trap, Ambush): clicking one opens its
+- **Bulletin board** (`src/data/bulletins.js`, `kind: 'bulletin'`): a
+  placeable the DM pins bulletins to, each a title and some text
+  (`bulletins: [{ id, title, text }]`), from its
+  configuration modal and later from its inspector (shared
+  `BulletinsEditor.jsx`). A board is never written to the database: on a
+  cloud table the DM's browser keeps every board (`saveTableBoards`) and
+  announces the ones players may see over the table's channel — each change
+  as it is made, on the `entity` announcements every token uses, and in full
+  a moment later and to a player who connects afterwards
+  (`src/lib/boardSync.js`, the `boards` event in `realtime.js`) — so players
+  see boards only while the DM's browser is at the table and the DM has them
+  only in the browser they were made in. A guest or local table carries a
+  board like any other token. (`72_bulletin_boards.sql` is kept, unused, for
+  the day boards are stored in the database instead.) Clicking the token opens `BulletinBoardModal.jsx`:
+  every bulletin a card that flips face-up, like the loot reveal. The DM
+  reads any board; a player only while a hero of theirs stands on its square
+  or the one next to it (`canReadBulletinBoard`, checked by the client in
+  `GameView.jsx`'s `openBulletinBoard`), and the modal shuts if that hero
+  walks off. Only the DM edits it, and can hide it like a chest.
+- **Portal** (`src/data/portals.js`, `kind: 'portal'`): a door that
+  comes out wherever its partner stands. It is placed as a pair of tokens
+  (`GameView.jsx`'s `addPortalPair`): one end on the map in view, the other
+  on the map the DM picks in its modal — any map of any layer, this one
+  included — each holding the other's id as `linkId`. The DM drags either
+  end afterwards (**Show the other end** on its card goes to the partner).
+  It is used exactly as a door is and through the same code (`enterDoor`
+  hands a portal to `enterPortal`, `MapBoard.jsx` treats both as
+  `isGate`): a player clicks it from its square or the one beside it and
+  confirms, and their hero lands on a free square beside the other end
+  (`arrivalCellNear`); onto another layer the player's view follows, onto
+  another map of the same layer that map is brought into view. The DM
+  drops a hero or monster on it to send that token through. Each end has
+  its own lock and its own hiding (`isLockedDoor` covers both kinds); a
+  player can't step into a portal whose other end their client doesn't
+  hold (hidden, or under the fog of war), nor one that comes out in a
+  held-back chunk. Removing one end removes the other (`removeEntity`); an
+  end left alone because its partner's map or layer was deleted leads
+  nowhere until the DM removes it. Like a bulletin board it is never
+  written to the database and is kept with the boards (`boardSync.js`'s
+  `isOffDatabase`), so on a cloud table it is only there while the DM's
+  browser is. Like a board's, its changes reach players live, each as it is
+  made, on the same `entity` announcements as every other token
+  (`announceEntityChange`, `receiveBoardChange`); the `boards` messages
+  say it again in full, which is how a player who connects afterwards gets it.
+- **Cover** (`src/data/cover.js`, `kind: 'cover'`): part of a map the DM
+  marks as quarter, half or full cover. It is not a tile in the sidebar: it
+  is laid like an area of effect. The **Cover** tool (DM only) opens
+  `AreaPicker` with `cover` — a level, one of `COVER_SHAPES` (line, square,
+  circle: an area of effect's line, cube and sphere) and a size — and the
+  choice becomes the Area tool's draft with `cover` set, aimed and placed
+  exactly as a spell's template is. **Place** (`placeArea`) then calls
+  `addCover` instead of announcing a template: unlike a template a cover
+  stays, so it is kept as a token holding `coverLevel` and the template it
+  was laid as (`coverShape`, `coverSize`, `coverWidth`, `coverAt`,
+  `coverAngle`), with `col`/`row` the square it starts on. `MapBoard.jsx`
+  never draws it as a token: `GameView` hands the layer's covers to it among
+  the templates (`layerCovers`, `coverAsArea`), drawn under the spells' in a
+  faint yellow wash inside a yellow outline, more solid the more cover, with
+  a tag naming the level. The DM's tag has the button that takes it off
+  (`removeArea` → `removeEntity`); it can't be moved or edited afterwards.
+  It is a marker only: no roll, attack or armour class reads it. It takes up
+  no square (`findFreeCell`, `arrivalCellNear`), and one whose starting
+  square is under the fog of war is kept from players like any fogged token.
+  Like a bulletin board it is never written to the database and travels the
+  same way (`boardSync.js`'s `OFF_DATABASE_KINDS`).
+- **Placeable** tiles (Door, Chest, Trap, Ambush, Bulletin board, Portal): clicking one opens its
   configuration modal straight away; nothing is set up in the sidebar.
   **Door**: name + target layer (or, with no second layer yet, the form
   to create one) → places a linked pair of door tokens. **Chest**: name +
@@ -322,7 +399,7 @@ and Bag tabs; anyone else sees plain values with no pencil.
 - **Chest** — name, Open/Close toggle (independent of the active tool), a
   **Give to a player** picker per item once opened (moves the item from
   the chest into a chosen hero's Bag), and contents editing (only while
-  the Edit tool is selected) via the shared `ChestContentsEditor`.
+  the Arrange maps tool is selected) via the shared `ChestContentsEditor`.
 
 **Conditions** (`src/data/conditions.js`): Poisoned, Stunned, Prone,
 Shocked, Bleeding — purely visual/informational badges on hero and mob
@@ -547,8 +624,10 @@ built-in icons and the animated heroes); nothing can be bought yet.
 ### Characters screen & premade heroes (`CharacterBuilder.jsx`, `lib/heroFile.js`)
 
 A full-window screen for players and the DM alike, opened from **Create a
-character** on the landing screen (no table needed), the toolbar's
-**Characters** tab, and both phone table menus. It shows the same card a hero
+character** on the landing screen (no table needed) and, at a table, from
+**Create hero** at the top of the DM's Tokens panel, above the default heroes
+(`TokenSidebar.jsx`, desktop and the phone's Add sheet) or, for a player,
+the toolbar's **Characters** tab and the phone's table menu. It shows the same card a hero
 has on the map (`CreatureCard` with the Battle, Spells, Bag and Skills tab
 bodies, every value click-to-edit) over a hero that stands on no map yet:
 `{ name, imageUrl, color, size, maxHp, sheet }`. Its picture is a default
@@ -563,7 +642,8 @@ table.
   trusted: `sanitizeHero` / `sanitizeSheet` rebuild it field by field within
   bounds, and its picture is redrawn at token size and scored by the filter.
 - **The DM** places it with **Place on the map**, or uploads a player's file
-  straight onto the map from the Tokens panel (**Upload a premade hero**).
+  onto the map from the Tokens panel: **Import hero** opens a window to
+  choose the file, shows the hero it holds, and **Create token** places it.
   `entityFromDraft` takes the draft's `sheet`, `size` and `ownerId`.
 - **A player** can't add a token, so **Send to the DM** offers the hero over
   the table's channel (a `hero` broadcast, like dice rolls: never stored, and
@@ -706,7 +786,23 @@ Conflict handling is last-write-wins per row. Realtime sends nothing when
 a row stops being readable, so a token the DM hides, or one the fog of war
 now covers, leaves players' maps through a `conceal` broadcast naming it
 (the row stays the authority: a client drops the token only if it really
-can no longer read it). This is already a working
+can no longer read it). Every change to a token — placing, moving, editing, removing; heroes,
+monsters, NPCs and shopkeepers, doors, chests, traps — is written to the
+database and also announced over the channel (an `entity` broadcast,
+`src/lib/fastSync.js`), because a change takes seconds to come back out of
+the database and a broadcast a fraction of one. An announcement is a
+preview: each browser keeps a token's fields at the value the newest
+announced change gave them until the database says the same, holding back
+any older value it reports meanwhile, and what the database has not
+confirmed within ten seconds gives way to what it last said (a token
+announced but never written comes off again). What players may not see is
+never announced — it goes through the same filter as a guest table's
+broadcast (`toGuestBroadcastAction`) — and a browser takes an announcement
+only from someone who could have made that change (the DM anything, a
+player what `canPlayerUpdateEntity` allows). A bulletin board or a portal is
+announced the same way though it has no row: nothing confirms it, so nothing
+of it is held back or given way. Their own channel messages (`boardSync.js`)
+say each again in full and carry them to a player who connects later. This is already a working
 WebSocket-based live sync layer — `REALTIME_ROADMAP.md` lays out the
 step-by-step plan for hardening it (reconnect recovery, presence,
 ephemeral live-drag updates, load testing) into full live-service quality.

@@ -2,7 +2,10 @@ import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from
 import { pixelToCell, feetDistance, feetAlongLine, computeCanvasBounds, gridLineStyle } from '../utils/grid.js';
 import { CONDITIONS } from '../data/conditions.js';
 import { isHiddenFromPlayers, isLockedDoor, isLockedChest } from '../data/visibility.js';
+import { isGate } from '../data/portals.js';
+import { isCover, coverLevelOf } from '../data/cover.js';
 import { ambushMonsterCount } from '../data/ambush.js';
+import { bulletinsOf } from '../data/bulletins.js';
 import { isCreature } from '../data/tokenKinds.js';
 import { getIslandCondition } from '../data/islandConditions.js';
 import { DAY_PHASES, islandPhase } from '../data/dayPhases.js';
@@ -31,11 +34,11 @@ const FOG_HANDLE_REACH_PX = 8; // how near a press must be to a picked fog chunk
 const FLOAT_MS = 1300; // how long a hit number drifts up over a token
 const ISLAND_SNAP_PX = 20; // un-zoomed pixels — how close an island's edge must get to another's to snap flush
 
-// Paint order among tokens, lowest first: traps underneath, doors on top,
-// everything else (in entityOrder) between.
+// Paint order among tokens, lowest first: traps underneath, doors and
+// portals (data/portals.js) on top, everything else (in entityOrder) between.
 function tokenStackRank(entity) {
   if (entity?.kind === 'trap') return 0;
-  if (entity?.kind === 'door') return 2;
+  if (isGate(entity)) return 2;
   return 1;
 }
 
@@ -57,6 +60,7 @@ export default function MapBoard({
   canMoveEntity,
   isHost,
   onEnterDoor,
+  onOpenBulletinBoard,
   tool, // 'play' | 'edit' | 'pan' | 'ruler' | 'draw' | 'area' | 'fogofwar'
   zoom = 1,
   onRulerChange,
@@ -66,7 +70,7 @@ export default function MapBoard({
   onTapCell = null, // phone layout: (islandId, col, row) => true when the tap was used (a move or a planned move)
   plannedMove = null, // phone layout: { entityId, islandId, col, row, confirmLabel, note, onConfirm, onCancel } — a move waiting for "Move here"
   tokenActions = null, // phone layout: the selected token's actions, fanned around it — [{ id, label, icon, primary, onPress }]
-  areas = [], // area-of-effect templates on this layer (utils/areaOfEffect.js), each with `removable` for this viewer
+  areas = [], // area-of-effect templates on this layer (utils/areaOfEffect.js), each with `removable` for this viewer; its covers too (data/cover.js), each with `cover`, its level
   areaDraft = null, // Area tool: the template being aimed
   onAreaAim = null, // (patch) => void — the draft's origin, aim point or angle, from a press or drag
   onRemoveArea = null, // (id) => void
@@ -234,7 +238,7 @@ export default function MapBoard({
   function findDoorAt(islandId, col, row) {
     for (const id of entityOrder) {
       const e = entities[id];
-      if (e?.kind === 'door' && e.islandId === islandId && e.col === col && e.row === row) return e;
+      if (isGate(e) && e.islandId === islandId && e.col === col && e.row === row) return e; // a door, or a portal's end
     }
     return null;
   }
@@ -300,7 +304,7 @@ export default function MapBoard({
     if (!isHost && isLockedDoor(entity)) return; // a locked door isn't a player's to click: no selection, no "Open the door?"
     onSelectEntity(entity.id);
     const p = getRelativePoint(e.clientX, e.clientY);
-    const locked = entity.kind === 'door' && isDoorOccupied(entity);
+    const locked = isGate(entity) && isDoorOccupied(entity);
     dragRef.current = { id: entity.id, entity, downX: p.x, downY: p.y, locked };
     // Still track the pointer even for a token this viewer can't reposition
     // (a door click-to-enter needs the down/up cycle to detect click-vs-drag),
@@ -364,9 +368,10 @@ export default function MapBoard({
     // then snapped back" instead of "it never moved."
     const allowed = canMoveEntity?.(current.entity);
 
-    if (current.entity.kind === 'door') {
+    if (isGate(current.entity)) {
       // Clicking a door (occupied or not) always offers to open it. Dragging
-      // only repositions it when nothing is currently standing on it.
+      // only repositions it when nothing is currently standing on it. A
+      // portal's end (data/portals.js) is clicked and dragged the same way.
       if (isClick && !isHost) {
         setDragPos(null);
         onEnterDoor?.(current.entity);
@@ -377,6 +382,14 @@ export default function MapBoard({
       } else {
         setDragPos(null);
       }
+      return;
+    }
+
+    // A click on a bulletin board (not a drag, which moves it for the DM)
+    // opens it to read.
+    if (current.entity.kind === 'bulletin' && isClick) {
+      setDragPos(null);
+      onOpenBulletinBoard?.(current.entity);
       return;
     }
 
@@ -393,16 +406,12 @@ export default function MapBoard({
       return;
     }
     holdDragAt(current.id, size, col, row, found.island.id, found);
-    // Landing a hero token on a door's square (via an actual drag, not a
-    // bare click/reselect) offers to walk through it. The DM gets the same
-    // offer for any hero, monster or NPC they drop on a door.
-    const canUseDoor = isHost ? isCreature(current.entity) : current.entity.kind === 'hero';
-    if (canUseDoor && !isClick) {
+    // The DM dropping a hero, monster or NPC on a door's square (an actual
+    // drag, not a bare click/reselect) offers to send it through. A player's
+    // hero landing on one is only a move: they open a door by clicking it.
+    if (isHost && isCreature(current.entity) && !isClick) {
       const door = findDoorAt(found.island.id, col, row);
-      if (door) {
-        console.log(`${current.entity.name} landed on door "${door.name}" at (${col}, ${row})`);
-        onEnterDoor?.(door, current.entity);
-      }
+      if (door) onEnterDoor?.(door, current.entity);
     }
   }
 
@@ -1142,7 +1151,8 @@ export default function MapBoard({
     const inside = [];
     for (const id of entityOrder) {
       const e = entities[id];
-      if (!isCreature(e)) continue;
+      // A cover (data/cover.js) marks ground: nobody is counted inside it.
+      if (area.cover || !isCreature(e)) continue;
       if (e.id === area.entityId && shape.aim !== 'point') continue;
       const size = e.size || 1;
       let hit = false;
@@ -1158,7 +1168,8 @@ export default function MapBoard({
       isDraft && shape.aim === 'point' && fromToken
         ? { from: toPx(at), to: toPx([outline.cx, outline.cy]), feet: Math.round(Math.hypot(outline.cx - at[0], outline.cy - at[1]) * feet) }
         : null;
-    return { area, isDraft, outline, toPx, scale: r.cellSize, cells, inside, tag, range };
+    const label = area.cover ? coverLevelOf(area.cover).label : areaLabel(area);
+    return { area, isDraft, label, outline, toPx, scale: r.cellSize, cells, inside, tag, range };
   }
 
   const areaViews = [...areas.map((a) => areaView(a, false)), areaDraft && tool === 'area' ? areaView(areaDraft, true) : null].filter(Boolean);
@@ -1329,7 +1340,11 @@ export default function MapBoard({
       {areaViews.length > 0 && (
         <svg className="grid-svg area-layer" width={canvasWidth} height={canvasHeight} aria-hidden="true">
           {areaViews.map((v) => (
-            <g key={v.area.id} className={`area${v.isDraft ? ' draft' : ''}`} style={{ '--area-color': v.area.color || 'var(--gold-hi)' }}>
+            <g
+              key={v.area.id}
+              className={`area${v.isDraft ? ' draft' : ''}${v.area.cover ? ' cover' : ''}${v.area.concealed ? ' dm-hidden' : ''}`}
+              style={{ '--area-color': v.area.color || 'var(--gold-hi)', ...(v.area.cover ? { '--cover-fill': coverLevelOf(v.area.cover).fill } : {}) }}
+            >
               {v.cells.map((c) => (
                 <rect key={`${c.x}:${c.y}`} x={c.x} y={c.y} width={c.size} height={c.size} className="area-cell" />
               ))}
@@ -1354,7 +1369,8 @@ export default function MapBoard({
         .sort((a, b) => tokenStackRank(entities[a]) - tokenStackRank(entities[b]))
         .map((id) => {
           const entity = entities[id];
-          if (!entity) return null;
+          // A cover (data/cover.js) is drawn as a template above, never as a token.
+          if (!entity || isCover(entity)) return null;
           const r = islandRects[entity.islandId];
           if (!r) return null; // entity's island doesn't exist on this layer view
           const islandLeft = (r.x - originX) * zoom;
@@ -1376,7 +1392,7 @@ export default function MapBoard({
           return (
             <div
               key={id}
-              className={`token${sprite ? ' sprite' : ''}${entity.kind === 'door' ? ' door' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
+              className={`token${sprite ? ' sprite' : ''}${isGate(entity) ? ' door' : ''}${entity.kind === 'portal' ? ' portal' : ''}${concealed ? ' dm-hidden' : ''}${locked ? ` locked${isHost ? '' : ' shut'}` : ''}${isDragging ? ' dragging' : ''}${selectedId === id ? ' selected' : ''}${actorId === id ? ' acting' : ''}${inAreaIds.has(id) ? ' in-area' : ''}`}
               style={{
                 width: size,
                 height: size,
@@ -1406,6 +1422,11 @@ export default function MapBoard({
               {entity.kind === 'ambush' && (
                 <span className="token-count" title={`${ambushMonsterCount(entity)} monsters waiting`}>
                   {ambushMonsterCount(entity)}
+                </span>
+              )}
+              {entity.kind === 'bulletin' && bulletinsOf(entity).length > 0 && (
+                <span className="token-count" title={`${bulletinsOf(entity).length} pinned`}>
+                  {bulletinsOf(entity).length}
                 </span>
               )}
               {entity.kind !== 'door' && entity.initiativeTurn != null && (
@@ -1471,23 +1492,23 @@ export default function MapBoard({
       })}
 
       {/* Each template's tag: what it is, whose, how many creatures are inside,
-          and a button to take it off for whoever may. */}
+          and a button to take it off for whoever may. A cover's says its level. */}
       {areaViews.map((v) => (
         <div
           key={v.area.id}
-          className={`area-tag${v.isDraft ? ' draft' : ''}`}
+          className={`area-tag${v.isDraft ? ' draft' : ''}${v.area.cover ? ' cover' : ''}`}
           style={{ left: v.tag[0], top: v.tag[1], '--area-color': v.area.color || 'var(--gold-hi)' }}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           <span className="area-tag-swatch" aria-hidden="true" />
           <span>
-            {areaLabel(v.area)}
-            {v.range ? ` · ${v.range.feet} ft away` : !v.isDraft ? ` · ${v.area.name}` : ''}
+            {v.label}
+            {v.area.cover ? (v.area.concealed ? ' · hidden by fog' : '') : v.range ? ` · ${v.range.feet} ft away` : !v.isDraft ? ` · ${v.area.name}` : ''}
           </span>
           {v.inside.length > 0 && <b title={v.inside.map((e) => e.name).join(', ')}>{v.inside.length} inside</b>}
           {v.area.removable && onRemoveArea && (
-            <button type="button" aria-label={`Remove ${v.area.name}’s ${areaLabel(v.area)}`} title="Remove" onClick={() => onRemoveArea(v.area.id)}>
+            <button type="button" aria-label={v.area.cover ? `Remove this ${v.label.toLowerCase()}` : `Remove ${v.area.name}’s ${v.label}`} title="Remove" onClick={() => onRemoveArea(v.area.id)}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" />
               </svg>

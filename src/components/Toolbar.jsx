@@ -3,7 +3,7 @@ import ModalIcon from './ModalIcon.jsx';
 import ModalShell from './ModalShell.jsx';
 import { Hint, Tip, useHintPrefs } from './Hints.jsx';
 import DiceModal from './DiceModal.jsx';
-import { clampGridDims, clampFeetPerSquare, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
+import { clampGridDims, clampFeetPerSquare, islandFeet, GRID_LINE_STRENGTHS, GRID_LINE_COLORS, normalizeGridLines, gridLineStyle } from '../utils/grid.js';
 import { resolveImage } from '../lib/imageCache.js';
 import { islandsBounds, resizeImageToDataUrl, sliceImageForIslands } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
@@ -21,11 +21,13 @@ import { shopPrice, entryGoods, knowsSpell, sheetWithGoods, sourceEntries, clean
 import { ISLAND_CONDITIONS } from '../data/islandConditions.js';
 import { ISLAND_DAY_NIGHT_MODES, DAY_PHASES } from '../data/dayPhases.js';
 import ClockReadout from './ClockReadout.jsx';
+import ClockForm from './ClockForm.jsx';
 import SoundField from './SoundField.jsx';
 import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import RulesBook from './RulesBook.jsx';
 import StoreModal from './StoreModal.jsx';
+import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 import { useFx } from '../lib/fx.js';
 import { PALETTES } from '../state/theme.js';
 
@@ -63,9 +65,9 @@ function ToolCard({ icon, image, label, active, onClick, disabled, title, badge,
 // entries near the right end of the bar, whose menus would otherwise run
 // off-screen.
 // tour: the name the tutorial (Tour.jsx) finds this button by.
-// panel: { title, icon, width } — the entry opens as a side panel beside the
-// rail instead of a menu (ModalShell's `side`). A panel stays open while the
-// table is played, so a click elsewhere or Escape doesn't close it.
+// panel: { title, icon } — the entry opens as a side panel beside the
+// rail instead of a menu (ModalShell's `side`). It closes on a click on the
+// map or the inspector, not on Escape or a click elsewhere.
 function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popovers, children, className = '', menuClassName = '', align, badge, tour, panel = null }) {
   const ref = useRef(null);
 
@@ -89,7 +91,7 @@ function ToolMenu({ icon, label, title, active, open, onToggle, onClose, popover
     <div className={`toolbar-group ${className}`} ref={ref} data-tour={tour}>
       <ToolCard icon={icon} label={label} active={open || active} onClick={onToggle} title={title} badge={badge} />
       {open && panel && (
-        <ModalShell side title={panel.title} icon={panel.icon} width={panel.width} closeLabel={`Close ${panel.title}`} onClose={onClose}>
+        <ModalShell side title={panel.title} icon={panel.icon} closeLabel={`Close ${panel.title}`} onClose={onClose}>
           <div className={`side-panel-menu${menuClassName ? ` ${menuClassName}` : ''}`}>{children}</div>
         </ModalShell>
       )}
@@ -116,6 +118,8 @@ const ICON_PATHS = {
   pan: 'M10 2v16M2 10h16M10 2L7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5',
   ruler: 'M3 15L15 3l2 2L5 17zM6 11l2 2M9 8l2 2M12 5l2 2',
   area: 'M3 10L16 4c1.500 3.500 1.500 8.500 0 12z',
+  // Cover: a low wall of bricks.
+  cover: 'M3 6h14v9H3zM3 10.500h14M8 6v4.500M13 6v4.500M10.500 10.500V15',
   group: 'M8 12a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1M12 8a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1',
   draw: 'M3 17c2-1 3-3 5-3M13 3l4 4-8 8-4 1 1-4z',
   // Fog of war: a covered (hatched) rectangle — not the Fog condition's mist.
@@ -189,9 +193,9 @@ const EXTRA_BOOKS = ['tomes', 'foods', 'spells', 'potions'];
 const OWN_ASSET_TAB = { tomes: 'tome', foods: 'food', spells: 'spell', potions: 'potion' };
 
 // A card in a rail drawer: its icon, its name and a line saying what it does.
-function DrawerCard({ icon, label, text, title, active = false, danger = false, onClick }) {
+function DrawerCard({ icon, label, text, title, active = false, disabled = false, onClick }) {
   return (
-    <button type="button" className={`drawer-tool${active ? ' active' : ''}${danger ? ' danger' : ''}`} aria-pressed={active || undefined} onClick={onClick} title={title}>
+    <button type="button" className={`drawer-tool${active ? ' active' : ''}`} aria-pressed={active || undefined} disabled={disabled} onClick={onClick} title={title}>
       <span className="drawer-tool-icon">
         <Icon name={icon} />
       </span>
@@ -217,19 +221,21 @@ const TOOL_ICONS = {
   pan: <Icon name="pan" />,
   ruler: <Icon name="ruler" />,
   area: <Icon name="area" />,
+  cover: <Icon name="cover" />,
   draw: <Icon name="draw" />,
   fogofwar: <Icon name="fogofwar" />,
 };
-const TOOL_LABELS = { play: 'Play', edit: 'Edit', pan: 'Pan', ruler: 'Ruler', area: 'Area', draw: 'Draw', fogofwar: 'Fog of war' };
+const TOOL_LABELS = { play: 'Play', edit: 'Arrange maps', pan: 'Pan', ruler: 'Ruler', area: 'Area', cover: 'Cover', draw: 'Draw', fogofwar: 'Fog of war' };
 
 // The Tools drawer (rail): each tool with what it does. `dm`: the DM's only.
 const DRAWER_TOOLS = [
   { key: 'play', text: 'Select tokens and drag them around the map. The everyday tool.' },
+  { key: 'edit', text: 'Drag whole maps to move them and line them up.', dm: true },
   { key: 'ruler', text: 'Drag across the map to measure a distance in feet.' },
-  { key: 'area', text: 'Lay a spell’s area on the map: a cone, cube, line, sphere and more.' },
   { key: 'draw', text: 'Sketch on the map. Everyone at the table sees it.', dm: true },
   { key: 'fogofwar', text: 'Cover parts of a map until the party explores them.', dm: true },
-  { key: 'edit', text: 'Drag whole maps to move them and line them up.', dm: true },
+  { key: 'area', text: 'Lay a spell’s area on the map: a cone, cube, line, sphere and more.' },
+  { key: 'cover', text: 'Mark part of a map as quarter, half or full cover.', dm: true },
 ];
 
 // Seats at a table: the DM plus up to nine players.
@@ -298,6 +304,8 @@ export default function Toolbar({
   tool,
   onToolChange,
   onArea, // opens the area-of-effect picker; the Area tool itself starts once a shape is chosen
+  onCover, // DM: opens the same picker to lay a cover (data/cover.js), which the Area tool then aims
+  layingCover = false, // the Area tool is aiming a cover
   revealRolls = false,
   onRevealRollsChange,
   hideDrawings = false,
@@ -309,7 +317,8 @@ export default function Toolbar({
   onSaveNow,
   autosaveSecondsLeft,
   clock,
-  onOpenClock,
+  onOpenClock, // a phone's clock dialog; the rail sets the clock in the World drawer
+  onUpdateClock,
   audio,
   onOpenMusic,
   musicHint = 'Music plays on cloud and guest tables. This one is a local demo, so it stays quiet.',
@@ -330,6 +339,8 @@ export default function Toolbar({
   onSwitchLayer,
   onCreateLayer,
   onRemoveLayer,
+  onDownloadLayerImage,
+  onUpdateLayer,
   activeIslandId,
   onRecenterIsland,
   onCreateIsland,
@@ -390,18 +401,42 @@ export default function Toolbar({
   const [sidePanel, setSidePanel] = useState(null);
   const [logTab, setLogTab] = useState('rolls'); // 'rolls' | 'heroes', inside the Logs panel
   const [mapTab, setMapTab] = useState('maps'); // 'maps' | 'layers', inside the Mapping drawer
+  // Whether the side panel slides in. Opening one from the rail does; swapping
+  // what stands in the same place — the Mapping drawer's tabs, Dice ⇄ Logs —
+  // doesn't, so it reads as the same panel changing.
+  const [panelEnter, setPanelEnter] = useState(true);
+  function switchMapTab(tab) {
+    setMapTab(tab);
+    setPanelEnter(false);
+  }
   const closeSide = useCallback(() => setSidePanel(null), []);
+  function swapSide(name) {
+    setSidePanel(name);
+    setPanelEnter(false);
+  }
   function openSide(name) {
     const opening = sidePanel !== name;
     setOpenMenu(null);
     setSidePanel(opening ? name : null);
     if (!opening) return;
+    setPanelEnter(true);
     if (tokensOpen) onToggleTokens?.();
     if (musicOpen) onCloseMusic?.();
   }
   // Opens a side panel without folding it away again if it is the one open.
   function showSide(name) {
     if (sidePanel !== name) openSide(name);
+  }
+  // The World drawer's "Set world clock" panel, folded until asked for.
+  const [clockExpanded, setClockExpanded] = useState(false);
+  // The World drawer's "Set day / night" panel, folded until asked for.
+  const [dayNightExpanded, setDayNightExpanded] = useState(false);
+  // Anything that asks to set the clock (the readout above the map, a hint):
+  // on the rail, the World drawer with that panel unfolded.
+  function openClock() {
+    if (!rail) return onOpenClock?.();
+    showSide('world');
+    setClockExpanded(true);
   }
   useEffect(() => {
     if (tokensOpen || musicOpen) setSidePanel(null);
@@ -428,8 +463,9 @@ export default function Toolbar({
   const unseenActivity = activitySeenAt < 0 ? activity.length : activitySeenAt;
   const seenAt = rollLog.findIndex((r) => r.id === seenRollId);
   const unseenRolls = (seenAt < 0 ? rollLog : rollLog.slice(0, seenAt)).filter((r) => !r.mine).length;
+  // The count on the Dice panel's Logs button: both logs' news.
+  const logsUnseen = (rollLogOpen ? 0 : unseenRolls) + (activityLog && !activityOpen ? unseenActivity : 0);
   const hintPrefs = useHintPrefs();
-  const [showMusicHint, setShowMusicHint] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedHostKey, setCopiedHostKey] = useState(false);
   // Keep the bar on a single row: try each density from roomiest to
@@ -559,6 +595,9 @@ export default function Toolbar({
     action();
   }
 
+  // A cover is aimed with the Area tool, but is its own entry among the tools.
+  const toolInHand = tool === 'area' && layingCover ? 'cover' : tool;
+
   function togglePopover(name) {
     // On the rail these stand in a drawer beside it.
     if (rail && (name === 'dayNight' || name === 'ambience')) {
@@ -570,7 +609,7 @@ export default function Toolbar({
     if (rail && (name === 'islands' || name === 'layers' || name === 'initiative')) {
       closePopovers();
       if (name !== 'islands') setIslandsFocusId(null);
-      if (name !== 'initiative') setMapTab(name === 'layers' ? 'layers' : 'maps');
+      if (name !== 'initiative') switchMapTab(name === 'layers' ? 'layers' : 'maps');
       showSide(name === 'initiative' ? 'initiative' : 'mapping');
       return;
     }
@@ -604,7 +643,7 @@ export default function Toolbar({
       setIslandsFocusId(event.islandId || null);
       togglePopover('islands');
     } else if (['layers', 'initiative', 'assetStorage', 'ambience'].includes(event.panel)) togglePopover(event.panel);
-    else if (event.panel === 'clock') onOpenClock?.();
+    else if (event.panel === 'clock') openClock();
     else if (event.panel === 'bestiary') {
       const open = showMonsterCompendium;
       togglePopover(null);
@@ -676,6 +715,16 @@ export default function Toolbar({
     const members = (grouped.length > 1 ? grouped : [layer.islands[islandId]]).map((member) => (member.id === islandId && size ? { ...member, ...size } : member));
     if (members.length > 1 || placement) return sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78, placement, placements);
     return { [islandId]: await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78) };
+  }
+
+  // The same for a whole layer's background image, picked in the layer's
+  // settings (Layers list): laid over every map on the layer together, each
+  // getting its own part — the shape the layer's Download map exports.
+  async function prepareLayerBackground(layerId, file, placement = null, placements = null) {
+    const target = layers?.[layerId];
+    const members = (target?.islandOrder || []).map((id) => target.islands[id]).filter(Boolean);
+    if (members.length > 1 || placement) return sliceImageForIslands(file, members, BACKGROUND_IMAGE_MAX_DIM, 0.78, placement, placements);
+    return { [members[0].id]: await resizeImageToDataUrl(file, BACKGROUND_IMAGE_MAX_DIM, 0.78) };
   }
 
   function handleImportFile(e) {
@@ -756,19 +805,89 @@ export default function Toolbar({
     </Tip>
   );
 
-  // The Mapping drawer holds World maps and Layers behind one switch.
+  // The World maps panel's way back to the World drawer it was opened from.
+  const backToWorld = (
+    <button type="button" className="side-panel-head-btn" onClick={() => swapSide('world')} title="Back to World" aria-label="Back to World">
+      <Icon name="world" />
+    </button>
+  );
+
+  // The World maps panel holds World maps and Layers behind one switch.
   const mappingTabs = rail ? (
-    <div className="side-tabs drawer-tabs" role="tablist" aria-label="Mapping">
+    <div className="side-tabs drawer-tabs" role="tablist" aria-label="World maps">
       {[
         ['maps', 'World maps'],
         ['layers', 'Layers'],
       ].map(([key, text]) => (
-        <button key={key} type="button" role="tab" aria-selected={mapTab === key} className={mapTab === key ? 'active' : ''} onClick={() => setMapTab(key)}>
+        <button key={key} type="button" role="tab" aria-selected={mapTab === key} className={mapTab === key ? 'active' : ''} onClick={() => switchMapTab(key)}>
           {text}
         </button>
       ))}
     </div>
   ) : null;
+
+  // World maps and Layers. On the rail they are one side panel opened from
+  // the World drawer's World maps button, standing in the drawer's place —
+  // its header's world button goes back. Elsewhere they are the Mapping
+  // menu's dialogs.
+  const mappingPanels = (
+    <>
+      {islandsOpen && (
+        <IslandManagerPopover
+          // Asked to open on one map's settings: start afresh on it.
+          key={islandsFocusId || 'maps'}
+          side={rail}
+          sideTabs={mappingTabs}
+          sideEnter={panelEnter}
+          sideHeaderAction={rail ? backToWorld : null}
+          islands={layer.islands}
+          islandOrder={layer.islandOrder}
+          islandGroups={layer.islandGroups || {}}
+          activeIslandId={activeIslandId}
+          onRecenterIsland={onRecenterIsland}
+          onCreateIsland={onCreateIsland}
+          onRemoveIsland={onRemoveIsland}
+          onDetachIsland={onDetachIsland}
+          onRenameGroup={onRenameGroup}
+          onIslandConditions={onIslandConditions}
+          onGroupConditions={onGroupConditions}
+          onUpdateIsland={onUpdateIsland}
+          onPreviewIslands={onPreviewIslands}
+          onPrepareBackground={prepareIslandBackground}
+          onDownloadIslandImage={onDownloadIslandImage}
+          focusIslandId={islandsFocusId}
+          layerFeet={layer.feetPerSquare || 5}
+          onSwitchToEdit={() => {
+            onToolChange('edit');
+            if (rail) closeSide();
+            else setShowIslands(false);
+          }}
+          onClose={rail ? closeSide : () => setShowIslands(false)}
+        />
+      )}
+      {layersOpen && (
+        <LayerSwitcherPopover
+          side={rail}
+          sideTabs={mappingTabs}
+          sideEnter={panelEnter}
+          sideHeaderAction={rail ? backToWorld : null}
+          layers={layers}
+          layerOrder={layerOrder}
+          currentLayerId={currentLayerId}
+          layerPlayerCounts={layerPlayerCounts}
+          onSwitchLayer={onSwitchLayer}
+          onCreateLayer={onCreateLayer}
+          onRemoveLayer={onRemoveLayer}
+          onDownloadLayerImage={onDownloadLayerImage}
+          onUpdateLayer={onUpdateLayer}
+          onUpdateLayerIsland={onUpdateIsland ? (layerId, islandId, patch) => onUpdateIsland(islandId, patch, layerId) : null}
+          onPreviewIslands={onPreviewIslands}
+          onPrepareBackground={prepareLayerBackground}
+          onClose={rail ? closeSide : () => setShowLayers(false)}
+        />
+      )}
+    </>
+  );
 
   if (collapsed) {
     return (
@@ -791,14 +910,14 @@ export default function Toolbar({
       {/* The trigger shows the active tool's icon, so the current mode is
           still visible with the menu folded away. */}
       <ToolMenu
-        icon={TOOL_ICONS[tool] || <Icon name="tools" />}
+        icon={TOOL_ICONS[toolInHand] || <Icon name="tools" />}
         label="Tools"
         tour="tools"
-        title={`Tools — current: ${TOOL_LABELS[tool] || tool}`}
+        title={`Tools — current: ${TOOL_LABELS[toolInHand] || tool}`}
         open={rail ? sidePanel === 'tools' : openMenu === 'tools'}
         onToggle={() => (rail ? openSide('tools') : toggleMenu('tools'))}
         onClose={rail ? closeSide : closeMenu}
-        panel={rail ? { title: 'Tools', width: 320 } : null}
+        panel={rail ? { title: 'Tools' } : null}
         menuClassName={rail ? 'book-drawer tools-drawer' : ''}
       >
         {/* In the drawer each tool says what it does, and the drawer stays
@@ -806,7 +925,7 @@ export default function Toolbar({
         {rail && (
           <>
             {DRAWER_TOOLS.filter((t) => isHost || !t.dm).map((t) => (
-              <button key={t.key} type="button" className={`drawer-tool${tool === t.key ? ' active' : ''}`} aria-pressed={tool === t.key} onClick={() => (t.key === 'area' ? onArea() : onToolChange(t.key))}>
+              <button key={t.key} type="button" className={`drawer-tool${toolInHand === t.key ? ' active' : ''}`} aria-pressed={toolInHand === t.key} onClick={() => (t.key === 'area' ? onArea() : t.key === 'cover' ? onCover() : onToolChange(t.key))}>
                 <span className="drawer-tool-icon">{TOOL_ICONS[t.key]}</span>
                 <span className="drawer-book-text">
                   <span className="drawer-tool-name">{TOOL_LABELS[t.key]}</span>
@@ -826,6 +945,15 @@ export default function Toolbar({
           onClick={() => pick(() => onToolChange('play'))}
           title="Select and drag tokens"
         />
+        {isHost && (
+          <ToolCard
+            icon={TOOL_ICONS.edit}
+            label="Arrange maps"
+            active={tool === 'edit'}
+            onClick={() => pick(() => onToolChange('edit'))}
+            title="Drag maps around to reposition them"
+          />
+        )}
         {/* Pan and "Hide drawings" are off the desktop bar for now: right-drag
             already moves the map in every tool, and GameView ignores a saved
             "hide drawings" on desktop so nobody is left with drawings hidden
@@ -836,13 +964,6 @@ export default function Toolbar({
           active={tool === 'ruler'}
           onClick={() => pick(() => onToolChange('ruler'))}
           title="Click and drag on the map to measure distance"
-        />
-        <ToolCard
-          icon={TOOL_ICONS.area}
-          label="Area"
-          active={tool === 'area'}
-          onClick={() => pick(onArea)}
-          title="Lay an area of effect on the map — everyone at the table sees it"
         />
         {isHost && (
           <>
@@ -860,14 +981,23 @@ export default function Toolbar({
               onClick={() => pick(() => onToolChange('fogofwar'))}
               title="Fog of war — cover parts of a map until the party explores them"
             />
-            <ToolCard
-              icon={TOOL_ICONS.edit}
-              label="Edit"
-              active={tool === 'edit'}
-              onClick={() => pick(() => onToolChange('edit'))}
-              title="Drag maps around to reposition them"
-            />
           </>
+        )}
+        <ToolCard
+          icon={TOOL_ICONS.area}
+          label="Area"
+          active={toolInHand === 'area'}
+          onClick={() => pick(onArea)}
+          title="Lay an area of effect on the map — everyone at the table sees it"
+        />
+        {isHost && (
+          <ToolCard
+            icon={TOOL_ICONS.cover}
+            label="Cover"
+            active={toolInHand === 'cover'}
+            onClick={() => pick(onCover)}
+            title="Mark part of the map as quarter, half or full cover — everyone at the table sees it"
+          />
         )}
           </>
         )}
@@ -877,69 +1007,24 @@ export default function Toolbar({
           out over the map's left edge and away again. */}
       {rail && isHost && onToggleTokens && (
         <div className="toolbar-group" data-tour="tokens">
-          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, doors, chests, traps and your own images to put on the map" />
+          <ToolCard icon={<Icon name="token" />} label="Tokens" active={tokensOpen} onClick={onToggleTokens} title="Heroes, NPCs, doors, chests, traps, ambushes, bulletin boards and portals to put on the map" />
         </div>
       )}
 
-      {isHost && (
+      {/* On the rail World maps and Layers have no tab of their own: the
+          World drawer's World maps button opens them in its place. */}
+      {isHost && rail && mappingPanels}
+      {isHost && !rail && (
         <ToolMenu
           icon={<Icon name="mapping" />}
           label="Mapping"
           tour="mapping"
           title="World maps and layers"
-          active={rail ? sidePanel === 'mapping' : showIslands || showLayers}
-          open={!rail && openMenu === 'mapping'}
-          onToggle={() => (rail ? openSide('mapping') : toggleMenu('mapping'))}
+          active={showIslands || showLayers}
+          open={openMenu === 'mapping'}
+          onToggle={() => toggleMenu('mapping')}
           onClose={closeMenu}
-          popovers={
-            <>
-              {islandsOpen && (
-                <IslandManagerPopover
-                  // Asked to open on one map's settings: start afresh on it.
-                  key={islandsFocusId || 'maps'}
-                  side={rail}
-                  sideTabs={mappingTabs}
-                  islands={layer.islands}
-                  islandOrder={layer.islandOrder}
-                  islandGroups={layer.islandGroups || {}}
-                  activeIslandId={activeIslandId}
-                  onRecenterIsland={onRecenterIsland}
-                  onCreateIsland={onCreateIsland}
-                  onRemoveIsland={onRemoveIsland}
-                  onDetachIsland={onDetachIsland}
-                  onRenameGroup={onRenameGroup}
-                  onIslandConditions={onIslandConditions}
-                  onGroupConditions={onGroupConditions}
-                  onUpdateIsland={onUpdateIsland}
-                  onPreviewIslands={onPreviewIslands}
-                  onPrepareBackground={prepareIslandBackground}
-                  onDownloadIslandImage={onDownloadIslandImage}
-                  focusIslandId={islandsFocusId}
-                  layerFeet={layer.feetPerSquare || 5}
-                  onSwitchToEdit={() => {
-                    onToolChange('edit');
-                    if (rail) closeSide();
-                    else setShowIslands(false);
-                  }}
-                  onClose={rail ? closeSide : () => setShowIslands(false)}
-                />
-              )}
-              {layersOpen && (
-                <LayerSwitcherPopover
-                  side={rail}
-                  sideTabs={mappingTabs}
-                  layers={layers}
-                  layerOrder={layerOrder}
-                  currentLayerId={currentLayerId}
-                  layerPlayerCounts={layerPlayerCounts}
-                  onSwitchLayer={onSwitchLayer}
-                  onCreateLayer={onCreateLayer}
-                  onRemoveLayer={onRemoveLayer}
-                  onClose={rail ? closeSide : () => setShowLayers(false)}
-                />
-              )}
-            </>
-          }
+          popovers={mappingPanels}
         >
           <ToolCard icon={<Icon name="islands" />} label="World maps" active={showIslands} onClick={() => togglePopover('islands')} title={`${(layer.islandOrder || []).length} map(s) on this layer`} />
           <ToolCard icon={<Icon name="layers" />} label="Layers" active={showLayers} onClick={() => togglePopover('layers')} title={`${(layerOrder || []).length} layer(s)`} />
@@ -951,12 +1036,12 @@ export default function Toolbar({
           icon={<Icon name="world" />}
           label={rail ? 'World' : 'World state'}
           tour="world"
-          title="In-game time, day / night and the world's ambience"
-          active={!rail && (showDayNight || showAmbience)}
+          title={MUSIC_ENABLED ? "In-game time, day / night and the world's ambience" : 'In-game time and day / night'}
+          active={rail ? sidePanel === 'mapping' : showDayNight || showAmbience}
           open={rail ? sidePanel === 'world' : openMenu === 'world'}
           onToggle={() => (rail ? openSide('world') : toggleMenu('world'))}
           onClose={rail ? closeSide : closeMenu}
-          panel={rail ? { title: 'World', width: 360 } : null}
+          panel={rail ? { title: 'World' } : null}
           menuClassName={rail ? 'book-drawer world-drawer' : ''}
           popovers={
             !rail && (
@@ -972,42 +1057,103 @@ export default function Toolbar({
                   onClose={() => setShowDayNight(false)}
                 />
               )}
-              {showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
+              {MUSIC_ENABLED && showAmbience && <AmbiencePopover layer={layer} audio={audio} onClose={() => setShowAmbience(false)} />}
             </>
             )
           }
         >
-          {/* In the drawer all three are laid out at once: the clock's
-              button, then the day / night and ambience controls themselves. */}
+          {/* In the drawer it is all laid out at once: World maps (which
+              opens its own panel in the drawer's place), the clock's settings
+              (folded under "Set world clock"), then the day / night and
+              ambience controls. */}
           {rail && (
             <>
               <section className="drawer-section">
-                <span className="section-label">Ingame time</span>
-                <button type="button" className="drawer-tool" onClick={onOpenClock} title="Set the in-game time, tick speed, and day/night cycle">
+                <span className="section-label">Maps</span>
+                <button
+                  type="button"
+                  className="drawer-tool"
+                  data-tour="mapping"
+                  onClick={() => {
+                    switchMapTab('maps');
+                    swapSide('mapping');
+                  }}
+                  title="The maps on this layer, and the layers themselves"
+                >
                   <span className="drawer-tool-icon">
-                    <Icon name="clock" />
+                    <Icon name="islands" />
                   </span>
                   <span className="drawer-book-text">
-                    <span className="drawer-tool-name">{clock ? 'Change the clock' : 'Set a clock'}</span>
-                    <span className="drawer-tool-sub">The table’s time, how fast it runs, and the day / night cycle.</span>
+                    <span className="drawer-tool-name">World maps</span>
+                    <span className="drawer-tool-sub">
+                      {(layer.islandOrder || []).length} map(s) on this layer, and {(layerOrder || []).length} layer(s).
+                    </span>
                   </span>
                 </button>
               </section>
               <section className="drawer-section">
-                <span className="section-label">Day / night</span>
-                <DayNightControls
-                  override={dayNightOverride}
-                  hasClock={Boolean(clock)}
-                  hasCycle={Boolean(clock?.cycle?.enabled)}
-                  onSelect={(phase) => onSetDayNightOverride(phase)}
-                  island={activeIsland}
-                  onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
-                />
+                <span className="section-label">Ingame time</span>
+                {/* Save and Cancel leave it open; while there is a clock, the
+                    trash in its header removes it. The form mounts only while
+                    unfolded, so it opens on the clock's current time. */}
+                <DrawerExpander
+                  icon={<Icon name="clock" />}
+                  title="Set world clock"
+                  sub="The table’s time, how fast it runs, and the day / night cycle."
+                  hint="Set the in-game time, tick speed, and day/night cycle"
+                  open={clockExpanded}
+                  onToggle={() => setClockExpanded((o) => !o)}
+                  action={
+                    clock && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm btn-icon"
+                        aria-label="Remove the clock"
+                        title="Remove the clock from this table"
+                        onClick={() => onUpdateClock?.(null)}
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    )
+                  }
+                >
+                  <ClockForm clock={clock} onSave={(next) => onUpdateClock?.(next)} />
+                </DrawerExpander>
               </section>
               <section className="drawer-section">
-                <span className="section-label">Ambience</span>
-                <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players in this world`} />
+                <span className="section-label">Day / night</span>
+                <DrawerExpander
+                  icon={dayPhase ? <img src={DAY_PHASES[dayPhase].imageUrl} alt="" width={26} height={26} /> : <Icon name="daynight" />}
+                  title="Set day / night"
+                  sub={
+                    dayNightOverride
+                      ? `Set by hand: ${DAY_PHASES[dayNightOverride].label}.`
+                      : clock?.cycle?.enabled
+                        ? dayPhase
+                          ? `Following the clock: ${DAY_PHASES[dayPhase].label}.`
+                          : 'Following the clock.'
+                        : 'No day/night cycle is running.'
+                  }
+                  hint="Change the day/night phase by hand, and whether this map follows it"
+                  open={dayNightExpanded}
+                  onToggle={() => setDayNightExpanded((o) => !o)}
+                >
+                  <DayNightControls
+                    override={dayNightOverride}
+                    hasClock={Boolean(clock)}
+                    hasCycle={Boolean(clock?.cycle?.enabled)}
+                    onSelect={(phase) => onSetDayNightOverride(phase)}
+                    island={activeIsland}
+                    onIslandDayNight={(dayNight) => onIslandPatch({ dayNight })}
+                  />
+                </DrawerExpander>
               </section>
+              {MUSIC_ENABLED && (
+                <section className="drawer-section">
+                  <span className="section-label">Ambience</span>
+                  <SoundField audio={audio} targetKind="layer" targetId={layer.id} label={`${layer.name} — plays for players in this world`} />
+                </section>
+              )}
             </>
           )}
           {!rail && (
@@ -1021,13 +1167,15 @@ export default function Toolbar({
             onClick={() => togglePopover('dayNight')}
             title="Change the day/night phase by hand, and whether this map follows it"
           />
-          <ToolCard
-            icon={<Icon name="music" />}
-            label="Ambience"
-            active={showAmbience}
-            onClick={() => togglePopover('ambience')}
-            title="The sound that plays for players in this world"
-          />
+          {MUSIC_ENABLED && (
+            <ToolCard
+              icon={<Icon name="music" />}
+              label="Ambience"
+              active={showAmbience}
+              onClick={() => togglePopover('ambience')}
+              title="The sound that plays for players in this world"
+            />
+          )}
             </>
           )}
         </ToolMenu>
@@ -1059,7 +1207,7 @@ export default function Toolbar({
           open={rail ? sidePanel === 'compendium' : openMenu === 'compendium'}
           onToggle={() => (rail ? openSide('compendium') : toggleMenu('compendium'))}
           onClose={rail ? closeSide : closeMenu}
-          panel={rail ? { title: 'Compendium', width: 340 } : null}
+          panel={rail ? { title: 'Compendium' } : null}
           menuClassName={rail ? 'book-drawer' : ''}
         >
           {rail && (
@@ -1138,49 +1286,58 @@ export default function Toolbar({
             title="Roll for Initiative"
           />
         )}
-        <span className="toolbar-hint-anchor">
-          <ToolCard
-            icon={<Icon name="music" />}
-            label="Music"
-            tour="music"
-            active={Boolean(audio?.playback?.nowPlaying) || showMusicHint || musicOpen}
-            onClick={audio?.enabled ? (musicOpen ? onCloseMusic : onOpenMusic) : () => {
-              closePanels();
-              setShowMusicHint((s) => !s);
-            }}
-            title={audio?.enabled ? 'Table music' : 'Why there’s no music here'}
-          />
-          {showMusicHint && !audio?.enabled && (
-            <div className="toolbar-hint-pop" data-rail-pop="">
-              <Hint>{musicHint}</Hint>
-            </div>
-          )}
-        </span>
+        {/* On the rail the Logs panel has no tab of its own: it opens from
+            the Dice panel's header, in the Dice panel's place, so the Dice
+            tab stays lit while it is open. */}
         <ToolCard
           icon={<Icon name="dice" />}
           label="Dice"
           tour="dice"
-          active={rail ? sidePanel === 'dice' : showDice}
+          active={rail ? sidePanel === 'dice' || sidePanel === 'logs' : showDice}
           onClick={() => (rail ? openSide('dice') : togglePopover('dice'))}
           title="Roll the dice"
         />
-        {(rail ? sidePanel === 'dice' : showDice) && <DiceModal {...dice} side={rail} onClose={rail ? closeSide : () => setShowDice(false)} />}
+        {(rail ? sidePanel === 'dice' : showDice) && (
+          <DiceModal
+            {...dice}
+            side={rail}
+            enter={panelEnter}
+            headerAction={
+              rail && (
+                <button
+                  type="button"
+                  className="side-panel-head-btn"
+                  data-tour="rolls"
+                  onClick={() => swapSide('logs')}
+                  title={activityLog ? 'The roll log and the character log' : 'Every roll at the table this session'}
+                  aria-label={logsUnseen ? `Logs, ${logsUnseen} new` : 'Logs'}
+                >
+                  <Icon name="rolllog" />
+                  {logsUnseen > 0 && <span className="tool-card-badge">{logsUnseen > 9 ? '9+' : logsUnseen}</span>}
+                </button>
+              )
+            }
+            onClose={rail ? closeSide : () => setShowDice(false)}
+          />
+        )}
       </div>
 
-      {/* On the rail the roll log and the character log share one tab and
-          one side panel; the DM switches between them inside it. */}
-      {rail && (
-        <ToolMenu
-          icon={<Icon name="rolllog" />}
-          label="Logs"
-          tour="rolls"
-          title={activityLog ? 'The roll log and the character log' : 'Every roll at the table this session'}
-          open={sidePanel === 'logs'}
-          onToggle={() => openSide('logs')}
+      {/* The roll log and the character log share one side panel; the DM
+          switches between them inside it. */}
+      {rail && sidePanel === 'logs' && (
+        <ModalShell
+          side
+          title="Logs"
+          closeLabel="Close Logs"
+          enter={panelEnter}
+          headerAction={
+            <button type="button" className="side-panel-head-btn" onClick={() => swapSide('dice')} title="Back to the dice" aria-label="Back to the dice">
+              <Icon name="dice" />
+            </button>
+          }
           onClose={closeSide}
-          panel={{ title: 'Logs', width: 360 }}
-          badge={(rollLogOpen ? 0 : unseenRolls) + (activityLog && !activityOpen ? unseenActivity : 0)}
         >
+          <div className="side-panel-menu">
           {activityLog && (
             <div className="side-tabs" role="tablist" aria-label="Logs">
               {[
@@ -1209,7 +1366,8 @@ export default function Toolbar({
               <RollLog entries={rollLog} />
             </>
           )}
-        </ToolMenu>
+          </div>
+        </ModalShell>
       )}
 
       {/* This session's rolls — everyone's, and the DM's own (marked when
@@ -1254,8 +1412,9 @@ export default function Toolbar({
         </ToolMenu>
       )}
 
-      {/* The Characters screen (CharacterBuilder.jsx), for players and the DM
-          alike: build a hero, keep it as a .tlsbyd file, bring it to the table. */}
+      {/* The Characters screen (CharacterBuilder.jsx), for a player: build a
+          hero, keep it as a .tlsbyd file, send it to the DM. The DM opens it
+          from the Tokens panel instead (TokenSidebar.jsx's Create hero). */}
       {onOpenCharacters && (
         <div className="toolbar-group">
           <ToolCard
@@ -1390,7 +1549,7 @@ export default function Toolbar({
         open={rail ? sidePanel === 'players' : openMenu === 'players'}
         onToggle={() => (rail ? openSide('players') : toggleMenu('players'))}
         onClose={rail ? closeSide : closeMenu}
-        panel={rail ? { title: 'Players', width: 340 } : null}
+        panel={rail ? { title: 'Players' } : null}
         menuClassName="players-menu"
         align="end"
       >
@@ -1413,18 +1572,18 @@ export default function Toolbar({
         />
       </ToolMenu>
 
-      {/* The very last group: save/export/import/close/leave — the
+      {/* The last menu: save/export/import/close — the
           "shutting the book" actions, tucked away since they're reached for
           far less often than anything above. */}
       <ToolMenu
         icon={<Icon name="config" />}
         label={rail ? 'Config' : 'Configurations'}
         tour="config"
-        title="Save, export, import, close, hints, and leave"
+        title="Music, save, export, import, close, and hints"
         open={rail ? sidePanel === 'configurations' : openMenu === 'configurations'}
         onToggle={() => (rail ? openSide('configurations') : toggleMenu('configurations'))}
         onClose={rail ? closeSide : closeMenu}
-        panel={rail ? { title: 'Configurations', width: 340 } : null}
+        panel={rail ? { title: 'Configurations' } : null}
         menuClassName={rail ? 'config-menu book-drawer config-drawer' : 'config-menu'}
         align="end"
       >
@@ -1432,6 +1591,19 @@ export default function Toolbar({
             grouped by what it is for. */}
         {rail && (
           <>
+            {/* Music opens as a side panel in this drawer's place (GameView
+                holds it). Where there is none, the card says why. */}
+            <section className="drawer-section">
+              <span className="section-label">Sound</span>
+              <DrawerCard
+                icon="music"
+                label={MUSIC_ENABLED ? 'Music' : 'Sound effects'}
+                text={!MUSIC_ENABLED ? 'Your own volume for each sound effect, in a side panel.' : audio?.enabled ? 'Opens the table’s music in a side panel.' : musicHint}
+                active={MUSIC_ENABLED && Boolean(audio?.playback?.nowPlaying)}
+                disabled={MUSIC_ENABLED && !audio?.enabled}
+                onClick={onOpenMusic}
+              />
+            </section>
             {isHost && (
               <section className="drawer-section">
                 <span className="section-label">Table</span>
@@ -1498,14 +1670,23 @@ export default function Toolbar({
                 </div>
               </section>
             )}
-            <section className="drawer-section">
-              {onReport && <DrawerCard icon="flag" label="Report this table" text="Tells us about content here that breaks the rules." onClick={onReport} />}
-              <DrawerCard icon="leave" label="Leave" text="Leaves this table and goes back to the start." danger onClick={onLeave} />
-            </section>
+            {onReport && (
+              <section className="drawer-section">
+                <DrawerCard icon="flag" label="Report this table" text="Tells us about content here that breaks the rules." onClick={onReport} />
+              </section>
+            )}
           </>
         )}
         {!rail && (
           <>
+        <ToolCard
+          icon={<Icon name="music" />}
+          label={MUSIC_ENABLED ? 'Music' : 'Sounds'}
+          active={(MUSIC_ENABLED && Boolean(audio?.playback?.nowPlaying)) || musicOpen}
+          disabled={MUSIC_ENABLED && !audio?.enabled}
+          onClick={() => pick(musicOpen ? onCloseMusic : onOpenMusic)}
+          title={!MUSIC_ENABLED ? 'Sound effect volumes' : audio?.enabled ? 'Table music' : musicHint}
+        />
         {isHost && (
           <>
             <ToolCard icon={<Icon name="save" />} label="Save" onClick={() => pick(onSaveNow)} title={lastSavedLabel} />
@@ -1562,7 +1743,6 @@ export default function Toolbar({
             ))}
           </div>
         )}
-        {rail && <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={() => pick(onLeave)} title="Leave the table" />}
         {/* What the tips and the tutorial said, kept to read at any time. */}
         <ToolCard
           icon={<Icon name="rules" />}
@@ -1581,8 +1761,13 @@ export default function Toolbar({
       </ToolMenu>
       {showRules && <RulesBook isHost={isHost} onClose={() => setShowRules(false)} />}
 
-      {/* On the rail, Leave is the last card in Configurations instead. */}
-      {!rail && (
+      {/* Leave is always the last thing on the bar: on the rail, a tab of its
+          own under Configurations. */}
+      {rail ? (
+        <div className="toolbar-group toolbar-leave-tab">
+          <ToolCard icon={<Icon name="leave" />} label="Leave" onClick={onLeave} title="Leave the table" />
+        </div>
+      ) : (
         <button type="button" className="toolbar-leave" ref={leaveRef} onClick={onLeave} title="Leave the table">
           <Icon name="leave" />
           <span className="toolbar-leave-label">Leave</span>
@@ -1621,6 +1806,37 @@ function DayNightPopover({ onClose, ...controls }) {
         </button>
       </div>
       <DayNightControls {...controls} />
+    </div>
+  );
+}
+
+// An expansion panel in a side-panel drawer (the World drawer's "Set world
+// clock" and "Set day / night"): a header that folds `children` away, with an
+// optional `action` button before the chevron. A click anywhere on the header
+// row folds it — the button inside is what keyboards and screen readers use,
+// and its click bubbles up to the row; the action's own click doesn't.
+// `children` mount only while it is open.
+function DrawerExpander({ icon, title, sub, hint, open, onToggle, action = null, children }) {
+  return (
+    <div className={`drawer-expander${open ? ' open' : ''}`}>
+      <div className="drawer-expander-top" onClick={onToggle}>
+        <button type="button" className="drawer-expander-head" aria-expanded={open} title={hint}>
+          <span className="drawer-tool-icon">{icon}</span>
+          <span className="drawer-book-text">
+            <span className="drawer-tool-name">{title}</span>
+            {sub && <span className="drawer-tool-sub">{sub}</span>}
+          </span>
+        </button>
+        {action && (
+          <span className="drawer-expander-action" onClick={(e) => e.stopPropagation()}>
+            {action}
+          </span>
+        )}
+        <span className="drawer-expander-chevron" aria-hidden="true">
+          ▸
+        </span>
+      </div>
+      {open && <div className="drawer-expander-body">{children}</div>}
     </div>
   );
 }
@@ -1740,24 +1956,95 @@ function LayerSwitcherPopover({
   onSwitchLayer,
   onCreateLayer,
   onRemoveLayer,
+  onDownloadLayerImage,
+  onUpdateLayer,
+  onUpdateLayerIsland,
+  onPreviewIslands,
+  onPrepareBackground,
   onClose,
   side = false,
   sideTabs = null,
+  sideEnter = true,
+  sideHeaderAction = null,
 }) {
+  // The layer whose settings (LayerSettings) are open.
+  const [openId, setOpenId] = useState(null);
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [cols, setCols] = useState(20);
   const [rows, setRows] = useState(15);
 
-  function addLayer() {
-    if (!name.trim()) return;
-    onCreateLayer({ name: name.trim(), cols, rows });
+  function closeAdding() {
+    setAdding(false);
     setName('');
     setCols(20);
     setRows(15);
   }
 
+  function addLayer() {
+    if (!name.trim()) return;
+    onCreateLayer({ name: name.trim(), cols, rows });
+    closeAdding();
+  }
+
+  // + New layer, and the form it unfolds into — like World maps' + New map:
+  // the Mapping drawer's footer, or the end of the dialog's list.
+  const newLayer = adding ? (
+    <div className="island-settings island-new">
+      <div className="section-label" style={{ marginTop: 0 }}>
+        New layer
+      </div>
+      <label className="field-label">Name</label>
+      <input
+        className="field"
+        value={name}
+        autoFocus
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') addLayer();
+          else if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeAdding();
+          }
+        }}
+        placeholder="e.g. The Crypt Below"
+      />
+      <div className="field-row">
+        <div>
+          <label className="field-label">Width</label>
+          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
+        </div>
+        <div>
+          <label className="field-label">Height</label>
+          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
+        </div>
+      </div>
+      <div className="field-row">
+        <button className="btn btn-secondary" onClick={closeAdding}>
+          Cancel
+        </button>
+        <button className="btn btn-primary" onClick={addLayer} disabled={!name.trim()}>
+          Add layer
+        </button>
+      </div>
+    </div>
+  ) : (
+    <button className={`btn ${side ? 'btn-primary' : 'btn-secondary'} btn-block`} onClick={() => setAdding(true)} style={side ? undefined : { marginTop: 10 }}>
+      + New layer
+    </button>
+  );
+
   return (
-    <ModalShell title={side ? 'Mapping' : 'Layers'} icon="layers" closeLabel={side ? 'Close Mapping' : 'Close layers panel'} side={side} width={440} onClose={onClose}>
+    <ModalShell
+      title={side ? 'World maps' : 'Layers'}
+      icon={side ? 'islands' : 'layers'}
+      closeLabel={side ? 'Close World maps' : 'Close layers panel'}
+      side={side}
+      enter={sideEnter}
+      footer={side ? newLayer : null}
+      headerAction={sideHeaderAction}
+      onClose={onClose}
+    >
       {sideTabs}
       {(layerOrder || []).map((id, i) => {
         const layer = layers?.[id];
@@ -1765,7 +2052,8 @@ function LayerSwitcherPopover({
         const isBase = i === 0;
         const isCurrent = id === currentLayerId;
         return (
-          <div key={id} className="player-row" style={{ justifyContent: 'space-between' }}>
+          <React.Fragment key={id}>
+          <div className="player-row" style={{ justifyContent: 'space-between' }}>
             <span className="player-name">
               {layer.name} <span className="player-tag">{layerPlayerCounts?.[id] || 0}</span>
             </span>
@@ -1780,16 +2068,48 @@ function LayerSwitcherPopover({
               >
                 {isCurrent ? 'Viewing' : 'Switch'}
               </button>
+              {onDownloadLayerImage && (
+                <button
+                  className="btn btn-secondary btn-sm btn-icon"
+                  aria-label={`Download ${layer.name} as an image`}
+                  title="Download map: every map on this layer as one PNG (backgrounds, no grid), each where it sits"
+                  onClick={() => onDownloadLayerImage(id)}
+                >
+                  <Icon name="mapdownload" />
+                </button>
+              )}
+              {onUpdateLayer && onUpdateLayerIsland && (
+                <button
+                  className={`btn btn-secondary btn-sm btn-icon ${openId === id ? 'active' : ''}`}
+                  aria-expanded={openId === id}
+                  aria-label={`Settings for ${layer.name}`}
+                  onClick={() => setOpenId(openId === id ? null : id)}
+                  title="Settings: name, feet per square, background image and grid lines, for every map on this layer"
+                >
+                  <Icon name="config" />
+                </button>
+              )}
               <button
-                className="btn btn-danger btn-sm"
+                className="btn btn-danger btn-sm btn-icon"
                 disabled={isBase}
+                aria-label={`Delete ${layer.name}`}
                 title={isBase ? 'The base layer cannot be removed' : 'Delete this layer'}
                 onClick={() => onRemoveLayer(id)}
               >
-                Delete
+                <Icon name="trash" />
               </button>
             </div>
           </div>
+          {openId === id && onUpdateLayer && onUpdateLayerIsland && (
+            <LayerSettings
+              layer={layer}
+              onPatchLayer={(patch) => onUpdateLayer(id, patch)}
+              onPatchMap={(islandId, patch) => onUpdateLayerIsland(id, islandId, patch)}
+              onPreview={onPreviewIslands}
+              onPrepareBackground={(file, placement, placements) => onPrepareBackground(id, file, placement, placements)}
+            />
+          )}
+          </React.Fragment>
         );
       })}
 
@@ -1797,25 +2117,7 @@ function LayerSwitcherPopover({
         <Hint className="hint-tight">The first world is the base — new players land there, so it can’t be deleted.</Hint>
       )}
 
-      <div className="divider-word">new layer</div>
-
-      <label className="field-label">Name</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. The Crypt Below" />
-
-      <div className="field-row">
-        <div>
-          <label className="field-label">Width</label>
-          <input className="field" type="number" value={cols} onChange={(e) => setCols(e.target.value)} />
-        </div>
-        <div>
-          <label className="field-label">Height</label>
-          <input className="field" type="number" value={rows} onChange={(e) => setRows(e.target.value)} />
-        </div>
-      </div>
-
-      <button className="btn btn-primary btn-block" onClick={addLayer} style={{ marginTop: 8 }}>
-        + Add layer
-      </button>
+      {!side && newLayer}
     </ModalShell>
   );
 }
@@ -1840,9 +2142,12 @@ function IslandManagerPopover({
   layerFeet = 5,
   onSwitchToEdit,
   onClose,
-  // On the rail the manager stands in the Mapping drawer, under its switch.
+  // On the rail the manager stands in the World maps panel (opened from the
+  // World drawer), under its switch.
   side = false,
   sideTabs = null,
+  sideEnter = true,
+  sideHeaderAction = null,
 }) {
   // The island whose settings (name, size, background) are open.
   const [openId, setOpenId] = useState(focusIslandId);
@@ -2101,21 +2406,22 @@ function IslandManagerPopover({
 
   return (
     <ModalShell
-      title={side ? 'Mapping' : 'World maps'}
+      title="World maps"
       icon="islands"
-      closeLabel={side ? 'Close Mapping' : 'Close world maps panel'}
+      closeLabel={side ? 'Close World maps' : 'Close world maps panel'}
       maxWidth={560}
       side={side}
-      width={440}
+      enter={sideEnter}
       footer={side ? newMap : null}
+      headerAction={sideHeaderAction}
       onClose={onClose}
     >
       {sideTabs}
       {parentIds.map((id) => mapRow(id))}
 
       {!side && newMap}
-      <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Edit' : null} onAction={onSwitchToEdit}>
-        Switch to <b>Tools → Edit</b>, then drag a map by its background. Where edges touch, tokens walk across.
+      <Hint className="hint-tight" action={onSwitchToEdit ? 'Switch to Arrange maps' : null} onAction={onSwitchToEdit}>
+        Switch to <b>Tools → Arrange maps</b>, then drag a map by its background. Where edges touch, tokens walk across.
       </Hint>
     </ModalShell>
   );
@@ -2328,11 +2634,238 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
           This takes the picture off {groupName ? 'every map in the group' : 'the map'} for everyone, and it cannot be undone.
         </span>
       )}
+      <GridLinesField
+        strength={lineStrength}
+        color={lineColor}
+        onStrength={setLineStrength}
+        onColor={setLineColor}
+        image={resolveImage(island.backgroundImage)}
+        note={`Heavier or coloured lines keep the grid readable over a background image.${groupName ? ' They are used for every map in the group.' : ''}`}
+      />
+      {groupName && (
+        <span className="island-row-note">
+          This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
+        </span>
+      )}
+      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
+    </div>
+  );
+}
+
+// A layer's own settings, opened from its row in the Layers list: the same
+// system as a map's (IslandSettings above), for the whole layer at once.
+// Its name is the layer's; feet per square and grid lines are set on every
+// map on it; a background image is laid over all of its maps together, each
+// getting its own part (the shape the layer's Download map exports), and
+// Remove image takes it off them all. A layer has no size of its own, so
+// width and height stay with each map. Every change saves itself, a moment
+// after the last one, like a map's.
+// `onPatchLayer(patch)`: the layer itself. `onPatchMap(islandId, patch)`: one
+// of its maps. `onPrepareBackground(file, placement, placements)`: the picked
+// picture cut into each map's part, { [islandId]: dataUrl }.
+function LayerSettings({ layer, onPatchLayer, onPatchMap, onPreview = null, onPrepareBackground }) {
+  const maps = (layer.islandOrder || []).map((id) => layer.islands[id]).filter(Boolean);
+  const startFeet = islandFeet(layer, maps[0]?.id);
+  const startLines = normalizeGridLines(maps[0]?.gridLines || {});
+  const [name, setName] = useState(layer.name);
+  const [feet, setFeet] = useState(startFeet);
+  const [lineStrength, setLineStrength] = useState(startLines?.strength || 'light');
+  const [lineColor, setLineColor] = useState(startLines?.color || null);
+  // Feet and grid lines go on to every map only once they are changed here,
+  // so opening the settings leaves maps that differ as they are.
+  const [feetTouched, setFeetTouched] = useState(false);
+  const [linesTouched, setLinesTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [fit, setFit] = useState(null); // as in IslandSettings
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const fileRef = useRef(null);
+
+  const nextName = name.trim() || layer.name;
+  const parsedFeet = parseInt(feet, 10);
+  const nextFeet = Number.isNaN(parsedFeet) ? startFeet : clampFeetPerSquare(parsedFeet);
+  const lines = normalizeGridLines({ strength: lineStrength, color: lineColor });
+  const linesJson = JSON.stringify(lines);
+  const feetTargets = feetTouched ? maps.filter((m) => islandFeet(layer, m.id) !== nextFeet) : [];
+  const lineTargets = linesTouched ? maps.filter((m) => JSON.stringify(normalizeGridLines(m.gridLines || {})) !== linesJson) : [];
+  const nameChanged = nextName !== layer.name;
+  const unsaved = nameChanged || feetTargets.length > 0 || lineTargets.length > 0;
+  const unsavedKey = JSON.stringify([nextName, nextFeet, feetTargets.map((m) => m.id), linesJson, lineTargets.map((m) => m.id)]);
+
+  const saveRef = useRef(null);
+  saveRef.current = () => {
+    // One patch for the layer: a local table saves each patch over the last.
+    const layerPatch = {};
+    if (nameChanged) layerPatch.name = nextName;
+    // The layer's own feet stand for maps from before each map had its own.
+    if (feetTargets.length && (layer.feetPerSquare || 5) !== nextFeet) layerPatch.feetPerSquare = nextFeet;
+    if (Object.keys(layerPatch).length) onPatchLayer(layerPatch);
+    for (const m of feetTargets) onPatchMap(m.id, { feetPerSquare: nextFeet });
+    for (const m of lineTargets) onPatchMap(m.id, { gridLines: lines });
+  };
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const timer = setTimeout(() => saveRef.current(), ISLAND_AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [unsavedKey]);
+  useEffect(() => () => saveRef.current(), []);
+
+  // The map shows the new grid lines, and a picture being laid, ahead of the save.
+  useEffect(() => {
+    if (!onPreview) return;
+    const previews = {};
+    if (linesTouched) for (const m of maps) previews[m.id] = { gridLines: lines };
+    if (fit) {
+      const { minX, minY } = islandsBounds(maps);
+      for (const m of maps) {
+        const at = fit.placements[m.id] || fit.place;
+        const backgroundFit = { x: at.x - ((m.x || 0) - minX), y: at.y - ((m.y || 0) - minY), width: at.width, height: at.height };
+        previews[m.id] = { ...previews[m.id], backgroundImage: fit.url, backgroundFit };
+      }
+    }
+    onPreview(Object.keys(previews).length ? previews : null);
+  }, [linesTouched, linesJson, fit]);
+  useEffect(() => () => onPreview?.(null), []);
+  const fitRef = useRef(null);
+  fitRef.current = fit;
+  useEffect(() => () => fitRef.current && URL.revokeObjectURL(fitRef.current.url), []);
+
+  function commit() {
+    saveRef.current();
+    setName(nextName);
+    setFeet(nextFeet);
+  }
+  const commitOnEnter = (e) => {
+    if (e.key === 'Enter') commit();
+  };
+
+  async function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !maps.length) return;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const loading = new Image();
+        loading.onload = () => resolve(loading);
+        loading.onerror = reject;
+        loading.src = url;
+      });
+      const place = defaultImagePlacement(img.naturalWidth, img.naturalHeight, maps);
+      if (fit) URL.revokeObjectURL(fit.url);
+      setFit({ file, url, imageWidth: img.naturalWidth, imageHeight: img.naturalHeight, place, placements: {}, initial: place });
+    } catch {
+      URL.revokeObjectURL(url);
+      alert('Could not read that image — try a different file.');
+    }
+  }
+  function closeFit() {
+    if (fit) URL.revokeObjectURL(fit.url);
+    setFit(null);
+  }
+  async function saveFit() {
+    if (!fit || busy) return;
+    setBusy(true);
+    try {
+      const untouched = JSON.stringify(fit.place) === JSON.stringify(fit.initial) && !Object.keys(fit.placements).length;
+      const images = await onPrepareBackground(fit.file, maps.length < 2 && untouched ? null : fit.place, fit.placements);
+      for (const [islandId, backgroundImage] of Object.entries(images)) onPatchMap(islandId, { backgroundImage });
+      closeFit();
+    } catch (err) {
+      alert(imageErrorMessage(err, 'Could not read that image — try a different file.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const withImage = maps.filter((m) => m.backgroundImage);
+  function removeBackground() {
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      return;
+    }
+    setConfirmRemove(false);
+    for (const m of withImage) onPatchMap(m.id, { backgroundImage: null });
+  }
+
+  return (
+    <div className="island-settings">
+      <label className="field-label">Name</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={commitOnEnter} onBlur={commit} />
+      <label className="field-label">Feet per square</label>
+      <input
+        className="field"
+        type="number"
+        min="1"
+        value={feet}
+        onChange={(e) => {
+          setFeet(e.target.value);
+          setFeetTouched(true);
+        }}
+        onKeyDown={commitOnEnter}
+        onBlur={commit}
+      />
+      <label className="field-label">Background image</label>
+      {fit ? (
+        <MapImageFit
+          url={fit.url}
+          imageWidth={fit.imageWidth}
+          imageHeight={fit.imageHeight}
+          islands={maps}
+          place={fit.place}
+          placements={fit.placements}
+          onChange={(place, placements) => setFit((current) => current && { ...current, place, placements })}
+          onCancel={closeFit}
+          onUse={saveFit}
+          busy={busy}
+          groupName={maps.length > 1 ? layer.name : null}
+          wholeName={maps.length > 1 ? 'the layer' : null}
+        />
+      ) : (
+        <div className="field-row">
+          <button className="btn btn-secondary" disabled={busy || !maps.length} onClick={() => fileRef.current?.click()}>
+            {withImage.length ? 'Replace image' : 'Upload image'}
+          </button>
+          {withImage.length > 0 && (
+            <button className={`btn ${confirmRemove ? 'btn-danger' : 'btn-secondary'}`} disabled={busy} onClick={removeBackground} onBlur={() => setConfirmRemove(false)}>
+              {confirmRemove ? 'Click again to remove' : 'Remove image'}
+            </button>
+          )}
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+      {confirmRemove && <span className="island-row-note">This takes the picture off every map on the layer for everyone, and it cannot be undone.</span>}
+      <GridLinesField
+        strength={lineStrength}
+        color={lineColor}
+        onStrength={(strength) => {
+          setLineStrength(strength);
+          setLinesTouched(true);
+        }}
+        onColor={(color) => {
+          setLineColor(color);
+          setLinesTouched(true);
+        }}
+        image={resolveImage(maps[0]?.backgroundImage)}
+        note="Heavier or coloured lines keep the grid readable over a background image."
+      />
+      <span className="island-row-note">
+        Feet per square, grid lines and a background image are set on every map on this layer; an image is spread across them all, so use the layer’s <b>Download map</b> to get its shape first. Width and height belong to each map, in World maps.
+      </span>
+      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
+    </div>
+  );
+}
+
+// The Grid lines part of a map's or a layer's settings: how heavy, what
+// colour, and a strip of grid drawn that way over `image`.
+function GridLinesField({ strength, color, onStrength, onColor, image, note }) {
+  const custom = color && !GRID_LINE_COLORS.some((c) => c.value === color);
+  return (
+    <>
       <label className="field-label grid-lines-label">Grid lines</label>
       <div className="grid-lines-row">
         <div className="side-tabs grid-lines-strength" role="group" aria-label="Grid line strength">
           {GRID_LINE_STRENGTHS.map((s) => (
-            <button key={s.key} type="button" aria-pressed={lineStrength === s.key} className={lineStrength === s.key ? 'active' : ''} onClick={() => setLineStrength(s.key)}>
+            <button key={s.key} type="button" aria-pressed={strength === s.key} className={strength === s.key ? 'active' : ''} onClick={() => onStrength(s.key)}>
               {s.label}
             </button>
           ))}
@@ -2342,34 +2875,22 @@ function IslandSettings({ island, fallbackFeet = 5, onPatch, onPreview = null, o
             <button
               key={c.label}
               type="button"
-              className={`grid-swatch${lineColor === c.value ? ' active' : ''}`}
+              className={`grid-swatch${color === c.value ? ' active' : ''}`}
               style={{ '--swatch': c.value || '#17140f' }}
-              aria-pressed={lineColor === c.value}
+              aria-pressed={color === c.value}
               aria-label={c.label}
               title={c.label}
-              onClick={() => setLineColor(c.value)}
+              onClick={() => onColor(c.value)}
             />
           ))}
-          <label
-            className={`grid-swatch custom${lineColor && !GRID_LINE_COLORS.some((c) => c.value === lineColor) ? ' active' : ''}`}
-            style={lineColor && !GRID_LINE_COLORS.some((c) => c.value === lineColor) ? { '--swatch': lineColor } : undefined}
-            title="Another colour"
-          >
-            <input type="color" aria-label="Another colour" value={lineColor || '#17140f'} onChange={(e) => setLineColor(e.target.value.toLowerCase())} />
+          <label className={`grid-swatch custom${custom ? ' active' : ''}`} style={custom ? { '--swatch': color } : undefined} title="Another colour">
+            <input type="color" aria-label="Another colour" value={color || '#17140f'} onChange={(e) => onColor(e.target.value.toLowerCase())} />
           </label>
         </div>
       </div>
-      <GridLinesPreview lines={lines} image={resolveImage(island.backgroundImage)} />
-      <span className="island-row-note">
-        Heavier or coloured lines keep the grid readable over a background image.{groupName ? ' They are used for every map in the group.' : ''}
-      </span>
-      {groupName && (
-        <span className="island-row-note">
-          This map is in <b>{groupName}</b>, so an image is spread across every map in the group. Use <b>Download map</b> to get the group’s shape first.
-        </span>
-      )}
-      <span className="island-row-note">Changes are saved as you make them. A new background image is saved once you have laid it and pressed Use this picture.</span>
-    </div>
+      <GridLinesPreview lines={normalizeGridLines({ strength, color })} image={image} />
+      {note && <span className="island-row-note">{note}</span>}
+    </>
   );
 }
 
@@ -2518,7 +3039,7 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
   );
 
   return (
-    <ModalShell title="Roll for Initiative" icon="bolt" closeLabel="Close initiative roller" maxWidth={440} side={side} width={380} footer={side ? rollRow : null} onClose={onClose}>
+    <ModalShell title="Roll for Initiative" icon="bolt" closeLabel="Close initiative roller" maxWidth={440} side={side} footer={side ? rollRow : null} onClose={onClose}>
           <InitiativeGroup
             title="Players"
             entities={heroes}

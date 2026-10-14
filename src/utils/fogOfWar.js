@@ -132,15 +132,35 @@ export function isDoorTargetSideFogged(door, world) {
   return Boolean(target) && isFootprintFogged(world, target.islandId, target.col, target.row, door.size || 1);
 }
 
+// A portal (data/portals.js) is two tokens, one per end, linked by `linkId`,
+// but in the fog it counts as one thing with two sides, like a door: a
+// player who can't hold its other end can't use it, so an end in fog whose
+// partner stands in the clear must still reach them. The partner, or null
+// when there is none a player could use (missing, or hidden by the DM).
+function portalPartnerIn(world, portal) {
+  if (portal?.kind !== 'portal' || !portal.linkId) return null;
+  const partner = world.entities?.[portal.linkId];
+  return partner?.kind === 'portal' && !partner.hidden ? partner : null;
+}
+
+// Whether a portal end's own squares are all in fog. With its other end
+// clear it is not a fogged token, but a player's screen leaves this end out.
+export function isPortalEndFogged(portal, world) {
+  return isFootprintFogged(world, portal.islandId, portal.col, portal.row, portal.size || 1);
+}
+
 // A token is fogged when it is not a hero and every square it occupies is
-// fogged — for a door, every square on both of its sides. This is the value
-// the DM's client stores as `entity.fogged`; a fogged token does not exist
-// for players, like a hidden one (data/visibility.js).
+// fogged — for a door, every square on both of its sides; for a portal end,
+// every square of both ends. This is the value the DM's client stores as
+// `entity.fogged`; a fogged token does not exist for players, like a hidden
+// one (data/visibility.js).
 export function isEntityFogged(entity, world) {
   if (!entity || entity.kind === 'hero') return false;
   if (!isFootprintFogged(world, entity.islandId, entity.col, entity.row, entity.size || 1)) return false;
   const target = doorTargetSide(world, entity);
-  return !target || isFootprintFogged(world, target.islandId, target.col, target.row, entity.size || 1);
+  if (target) return isFootprintFogged(world, target.islandId, target.col, target.row, entity.size || 1);
+  const partner = portalPartnerIn(world, entity);
+  return !partner || isPortalEndFogged(partner, world);
 }
 
 // ---- Reveals when entered, and held-back chunks ----

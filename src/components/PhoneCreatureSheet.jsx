@@ -4,7 +4,7 @@ import { ABILITIES, abilityModifier, formatModifier, defaultCharacterSheet } fro
 import { CONDITIONS } from '../data/conditions.js';
 import { tokenSizesUpTo } from '../data/tokenSizes.js';
 import { acOf, attackTargetsFor, defaultMobAttacks } from '../utils/combat.js';
-import { Editable, RemoveTokenButton } from './CreatureCard.jsx';
+import { Editable, RemoveTokenButton, TokenPictureButton } from './CreatureCard.jsx';
 import DroppablesEditor from './DroppablesEditor.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab, DmTab, MobLoot } from './RightPanel.jsx';
 import { PhoneSheet, PhoneSwitch } from './PhoneChrome.jsx';
@@ -112,11 +112,22 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           : 'NPC'
       : 'Monster';
 
+  // The DM taps the picture to swap it for one of their own.
+  const avatar = (
+    <span className="phone-token-avatar phone-creature-avatar" style={{ backgroundImage: `url(${entityImageSrc(entity)})`, '--token-color': entity.color || 'transparent' }} />
+  );
+
   return (
     <PhoneSheet title={entity.name} onClose={onClose} className="phone-sheet-creature">
       <div className="phone-creature">
         <header className="phone-creature-head">
-          <span className="phone-token-avatar phone-creature-avatar" style={{ backgroundImage: `url(${entityImageSrc(entity)})`, '--token-color': entity.color || 'transparent' }} />
+          {canEdit ? (
+            <TokenPictureButton name={entity.name} className="phone-creature-picture" onPick={(imageUrl) => onUpdate(entity.id, { imageUrl })}>
+              {avatar}
+            </TokenPictureButton>
+          ) : (
+            avatar
+          )}
           <div className="phone-creature-id">
             {canEdit ? (
               <Editable type="text" label="Name" value={entity.name} display={entity.name} className="phone-creature-name" onCommit={(name) => name.trim() && onUpdate(entity.id, { name: name.trim() })} />

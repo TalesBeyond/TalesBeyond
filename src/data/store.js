@@ -1,11 +1,13 @@
 // The Store's shelves (components/StoreModal.jsx): what could be sold, by
 // section. Everything here is an example — made-up names and prices, with
 // pictures borrowed from the app's own icons and animated heroes — until a
-// real catalogue replaces it. Nothing can be bought yet.
-//   { key, name, price, imageUrl }   price is in US dollars
+// real catalogue replaces it. Nothing can be bought yet; for testing, a
+// Characters ware has an Add button that puts it in the Default heroes gallery.
+//   { key, name, price, imageUrl, spriteKey? }   price is in US dollars;
+//   spriteKey is the animated hero a Characters ware adds (data/spriteTokens.js)
 
 import { makeIconDataUrl } from './defaultTokens.js';
-import { SPRITE_HEROES } from './spriteTokens.js';
+import { STORE_SPRITE_HEROES } from './spriteTokens.js';
 
 const item = (name, price, icon, color) => ({ key: name, name, price, imageUrl: makeIconDataUrl(icon, color) });
 
@@ -29,11 +31,12 @@ export const STORE_SECTIONS = [
     key: 'characters',
     label: 'Characters',
     blurb: 'Animated heroes for the table.',
-    items: SPRITE_HEROES.map((h, i) => ({
+    items: STORE_SPRITE_HEROES.map((h, i) => ({
       key: h.key,
       name: h.name.replace(/^Sprite /, 'The '),
       price: CHARACTER_PRICES[i % CHARACTER_PRICES.length],
       imageUrl: h.imageUrl,
+      spriteKey: h.key,
     })),
   },
   {

@@ -4,6 +4,7 @@ import { DAY_PHASES, ISLAND_DAY_NIGHT_MODES } from '../data/dayPhases.js';
 import { emitFx } from '../lib/fx.js';
 import { PhoneSheet, PhoneLookAndSound, PhoneSwitch, PhoneGuestHostNote } from './PhoneChrome.jsx';
 import { Tip } from './Hints.jsx';
+import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 
 // The DM's phone screens that stand in for the desktop toolbar: "Run the
 // table" (the session: encounter, compendium, clock, music, dice, party) and
@@ -151,16 +152,18 @@ export function PhoneRunTable({
           )}
         </section>
 
-        <section className="phone-menu-section" aria-label="Table music">
-          <span className="phone-label">Table music</span>
+        <section className="phone-menu-section" aria-label={MUSIC_ENABLED ? 'Table music' : 'Sound effects'}>
+          <span className="phone-label">{MUSIC_ENABLED ? 'Table music' : 'Sound effects'}</span>
           {audioEnabled ? (
             <>
               <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(onOpenMusic)}>
-                Music and sounds
+                {MUSIC_ENABLED ? 'Music and sounds' : 'Sound effect volumes'}
               </button>
-              <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(() => open('ambience'))}>
-                This world’s ambience
-              </button>
+              {MUSIC_ENABLED && (
+                <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(() => open('ambience'))}>
+                  This world’s ambience
+                </button>
+              )}
             </>
           ) : (
             <p className="phone-caption phone-caption-flush">Music plays on cloud and guest tables.</p>

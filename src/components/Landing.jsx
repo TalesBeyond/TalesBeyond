@@ -17,7 +17,7 @@ import {
   findUnclosedGuestTable,
 } from '../state/persistence.js';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.js';
-import { ensureAnonymousSession, signUpHost, signInHost } from '../lib/auth.js';
+import { ensureAnonymousSession, signUp, signIn, signOut, getAccount } from '../lib/auth.js';
 import {
   createTableRemote,
   joinTableRemote,
@@ -25,6 +25,7 @@ import {
   whoamiForCodeRemote,
   acceptTermsRemote,
   listMyTablesRemote,
+  listMyJoinedTablesRemote,
   deleteTableRemote,
 } from '../lib/remoteApi.js';
 import { deleteTableStorage } from '../lib/storageUpload.js';
@@ -277,10 +278,13 @@ function HostForm({ onEnter }) {
     if (hostChoice === 'resumeGuest') {
       return <GuestResumeForm onEnter={onEnter} onBack={() => setHostChoice(null)} />;
     }
+    if (hostChoice === 'quickCampaign') {
+      return <QuickCampaignForm onEnter={onEnter} onBack={() => setHostChoice(null)} />;
+    }
     if (hostChoice === 'account') {
       return (
         <>
-          <HostAuthForm onAuthed={() => setAuthState('signedIn')} />
+          <AccountForm who="host" onAuthed={() => setAuthState('signedIn')} />
           <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
             <button type="button" className="link-btn" onClick={() => setHostChoice(null)}>
               ← Back
@@ -329,6 +333,14 @@ function HostForm({ onEnter }) {
         >
           Resume guest session
         </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          onClick={() => setHostChoice('quickCampaign')}
+          style={{ marginTop: 8 }}
+        >
+          New here? Try a quick campaign
+        </button>
         <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
           A guest table needs no account — but nothing about it is saved on our end. You'll need to
           export it yourself before closing it if you want to pick it back up later, then come back
@@ -363,6 +375,21 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
   const [deletingId, setDeletingId] = useState(null);
   const busyId = resumingId ?? deletingId;
   const { agreed } = useContext(ConsentContext);
+  // REQ-004: the account this browser is signed in to, named at the top.
+  // Null for an anonymous session, which has no email to show.
+  const [account, setAccount] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAccount()
+      .then((acct) => {
+        if (!cancelled) setAccount(acct);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -392,10 +419,10 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
     }
   }
 
-  async function signOut() {
+  async function handleSignOut() {
     setSigningOut(true);
     try {
-      await supabase.auth.signOut();
+      await signOut();
     } finally {
       onSignedOut();
     }
@@ -437,6 +464,8 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
 
   return (
     <div>
+      {account && <SignedInAs email={account.email} onSignOut={handleSignOut} signingOut={signingOut} />}
+
       {error && <div className="error-note">{error}</div>}
 
       {tables === null ? (
@@ -497,11 +526,13 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
         Create a new table
       </button>
 
-      <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
-        <button type="button" className="link-btn" onClick={signOut} disabled={signingOut}>
-          {signingOut ? 'Signing out…' : 'Sign out'}
-        </button>
-      </p>
+      {!account && (
+        <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
+          <button type="button" className="link-btn" onClick={handleSignOut} disabled={signingOut}>
+            {signingOut ? 'Signing out…' : 'Sign out'}
+          </button>
+        </p>
+      )}
 
       {pendingDelete && (
         <DeleteTableConfirm table={pendingDelete} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
@@ -549,12 +580,41 @@ function DeleteTableConfirm({ table, onCancel, onConfirm }) {
   );
 }
 
-function HostAuthForm({ onAuthed }) {
+// REQ-004 S011: tables this browser hosts under its anonymous session (from
+// before host accounts). Signing in to an account replaces that session,
+// and with it the only way back in as their host. Never blocks a sign-in:
+// any failure counts as none.
+async function countAnonymouslyHostedTables() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.user?.is_anonymous) return 0;
+    return (await listMyTablesRemote()).length;
+  } catch {
+    return 0;
+  }
+}
+
+// Email/password sign-up or log-in, shared by the Host tab (REQ-003) and the
+// Join tab (REQ-004): one kind of account does both. `who` only picks the
+// wording.
+function AccountForm({ who, onAuthed }) {
   const [authMode, setAuthMode] = useState('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // REQ-004 S011: how many tables this browser's anonymous session hosts,
+  // while the "you'll lose them" warning waits for an answer.
+  const [pendingLoss, setPendingLoss] = useState(null);
+
+  async function authenticate() {
+    if (authMode === 'signup') {
+      await signUp(email.trim(), password);
+    } else {
+      await signIn(email.trim(), password);
+    }
+    onAuthed();
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -565,12 +625,25 @@ function HostAuthForm({ onAuthed }) {
     setError('');
     setBusy(true);
     try {
-      if (authMode === 'signup') {
-        await signUpHost(email.trim(), password);
-      } else {
-        await signInHost(email.trim(), password);
+      const hosted = await countAnonymouslyHostedTables();
+      if (hosted > 0) {
+        setPendingLoss(hosted);
+        return;
       }
-      onAuthed();
+      await authenticate();
+    } catch (err) {
+      setError(err.message || 'Something went wrong signing you in.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmLoss() {
+    setPendingLoss(null);
+    setError('');
+    setBusy(true);
+    try {
+      await authenticate();
     } catch (err) {
       setError(err.message || 'Something went wrong signing you in.');
     } finally {
@@ -602,12 +675,34 @@ function HostAuthForm({ onAuthed }) {
         autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
       />
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
-        {busy ? 'Please wait…' : authMode === 'signup' ? 'Sign up' : 'Log in'}
-      </button>
+      {pendingLoss !== null ? (
+        <div
+          role="alertdialog"
+          aria-label="Lose access to this browser's tables?"
+          style={{ border: '1px solid var(--gold-line)', borderRadius: 6, padding: 12, marginTop: 8 }}
+        >
+          <p className="footer-note" style={{ border: 'none', padding: 0, margin: '0 0 10px' }}>
+            This browser hosts {pendingLoss} table{pendingLoss === 1 ? '' : 's'} without an account.{' '}
+            {authMode === 'signup' ? 'Signing up' : 'Logging in'} here will lose access to{' '}
+            {pendingLoss === 1 ? 'it' : 'them'} for good — they can't be moved to an account.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setPendingLoss(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-danger" onClick={confirmLoss}>
+              Continue
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+          {busy ? 'Please wait…' : authMode === 'signup' ? 'Sign up' : 'Log in'}
+        </button>
+      )}
 
       <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
-        {authMode === 'signup' ? 'Already have a host account? ' : 'New here? '}
+        {authMode === 'signup' ? `Already have ${who === 'host' ? 'a host' : 'an'} account? ` : 'New here? '}
         <button
           type="button"
           className="link-btn"
@@ -838,6 +933,69 @@ function GuestHostForm({ onEnter, onBack }) {
   );
 }
 
+// The quick campaign (data/quickCampaign.js): a ready-made world opened as a
+// guest table, for someone trying the app for the first time. They are its
+// DM, with heroes waiting to hand to the friends they invite.
+function QuickCampaignForm({ onEnter, onBack }) {
+  const { agreed } = useContext(ConsentContext);
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(PLAYER_COLORS[0]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!agreed) return;
+    if (!name.trim()) {
+      setError('Enter a name for yourself as the host.');
+      return;
+    }
+    setError('');
+    setBusy(true);
+    try {
+      const { createQuickCampaignTable } = await import('../data/quickCampaign.js');
+      const { state, me } = await createQuickCampaignTable({ hostName: name.trim(), hostColor: color });
+      markGuestActive(state.session.code);
+      onEnter({ state, me, mode: 'guest' });
+    } catch (err) {
+      setError(err.message || 'Could not open the campaign.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      {error && <div className="error-note">{error}</div>}
+      <p className="footer-note" style={{ border: 'none', padding: '0 2px 12px', margin: 0 }}>
+        A small world, ready to play: a town with an inn, a blacksmith and a three-floor library, fields, a
+        dark forest and a crypt below — with a few monsters about and heroes waiting. You are the Dungeon
+        Master: share the player code to invite friends, and give each of them a hero.
+      </p>
+
+      <label className="field-label">Your name (as Dungeon Master)</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mara" />
+
+      <label className="field-label">Your color</label>
+      <ColorPicker value={color} onChange={setColor} />
+
+      <ConsentCheck />
+
+      <button className="btn btn-primary btn-block" type="submit" disabled={busy || !agreed} style={{ marginTop: 8 }}>
+        {busy ? 'Opening the campaign…' : 'Start the campaign'}
+      </button>
+      <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
+        It opens as a guest table: nothing is saved on our end, so export it (Toolbar) before you close it if
+        you want to pick it back up later.
+      </p>
+      <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+        <button type="button" className="link-btn" onClick={onBack}>
+          ← Back
+        </button>
+      </p>
+    </form>
+  );
+}
+
 // REQ-008 Guest DM Sessions: resumes a guest table from its exported file
 // plus the DM code the file's own export never included. Reactivates the
 // same invite code (state.session.code, untouched by export/import) so any
@@ -942,7 +1100,215 @@ function GuestResumeForm({ onEnter, onBack }) {
   );
 }
 
+// REQ-004: the same checking / signed-out / signed-in shape as HostForm,
+// except an anonymous session counts as signed out — it's what a guest
+// joins with. Signed out, the guest form is right there as before, with
+// the account form one click away.
 function JoinForm({ onEnter }) {
+  const [authState, setAuthState] = useState(isSupabaseConfigured ? 'checking' : 'localOnly');
+  const [account, setAccount] = useState(null); // { id, email } while signed in
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [joiningByCode, setJoiningByCode] = useState(false); // signed in: code form instead of "Your tables"
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+    getAccount()
+      .catch(() => null)
+      .then((acct) => {
+        if (cancelled) return;
+        setAccount(acct);
+        setAuthState(acct ? 'signedIn' : 'signedOut');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleAuthed() {
+    const acct = await getAccount().catch(() => null);
+    setAccount(acct);
+    setShowAccountForm(false);
+    setAuthState(acct ? 'signedIn' : 'signedOut');
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+      setAccount(null);
+      setJoiningByCode(false);
+      setAuthState('signedOut');
+    }
+  }
+
+  if (authState === 'checking') return null;
+
+  if (authState === 'signedIn') {
+    return (
+      <>
+        <SignedInAs email={account?.email} onSignOut={handleSignOut} signingOut={signingOut} />
+        {joiningByCode ? (
+          <>
+            <JoinCodeForm onEnter={onEnter} />
+            <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+              <button type="button" className="link-btn" onClick={() => setJoiningByCode(false)}>
+                ← Your tables
+              </button>
+            </p>
+          </>
+        ) : (
+          <PlayerTablesList onEnter={onEnter} onJoinByCode={() => setJoiningByCode(true)} />
+        )}
+      </>
+    );
+  }
+
+  if (authState === 'signedOut' && showAccountForm) {
+    return (
+      <>
+        <AccountForm who="player" onAuthed={handleAuthed} />
+        <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+          <button type="button" className="link-btn" onClick={() => setShowAccountForm(false)}>
+            ← Continue as guest
+          </button>
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {authState === 'signedOut' && (
+        <p className="footer-note" style={{ border: 'none', padding: '0 2px 12px', margin: 0 }}>
+          Playing more than once?{' '}
+          <button type="button" className="link-btn" onClick={() => setShowAccountForm(true)}>
+            Sign up or log in
+          </button>{' '}
+          to keep your character on any device — or join below as a guest.
+        </p>
+      )}
+      <JoinCodeForm onEnter={onEnter} />
+    </>
+  );
+}
+
+// REQ-004: a signed-in player's seats — every table their account sits at
+// as a player, each with a Resume that goes by table, so it still works
+// after the DM regenerates the invitation code.
+function PlayerTablesList({ onEnter, onJoinByCode }) {
+  const [tables, setTables] = useState(null); // null while loading
+  const [error, setError] = useState('');
+  const [resumingId, setResumingId] = useState(null);
+  const { agreed } = useContext(ConsentContext);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMyJoinedTablesRemote()
+      .then((rows) => {
+        if (!cancelled) setTables(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Could not load your tables.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function resume(table) {
+    setError('');
+    setResumingId(table.tableId);
+    try {
+      const state = await fetchTableSnapshot(table.tableId);
+      const player = state.players[table.playerId];
+      if (!player) throw new Error('Your seat at that table is gone — join it again with its code.');
+      acceptTermsRemote(table.tableId);
+      onEnter({ state, me: player, mode: 'remote' });
+    } catch (err) {
+      setError(err.message || 'Could not resume that table.');
+      setResumingId(null);
+    }
+  }
+
+  return (
+    <div>
+      {error && <div className="error-note">{error}</div>}
+
+      {tables === null ? (
+        <p className="footer-note" style={{ border: 'none', padding: 0 }}>
+          Loading your tables…
+        </p>
+      ) : tables.length === 0 ? (
+        <p className="footer-note" style={{ border: 'none', padding: '0 0 14px' }}>
+          You haven't joined a table with this account yet.
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tables.map((table) => (
+            <li
+              key={table.tableId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                border: '1px solid var(--ink-700)',
+                borderRadius: 8,
+                padding: '10px 12px',
+              }}
+            >
+              <span>
+                {table.name}
+                {!table.isOpen && (
+                  <span className="player-tag" style={{ marginLeft: 8 }}>
+                    Closed
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={resumingId !== null || !agreed}
+                onClick={() => resume(table)}
+              >
+                {resumingId === table.tableId ? 'Resuming…' : 'Resume'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {tables?.length > 0 && <ConsentCheck />}
+
+      <button type="button" className="btn btn-primary btn-block" onClick={onJoinByCode} style={{ marginTop: 14 }}>
+        Join a table by code
+      </button>
+    </div>
+  );
+}
+
+// REQ-004: both landing tabs share this browser's one account, so each says
+// whose it is before anything is done under it — on a shared device, the
+// next person sees it isn't theirs.
+function SignedInAs({ email, onSignOut, signingOut }) {
+  return (
+    <p className="footer-note" style={{ border: 'none', padding: '0 2px 12px', margin: 0 }}>
+      Signed in as <strong>{email || 'your account'}</strong> · Not you?{' '}
+      <button type="button" className="link-btn" onClick={onSignOut} disabled={signingOut}>
+        {signingOut ? 'Signing out…' : 'Sign out'}
+      </button>
+    </p>
+  );
+}
+
+// The invitation-code form: a guest's whole join, and a signed-in player's
+// "join by code". Whatever session exists (account or anonymous) is the
+// identity join_table and whoami_for_code see.
+function JoinCodeForm({ onEnter }) {
   const { agreed } = useContext(ConsentContext);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -958,7 +1324,10 @@ function JoinForm({ onEnter }) {
       setError('Enter the invitation code your host shared with you.');
       return;
     }
-    if (!name.trim()) {
+    // REQ-004: on a cloud table the name may be left blank to take back a
+    // seat this identity already has; it's only needed for a new seat.
+    const cleanName = name.trim();
+    if (!cleanName && !isSupabaseConfigured) {
       setError('Enter your name.');
       return;
     }
@@ -970,8 +1339,9 @@ function JoinForm({ onEnter }) {
         // distinguishes it from a normal cloud table without a failed RPC
         // round trip — a guest table has no `tables` row for join_table to
         // find. No answer within the timeout falls through to the cloud
-        // join below.
-        const guestJoin = await requestGuestJoin(cleanCode, { name: name.trim(), color });
+        // join below. A guest table always seats by name, so it's skipped
+        // without one.
+        const guestJoin = cleanName ? await requestGuestJoin(cleanCode, { name: cleanName, color }) : null;
         if (guestJoin) {
           const player = guestJoin.state.players[guestJoin.playerId];
           onEnter({ state: guestJoin.state, me: player, mode: 'guest' });
@@ -979,12 +1349,17 @@ function JoinForm({ onEnter }) {
         }
 
         await ensureAnonymousSession();
-        // Resume an existing seat at this table if this browser has one,
+        // Resume an existing seat at this table if this identity has one
+        // (this browser's guest session, or the account on any device),
         // instead of asking join_table to create a duplicate.
         const prior = await whoamiForCodeRemote(cleanCode);
+        if (!prior && !cleanName) {
+          setError('Enter your name.');
+          return;
+        }
         const { tableId, playerId } = prior
           ? { tableId: prior.tableId, playerId: prior.playerId }
-          : await joinTableRemote({ code: cleanCode, displayName: name.trim(), color });
+          : await joinTableRemote({ code: cleanCode, displayName: cleanName, color });
         const state = await fetchTableSnapshot(tableId);
         const player = state.players[playerId];
         if (prior) acceptTermsRemote(tableId);
@@ -1052,6 +1427,11 @@ function JoinForm({ onEnter }) {
 
       <label className="field-label">Your name</label>
       <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Thorn" />
+      {isSupabaseConfigured && (
+        <p className="footer-note" style={{ border: 'none', padding: '0 2px 8px', margin: 0 }}>
+          Leave it blank to take back a seat you already have at this table.
+        </p>
+      )}
 
       <label className="field-label">Your color</label>
       <ColorPicker value={color} onChange={setColor} />

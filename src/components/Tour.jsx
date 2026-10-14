@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 
 // The first-table tutorial: a short guided tour for a DM the first time
 // they open a table on this device (desktop layout). Each step lights up
@@ -29,37 +30,29 @@ export const HOST_TOUR = [
     text: 'What your mouse does on the map. The tab shows the icon of the tool you are using.',
     items: [
       ['Play', 'select tokens and drag them around. The everyday tool.'],
+      ['Arrange maps', 'drag whole maps to rearrange the world.'],
       ['Ruler', 'drag across the map to measure a distance.'],
       ['Draw', 'sketch on the map. Everyone at the table sees it.'],
       ['Fog of war', 'cover parts of a map until the party explores them.'],
-      ['Edit', 'drag whole maps to rearrange the world.'],
+      ['Cover', 'mark part of a map as quarter, half or full cover.'],
     ],
   },
   {
     target: 'tokens',
     side: 'right',
     title: 'Tokens',
-    text: 'Opens the panel of everything you can put on the map: heroes, doors, chests, traps and your own images. Click the tab again to fold it away.',
-  },
-  {
-    target: 'mapping',
-    side: 'right',
-    title: 'Mapping',
-    text: 'Where you build the world your players walk through.',
-    items: [
-      ['World maps', 'the rooms and areas of this world. Add one, give it sub maps, resize it, give it a background.'],
-      ['Layers', 'separate worlds in the same table: another floor, another town.'],
-    ],
+    text: 'Opens the panel of everything you can put on the map: heroes, NPCs, doors, chests, traps, ambushes, bulletin boards and portals. Click the tab again to fold it away.',
   },
   {
     target: 'world',
     side: 'right',
-    title: 'World state',
-    text: 'The mood of the scene.',
+    title: 'World',
+    text: 'The world your players walk through, and the mood of the scene.',
     items: [
+      ['World maps', 'the rooms and areas of this world, and its layers: other floors, other towns. Opens in the same panel.'],
       ['Ingame time', 'the table’s clock, and how fast it runs.'],
       ['Day / night', 'set dawn, day, dusk or night by hand.'],
-      ['Ambience', 'the sound players hear in this world.'],
+      ...(MUSIC_ENABLED ? [['Ambience', 'the sound players hear in this world.']] : []),
     ],
   },
   {
@@ -79,22 +72,10 @@ export const HOST_TOUR = [
     text: 'Start a fight: roll for turn order, then step through each creature’s turn.',
   },
   {
-    target: 'music',
-    side: 'right',
-    title: 'Music',
-    text: 'Songs for the whole table, for one world, or for a single token. Each player sets their own volume.',
-  },
-  {
     target: 'dice',
     side: 'right',
     title: 'Dice',
-    text: 'Roll any dice. Your rolls stay hidden from players unless you choose to reveal them.',
-  },
-  {
-    target: 'rolls',
-    side: 'right',
-    title: 'Logs',
-    text: 'Two logs in one panel. The roll log has every roll made at the table this session, with who rolled it. The character log shows what each player changed on their own hero: hit points, items, coins, spells. Only you can see that one.',
+    text: 'Roll any dice. Your rolls stay hidden from players unless you choose to reveal them. The Logs button at the top of the dice panel opens two logs: every roll made at the table this session, and what each player changed on their own hero (only you see that one).',
   },
   {
     target: 'codes',
@@ -112,8 +93,9 @@ export const HOST_TOUR = [
     target: 'config',
     side: 'right',
     title: 'Configurations',
-    text: 'Save and housekeeping.',
+    text: MUSIC_ENABLED ? 'Music, save and housekeeping.' : 'Sound effects, save and housekeeping.',
     items: [
+      MUSIC_ENABLED ? ['Music', 'songs for the whole table, for one world, or for a single token. Each player sets their own volume.'] : ['Sound effects', 'your own volume for each sound effect.'],
       ['Save', 'save the table now.'],
       ['Export / Import', 'keep a copy of the table as a file, or load one back.'],
       ['Close', 'stop new players from joining.'],
@@ -126,7 +108,7 @@ export const HOST_TOUR = [
   {
     target: 'side-heroes',
     title: 'Default heroes',
-    text: 'Ready-made characters. Click one to place it on the map you are viewing, then choose who plays it.',
+    text: 'Ready-made characters. Click one to place it on the map you are viewing, then choose who plays it. Above them, Import hero brings one in from a file and Create hero builds a new one.',
     side: 'right',
   },
   {
@@ -138,19 +120,15 @@ export const HOST_TOUR = [
       ['Chest', 'holds loot for players to open and take.'],
       ['Trap', 'hidden from players until you reveal it.'],
       ['Ambush', 'a hidden band of monsters, revealed all at once.'],
+      ['Bulletin board', 'news and quests a hero reads from next to it.'],
+      ['Portal', 'a pair: step into one, come out beside the other, on any map.'],
     ],
-    side: 'right',
-  },
-  {
-    target: 'side-own',
-    title: 'Add your own image',
-    text: 'Upload a picture from your computer and use it as a hero or monster token.',
     side: 'right',
   },
   {
     target: 'inspector',
     title: 'The character sheet',
-    text: 'Click any token on the map and its sheet opens here: hit points, armor, conditions, and tabs for fighting, magic, the bag and stats. On a hero, “played by” sets which player controls it.',
+    text: 'Click any token on the map and its sheet opens here: hit points, armor, conditions, and tabs for fighting, magic, the bag and stats. On a hero, “played by” sets which player controls it. The pencil on its picture swaps it for an image of your own.',
     side: 'left',
   },
   {

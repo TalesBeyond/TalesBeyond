@@ -182,6 +182,48 @@ export function mapClientEntityToDb(entity, tableId) {
   };
 }
 
+// The fields of a token that live on its `entities` row — every key
+// mapClientEntityPatchToDb below writes, and so every one that comes back to
+// each browser from the database. Keep the two in step. (lib/fastSync.js
+// announces only these: a field the database never reports could never be
+// confirmed.)
+export const ENTITY_ROW_KEYS = [
+  'name',
+  'imageUrl',
+  'color',
+  'col',
+  'row',
+  'size',
+  'hp',
+  'maxHp',
+  'tempHp',
+  'armorClass',
+  'ownerId',
+  'layerId',
+  'islandId',
+  'targetLayerId',
+  'targetCol',
+  'targetRow',
+  'conditions',
+  'sheet',
+  'chestSize',
+  'opened',
+  'items',
+  'hidden',
+  'fogged',
+  'locked',
+  'loot',
+  'shop',
+  'trapDescription',
+  'trapSave',
+  'trapFail',
+  'trapDice',
+  'trapDamage',
+  'trapDamageType',
+  'trapRevealed',
+  'ambushMonsters',
+];
+
 export function mapClientEntityPatchToDb(patch) {
   const db = {};
   if ('name' in patch) db.name = patch.name;

@@ -1,6 +1,6 @@
-// What the DM can keep from players: a monster, chest or door hidden until
-// the DM shows it, a door locked until the DM unlocks it, and whatever
-// stands in the fog of war.
+// What the DM can keep from players: a monster, NPC, chest, door, bulletin
+// board or portal hidden until the DM shows it, a door or portal locked until
+// the DM unlocks it, and whatever stands in the fog of war.
 //
 // A hidden token works like an unrevealed trap (traps.js): it doesn't exist
 // as far as any player's client is concerned. In cloud mode the row never
@@ -10,11 +10,12 @@
 // entitiesVisibleOnLayer filters it out.
 //
 // A locked door is still seen by everyone; a player just can't click it or
-// walk through it (MapBoard.jsx, GameView.jsx's enterDoor).
+// walk through it (MapBoard.jsx, GameView.jsx's enterDoor). The same goes for
+// a locked end of a portal (data/portals.js).
 
 import { isHiddenTrap } from './traps.js';
 
-export const HIDEABLE_KINDS = ['mob', 'npc', 'chest', 'door'];
+export const HIDEABLE_KINDS = ['mob', 'npc', 'chest', 'door', 'bulletin', 'portal'];
 
 export function canBeHidden(entity) {
   return HIDEABLE_KINDS.includes(entity?.kind);
@@ -35,8 +36,9 @@ export function isHiddenFromPlayers(entity) {
   return isHiddenTrap(entity) || entity?.kind === 'ambush' || (canBeHidden(entity) && Boolean(entity.hidden)) || isFogged(entity);
 }
 
+// A door, or one end of a portal.
 export function isLockedDoor(entity) {
-  return entity?.kind === 'door' && Boolean(entity.locked);
+  return (entity?.kind === 'door' || entity?.kind === 'portal') && Boolean(entity.locked);
 }
 
 // A chest can be locked too. Players still see it and can look at its card,

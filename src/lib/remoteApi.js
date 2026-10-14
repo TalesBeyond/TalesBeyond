@@ -161,6 +161,47 @@ export async function listMyTablesRemote() {
   }));
 }
 
+// Every table the signed-in caller holds a player seat at (REQ-004) — newest
+// seat first, for the Join tab's "Your tables" list. Seats at tables they
+// host are left out: those are listed by listMyTablesRemote on the Host tab.
+// The existing roster/table read policies already cover both queries.
+export async function listMyJoinedTablesRemote() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw new Error(`listMyJoinedTables: ${userError.message}`);
+  const userId = userData.user?.id;
+  if (!userId) return [];
+
+  const seatRows = must(
+    await supabase
+      .from('players')
+      .select('id,table_id,joined_at')
+      .eq('auth_user_id', userId)
+      .eq('is_host', false)
+      .order('joined_at', { ascending: false }),
+    'listMyJoinedTables(players)'
+  );
+  if (seatRows.length === 0) return [];
+
+  const tableRows = must(
+    await supabase
+      .from('tables')
+      .select('id,name,is_open')
+      .in('id', seatRows.map((row) => row.table_id)),
+    'listMyJoinedTables(tables)'
+  );
+  const tableById = {};
+  for (const row of tableRows) tableById[row.id] = row;
+
+  return seatRows
+    .filter((row) => tableById[row.table_id])
+    .map((row) => ({
+      tableId: row.table_id,
+      playerId: row.id,
+      name: tableById[row.table_id].name,
+      isOpen: tableById[row.table_id].is_open,
+    }));
+}
+
 // ---- Full snapshot, used to hydrate the reducer on join/resume ----
 
 export async function fetchTableSnapshot(tableId) {
