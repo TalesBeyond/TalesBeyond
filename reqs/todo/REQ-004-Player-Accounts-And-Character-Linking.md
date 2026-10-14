@@ -75,7 +75,7 @@ is unaffected.
 - [x] **AC8 — Host can remove a stale seat.** The DM can kick any non-host player from the Players dropdown or the phone Party sheet, after a confirm, freeing its capacity slot. A non-host player has no such control. *(Shipped as Kick.)*
 - [ ] **AC9 — Local demo mode is unaffected.** None of this appears in local demo mode. Joining stays exactly as it is today, with no account prompt.
 - [ ] **AC10 — The signed-in account is named.** With an account signed in, both the "Host a table" and "Join a table" tabs show "Signed in as `<email>` · Not you? Sign out". The Sign out link there signs out of the browser (both tabs) and returns that tab to its signed-out state.
-- [ ] **AC11 — Warn before losing an anonymous host identity** *(only if S011 is built; see Q4).* Signing up or logging in on either tab, from a browser whose anonymous session still hosts tables, first warns "This browser hosts N table(s) without an account. Signing in will lose access to them." and only goes ahead on Continue.
+- [ ] **AC11 — Warn before losing an anonymous host identity** *(S011; see Q4).* Signing up or logging in on either tab, from a browser whose anonymous session still hosts tables, first warns "This browser hosts N table(s) without an account. Signing in will lose access to them." and only goes ahead on Continue.
 
 ## Technical Notes
 
@@ -120,10 +120,10 @@ Step IDs aren't renumbered, so done steps keep theirs. S009 was added on 2026-10
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S003 | S | List joined tables | Add `listMyJoinedTablesRemote()` to `remoteApi.js`, returning `{ tableId, playerId, name, isOpen }` for every table the signed-in user holds a non-host seat at, newest first. | — | `src/lib/remoteApi.js` |
-|  | S004 | U | "Your tables" list for players | When `JoinForm` detects a signed-in (non-anonymous) session, show S003's list with a Resume button per table (`fetchTableSnapshot` → `acceptTermsRemote` → `onEnter`, gated on the consent tick), a "Closed" tag on closed tables, a "Join a different table" action revealing the code-entry form, and a Sign out link using S001's `signOut()`. Mirror `HostTablesList`. | S002, S003, S009 | `src/components/Landing.jsx` |
-|  | S010 | U | "Signed in as" line on both tabs | Show "Signed in as `<email>` · Not you? Sign out" at the top of `HostTablesList` and the player "Your tables" view, from `session.user.email`. The link uses S001's `signOut()`. One small shared component. | S004 | `src/components/Landing.jsx`, `src/styles.css` |
-|  | S011 | U | *(Conditional, see Q4)* Warn before replacing an anonymous host identity | Build only if Q4's check finds real tables. Before `signUp`/`signIn` on either tab, if the current session is anonymous, call `listMyTablesRemote()`. If it returns any tables, show the AC11 warning with Cancel/Continue. | S001 | `src/components/Landing.jsx` |
+| ✅ | S003 | S | List joined tables | `listMyJoinedTablesRemote()` in `remoteApi.js` returns `{ tableId, playerId, name, isOpen }` for every non-host seat the signed-in user holds, newest seat first (`players.joined_at`). | — | `src/lib/remoteApi.js` |
+| ✅ | S004 | U | "Your tables" list for players | `PlayerTablesList`, shown by `JoinForm` when signed in: Resume per table (`fetchTableSnapshot` → `acceptTermsRemote` → `onEnter`, gated on the consent tick), a "Closed" tag on closed tables, and "Join a table by code", which opens `JoinCodeForm` with a "← Your tables" link back. | S002, S003, S009 | `src/components/Landing.jsx` |
+| ✅ | S010 | U | "Signed in as" line on both tabs | `SignedInAs` shows "Signed in as `<email>` · Not you? Sign out" at the top of `HostTablesList` and the player view, using `getAccount()` and `signOut()`. `HostTablesList` keeps its old bottom Sign out link only for an anonymous session, which has no email. No CSS needed. | S004 | `src/components/Landing.jsx` |
+| ✅ | S011 | U | Warn before replacing an anonymous host identity | `AccountForm` (both tabs) calls `countAnonymouslyHostedTables()` before `signUp`/`signIn`. If the current session is anonymous and `listMyTablesRemote()` finds tables, it shows the AC11 warning with Cancel/Continue in place of the submit button. A failed check never blocks sign-in. | S001 | `src/components/Landing.jsx` |
 
 ### Slice 3 — Host removes a stale seat ✅ (shipped as Kick, `5dc3d67`)
 
@@ -170,7 +170,7 @@ S005 → S006 → S007            (done)
 - [x] **Q1 — Warn before removing a seat that still owns a hero?** *Resolved:* the Kick confirm names the hero the seat plays and says it stays on the map with no one playing it.
 - [x] **Q2 — Can an account player give up their own seat?** *Resolved (Blaxine, 2026-10-14):* no. Leave keeps an account player's seat, and only the DM's Kick frees it. There is no self-service "Give up my seat".
 - [x] **Q3 — Host and player accounts on one browser.** *Resolved (Blaxine, 2026-10-14):* accept one session per browser. A host account opening "Join a table" sees its non-host seats (often none) plus the code form, and Sign out on either tab signs out both. Both tabs show which account is signed in ("Signed in as `<email>` · Not you? Sign out", S010 / AC10), so someone on a shared device doesn't join under another person's account by accident.
-- [ ] **Q4 — Warn before signing up over an anonymous host identity?** *Decision rule agreed (Blaxine, 2026-10-14); waiting on the check.* Signing up or logging in on a browser whose anonymous session still hosts pre-REQ-003 tables cuts it off from them. Before building Slice 2, run this in the live project's SQL editor:
+- [x] **Q4 — Warn before signing up over an anonymous host identity?** *Resolved (2026-10-14):* S011 is built. The check below wasn't run before implementation, and the warning only appears on a browser whose anonymous session really does host tables, so it costs nothing if there are none. If the query comes back empty, S011 can be kept or removed; either is safe. The original rule, for reference — run this in the live project's SQL editor:
 
   ```sql
   select t.id, t.name, t.created_at
@@ -179,8 +179,8 @@ S005 → S006 → S007            (done)
   where u.is_anonymous;
   ```
 
-  - No rows, or only abandoned test tables → no warning. Drop S011 and AC11, and document the risk in `PITFALLS.md` #6 (S008).
-  - Real tables still in use → build S011: the AC11 warning on both the Host and Join sign-in paths.
+  - No rows, or only abandoned test tables → no warning needed.
+  - Real tables still in use → keep S011: the AC11 warning on both the Host and Join sign-in paths.
 
 ## Smoke Test
 

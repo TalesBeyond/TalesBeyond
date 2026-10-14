@@ -25,6 +25,7 @@ import {
   whoamiForCodeRemote,
   acceptTermsRemote,
   listMyTablesRemote,
+  listMyJoinedTablesRemote,
   deleteTableRemote,
 } from '../lib/remoteApi.js';
 import { deleteTableStorage } from '../lib/storageUpload.js';
@@ -363,6 +364,21 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
   const [deletingId, setDeletingId] = useState(null);
   const busyId = resumingId ?? deletingId;
   const { agreed } = useContext(ConsentContext);
+  // REQ-004: the account this browser is signed in to, named at the top.
+  // Null for an anonymous session, which has no email to show.
+  const [account, setAccount] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAccount()
+      .then((acct) => {
+        if (!cancelled) setAccount(acct);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -437,6 +453,8 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
 
   return (
     <div>
+      {account && <SignedInAs email={account.email} onSignOut={handleSignOut} signingOut={signingOut} />}
+
       {error && <div className="error-note">{error}</div>}
 
       {tables === null ? (
@@ -497,11 +515,13 @@ function HostTablesList({ onEnter, onCreateNew, onSignedOut }) {
         Create a new table
       </button>
 
-      <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
-        <button type="button" className="link-btn" onClick={handleSignOut} disabled={signingOut}>
-          {signingOut ? 'Signing out…' : 'Sign out'}
-        </button>
-      </p>
+      {!account && (
+        <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
+          <button type="button" className="link-btn" onClick={handleSignOut} disabled={signingOut}>
+            {signingOut ? 'Signing out…' : 'Sign out'}
+          </button>
+        </p>
+      )}
 
       {pendingDelete && (
         <DeleteTableConfirm table={pendingDelete} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
@@ -549,6 +569,20 @@ function DeleteTableConfirm({ table, onCancel, onConfirm }) {
   );
 }
 
+// REQ-004 S011: tables this browser hosts under its anonymous session (from
+// before host accounts). Signing in to an account replaces that session,
+// and with it the only way back in as their host. Never blocks a sign-in:
+// any failure counts as none.
+async function countAnonymouslyHostedTables() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.user?.is_anonymous) return 0;
+    return (await listMyTablesRemote()).length;
+  } catch {
+    return 0;
+  }
+}
+
 // Email/password sign-up or log-in, shared by the Host tab (REQ-003) and the
 // Join tab (REQ-004): one kind of account does both. `who` only picks the
 // wording.
@@ -558,6 +592,18 @@ function AccountForm({ who, onAuthed }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // REQ-004 S011: how many tables this browser's anonymous session hosts,
+  // while the "you'll lose them" warning waits for an answer.
+  const [pendingLoss, setPendingLoss] = useState(null);
+
+  async function authenticate() {
+    if (authMode === 'signup') {
+      await signUp(email.trim(), password);
+    } else {
+      await signIn(email.trim(), password);
+    }
+    onAuthed();
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -568,12 +614,25 @@ function AccountForm({ who, onAuthed }) {
     setError('');
     setBusy(true);
     try {
-      if (authMode === 'signup') {
-        await signUp(email.trim(), password);
-      } else {
-        await signIn(email.trim(), password);
+      const hosted = await countAnonymouslyHostedTables();
+      if (hosted > 0) {
+        setPendingLoss(hosted);
+        return;
       }
-      onAuthed();
+      await authenticate();
+    } catch (err) {
+      setError(err.message || 'Something went wrong signing you in.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmLoss() {
+    setPendingLoss(null);
+    setError('');
+    setBusy(true);
+    try {
+      await authenticate();
     } catch (err) {
       setError(err.message || 'Something went wrong signing you in.');
     } finally {
@@ -605,9 +664,31 @@ function AccountForm({ who, onAuthed }) {
         autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
       />
 
-      <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
-        {busy ? 'Please wait…' : authMode === 'signup' ? 'Sign up' : 'Log in'}
-      </button>
+      {pendingLoss !== null ? (
+        <div
+          role="alertdialog"
+          aria-label="Lose access to this browser's tables?"
+          style={{ border: '1px solid var(--gold-line)', borderRadius: 6, padding: 12, marginTop: 8 }}
+        >
+          <p className="footer-note" style={{ border: 'none', padding: 0, margin: '0 0 10px' }}>
+            This browser hosts {pendingLoss} table{pendingLoss === 1 ? '' : 's'} without an account.{' '}
+            {authMode === 'signup' ? 'Signing up' : 'Logging in'} here will lose access to{' '}
+            {pendingLoss === 1 ? 'it' : 'them'} for good — they can't be moved to an account.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setPendingLoss(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-danger" onClick={confirmLoss}>
+              Continue
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+          {busy ? 'Please wait…' : authMode === 'signup' ? 'Sign up' : 'Log in'}
+        </button>
+      )}
 
       <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
         {authMode === 'signup' ? `Already have ${who === 'host' ? 'a host' : 'an'} account? ` : 'New here? '}
@@ -953,6 +1034,7 @@ function JoinForm({ onEnter }) {
   const [authState, setAuthState] = useState(isSupabaseConfigured ? 'checking' : 'localOnly');
   const [account, setAccount] = useState(null); // { id, email } while signed in
   const [showAccountForm, setShowAccountForm] = useState(false);
+  const [joiningByCode, setJoiningByCode] = useState(false); // signed in: code form instead of "Your tables"
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -984,6 +1066,7 @@ function JoinForm({ onEnter }) {
     } finally {
       setSigningOut(false);
       setAccount(null);
+      setJoiningByCode(false);
       setAuthState('signedOut');
     }
   }
@@ -993,12 +1076,19 @@ function JoinForm({ onEnter }) {
   if (authState === 'signedIn') {
     return (
       <>
-        <JoinCodeForm onEnter={onEnter} />
-        <p className="footer-note" style={{ padding: '10px 2px 0', border: 'none' }}>
-          <button type="button" className="link-btn" onClick={handleSignOut} disabled={signingOut}>
-            {signingOut ? 'Signing out…' : 'Sign out'}
-          </button>
-        </p>
+        <SignedInAs email={account?.email} onSignOut={handleSignOut} signingOut={signingOut} />
+        {joiningByCode ? (
+          <>
+            <JoinCodeForm onEnter={onEnter} />
+            <p className="footer-note" style={{ border: 'none', padding: '10px 2px 0', margin: 0 }}>
+              <button type="button" className="link-btn" onClick={() => setJoiningByCode(false)}>
+                ← Your tables
+              </button>
+            </p>
+          </>
+        ) : (
+          <PlayerTablesList onEnter={onEnter} onJoinByCode={() => setJoiningByCode(true)} />
+        )}
       </>
     );
   }
@@ -1029,6 +1119,115 @@ function JoinForm({ onEnter }) {
       )}
       <JoinCodeForm onEnter={onEnter} />
     </>
+  );
+}
+
+// REQ-004: a signed-in player's seats — every table their account sits at
+// as a player, each with a Resume that goes by table, so it still works
+// after the DM regenerates the invitation code.
+function PlayerTablesList({ onEnter, onJoinByCode }) {
+  const [tables, setTables] = useState(null); // null while loading
+  const [error, setError] = useState('');
+  const [resumingId, setResumingId] = useState(null);
+  const { agreed } = useContext(ConsentContext);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMyJoinedTablesRemote()
+      .then((rows) => {
+        if (!cancelled) setTables(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Could not load your tables.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function resume(table) {
+    setError('');
+    setResumingId(table.tableId);
+    try {
+      const state = await fetchTableSnapshot(table.tableId);
+      const player = state.players[table.playerId];
+      if (!player) throw new Error('Your seat at that table is gone — join it again with its code.');
+      acceptTermsRemote(table.tableId);
+      onEnter({ state, me: player, mode: 'remote' });
+    } catch (err) {
+      setError(err.message || 'Could not resume that table.');
+      setResumingId(null);
+    }
+  }
+
+  return (
+    <div>
+      {error && <div className="error-note">{error}</div>}
+
+      {tables === null ? (
+        <p className="footer-note" style={{ border: 'none', padding: 0 }}>
+          Loading your tables…
+        </p>
+      ) : tables.length === 0 ? (
+        <p className="footer-note" style={{ border: 'none', padding: '0 0 14px' }}>
+          You haven't joined a table with this account yet.
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tables.map((table) => (
+            <li
+              key={table.tableId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                border: '1px solid var(--ink-700)',
+                borderRadius: 8,
+                padding: '10px 12px',
+              }}
+            >
+              <span>
+                {table.name}
+                {!table.isOpen && (
+                  <span className="player-tag" style={{ marginLeft: 8 }}>
+                    Closed
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={resumingId !== null || !agreed}
+                onClick={() => resume(table)}
+              >
+                {resumingId === table.tableId ? 'Resuming…' : 'Resume'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {tables?.length > 0 && <ConsentCheck />}
+
+      <button type="button" className="btn btn-primary btn-block" onClick={onJoinByCode} style={{ marginTop: 14 }}>
+        Join a table by code
+      </button>
+    </div>
+  );
+}
+
+// REQ-004: both landing tabs share this browser's one account, so each says
+// whose it is before anything is done under it — on a shared device, the
+// next person sees it isn't theirs.
+function SignedInAs({ email, onSignOut, signingOut }) {
+  return (
+    <p className="footer-note" style={{ border: 'none', padding: '0 2px 12px', margin: 0 }}>
+      Signed in as <strong>{email || 'your account'}</strong> · Not you?{' '}
+      <button type="button" className="link-btn" onClick={onSignOut} disabled={signingOut}>
+        {signingOut ? 'Signing out…' : 'Sign out'}
+      </button>
+    </p>
   );
 }
 
