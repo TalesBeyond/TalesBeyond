@@ -5,19 +5,19 @@
 | ID | REQ-014 |
 | Title | Fog of War |
 | SOLVE | — |
-| Status | Todo |
+| Status | Done (awaiting Smoke Test) |
 | Phase | Gameplay |
 | Tier | Feature |
 | Area | Map / Tokens / visibility / cloud, guest and local mode |
 | Author | Blaxine |
 | Created | 2026-10-08 |
-| Last Updated | 2026-10-08 |
+| Last Updated | 2026-10-14 |
 
 > Source PRD: REQ-014-PRD-Fog-Of-War.md
 
 ## Short Description
 
-Lets the DM cover parts of an island with rectangular fog chunks that players see as an opaque cover. Every monster, NPC, chest, door and trap standing wholly inside fog is kept off players' maps the same way a Hidden token is, heroes always show, and a chunk opens for the whole table either by the DM's hand or when a hero stands in it. A chunk whose "Reveals when entered" setting is off is held back: players cannot move onto it or arrive in it through a door. Works on cloud, guest and local tables; chunks are laid on desktop and managed on desktop and phone.
+Lets the DM cover parts of an island with rectangular fog chunks that players see as an opaque cover. Every monster, NPC, chest, door, trap, bulletin board, portal and cover standing wholly inside fog is kept off players' maps the same way a Hidden token is, heroes always show, and a chunk opens for the whole table either by the DM's hand or when a hero stands in it. A chunk whose "Reveals when entered" setting is off is held back: players cannot move onto it or arrive in it through a door. Works on cloud, guest and local tables; chunks are laid on desktop and managed on desktop and phone.
 
 ## User Stories
 
@@ -29,19 +29,23 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 
 ## Constraints
 
-- **Realtime sends nothing when a row stops being readable.** A token that becomes fogged stays on a cloud player's map until the DM's client names it in a `conceal` broadcast (`src/lib/realtime.js:47`, `sendConceal` `:212`). A row that becomes readable arrives as an `UPDATE` for a row the client has never held; `realtime.js:86` already upserts those for traps and every `canBeHidden` kind (`mob`, `npc`, `chest`, `door`).
-- **Every token is painted in one layer above all islands** (`src/components/MapBoard.jsx:1158`). A cover drawn inside an island sits under every token, so any token that reaches a player's state is drawn on top of the fog. Token privacy rests on the token never arriving, not on paint order.
-- **A guest DM's `MOVE_ENTITY` is forwarded unless the token was already hidden** (`toGuestBroadcastAction`, `src/components/GameView.jsx:358`), and a cloud `moveEntityRemote` leaves the row readable. A DM move into fog sent as a move followed by a flag update shows players the destination square first.
-- **A door is one row with two sides**: its home square (`islandId`, `col`, `row`) and a second square on the target layer's base island (`targetCol`, `targetRow`), resolved per layer in `entitiesVisibleOnLayer` (`GameView.jsx:225`). One stored flag cannot describe both sides.
+> Line numbers in this section and in *Technical Notes* were refreshed on 2026-10-14, after all five slices and the portal follow-up landed.
+
+- **Realtime sends nothing when a row stops being readable.** A token that becomes fogged stays on a cloud player's map until the DM's client names it in a `conceal` broadcast (`src/lib/realtime.js:60`, `sendConceal` `:235`). A row that becomes readable arrives as an `UPDATE` for a row the client has never held; the entity handler (`realtime.js:87`) already upserts those for traps and every `canBeHidden` kind.
+- **Bulletin boards, portals and covers have no database row** (`OFF_DATABASE_KINDS`, `src/lib/boardSync.js:32`; added after this plan was written). On a cloud table the DM's browser announces them over the table's channel (`announceBoards`, `GameView.jsx:1333`, and `announceEntityChange` `:1211`) and leaves out any that `isHiddenFromPlayers`; RLS plays no part. On guest and local tables they go through the same filters as every other token. So `fogged` hides them the same way, as long as the DM's client stamps it.
+- **A portal is two tokens, one per end, linked by `linkId`** (`src/data/portals.js`, `portalPartner` `:36`). A player uses one only if their browser holds *both* ends (`enterPortal`, `GameView.jsx:3447`); an end they don't hold makes it "lead nowhere yet". Fogging each end on its own footprint would make every portal into fog a dead end for players.
+- **Every token is painted in one layer above all islands** (`src/components/MapBoard.jsx:1368`). A cover drawn inside an island sits under every token, so any token that reaches a player's state is drawn on top of the fog. Token privacy rests on the token never arriving, not on paint order.
+- **A guest DM's `MOVE_ENTITY` is forwarded unless the token was already hidden** (`toGuestBroadcastAction`, `src/components/GameView.jsx:393`), and a cloud `moveEntityRemote` leaves the row readable. A DM move into fog sent as a move followed by a flag update shows players the destination square first.
+- **A door is one row with two sides**: its home square (`islandId`, `col`, `row`) and a second square on the target layer's base island (`targetCol`, `targetRow`), resolved per layer in `entitiesVisibleOnLayer` (`GameView.jsx:272`). One stored flag cannot describe both sides.
 - **The current player read policy on `entities` is the one in `20250101000061_ambush_tokens.sql`; the current `enforce_entity_write_permissions()` is the one in `20250101000067_merchant_npcs.sql`.** Each migration that touches either rebuilds it whole from the previous version.
 - **A table missing from the `supabase_realtime` publication breaks the whole table channel**, not just that table's events (`20250101000050_realtime_publication.sql`, repeated in `20250101000052_drawings.sql`).
-- **Where a cloud player's hero may move is the client's call.** The hero-owner branch of the write trigger allows any `col`/`row`/`island_id`/`layer_id` on the player's own hero (`20250101000037_player_door_layer_move.sql` onward). On a guest table the DM's client validates the move (`applyValidatedIntent`, `GameView.jsx:1217`).
-- **A dropped token is held at the drop square until synced state agrees or a timeout passes** (`holdDragAt`, `MapBoard.jsx:302`, called at `:361` before `onMoveEntity`). A move refused afterwards reads as "moved, then snapped back".
-- **Map art reaches every browser.** An island's background is a CSS background on `.grid-wrap` (`MapBoard.jsx:1035`), resolved from a fingerprint every seat can fetch. The cover hides it on screen only.
-- **"The DM is away" lasts at most 3 minutes 5 seconds on cloud and guest tables.** Once the host's Presence entry is gone past `HOST_ABSENCE_GRACE_MS`, every player's session ends after `HOST_ABSENCE_END_MS` (`GameView.jsx:148-152`, `handleHostPresenceChange` `:540`). On a guest table a player's move is only an intent and goes unanswered meanwhile. The PRD's open-ended away case exists only in local mode and inside that cloud window.
-- **Phones already have the Draw tool** (`PhoneDrawBar`, `GameView.jsx:3629`). The Fog of war tool gets no phone bar.
+- **Where a cloud player's hero may move is the client's call.** The hero-owner branch of the write trigger allows any `col`/`row`/`island_id`/`layer_id` on the player's own hero (`20250101000037_player_door_layer_move.sql` onward). On a guest table the DM's client validates the move (`applyValidatedIntent`, `GameView.jsx:1617`).
+- **A dropped token is held at the drop square until synced state agrees or a timeout passes** (`holdDragAt`, `MapBoard.jsx:333`, called at `:380` and `:408` around `onMoveEntity`). A move refused afterwards reads as "moved, then snapped back".
+- **Map art reaches every browser.** An island's background is a CSS background on `.grid-wrap` (`MapBoard.jsx:1228`), resolved from a fingerprint every seat can fetch. The cover hides it on screen only.
+- **"The DM is away" lasts at most 3 minutes 5 seconds on cloud and guest tables.** Once the host's Presence entry is gone past `HOST_ABSENCE_GRACE_MS`, every player's session ends after `HOST_ABSENCE_END_MS` (`GameView.jsx:174-178`, `handleHostPresenceChange` `:623`). On a guest table a player's move is only an intent and goes unanswered meanwhile. The PRD's open-ended away case exists only in local mode and inside that cloud window.
+- **Phones already have the Draw tool** (`PhoneDrawBar`, `GameView.jsx:4550`). The Fog of war tool gets no phone bar.
 - **`fog` is taken.** It is an Island condition key (`src/data/islandConditions.js:11`) and a phone icon name (`src/components/PhoneChrome.jsx:49`).
-- **Optional tables are fetched forgivingly in `fetchTableSnapshot`** (`src/lib/remoteApi.js`, the `drawings` block at `:195`), so a project that has not run a migration still loads.
+- **Optional tables are fetched forgivingly in `fetchTableSnapshot`** (`src/lib/remoteApi.js`, the `drawings` block at `:268` and the `fog_chunks` one at `:279`), so a project that has not run a migration still loads.
 - **The repo has no test runner** (`package.json` has no test script; `PITFALLS.md` #9). Verification is the Smoke Test.
 
 ## Architectural decisions
@@ -52,12 +56,13 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 - **Schema — `entities.fogged boolean not null default false`.** The player read policy gains `and not fogged`; the write trigger treats a change to `fogged` like a change to `hidden` (DM only).
 - **Client state:** `fogChunks` keyed by id plus `fogChunkOrder` (creation order) on the table state, beside `drawings`/`drawingOrder`, carried in the Table snapshot, the guest snapshot, the local save and the table export.
 - **A square is fogged while at least one unrevealed chunk covers it.**
-- **A token is fogged when it is not a hero and every square it occupies is fogged.** For a door that means every square on both of its sides. A hero is never fogged.
+- **A token is fogged when it is not a hero and every square it occupies is fogged.** For a door that means every square on both of its sides. For a portal end it means every square of both ends; an end whose partner is missing or hidden by the DM goes by its own squares alone. A hero is never fogged. Bulletin boards and covers follow the plain rule.
 - **`fogged` is derived data that only the DM's client writes**, in all three modes. `isHiddenFromPlayers` treats it as it treats `hidden`, so the cloud read policy, the guest broadcast filter and the local filter all apply to it unchanged.
 - **Same-write rule:** any DM write that places a token, or changes its position, size, island or layer, carries the token's resulting `fogged` value in that same write. A DM move that changes `fogged` is sent as one entity update holding position and flag together, never as a move followed by a flag update.
 - **Chunk changes restamp.** Laying, deleting, moving, resizing, revealing or re-fogging a chunk updates `fogged` on every token whose value changed, and on a cloud table sends `conceal` for each token that became fogged.
 - **Reconcile:** when the DM's client first holds a table and after every resync, it corrects any token whose stored `fogged` disagrees with the chunks.
 - **A door with one clear side stays readable**; each player client leaves out the side whose squares are all fogged.
+- **A portal pair with one clear end stays readable, both ends** (`portalPartnerIn`/`isPortalEndFogged`, `src/utils/fogOfWar.js`). Each player client leaves out the end whose squares are all fogged, but still holds it, so the portal can be used from the clear end and its arrival is tested like a door's. Moving, linking, hiding or removing either end restamps both (`portalFogKey`, `GameView.jsx:2778`, and `linkId` among the same-write placement keys). As with a door's far side, a player's browser therefore knows where the fogged end stands.
 - **Reveal and fog-again are table-wide.** There is no per-player fog state.
 - **Reveals when entered is positional.** While the DM's client is connected, any unrevealed chunk with `reveal_on_enter` on that has a hero occupying at least one of its squares is revealed by the DM's client, whoever moved the hero and however long ago.
 - **Occupied chunks start held back.** A chunk laid over a hero is created with `reveal_on_enter` off; "Fog again" on a chunk a hero stands in turns it off.
@@ -86,8 +91,8 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 - [ ] **AC4 — DM overlay.** The DM sees an unrevealed chunk as a tint with the map and tokens visible beneath, and a revealed chunk as a dashed outline with a corner tag.
 - [ ] **AC5 — Reveal and fog again by hand.** In the Play tool the DM clicks a fogged chunk, presses Reveal in the right panel, and the cover is gone for the whole table. Through the corner tag the DM selects it again and "Fog again" restores the cover for everyone.
 - [ ] **AC6 — Overlap.** A square covered by several chunks is clear only once every one of them is revealed. A click where chunks overlap selects the smallest.
-- [ ] **AC7 — Tokens in fog do not exist for players.** A monster, NPC, chest, door or trap whose every square is fogged is on no player's map. On a cloud table a non-host query for that row returns nothing; on a guest table it is never broadcast and is absent from a joining player's snapshot.
-- [ ] **AC8 — Heroes and partly fogged tokens show.** A hero is shown wherever it stands. A token with at least one clear square is shown. A door is shown on a side that has a clear square and not on a side that has none.
+- [ ] **AC7 — Tokens in fog do not exist for players.** A monster, NPC, chest, door, trap, bulletin board, cover, or portal pair whose every square is fogged is on no player's map. On a cloud table a non-host query for that row returns nothing, and a bulletin board, portal or cover (which has no row) is never announced on the table's channel; on a guest table it is never broadcast and is absent from a joining player's snapshot.
+- [ ] **AC8 — Heroes and partly fogged tokens show.** A hero is shown wherever it stands. A token with at least one clear square is shown. A door is shown on a side that has a clear square and not on a side that has none; a portal is shown at an end that has a clear square and not at an end that has none.
 - [ ] **AC9 — Tokens follow the fog live.** Revealing a chunk puts its tokens on players' maps without a reload; re-fogging takes them off. A token the DM moves into fog, or places in fog, never appears at that square on a player's map. A token the DM moves out of fog appears.
 - [ ] **AC10 — Only the DM changes fog.** On a cloud table a non-host cannot insert, update or delete a `fog_chunks` row or change `fogged` on any token.
 - [ ] **AC11 — Reveals when entered.** With the setting on and the DM's browser connected, a chunk opens for the whole table when any hero occupies one of its squares: moved by its player, moved by the DM, or arriving through a door.
@@ -101,59 +106,65 @@ Lets the DM cover parts of an island with rectangular fog chunks that players se
 - [ ] **AC19 — Island lifecycle.** Chunks move with their island and are gone when it is deleted. After an island is made smaller, squares of a chunk outside it have no effect.
 - [ ] **AC20 — Naming.** Every label reads "Fog of war"; the Fog island condition keeps its name, icon and behaviour.
 - [ ] **AC21 — Reconcile.** After the DM's browser loads or resyncs a table, no token's `fogged` value disagrees with the chunks.
+- [ ] **AC22 — Portals into fog.** With a portal's near end clear and its far end in fog, a player can step through it. Arriving in a chunk with the setting on opens it; arriving in a held-back chunk is refused with the log line and no prompt (like AC15). The far end isn't drawn on the player's map until its chunk opens. When the DM moves the near end into fog too, both ends leave every player's map; moving it out brings them back.
 
 ## Technical Notes
 
-**Privacy path that already exists**
+> Refreshed on 2026-10-14 against the built feature. Where the plan pointed at a place to change, this now names what was built there.
 
-- `src/data/visibility.js` — `isHiddenFromPlayers` (`:24`) is the single predicate; `entitiesShownTo` (`:42`) filters a player's entity map. `HIDEABLE_KINDS` (`:16`) governs only the DM's "Hidden from players" control and does not gate `fogged`.
-- `src/components/GameView.jsx` — `entitiesVisibleOnLayer` (`:225`) is the local-mode filter and the place a door's target side is resolved (`:242`); the per-side door rule lands here. `toGuestBroadcastAction` (`:337`) turns a hidden→shown update into `ADD_ENTITY`, shown→hidden into `REMOVE_ENTITY`, and drops updates to a still-hidden token; `toGuestSnapshot` (`:366`) leaves hidden tokens out. `canPlayerUpdateEntity` (`:1480`) refuses any patch on a hidden token and any patch naming `hidden` or `locked`; `fogged` joins that list. The encounter effect at `:790` already hands the turn back to a creature players cannot see.
-- `src/lib/mappers.js` — `mapDbEntity` (`hidden` near `:107`), `mapClientEntityToDb` (`:129`), `mapClientEntityPatchToDb` (`:180`) map every entity column; `fogged` is added to all three.
-- `src/lib/realtime.js` — `conceal` handler (`:47`) re-reads the row and drops the token only if it is truly unreadable; the entity `UPDATE` handler (`:86`) upserts for traps and hideable kinds.
-- `GameView.jsx` `updateEntity` (`:1670`) — the existing hide path: `updateEntityRemote(id, patch).then(() => tableChannelRef.current?.sendConceal(id))` (`:1704-1710`).
+**Where the feature lives**
 
-**Entity write choke points on the DM's client** (where the same-write rule applies)
+- `src/utils/fogOfWar.js` — every pure rule: `clippedFogChunk` (`:16`), `fogChunkRectFromDrag` (`:29`), `isSquareFogged` (`:55`), `smallestFogChunkAt` (`:62`), `isFootprintFogged` (`:96`), the door sides (`doorTargetSide` `:117`, `isDoorHomeSideFogged`, `isDoorTargetSideFogged`), the portal ends (`portalPartnerIn`, `isPortalEndFogged`), `isEntityFogged`, `isFogChunkOccupied`, `fogChunksToRevealOnEnter`, `isHeldBackDestination`, and the chunk-editing maths (`fogChunkRectFromEdit`, `fogChunkGrabAt`).
+- `src/components/FogOfWarLayer.jsx` — `IslandFogOfWar`, the players' cover and the DM's tint, outline and corner tag, rendered per island at `MapBoard.jsx:1285`.
+- `src/components/RightPanel.jsx` — `FogChunkCard` (`:358`), with the "Reveals when entered" switch (`:387`) and the occupied-chunk Hint (`:405`).
+- Migrations `20250101000068_fog_chunks.sql` and `20250101000069_fogged_tokens.sql`. The next free number is `20250101000073`.
 
-- `addEntity` (`GameView.jsx:1581`) — builds the entity, then `ADD_ENTITY` + `addEntityRemote` / `broadcastGuestChange` / `saveOrWarn`.
-- `moveEntity` (`:1645`) — `MOVE_ENTITY` + `moveEntityRemote`; a door dragged from its target side is routed to `updateEntity` with `targetCol`/`targetRow` (`:1652`).
-- `updateEntity` (`:1670`) — size and any other patch.
-- `revealAmbush` (`:1732`) — dispatches `ADD_ENTITY` for each spawned monster and writes them itself, bypassing `addEntity`.
-- `confirmEnterDoor` (`:2693`) — the DM's branch moves a token across layers through `moveEntity`.
-- `stateRef` (`:927`) holds the current state for handlers that run outside a render.
+**Privacy path**
 
-**Chunk storage and sync — the Drawings path to mirror**
+- `src/data/visibility.js` — `isHiddenFromPlayers` (`:35`) is the single predicate and includes `isFogged` (`:29`); `entitiesShownTo` (`:54`) filters a player's entity map. `HIDEABLE_KINDS` (`:18`) governs only the DM's "Hidden from players" control and does not gate `fogged`.
+- `src/components/GameView.jsx` — `entitiesVisibleOnLayer` (`:272`) is the local-mode filter and where a door's target side is resolved; it also leaves out a door side or portal end whose own squares are fogged. `toGuestBroadcastAction` (`:393`) turns a hidden→shown update into `ADD_ENTITY`, shown→hidden into `REMOVE_ENTITY`, and drops updates to a still-hidden token; `toGuestSnapshot` (`:426`) leaves hidden tokens out. `canPlayerUpdateEntity` (`:1884`) refuses any patch on a hidden token and any patch naming `hidden`, `locked` or `fogged`. The encounter effect around `:880` hands the turn back when it lands on a creature players cannot see.
+- Cloud tables also announce every token change over the table's channel before the database write lands: `announceEntityChange` (`:1211`) runs each change through `toGuestBroadcastAction` first. Bulletin boards, portals and covers go out only this way, plus `announceBoards` (`:1333`).
+- `src/lib/mappers.js` — `mapDbEntity` (`:81`, `fogged` at `:110`), `mapClientEntityToDb` (`:132`, `:164`), `mapClientEntityPatchToDb` (`:227`, `:251`).
+- `src/lib/realtime.js` — the `conceal` handler (`:60`) re-reads the row and drops the token only if it is truly unreadable; the entity handler (`:87`) upserts for traps and hideable kinds; `sendConceal` (`:235`).
+- `GameView.jsx` `updateEntity` (`:2214`) — the hide path, `updateEntityRemote(id, patch).then(() => tableChannelRef.current?.sendConceal(id))` (`:2268`), now also taken when `fogged` turns on.
 
-- `supabase/migrations/20250101000052_drawings.sql` — table, touch trigger, four RLS policies, publication block.
-- `src/state/store.jsx` — initial state (`:158`), the island-removal helper that drops an island's drawings (`:81-90`), `SET_DRAWING` (`:484`), `REMOVE_DRAWINGS` (`:494`). `src/state/migrate.js:52-54` defaults the keys on an older save.
-- `src/lib/mappers.js` `mapDbDrawing` (`:272`); `src/lib/remoteApi.js` `upsertDrawingRemote` / `removeDrawingsRemote` (`:290-296`) and the forgiving fetch in `fetchTableSnapshot`; `src/lib/realtime.js:176` for the live handler.
-- `GameView.jsx` `writeDrawing` (`:1935`) — dispatch, then cloud write or guest broadcast. A guest player applies any broadcast action directly (`onStateChange`, `:1294`), and `toGuestBroadcastAction`'s default case forwards unknown action types.
-- Next free migration number today is `20250101000068`; `supabase/00_combined_all_migrations.sql` is kept in step by hand and `supabase/README.md` lists each migration.
+**Same-write rule and restamping on the DM's client**
+
+- `withFoggedStamp` (`GameView.jsx:2002`) adds the resulting `fogged` to any DM patch that changes a token's place (`FOG_PLACEMENT_KEYS`, including `linkId`). `addEntity` (`:2014`) stamps a token placed in fog from its first write; `moveEntity` (`:2174`) sends a move that changes `fogged` as one `updateEntity`; `revealAmbush` (`:2301`) stamps each spawned monster.
+- The restamp and reconcile effect (just after `portalFogKey`, `:2778`) corrects every token whose `fogged` disagrees with the chunks, whenever layers, chunks or any portal end's position, link or hidden state change, and after each `HYDRATE`.
+- `stateRef` (`:1061`) holds the current state for handlers that run outside a render.
+
+**Chunk storage and sync**
+
+- `src/state/store.jsx` — initial `fogChunks`/`fogChunkOrder` (`:176`), `reconcileFogChunks` (`:94`, drops chunks whose island is gone, after every reducer step), `SET_FOG_CHUNK` (`:528`), `REMOVE_FOG_CHUNKS` (`:538`). `src/state/migrate.js:56` defaults the keys on an older save.
+- `src/lib/mappers.js` `mapDbFogChunk` (`:344`), `fogChunkToDb` (`:357`); `src/lib/remoteApi.js` `upsertFogChunkRemote` / `removeFogChunksRemote` (`:389-395`) and the forgiving fetch (`:279`); `src/lib/realtime.js:198` for the live handler.
+- `GameView.jsx` — `writeFogChunk` (`:2673`), `deleteFogChunk` (`:2680`), `setFogChunkRevealed` (`:2703`), `setFogChunkRevealOnEnter` (`:2748`), and the reveals-when-entered effect (`:2762`). A guest player applies any broadcast action directly (`onStateChange`, `:1697`).
 
 **Map rendering and input**
 
-- `src/components/MapBoard.jsx` — each island renders at `:1011-1092`: move-range cells, grid SVG, `.island-daynight` tint, then `IslandDrawings` (`:1089`). The cover and the DM's overlay follow `IslandDrawings` inside the same `.grid-wrap`. `islandRects` and `toIslandSquares` (`:551`) convert a pointer to island squares; `pixelToCell` (`src/utils/grid.js:17`) gives a square.
-- Tool dispatch: `handleStagePointerDown` (`:770`) branches on `tool`; `handleIslandPointerDown` (`:391`) returns early for `ruler`, `pan`, `draw`, `area`; `onIslandDragUp` (`:411`) is where a Play-tool click on an island resolves (`onTapCell` at `:429`); `handleStageClick` (`:807`) clears the token selection. The `tool` prop's values are listed at `:56`.
-- Drop path: `:356-362` (`holdDragAt`, then `onMoveEntity`), door drops at `:340-353`, `canMoveEntity` checked at `:338`.
-- `src/utils/drawing.js` `shapeGeometry` (`:94`) is the Draw tool's rectangle maths, in fractional squares with optional snap.
+- `src/components/MapBoard.jsx` — per island, inside `.grid-wrap` (`:1228`): the `.island-daynight` tint (`:1280`), `IslandDrawings` (`:1282`), then `IslandFogOfWar` (`:1285`). Tokens are drawn afterwards in one layer above all islands (`:1368`). `toIslandSquares` (`:623`) converts a pointer to island squares; `pixelToCell` (`src/utils/grid.js:17`).
+- Tool dispatch: `handleIslandPointerDown` (`:447`) returns early for `ruler`, `pan`, `draw`, `area`, `fogofwar`; `onIslandDragUp` (`:467`) resolves a Play-tool click (`onTapCell` at `:489`, the DM's chunk pick at `:499`); `handleStagePointerDown` (`:953`) starts the Fog of war drag (`startFogOfWar` `:861`); `handleStageClick` (`:994`). The `tool` prop's values are listed at `:64`.
+- Drop path: `holdDragAt` (`:333`), called at `:380` and `:408`; at `:404` a refused move (`onMoveEntity` returning `false`) leaves the token where it was.
 
-**Player movement and doors**
+**Player movement, doors and portals**
 
-- `moveEntity` (`GameView.jsx:1645`) is the one function every player move reaches: desktop drag (`onMoveEntity`), phone tap and planned move (`handleTapCell` `:3265`, `commitMove` `:3257`), and door arrival (`confirmEnterDoor` `:2717-2720`). A guest player's branch sends an intent (`:1661`).
-- `applyValidatedIntent` (`:1217`) — the `MOVE_ENTITY` branch (`:1220`) checks only hero ownership today.
-- `enterDoor` (`:2662`) shows the locked-door log line with `emitFx({ type: 'log', … })`; `confirmEnterDoor` computes the arrival square with `arrivalCellNearDoor` (`:197`).
-- A token's footprint is `size × size` squares from (`col`, `row`); `size` is 1–5 (`src/data/tokenSizes.js`). `cellsCoveredBy` (`src/data/ambush.js:48`) already expands tokens to squares.
+- `moveEntity` (`GameView.jsx:2174`) is the one function every player move reaches: desktop drag, phone tap and planned move (`handleTapCell` `:4133`, `commitMove` `:4126`), and door and portal arrival. It refuses a held-back destination first (`refusedAsHeldBack` `:2161`, `isHeldBackMove` `:264`, log line `HELD_BACK_LOG`).
+- `applyValidatedIntent` (`:1617`) — the `MOVE_ENTITY` branch (`:1620`) applies the same held-back check for a guest table's DM; a cloud table's announced moves are checked in `receiveEntityMessage` too.
+- Doors: `enterDoor` (`:3405`), `doorArrivalHeldBack` (`:3514`), `confirmEnterDoor` (`:3540`), arrival square from `arrivalCellNearDoor` (`:223`).
+- Portals: `enterPortal` (`:3447`), `portalArrivalHeldBack` (`:3482`), `confirmEnterPortal` (`:3490`); `portalPartner` (`src/data/portals.js:36`) looks the other end up among the entities the player holds.
+- A token's footprint is `size × size` squares from (`col`, `row`); `size` is 1–5 (`src/data/tokenSizes.js`).
 
 **Lifecycle hooks on the DM's client**
 
-- Cloud resync: `runResync` (`GameView.jsx:848`) dispatches `HYDRATE`. Guest: the DM's state is local and authoritative. The reconcile and the reveals-when-entered check both run from the DM's client after it holds the table and after each `HYDRATE`.
+- Cloud resync: `runResync` (`GameView.jsx:958`) dispatches `HYDRATE`. Guest: the DM's state is local and authoritative. The reconcile and the reveals-when-entered check both run from the DM's client after it holds the table and after each `HYDRATE`.
 - Two host clients (desktop and phone) may both run them; every write involved is idempotent.
 
 **UI surfaces**
 
-- `src/components/Toolbar.jsx` — tool cards at `:791-833`, icons in `TOOL_ICONS` (`:198`).
-- `GameView.jsx` — Mode bars at `:3678-3712`; `RightPanel` element at `:3500` (it receives `selectedEntity`); `MapBoard` props at `:3574-3615`; phone sheets from `:3901`; `selectedId` state at `:392`.
-- `src/components/Hints.jsx` — `Hint` (`:87`), `ModeBar` (`:121`). `src/components/PhoneChrome.jsx` — `PhoneSheet` (`:173`), `PhoneSwitch` (`:633`).
-- `src/styles.css` — `.island-daynight` (`:2340`), `.token.dm-hidden` (`:2433`).
+- `src/components/Toolbar.jsx` — the Fog of war icon (`:124`), `TOOL_ICONS` (`:216`), the tool's hint (`:234`) and its card (`:867`).
+- `GameView.jsx` — the Fog of war Mode bar with "Fog whole island" (`:4643`); `RightPanel` (`:4405`); `MapBoard` (`:4484`); the phone fog sheet (`:4986`); `selectedId` (`:455`).
+- `src/components/Hints.jsx` — `Hint` (`:87`), `ModeBar` (`:121`). `src/components/PhoneChrome.jsx` — `PhoneSheet` (`:173`), `PhoneSwitch` (`:634`). `src/components/Tour.jsx:35` — the Tools step's Fog of war line.
+- `src/styles.css` — `.island-daynight` (`:2344`), `.fog-of-war-*` (`:2355-2407`), `.token.dm-hidden` (`:2588`).
 
 ## Implementation Steps
 
@@ -256,6 +267,7 @@ Slice 5   S015 → S019            S011 → S020
 | REQ-008 | Guest DM Sessions | The guest broadcast filter, snapshot and intent validation are the guest-table half of every privacy and movement rule here. |
 | REQ-006 | Live Table Security Hardening | The new policies and the trigger change follow its RLS conventions. |
 | REQ-013 | R2 Media Storage | No functional dependency; both plans add a migration, so whichever lands second takes the next number. |
+| REQ-015 | DM-Authoritative Cloud Tables | Lands after this one and changes how fog reaches players on a cloud table. Every table except `players` leaves the `supabase_realtime` publication, so fog chunks stop arriving through `realtime.js`'s `fog_chunks` handler and must travel in the DM's snapshot and channel messages. Players stop reading the database, so `fogged` tokens are kept from them by the DM's own filter (`toGuestBroadcastAction`, as on a guest table) rather than by RLS, and `conceal` loses its purpose. Non-hosts lose write grants on `fog_chunks` and `entities`, which AC10 relies on today through RLS. REQ-015 must keep AC7, AC9, AC10 and AC22 true through that change. |
 
 Also depends on these migrations being applied: `20250101000059_hidden_tokens_locked_doors.sql` (the `hidden` column and the `conceal` flow), `20250101000061_ambush_tokens.sql` (current read policy) and `20250101000067_merchant_npcs.sql` (current write trigger).
 
@@ -275,7 +287,7 @@ Also depends on these migrations being applied: `20250101000059_hidden_tokens_lo
 ## Open Questions
 
 - [x] **Q1 — Cover look resolved.** A textured cover: pale drifting mist, the same in both themes, as one cover per island cut to the fogged chunks so the texture never breaks at a chunk's edge. *(Blaxine)*
-- [ ] **Q2 — Reveal write volume.** One update per token per reveal: is it fast enough for a room of 30 or more tokens? Deferred until the Slice 2 smoke test; measure with 30 monsters in one chunk on a cloud table.
+- [x] **Q2 — Reveal write volume.** *Closed (Blaxine, 2026-10-14): deferred to the Smoke Test.* One update per token per reveal: is it fast enough for a room of 30 or more tokens? Measure with 30 monsters in one chunk on a cloud table when the Smoke Test runs. If it is slow, the fix is batching one reveal's token updates into a single request (listed under Out of Scope).
 - [x] **Q3 — Token privacy resolved.** A stored `fogged` flag written by the DM's client, treated like `hidden`. *(Blaxine)*
 - [x] **Q4 — Chunk scope resolved.** A chunk belongs to one island; "Fog whole island" covers the active island. *(Blaxine)*
 - [x] **Q5 — Authoring resolved.** Its own DM-only "Fog of war" tool. *(Blaxine)*
@@ -292,7 +304,7 @@ Use `npm run dev:duo` (or two browser profiles) on a cloud table unless a step s
 1. As DM, pick Fog of war and drag a rectangle over a room. The player sees an opaque cover; the DM sees a tint. Reload both; nothing changes. *(AC1–AC4)*
 2. In Play, click the chunk, press Reveal; the player's cover goes. Press Fog again; it returns. *(AC5)*
 3. Lay a second chunk overlapping the first. Reveal one: the shared squares stay covered for the player. Reveal the other: they clear. *(AC6)*
-4. Put a monster, an NPC, a chest, a trap, a door and a hero inside a fogged chunk, and a 2 × 2 monster half in. The player sees the hero and the 2 × 2 monster only. In the player's network panel, the `entities` response holds none of the others. *(AC7, AC8)*
+4. Put a monster, an NPC, a chest, a trap, a door, a bulletin board, a cover and a hero inside a fogged chunk, and a 2 × 2 monster half in. The player sees the hero and the 2 × 2 monster only. In the player's network panel, the `entities` response holds none of the others, and no table-channel message carries the bulletin board or the cover. *(AC7, AC8)*
 5. Reveal: all appear for the player without a reload. Fog again: they go. Drag a goblin from clear ground into fog while watching the player's screen: it disappears without showing at the destination. Place a new monster inside fog: the player never sees it. *(AC9)*
 6. As the player, from the browser console, try to update a `fog_chunks` row and to set `fogged` on a token through the Supabase client; both are refused. *(AC10)*
 7. In the SQL editor set `fogged = false` on a token deep in fog; reload the DM's browser; the token is fogged again and gone from the player. *(AC21)*
@@ -307,6 +319,7 @@ Use `npm run dev:duo` (or two browser profiles) on a cloud table unless a step s
 16. Drag an island with chunks in Edit: the fog moves with it. Shrink the island below a chunk's edge: no error, the rest still covers. Delete the island: its chunks are gone from `fog_chunks`. *(AC19)*
 17. Repeat steps 1, 4, 5, 8 and 11 on a guest table and on a local table (local: reload the player tab to see changes). On the guest table, send a `MOVE_ENTITY` intent into a held-back chunk from the player's console; nothing moves. *(AC2, AC7, AC14)*
 18. Set the Fog island condition on an island: badge and wording unchanged. Read every new label for "Fog of war". Replay the Tutorial. *(AC20)*
+19. Place a portal pair with end A in the clear and end B inside a fogged chunk whose switch is on. The player's map shows A but not B. As the player, go through A: the hero arrives beside B and the chunk opens for both. Fog it again, turn its switch off, and try again: "That area is not open yet", no move. As DM, drag A into fog too: both ends leave the player's map; drag it out: both come back, B still not drawn. Repeat the first part on a guest table. *(AC22, AC8)*
 
 ## Size
 
@@ -343,3 +356,5 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-10-08 | Blaxine | Initial plan, from a `/create-req` interview (token privacy, chunk scope, authoring tool, Play-tool control, auto-reveal rule, slices) and a deep-dive into `visibility.js`, `GameView.jsx`, `MapBoard.jsx`, `realtime.js`, `remoteApi.js`, `mappers.js`, `store.jsx` and the drawings, hidden-token, ambush and merchant migrations. |
+| 2026-10-14 | Claude | Review against the built feature. Portals, bulletin boards and covers (added after this plan) are now covered: Constraints, a token rule for portal pairs like a door's (built in `868a7cd`: a portal into fog had been a dead end for players), AC7/AC8 extended, new AC22 and Smoke Test step 19. Added REQ-015 under Dependencies. Refreshed every line number in Constraints and Technical Notes, which now names what was built. |
+| 2026-10-14 | Blaxine / Claude | Closed. Status set to Done (awaiting Smoke Test); the ACs stay unticked until it runs, and the encounter turn-order check is left for that pass too. Q2 closed as deferred to the Smoke Test. Moved with its PRD to `reqs/done/`. |

@@ -4,7 +4,7 @@
 | ----- | ----- |
 | ID | REQ-014-PRD |
 | Title | Fog of War |
-| Status | Todo |
+| Status | Done (implemented as REQ-014) |
 | Author | Blaxine |
 | Created | 2026-10-07 |
 | Last Updated | 2026-10-07 |
