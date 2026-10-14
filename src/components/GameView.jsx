@@ -66,6 +66,7 @@ import {
   saveDrawPrefs,
 } from '../state/persistence.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { getAccount } from '../lib/auth.js';
 import { subscribeToTable } from '../lib/realtime.js';
 import { subscribeToGuestTable } from '../lib/guestRealtime.js';
 import {
@@ -546,6 +547,25 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // browser, and say why there.
   const leavingRef = useRef(false);
   const wasSeatedRef = useRef(false);
+
+  // REQ-004: whether this browser is signed in to an account rather than an
+  // anonymous guest session. On a cloud table an account keeps its seat on
+  // Leave, like the host does, so it can come back to it from any device;
+  // only the DM's Kick frees it. Read once: the session can't change while
+  // a table is open.
+  const isAccountRef = useRef(false);
+  useEffect(() => {
+    if (!isRemote) return;
+    let cancelled = false;
+    getAccount()
+      .then((acct) => {
+        if (!cancelled) isAccountRef.current = Boolean(acct);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isRemote]);
   const amSeated = Boolean(state.players[me.id]);
   useEffect(() => {
     if (amSeated) {
@@ -3761,7 +3781,11 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     // player freeing a seat, the host isn't vacating anything by leaving —
     // they're just navigating away from a live view they can always return
     // to by signing in again.
-    if (isRemote && isHost) {
+    // REQ-004: a player signed in to an account keeps their seat the same
+    // way — their hero stays theirs, and the table stays in their "Your
+    // tables" list. A guest (anonymous) can never get back to a seat they
+    // left from another browser, so theirs is still freed below.
+    if (isRemote && (isHost || isAccountRef.current)) {
       clearCurrentPointer();
       onLeave();
       return;
