@@ -27,6 +27,7 @@ import { RollLog, CharacterLog } from './RollFeed.jsx';
 import CompendiumBook from './CompendiumBook.jsx';
 import RulesBook from './RulesBook.jsx';
 import StoreModal from './StoreModal.jsx';
+import { useOwnedBooks, bookShelf, hasOwnEntries } from '../data/storeBooks.js';
 import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 import { useFx } from '../lib/fx.js';
 import { PALETTES } from '../state/theme.js';
@@ -177,6 +178,9 @@ const TOOLBAR_DENSITIES = ['', 'codes', 'codes icons', 'codes icons tight'];
 // Line icons for the toolbar (replaces the old emoji glyphs so the bar reads
 // as one consistent set and follows the palette's text color).
 // The books in the compendium drawer (rail), in the order they lie in it.
+// Tomes, Food & Drink, Spells and Potions lie there only once added from the
+// Store (data/storeBooks.js) — or, not added, as "Your Tomes" and so on,
+// holding only what the table made in Asset Storage, once it has made some.
 const COMPENDIUM_BOOKS = [
   { kind: 'monsters', label: 'Monsters', sub: 'Creatures to place on the map', icon: 'monsters' },
   { kind: 'items', label: 'Items', sub: 'Gear, potions and supplies to give or sell', icon: 'items' },
@@ -359,6 +363,7 @@ export default function Toolbar({
   onRollInitiative,
   encounterActive,
   onToggleEncounter,
+  onReorderInitiative,
   customAssets,
   onAddEntity,
   onAddCustomAsset,
@@ -379,6 +384,17 @@ export default function Toolbar({
   // The compendium's newer chapters share one piece of state: which of
   // EXTRA_BOOKS is open, or null.
   const [extraBook, setExtraBook] = useState(null);
+  // The Store books this browser has added (data/storeBooks.js). One not
+  // added only comes out once the table has made entries of its own for it
+  // in Asset Storage, and then holds only those: shelfOf(kind) is 'full',
+  // 'local' or null (not to be opened).
+  const ownedBooks = useOwnedBooks();
+  const shelfOf = (kind) => bookShelf(kind, ownedBooks, hasOwnEntries(kind, customAssets));
+  // A local book open when its last entry is removed in Asset Storage is shut.
+  const extraBookOnShelf = !extraBook || Boolean(shelfOf(extraBook));
+  useEffect(() => {
+    if (!extraBookOnShelf) setExtraBook(null);
+  }, [extraBookOnShelf]);
   const [showAssetStorage, setShowAssetStorage] = useState(false);
   // The tab Asset Storage opens on ('tome' from the Tomes chapter's "Write
   // your own").
@@ -561,6 +577,7 @@ export default function Toolbar({
 
   // Puts the compendium book on one chapter, or shuts it (null).
   function showBook(kind) {
+    if (kind && !shelfOf(kind)) return;
     setShowCompendium(kind === 'weapons');
     setShowItemCompendium(kind === 'items');
     setShowMonsterCompendium(kind === 'monsters');
@@ -648,7 +665,7 @@ export default function Toolbar({
       const open = showMonsterCompendium;
       togglePopover(null);
       setShowMonsterCompendium(!open);
-    } else if (EXTRA_BOOKS.includes(event.panel)) {
+    } else if (EXTRA_BOOKS.includes(event.panel) && shelfOf(event.panel)) {
       const open = extraBook === event.panel;
       togglePopover(null);
       setShowMonsterCompendium(false);
@@ -1213,12 +1230,12 @@ export default function Toolbar({
           {rail && (
             <>
               <p className="book-drawer-note">Pick a book to open it.</p>
-              {COMPENDIUM_BOOKS.map((b) => (
+              {COMPENDIUM_BOOKS.filter((b) => shelfOf(b.kind)).map((b) => (
                 <button key={b.kind} type="button" className={`drawer-book ${b.kind}`} onClick={() => openBook(b.kind)} title={`Open the ${b.label} book`}>
                   <span className="drawer-book-spine" aria-hidden="true" />
                   <span className="drawer-book-text">
-                    <span className="drawer-book-title">{b.label}</span>
-                    <span className="drawer-book-sub">{b.sub}</span>
+                    <span className="drawer-book-title">{shelfOf(b.kind) === 'local' ? `Your ${b.label}` : b.label}</span>
+                    <span className="drawer-book-sub">{shelfOf(b.kind) === 'local' ? 'Only the ones you made in Storage. The full book is in the Store.' : b.sub}</span>
                   </span>
                   <span className="drawer-book-icon">
                     <Icon name={b.icon} />
@@ -1511,6 +1528,7 @@ export default function Toolbar({
           onRoll={onRollInitiative}
           encounterActive={encounterActive}
           onToggleEncounter={onToggleEncounter}
+          onReorder={onReorderInitiative}
           onClose={rail ? closeSide : () => setShowInitiative(false)}
         />
       )}
@@ -2969,11 +2987,40 @@ function InitiativeGroup({ title, entities, checkedIds, onToggle, onSetAll, empt
   );
 }
 
-function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncounter, onClose, side = false }) {
+// `onReorder(orderedIds)`: the DM has dragged the turn order into a new one
+// (GameView's reorderInitiative).
+function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncounter, onReorder = null, onClose, side = false }) {
   // Who is ticked. It opens with whoever already carries an initiative badge
   // ticked, so re-rolling the fight on the map is one press.
   const [checkedIds, setCheckedIds] = useState(() => new Set([...heroes, ...mobs].filter((e) => e.initiativeTurn != null).map((e) => e.id)));
-  const [results, setResults] = useState(null);
+  // The turn order under the roller: the roll just made, or, opened on a
+  // fight already rolled, the order its initiative badges carry — so it can
+  // still be rearranged after the roller was closed.
+  const [results, setResults] = useState(() => {
+    const ranked = [...heroes, ...mobs].filter((e) => e.initiativeTurn != null).sort((a, b) => a.initiativeTurn - b.initiativeTurn);
+    return ranked.length ? ranked.map((e) => ({ id: e.id, roll: e.initiativeRoll, turn: e.initiativeTurn, name: e.name })) : null;
+  });
+  // The row being dragged, and the one it is over.
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const canReorder = Boolean(onReorder) && (results?.length || 0) > 1;
+
+  // Puts one fighter at `toIndex` in the turn order (dropped on a row, it
+  // takes that row's place) and renumbers everyone.
+  function moveResult(id, toIndex) {
+    const from = results.findIndex((r) => r.id === id);
+    if (from === -1 || toIndex < 0 || toIndex >= results.length || toIndex === from) return;
+    const next = [...results];
+    const [moved] = next.splice(from, 1);
+    next.splice(toIndex, 0, moved);
+    const renumbered = next.map((r, i) => ({ ...r, turn: i + 1 }));
+    setResults(renumbered);
+    onReorder(renumbered.map((r) => r.id));
+  }
+  function endDrag() {
+    setDragId(null);
+    setOverId(null);
+  }
   // "Start encounter": ticked by default, so rolling starts the fight — the
   // turn order, turn banner, movement range and End turn (EncounterHud.jsx).
   // While one is running the box shows it; unticking ends it.
@@ -3081,12 +3128,49 @@ function InitiativeModal({ heroes, mobs, onRoll, encounterActive, onToggleEncoun
               <span className="section-label" style={{ margin: '0 0 4px' }}>
                 Turn order
               </span>
-              {results.map((r) => (
-                <div className="dice-roll-row" key={r.id}>
+              {canReorder && <p className="initiative-reorder-note">Drag a name, or use its arrows, to change who goes when.</p>}
+              {results.map((r, i) => (
+                <div
+                  className={`dice-roll-row initiative-row${canReorder ? ' movable' : ''}${dragId === r.id ? ' dragging' : ''}${overId === r.id && dragId && dragId !== r.id ? ' drop-target' : ''}`}
+                  key={r.id}
+                  draggable={canReorder}
+                  onDragStart={(e) => {
+                    setDragId(r.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', r.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (!dragId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (overId !== r.id) setOverId(r.id);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragId) moveResult(dragId, i);
+                    endDrag();
+                  }}
+                  onDragEnd={endDrag}
+                >
+                  {canReorder && (
+                    <span className="initiative-grip" aria-hidden="true">
+                      ⠿
+                    </span>
+                  )}
                   <span className="dice-roll-name">
                     👢 {r.turn}. {r.name}
                   </span>
                   <span className="dice-roll-total">{r.roll}</span>
+                  {canReorder && (
+                    <span className="initiative-move">
+                      <button type="button" aria-label={`Move ${r.name} earlier`} title="Earlier" disabled={i === 0} onClick={() => moveResult(r.id, i - 1)}>
+                        ▲
+                      </button>
+                      <button type="button" aria-label={`Move ${r.name} later`} title="Later" disabled={i === results.length - 1} onClick={() => moveResult(r.id, i + 1)}>
+                        ▼
+                      </button>
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -3206,7 +3290,6 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
 
   const activeTab = ASSET_STORAGE_TABS.find((t) => t.key === tab);
   const ownEntries = Object.values(customAssets || {}).filter((item) => item.assetType === tab);
-  const nothingSaved = Object.keys(customAssets || {}).length === 0;
 
   function addMonster() {
     const name = monsterDraft.name.trim();
@@ -3292,7 +3375,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
 
   // The Food & Drink and Potions tabs are one form: a name, a kind, a cost,
   // what it is, and a recipe unless it is an ingredient itself.
-  function madeForm({ assetType, draft, setDraft, reset, kinds, namePlaceholder, textLabel, textPlaceholder, maker, options, thing }) {
+  function madeForm({ draft, setDraft, kinds, namePlaceholder, textLabel, textPlaceholder, maker, options }) {
     const isIngredient = draft.category === INGREDIENT_CATEGORY;
     return (
       <>
@@ -3328,13 +3411,24 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
         />
 
         {!isIngredient && <RecipeEditor parts={draft.recipe} onChange={(recipe) => setDraft((p) => ({ ...p, recipe }))} options={options} maker={maker} />}
-
-        <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={() => addMade(assetType, draft, reset)}>
-          + Add {isIngredient ? 'ingredient' : thing}
-        </button>
       </>
     );
   }
+
+  // The open tab's form ends in the footer's two buttons: Add saves it as a
+  // new asset, Cancel clears it. `thing` names what Add makes.
+  const clearFood = () => setFoodDraft(emptyFoodDraft());
+  const clearPotion = () => setPotionDraft(emptyPotionDraft());
+  const madeThing = (draft, thing) => (draft.category === INGREDIENT_CATEGORY ? 'ingredient' : thing);
+  const formActions = {
+    monster: { thing: 'monster', add: addMonster, clear: () => setMonsterDraft(emptyMonsterDraft()) },
+    weapon: { thing: 'weapon', add: addWeapon, clear: () => setWeaponDraft(emptyWeaponDraft()) },
+    item: { thing: 'item', add: addItem, clear: () => setItemDraft(emptyItemDraft()) },
+    tome: { thing: 'tome', add: addTome, clear: () => setTomeDraft(emptyTomeDraft()) },
+    food: { thing: madeThing(foodDraft, foodDraft.category === 'drink' ? 'drink' : 'dish'), add: () => addMade('food', foodDraft, clearFood), clear: clearFood },
+    potion: { thing: madeThing(potionDraft, potionDraft.category), add: () => addMade('potion', potionDraft, clearPotion), clear: clearPotion },
+    spell: { thing: 'spell', add: addSpell, clear: () => setSpellDraft(emptySpellDraft()) },
+  }[tab];
 
   function toggleWeaponClass(cls) {
     setWeaponDraft((prev) => ({
@@ -3347,7 +3441,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
 
   return (
     <div className="book-backdrop" onClick={onClose}>
-      <div className="book-card" onClick={(e) => e.stopPropagation()}>
+      <div className="book-card asset-storage" onClick={(e) => e.stopPropagation()}>
         <div className="book-card-header">
           <span className="book-title"><ModalIcon name="archive" />Asset Storage</span>
           <button className="popover-close" onClick={onClose} aria-label="Close asset storage" title="Close">
@@ -3355,7 +3449,7 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
           </button>
         </div>
 
-        <div className="book-controls">
+        <div className="book-controls asset-storage-controls">
           <div className="book-type-filter">
             {ASSET_STORAGE_TABS.map((t) => (
               <button
@@ -3374,11 +3468,6 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
         </div>
 
         <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
-          {nothingSaved && (
-            <Hint className="asset-empty-hint">
-              Nothing saved here yet. Make a monster, weapon, item, tome, dish, spell or potion once below, then use it as often as you like at this table.
-            </Hint>
-          )}
           {tab === 'monster' && (
             <>
               <label className="field-label">Name</label>
@@ -3427,10 +3516,6 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
                   Preview
                 </span>
               </div>
-
-              <button type="button" className="btn btn-primary btn-block" onClick={addMonster}>
-                + Add monster
-              </button>
             </>
           )}
 
@@ -3520,10 +3605,6 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
                   </button>
                 ))}
               </div>
-
-              <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addWeapon}>
-                + Add weapon
-              </button>
             </>
           )}
 
@@ -3585,10 +3666,6 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
                 value={itemDraft.description}
                 onChange={(e) => setItemDraft((p) => ({ ...p, description: e.target.value }))}
               />
-
-              <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addItem}>
-                + Add item
-              </button>
             </>
           )}
 
@@ -3655,41 +3732,31 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
               <span className="footer-note" style={{ border: 'none', padding: 0 }}>
                 {tomeDraft.description.length} / {TOME_TEXT_MAX}
               </span>
-
-              <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addTome}>
-                + Add tome
-              </button>
             </>
           )}
 
           {tab === 'food' &&
             madeForm({
-              assetType: 'food',
               draft: foodDraft,
               setDraft: setFoodDraft,
-              reset: () => setFoodDraft(emptyFoodDraft()),
               kinds: FOOD_CATEGORIES,
               namePlaceholder: 'e.g. Grandmother’s plum dumplings',
               textLabel: 'Description',
               textPlaceholder: 'What it looks, smells and tastes like.',
               maker: 'Food Salesman',
               options: [...ingredientNames, ...dishNames],
-              thing: foodDraft.category === 'drink' ? 'drink' : 'dish',
             })}
 
           {tab === 'potion' &&
             madeForm({
-              assetType: 'potion',
               draft: potionDraft,
               setDraft: setPotionDraft,
-              reset: () => setPotionDraft(emptyPotionDraft()),
               kinds: POTION_CATEGORIES,
               namePlaceholder: 'e.g. Draught of the Drowned Bell',
               textLabel: 'What it does',
               textPlaceholder: 'What happens to whoever drinks it, or is struck by it. The holder reads this from their Bag.',
               maker: 'Potion Brewer',
               options: ingredientNames,
-              thing: potionDraft.category,
             })}
 
           {tab === 'spell' && (
@@ -3734,10 +3801,6 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
                 onChange={(e) => setSpellDraft((p) => ({ ...p, description: e.target.value }))}
                 placeholder="Its range, what it does and for how long."
               />
-
-              <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 10 }} onClick={addSpell}>
-                + Add spell
-              </button>
             </>
           )}
 
@@ -3757,6 +3820,17 @@ function AssetStorageModal({ onClose, customAssets, onAddAsset, onRemoveAsset, i
             </>
           )}
         </div>
+
+        {formActions && (
+          <div className="asset-storage-actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={formActions.clear} title="Clear the form">
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={formActions.add}>
+              Add {formActions.thing}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import ModalIcon from './ModalIcon.jsx';
 import { playDiceSound, playSfx, getSfxVolume, setSfxVolume, isDeviceMuted, setDeviceMuted } from '../lib/sfx.js';
 import { emitFx, useFx, takeCrit } from '../lib/fx.js';
-import { createEncounter, advanceEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
+import { createEncounter, advanceEncounter, reorderEncounter, currentActorId, speedOf, reachableCells, feetMoved } from '../utils/encounter.js';
 import { DEMO_MUSIC, ENCOUNTER_MUSIC, MUSIC_ENABLED, builtinTrackUrl, isBuiltinTrackUrl } from '../data/defaultAudio.js';
 import { useGameState, useGameDispatch, createInitialLayer, createInitialIsland, previewAudioCascade, pruneAudio } from '../state/store.jsx';
 import { generateEntityId, generateInviteCode, generatePlayerId } from '../utils/inviteCode.js';
@@ -2435,6 +2435,18 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     }
   }
 
+  // The DM dragging the turn order into a new one (InitiativeModal): each
+  // token's initiative badge takes its new place, and a running fight
+  // follows it, still on whoever is acting (reorderEncounter).
+  function reorderInitiative(orderedIds) {
+    if (!isHost) return;
+    orderedIds.forEach((id, index) => {
+      const entity = state.entities[id];
+      if (entity && entity.initiativeTurn !== index + 1) updateEntity(id, { initiativeTurn: index + 1 });
+    });
+    if (encounter) setEncounter(reorderEncounter(encounter, orderedIds));
+  }
+
   // The InitiativeModal's "Start encounter" box, ticked or unticked after
   // the roll: starts a fight from those results, or ends the running one.
   function toggleEncounter(active, results) {
@@ -4414,6 +4426,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
         onRollInitiative={rollInitiative}
         encounterActive={Boolean(encounter)}
         onToggleEncounter={toggleEncounter}
+        onReorderInitiative={reorderInitiative}
         customAssets={state.customAssets}
         onAddCustomAsset={addCustomAsset}
         onRemoveCustomAsset={removeCustomAsset}
@@ -5209,6 +5222,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
               onOpenMusic={() => setShowMusicModal(true)}
               onOpenDice={() => setPhoneSheet('dice')}
               onOpenParty={() => setPhoneSheet('party')}
+              customAssets={state.customAssets}
               onClose={() => setPhoneSheet(null)}
             />
           )}

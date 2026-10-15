@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '../lib/catalog.js';
+import { useOwnedBooks, ownedCatalog } from '../data/storeBooks.js';
 import { defaultCharacterSheet, SPELL_LEVELS } from '../data/characterSheet.js';
 import { spellLevelLabel } from '../data/spells.js';
 import {
@@ -68,7 +69,12 @@ export function ShopWaresEditor({ role, wares, customAssets, onChange, onPending
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCustom]);
 
-  const entries = useMemo(() => (source ? sourceEntries(source, catalog, customAssets) : []), [source, catalog, customAssets]);
+  // What can be stocked: a Store book this browser hasn't added
+  // (data/storeBooks.js) lends none of its built-in entries, so a Librarian
+  // without the Tomes book stocks only the table's own tomes, and so on.
+  const ownedBooks = useOwnedBooks();
+  const shelfCatalog = useMemo(() => ownedCatalog(catalog, ownedBooks), [catalog, ownedBooks]);
+  const entries = useMemo(() => (source ? sourceEntries(source, shelfCatalog, customAssets) : []), [source, shelfCatalog, customAssets]);
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? entries.filter((entry) => entry.name.toLowerCase().includes(q)) : entries;
@@ -250,7 +256,13 @@ export function ShopWaresEditor({ role, wares, customAssets, onChange, onPending
                     </div>
                   );
                 })}
-                {matches.length === 0 && <p className="shop-empty">Nothing by that name.</p>}
+                {matches.length === 0 && (
+                  <p className="shop-empty">
+                    {entries.length === 0
+                      ? `No ${WARE_SOURCES[source].label.toLowerCase()} to stock yet. Add its book from the Store, or make your own in Asset Storage.`
+                      : 'Nothing by that name.'}
+                  </p>
+                )}
                 {matches.length > BROWSE_LIMIT && (
                   <p className="shop-empty">
                     Showing {BROWSE_LIMIT} of {matches.length}. Search to narrow it down.

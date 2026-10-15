@@ -1981,6 +1981,23 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
    rest and scrolls, so the name and the buttons stay in view. The body
    itself only scrolls on a screen too short for even that. */
 .book-card.fit-modal { height: 85vh; }
+/* Asset Storage is one fixed height on every tab, so it doesn't jump as the
+   tabs change; a longer form (a tome, a recipe) scrolls inside, and the
+   footer's Cancel and Add stay in view under it. */
+.book-card.asset-storage { height: min(655px, 85vh); max-height: none; }
+.asset-storage-actions {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--gold-line);
+}
+/* Asset Storage's tabs, with where the open tab's assets show up under them. */
+.asset-storage-controls { flex-direction: column; align-items: flex-start; gap: 8px; }
+.asset-storage-controls .book-type-filter { flex-wrap: wrap; }
+/* Full-size buttons, side by side at one width. */
+.asset-storage-actions .btn { padding: 11px 22px; font-size: 15px; min-width: 160px; }
 .fit-modal-body { flex: 1; min-height: 0; padding: 16px; display: flex; flex-direction: column; overflow-y: auto; }
 .fit-modal-body > *, .fit-modal-body .chest-editor > *, .fit-modal-body .chest-add-panel > * { flex-shrink: 0; }
 .fit-modal-body > .chest-editor { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
@@ -2169,6 +2186,32 @@ button.clock-readout:hover { border-color: var(--gold-line); background: var(--i
   color: var(--ember);
   flex-shrink: 0;
 }
+
+/* The roller's turn order, which the DM can rearrange (InitiativeModal):
+   drag a row onto another to take its place, or step it with its arrows. */
+.initiative-reorder-note { margin: 0 0 8px; font-size: 11.5px; color: var(--parchment-300); }
+.initiative-row { align-items: center; padding: 3px 4px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 6px; }
+.initiative-row .dice-roll-name { flex: 1; min-width: 0; }
+.initiative-row.movable { cursor: grab; }
+.initiative-row.movable:hover { background: rgba(169, 133, 63, 0.08); }
+.initiative-row.dragging { opacity: 0.45; }
+.initiative-row.drop-target { border-color: var(--gold-hi); background: rgba(169, 133, 63, 0.16); }
+.initiative-grip { color: var(--parchment-300); font-size: 14px; line-height: 1; opacity: 0.7; }
+.initiative-move { display: flex; gap: 2px; flex-shrink: 0; }
+.initiative-move button {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--parchment-100);
+  background: var(--ink-800);
+  border: 1px solid var(--ink-700);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.initiative-move button:hover:not(:disabled) { border-color: var(--gold-line); }
+.initiative-move button:disabled { opacity: 0.3; cursor: default; }
 
 .spell-level-tabs {
   display: flex;
@@ -5938,7 +5981,6 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 .phone-no-hero { position: absolute; left: 12px; right: 12px; bottom: var(--phone-bottom, 12px); z-index: 24; }
 .phone-no-hero .hint-empty { background: var(--ink-900); border-style: solid; border-color: var(--gold-line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55); }
 .inspector-scroll .hint-empty { margin: 12px 4px; }
-.asset-empty-hint { margin-bottom: 14px; }
 .tip-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-hi); }
 .tip-title { font-family: var(--font-display, 'Spectral', serif); font-size: 17px; font-weight: 600; color: var(--parchment-100); }
 .tip p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--parchment-100); }
@@ -6420,6 +6462,7 @@ button.card-toggle-icon:hover, button.card-toggle-icon:focus-visible { border-co
 }
 .store-frame img, .store-frame .sprite { width: 100%; height: 100%; object-fit: contain; }
 .store-item-name { font-size: 13px; color: var(--parchment-100); overflow-wrap: anywhere; }
+.store-item-sub { font-size: 11.5px; line-height: 1.35; color: rgba(242, 233, 212, 0.68); }
 .store-item-price { font-family: var(--font-hud); font-weight: 700; font-size: 14px; color: var(--gold-hi); }
 /* A narrow screen: the sections lie in a row over the wares. */
 @media (max-width: 640px) {

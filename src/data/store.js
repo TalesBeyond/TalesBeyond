@@ -2,16 +2,24 @@
 // section. Everything here is an example — made-up names and prices, with
 // pictures borrowed from the app's own icons and animated heroes — until a
 // real catalogue replaces it. Nothing can be bought yet; for testing, a
-// Characters ware has an Add button that puts it in the Default heroes gallery.
-//   { key, name, price, imageUrl, spriteKey? }   price is in US dollars;
-//   spriteKey is the animated hero a Characters ware adds (data/spriteTokens.js)
+// Characters ware has an Add button that puts it in the Default heroes
+// gallery, and a Books ware one that puts it in the Compendium.
+//   { key, name, price, imageUrl, spriteKey?, bookKind?, sub?, available? }
+//   price is in US dollars; spriteKey is the animated hero a Characters ware
+//   adds (data/spriteTokens.js), bookKind the compendium book a Books ware
+//   adds (data/storeBooks.js), sub a line on what is in it, and available
+//   true for a ware that can be had while the Store is closed (STORE_OPEN)
 
 import { makeIconDataUrl } from './defaultTokens.js';
 import { STORE_SPRITE_HEROES } from './spriteTokens.js';
+import { STORE_BOOKS } from './storeBooks.js';
 
 const item = (name, price, icon, color) => ({ key: name, name, price, imageUrl: makeIconDataUrl(icon, color) });
 
 const CHARACTER_PRICES = [1.99, 1.99, 2.49, 2.49, 1.99, 2.99, 2.49, 2.99];
+const BOOK_PRICES = [2.99, 2.49, 3.99, 2.99];
+// Books given away, and open to Add while the rest of the Store is coming soon.
+const FREE_BOOKS = ['foods'];
 
 export const STORE_SECTIONS = [
   {
@@ -40,6 +48,20 @@ export const STORE_SECTIONS = [
     })),
   },
   {
+    key: 'books',
+    label: 'Books',
+    blurb: 'More books for the Compendium, each a chapter of ready-made content.',
+    items: STORE_BOOKS.map((b, i) => ({
+      key: `book-${b.kind}`,
+      name: b.name,
+      price: FREE_BOOKS.includes(b.kind) ? 0 : BOOK_PRICES[i % BOOK_PRICES.length],
+      imageUrl: makeIconDataUrl(b.icon, b.color),
+      bookKind: b.kind,
+      sub: b.sub,
+      available: FREE_BOOKS.includes(b.kind),
+    })),
+  },
+  {
     key: 'stories',
     label: 'Stories',
     blurb: 'Adventures written out, scene by scene.',
@@ -63,6 +85,11 @@ export const STORE_SECTIONS = [
     ],
   },
 ];
+
+// While false, the Store only shows what is coming: every ware reads
+// "Coming soon" instead of its price, and its Add button is disabled — all
+// but an `available` ware (a free book), which keeps its price and its Add.
+export const STORE_OPEN = false;
 
 export function formatStorePrice(price) {
   return price > 0 ? `$${price.toFixed(2)}` : 'Free';

@@ -5,6 +5,7 @@ import { emitFx } from '../lib/fx.js';
 import { PhoneSheet, PhoneLookAndSound, PhoneSwitch, PhoneGuestHostNote } from './PhoneChrome.jsx';
 import { Tip } from './Hints.jsx';
 import { MUSIC_ENABLED } from '../data/defaultAudio.js';
+import { useOwnedBooks, bookShelf, hasOwnEntries } from '../data/storeBooks.js';
 
 // The DM's phone screens that stand in for the desktop toolbar: "Run the
 // table" (the session: encounter, compendium, clock, music, dice, party) and
@@ -13,6 +14,16 @@ import { MUSIC_ENABLED } from '../data/defaultAudio.js';
 // toolbar panel over lib/fx.js, that the desktop toolbar does.
 
 const open = (panel) => emitFx({ type: 'open', panel });
+
+// The Compendium's Store books (data/storeBooks.js), each a tile once added,
+// or as "Your tomes" and so on once the table has made some of its own
+// (`customAssets`: the table's state.customAssets).
+const STORE_BOOK_TILES = [
+  ['tomes', 'Tomes'],
+  ['foods', 'Food'],
+  ['spells', 'Spells'],
+  ['potions', 'Potions'],
+];
 
 export function PhoneRunTable({
   encounter,
@@ -34,9 +45,11 @@ export function PhoneRunTable({
   onOpenMusic,
   onOpenDice,
   onOpenParty,
+  customAssets,
   onClose,
 }) {
   const hasCycle = Boolean(clock?.cycle?.enabled);
+  const ownedBooks = useOwnedBooks();
   const phases = [
     [null, 'Follow the clock'],
     ['dawn', DAY_PHASES.dawn?.label || 'Dawn'],
@@ -97,18 +110,16 @@ export function PhoneRunTable({
             <button type="button" className="phone-tile" onClick={go(() => open('bestiary'))}>
               Monsters
             </button>
-            <button type="button" className="phone-tile" onClick={go(() => open('tomes'))}>
-              Tomes
-            </button>
-            <button type="button" className="phone-tile" onClick={go(() => open('foods'))}>
-              Food
-            </button>
-            <button type="button" className="phone-tile" onClick={go(() => open('spells'))}>
-              Spells
-            </button>
-            <button type="button" className="phone-tile" onClick={go(() => open('potions'))}>
-              Potions
-            </button>
+            {STORE_BOOK_TILES.map(([kind, label]) => {
+              const shelf = bookShelf(kind, ownedBooks, hasOwnEntries(kind, customAssets));
+              return (
+                shelf && (
+                  <button key={kind} type="button" className="phone-tile" onClick={go(() => open(kind))}>
+                    {shelf === 'local' ? `Your ${label.toLowerCase()}` : label}
+                  </button>
+                )
+              );
+            })}
           </div>
           <button type="button" className="phone-btn-ghost phone-btn-full" onClick={go(() => open('assetStorage'))}>
             Asset storage
