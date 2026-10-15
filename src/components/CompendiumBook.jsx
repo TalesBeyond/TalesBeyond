@@ -7,7 +7,7 @@ import { POTION_CATEGORIES, INGREDIENT_CATEGORY } from '../data/potions.js';
 import { recipesUsing } from '../data/merchants.js';
 import { SPELL_LEVELS } from '../data/characterSheet.js';
 import { monsterToDraft, customMonsterToDraft } from '../data/monsters.js';
-import { resizeImageToDataUrl } from '../utils/image.js';
+import { OWN_TOKEN_PICTURES, resizeImageToDataUrl } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import { useCatalog, entryImage } from '../lib/catalog.js';
 import { compendiumDefaultImage } from '../data/compendiumImages.js';
@@ -17,11 +17,13 @@ import { usePhoneLayout } from './PhoneChrome.jsx';
 import { useOwnedBooks, bookShelf, ownedCatalog } from '../data/storeBooks.js';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
-// table), so it is there next time the book opens on any table.
+// table), so it is there next time the book opens on any table. None are read
+// or offered while own token pictures are off (utils/image.js).
 const MONSTER_IMAGES_KEY = 'hearthbound.monsterImages';
 const MONSTER_IMAGE_MAX_DIM = 256;
 
 function loadMonsterImages() {
+  if (!OWN_TOKEN_PICTURES) return {};
   try {
     return JSON.parse(localStorage.getItem(MONSTER_IMAGES_KEY)) || {};
   } catch (e) {
@@ -573,7 +575,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
               {selected.note && <p className="cphone-detail-text cphone-attack">{selected.note}</p>}
               {isMonsters ? (
                 <div className="cphone-actions">
-                  {selected.monster && (
+                  {selected.monster && OWN_TOKEN_PICTURES && (
                     <>
                       <button type="button" className="cphone-btn" onClick={() => imageInputRef.current?.click()}>
                         Use my own image
@@ -778,7 +780,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
 
                   {isMonsters ? (
                     <div className="cbook-entry-actions">
-                      {selected.monster && (
+                      {selected.monster && OWN_TOKEN_PICTURES && (
                         <>
                           <button type="button" className="cbook-btn" onClick={() => imageInputRef.current?.click()}>
                             Use my own image

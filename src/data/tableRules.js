@@ -155,7 +155,7 @@ export const TABLE_RULES = {
       sub: 'Monsters, items and weapons',
       where: 'Compendium drawer',
       dm: true,
-      text: 'Click a book in the drawer to open it; the tabs on the open book’s edge switch to the other two. The left page is the index: search it, filter it, and pick an entry to read it on the right page. A weapon or item can be given to a hero from there, or sold to them, which takes its cost from their gold. A monster can be placed on the map, with your own picture if you like. The Up and Down keys move through the index.',
+      text: 'Click a book in the drawer to open it; the tabs on the open book’s edge switch to the other two. The left page is the index: search it, filter it, and pick an entry to read it on the right page. A weapon or item can be given to a hero from there, or sold to them, which takes its cost from their gold. A monster can be placed on the map. The Up and Down keys move through the index.',
     },
     {
       key: 'storage',
@@ -535,10 +535,10 @@ export const TABLE_RULES = {
     {
       key: 'ownimage',
       name: 'Your own picture',
-      sub: 'A picture of yours on a token',
-      where: 'Inspector, the pencil on the picture',
+      sub: 'Only as a map background',
+      where: 'A map’s or a layer’s Settings',
       dm: true,
-      text: 'Select a hero, NPC or monster, then click the pencil on its picture and choose an image from your computer. Its sheet and its token on the map both show it.',
+      text: 'A picture from your computer can only be a background: open a map’s or a layer’s Settings and pick its background image. Heroes, NPCs, monsters and everything else on the map keep their built-in pictures. A hero file that carries a picture of its own loads with a built-in one instead.',
     },
     {
       key: 'inspector',

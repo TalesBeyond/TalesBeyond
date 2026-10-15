@@ -36,6 +36,14 @@ for (const [path, url] of Object.entries(files)) {
 
 export { slugify };
 
+const BUNDLED = new Set(Object.values(INDEX));
+
+// Whether a picture is one of these bundled files (a small one is inlined as
+// a data URL, so it can look like an upload).
+export function isCompendiumImage(url) {
+  return BUNDLED.has(url);
+}
+
 // The picture for one entry, or null when the folder has none.
 export function compendiumImage(kind, name) {
   return INDEX[`${kind}/${slugify(name)}`] || null;

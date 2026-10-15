@@ -112,7 +112,8 @@ export default function PhoneCreatureSheet({ entity, isHost, meId, players, enti
           : 'NPC'
       : 'Monster';
 
-  // The DM taps the picture to swap it for one of their own.
+  // The DM taps the picture to swap it for one of their own (while
+  // utils/image.js OWN_TOKEN_PICTURES allows it).
   const avatar = (
     <span className="phone-token-avatar phone-creature-avatar" style={{ backgroundImage: `url(${entityImageSrc(entity)})`, '--token-color': entity.color || 'transparent' }} />
   );

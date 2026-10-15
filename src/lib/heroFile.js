@@ -31,7 +31,8 @@ import { DEFAULT_HEROES, iconRefForUrl, iconUrlForRef } from '../data/defaultTok
 import '../data/spriteTokens.js'; // adds the animated heroes' icons before any reference is read
 import { slugify } from '../data/slugify.js';
 import { isImageRef } from './imageCache.js';
-import { resizeImageToDataUrl } from '../utils/image.js';
+import { OwnPictureOffError } from './imageSafety.js';
+import { OWN_TOKEN_PICTURES, resizeImageToDataUrl } from '../utils/image.js';
 
 export const HERO_FILE_EXTENSION = '.tlsbyd';
 export const HERO_IMAGE_MAX_DIM = 256; // the size a token's own picture is kept at (CreatureCard.jsx's TokenPictureButton)
@@ -172,9 +173,13 @@ export function sanitizeSheet(raw) {
 // caller says which other kinds it takes:
 //   dataImages: a picture's own data URL (a file, this browser's storage)
 //   imageRefs:  a picture's fingerprint, `img:<sha-256>` (another browser's offer)
-// Anything else falls back to the first default hero's picture.
+// Anything else falls back to the first default hero's picture — and so does
+// every picture of one's own while those are off (utils/image.js
+// OWN_TOKEN_PICTURES).
 export function sanitizeHero(raw, { dataImages = false, imageRefs = false } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  dataImages = dataImages && OWN_TOKEN_PICTURES;
+  imageRefs = imageRefs && OWN_TOKEN_PICTURES;
   const fallback = DEFAULT_HEROES[0];
   const image = typeof raw.image === 'string' ? raw.image : typeof raw.imageUrl === 'string' ? raw.imageUrl : '';
   const imageUrl =
@@ -242,7 +247,12 @@ export async function readHeroFile(file) {
   }
   const hero = sanitizeHero(parsed.hero, { dataImages: true });
   if (!hero) throw new HeroFileError('That hero file is empty.');
-  if (iconRefForUrl(hero.imageUrl)) return { hero, pictureError: null };
+  if (iconRefForUrl(hero.imageUrl)) {
+    // A picture of its own the file brought, left out while those are off.
+    const image = parsed.hero.image ?? parsed.hero.imageUrl;
+    const leftOut = !OWN_TOKEN_PICTURES && typeof image === 'string' && image !== '' && !iconUrlForRef(image) && !iconRefForUrl(image);
+    return { hero, pictureError: leftOut ? new OwnPictureOffError() : null };
+  }
   try {
     const blob = await (await fetch(hero.imageUrl)).blob();
     return { hero: { ...hero, imageUrl: await resizeImageToDataUrl(blob, HERO_IMAGE_MAX_DIM) }, pictureError: null };

@@ -93,6 +93,17 @@ export function ownedCatalog(catalog, owned) {
   return out;
 }
 
+// The Store books a shop's source (data/merchants.js's WARE_SOURCES) comes
+// out of; ingredients come with either the Food & Drink or the Potions book.
+const SOURCE_BOOKS = { tomes: ['tomes'], foods: ['foods'], spells: ['spells'], potions: ['potions'], ingredients: ['foods', 'potions'] };
+
+// Whether a shopkeeper can stock from that source: always for weapons and
+// items, and for a Store book's chapter only once the book is added.
+export function hasSource(source, owned) {
+  const books = SOURCE_BOOKS[source];
+  return !books || books.some((kind) => owned.includes(kind));
+}
+
 // How a chapter stands on the shelf:
 //   'full'  — owned (hasBook): its built-in entries and the table's own;
 //   'local' — a Store book not added, but the table has made entries of its

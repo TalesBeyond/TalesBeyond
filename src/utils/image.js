@@ -10,6 +10,14 @@
 
 import { assertImageAllowed } from '../lib/imageSafety.js';
 
+// While false, a picture of one's own goes only on a map: an island's or a
+// layer's background (Toolbar's IslandSettings and LayerSettings). Tokens,
+// heroes and the compendium's monsters keep their built-in pictures — their
+// picture buttons are hidden, a hero file's own picture is left out
+// (lib/heroFile.js), and GameView turns any other picture back into the
+// kind's default icon.
+export const OWN_TOKEN_PICTURES = false;
+
 export function resizeImageToCanvas(file, maxDim) {
   return new Promise((resolve, reject) => {
     const img = new Image();
