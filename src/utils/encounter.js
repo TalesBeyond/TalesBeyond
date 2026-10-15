@@ -54,6 +54,17 @@ export function advanceEncounter(encounter, entities) {
   return encounter;
 }
 
+// The DM's own turn order (InitiativeModal's drag and drop): `orderedIds`
+// first, in that order, then anyone in the fight it leaves out, as they
+// were. Whoever is acting keeps the turn, and where they started it.
+export function reorderEncounter(encounter, orderedIds) {
+  if (!encounter?.order?.length) return encounter;
+  const byId = new Map(encounter.order.map((entry) => [entry.id, entry]));
+  const order = [...orderedIds.filter((id) => byId.has(id)).map((id) => byId.get(id)), ...encounter.order.filter((entry) => !orderedIds.includes(entry.id))];
+  const acting = currentActorId(encounter);
+  return { ...encounter, order, turn: Math.max(0, order.findIndex((entry) => entry.id === acting)) };
+}
+
 export function speedOf(entity) {
   if (!entity) return 30;
   const sheet = entity.kind === 'hero' ? entity.sheet : entity.mobSheet;

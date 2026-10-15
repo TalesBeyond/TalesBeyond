@@ -1,9 +1,10 @@
 import React, { useRef } from 'react';
-import { DRAW_SWATCHES, DRAW_WIDTHS, drawWidthSquares, hexToHsv, hsvToHex } from '../utils/drawing.js';
+import { DRAW_SWATCHES, brushPercent, brushWidth, hexToHsv, hsvToHex } from '../utils/drawing.js';
 
 // The Draw tool's style controls: colour (wheel, brightness, swatches, recent
-// colours), line thickness and fill. Shown in the desktop drawing bar's
-// popover and in the phone's "Drawing style" sheet.
+// colours), line thickness (a slider, the same value as the Pencil's Brush
+// size beside the bar) and fill. Shown in the desktop drawing bar's popover
+// and in the phone's "Drawing style" sheet.
 
 // Hue runs clockwise from the top; saturation grows from the white centre to
 // the rim. Brightness is its own slider underneath.
@@ -86,32 +87,31 @@ function SwatchRow({ label, colours, current, onPick }) {
 
 export default function DrawStylePanel({ style, recent = [], onChange }) {
   const set = (patch) => onChange({ ...style, ...patch });
-  // A width from the Pencil's Brush size slider lights the preset it matches, if any.
-  const widthSquares = drawWidthSquares(style.width);
+  const thickness = brushPercent(style.width);
+  const dot = 4 + Math.round((thickness / 100) * 14);
   return (
     <div className="draw-style">
       <ColourWheel colour={style.color} onChange={(color) => set({ color })} />
       <SwatchRow label="Colours" colours={DRAW_SWATCHES} current={style.color} onPick={(color) => set({ color })} />
       <SwatchRow label="Recent" colours={recent} current={style.color} onPick={(color) => set({ color })} />
-      <div className="draw-swatch-row">
-        <span>Thickness</span>
-        <div className="draw-widths" role="radiogroup" aria-label="Thickness">
-          {DRAW_WIDTHS.map((w, i) => (
-            <button
-              key={w.id}
-              type="button"
-              role="radio"
-              aria-checked={widthSquares === w.squares}
-              className={`draw-width${widthSquares === w.squares ? ' active' : ''}`}
-              title={w.label}
-              onClick={() => set({ width: w.id })}
-            >
-              <span style={{ height: 2 + i * 2.5, background: style.color }} />
-              <span className="visually-hidden">{w.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <label className="draw-tool-slider">
+        <span className="draw-tool-slider-head">
+          <span>Thickness</span>
+          <b>
+            <i className="draw-tool-slider-brush" style={{ width: dot, height: dot, background: style.color }} />
+            {thickness}%
+          </b>
+        </span>
+        <input
+          type="range"
+          min="1"
+          max="100"
+          step="1"
+          value={thickness}
+          aria-valuetext={`${thickness}%`}
+          onChange={(e) => set({ width: brushWidth(Number(e.target.value)) })}
+        />
+      </label>
       <label className="draw-fill">
         <input type="checkbox" checked={Boolean(style.fill)} onChange={(e) => set({ fill: e.target.checked })} />
         <span>

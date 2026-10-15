@@ -11,6 +11,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { attachImageExchange } from './imageExchange.js';
+import { scrubInbound } from './inboundSafety.js';
 import { canBeHidden } from '../data/visibility.js';
 import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, mapDbCustomAsset, mapDbAudioTrack, mapDbDrawing, mapDbFogChunk } from './mappers.js';
 
@@ -39,14 +40,17 @@ import { mapDbEntity, mapDbLayer, mapDbIsland, mapDbPlayer, mapDbEntityDmData, m
 // which are never rows in the database (lib/boardSync.js).
 // onEntity / `sendEntity(message)`: a change to a token, announced as well as
 // written to the database so it shows at once (lib/fastSync.js).
-export function subscribeToTable(tableId, dispatch, onStatusChange, presence, onRoll, onArea, onHero, onBoards, onEntity) {
+// Everything another browser sent — rows and announcements alike — is
+// scrubbed before it is used (inboundSafety.js).
+export function subscribeToTable(tableId, dispatchToStore, onStatusChange, presence, onRoll, onArea, onHero, onBoards, onEntity) {
+  const dispatch = (action) => dispatchToStore(scrubInbound(action));
   const channel = supabase.channel(`table:${tableId}`);
   let hasJoinedOnce = false;
-  if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(payload));
-  if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(payload));
-  if (onHero) channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(payload));
-  if (onBoards) channel.on('broadcast', { event: 'boards' }, ({ payload }) => onBoards(payload));
-  if (onEntity) channel.on('broadcast', { event: 'entity' }, ({ payload }) => onEntity(payload));
+  if (onRoll) channel.on('broadcast', { event: 'roll' }, ({ payload }) => onRoll(scrubInbound(payload)));
+  if (onArea) channel.on('broadcast', { event: 'area' }, ({ payload }) => onArea(scrubInbound(payload)));
+  if (onHero) channel.on('broadcast', { event: 'hero' }, ({ payload }) => onHero(scrubInbound(payload)));
+  if (onBoards) channel.on('broadcast', { event: 'boards' }, ({ payload }) => onBoards(scrubInbound(payload)));
+  if (onEntity) channel.on('broadcast', { event: 'entity' }, ({ payload }) => onEntity(scrubInbound(payload)));
   // The DM just hid a monster, chest or door, or the fog of war now covers a
   // token (69_fogged_tokens.sql). Realtime sends no event when a
   // row stops being visible to a subscriber, so the DM's client names the

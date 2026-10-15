@@ -14,6 +14,7 @@ import { compendiumDefaultImage } from '../data/compendiumImages.js';
 import { emitFx } from '../lib/fx.js';
 import { Hint } from './Hints.jsx';
 import { usePhoneLayout } from './PhoneChrome.jsx';
+import { useOwnedBooks, bookShelf, ownedCatalog } from '../data/storeBooks.js';
 
 // A DM's own picture for a built-in monster is kept in this browser (not in the
 // table), so it is there next time the book opens on any table.
@@ -49,7 +50,10 @@ function saveMonsterImages(images) {
 // made from: a potion's or a dish's page prints its recipe, an ingredient's
 // what it goes into (recipeChapterEntries below).
 // Tomes, Food & Drink, Spells and Potions each have a button that opens
-// Asset Storage on that chapter's own tab: onAddOwn(kind).
+// Asset Storage on that chapter's own tab: onAddOwn(kind). Those four are
+// Store books: their tabs are only on the edge once added
+// (data/storeBooks.js), or, not added, once the table has made entries of
+// its own for one — then it is "Your Tomes" and so on, with only those.
 
 // `tab` is the name on the fore edge, `one` the heading over a single entry.
 const CHAPTERS = [
@@ -188,10 +192,23 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
   const timers = useRef([]);
   const isPhone = usePhoneLayout();
 
-  const { weapons, items, monsters, tomes, foods, foodIngredients, spells, potions, ingredients } = useCatalog();
+  // The chapters on its edge (data/storeBooks.js's bookShelf): those that
+  // come with the app and the Store books this browser has added, in full,
+  // and a Store book not added that the table has made entries of its own
+  // for, holding only those ("local").
+  const ownedBooks = useOwnedBooks();
+  const ownCount = { tomes: customTomes?.length, foods: customFoods?.length, spells: customSpells?.length, potions: customPotions?.length };
+  const shelfOf = (k) => bookShelf(k, ownedBooks, ownCount[k] > 0);
+  const shelf = CHAPTERS.filter((c) => shelfOf(c.kind));
+  const local = (k) => shelfOf(k) === 'local';
+
+  // A Store book not added keeps its built-in entries out of the book.
+  const catalog = useCatalog();
+  const { weapons, items, monsters, tomes, foods, foodIngredients, spells, potions, ingredients } = useMemo(() => ownedCatalog(catalog, ownedBooks), [catalog, ownedBooks]);
   const isWeapons = kind === 'weapons';
   const isMonsters = kind === 'monsters';
-  const { chapter, noun, one } = CHAPTERS.find((c) => c.kind === kind) || CHAPTERS[0];
+  const { chapter: fullChapter, noun, one, tab } = CHAPTERS.find((c) => c.kind === kind) || CHAPTERS[0];
+  const chapter = local(kind) ? `Your ${tab}` : fullChapter;
 
   // Each chapter's own filter beside the search: a row of chips, or a list
   // to pick from when there are too many for chips.
@@ -440,7 +457,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
           </button>
         </header>
         <div className="cphone-tabs" role="tablist" aria-label="Compendium">
-          {CHAPTERS.map(({ kind: k, tab: label }) => (
+          {shelf.map(({ kind: k, tab: label }) => (
             <button
               key={k}
               type="button"
@@ -824,7 +841,7 @@ export default function CompendiumBook({ kind, onClose, onSwitchKind, heroes, on
         </div>
 
         <div className="cbook-tabs" role="tablist" aria-label="Compendium">
-          {CHAPTERS.map(({ kind: k, tab: label }) => (
+          {shelf.map(({ kind: k, tab: label }) => (
             <button key={k} type="button" role="tab" aria-selected={kind === k} className={`cbook-tab${kind === k ? ' active' : ''}`} onClick={() => kind !== k && onSwitchKind(k)}>
               {label}
             </button>

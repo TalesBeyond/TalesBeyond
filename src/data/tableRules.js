@@ -145,6 +145,7 @@ export const TABLE_RULES = {
         ['Monsters', 'the book of creatures to place on the map.'],
         ['Items', 'the book of gear, potions and supplies.'],
         ['Weapons', 'the book of weapons.'],
+        ['Tomes, Food & Drink, Spells, Potions', 'books from the Store’s Books shelf: Add one there and it lies in the drawer, and on the open book’s tabs, from then on (in this browser). Without it, making a tome, dish, spell or potion of your own in Storage puts a book of just yours there instead — Your Tomes and so on.'],
         ['Storage', 'your own monsters, weapons, items, tomes, food, spells and potions.'],
       ],
     },
@@ -170,7 +171,7 @@ export const TABLE_RULES = {
       sub: 'Start a fight',
       where: 'Left rail',
       dm: true,
-      text: 'Opens in a drawer beside the rail, so the map stays in view while you pick who fights. Rolls turn order for the heroes and monsters in the world you are viewing. Start encounter begins the fight: the turn order appears along the top of the map and each creature takes its turn.',
+      text: 'Opens in a drawer beside the rail, so the map stays in view while you pick who fights. Rolls turn order for the heroes and monsters in the world you are viewing. Start encounter begins the fight: the turn order appears along the top of the map and each creature takes its turn. Once rolled, drag a name in the turn order (or use its arrows) to move it earlier or later: the badges on the map follow, and a running fight keeps the turn with whoever is acting.',
     },
     MUSIC_ENABLED
       ? {
