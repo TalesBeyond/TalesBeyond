@@ -4,7 +4,7 @@ import CreatureCard from './CreatureCard.jsx';
 import { BattleEquipmentTab, SpellsTab, BagTab, SavesSkillsTab } from './RightPanel.jsx';
 import { DEFAULT_HEROES } from '../data/defaultTokens.js';
 import { SPRITE_HEROES, spriteForUrl, useOwnedSpriteHeroes } from '../data/spriteTokens.js';
-import { resizeImageToDataUrl } from '../utils/image.js';
+import { OWN_TOKEN_PICTURES, resizeImageToDataUrl } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
@@ -221,11 +221,15 @@ export default function CharacterBuilder({ table = null, onClose }) {
                 );
               })}
             </div>
-            <button type="button" className={`add-image-drop${ownPicture ? ' chosen' : ''}`} disabled={Boolean(busy)} onClick={() => pictureRef.current?.click()}>
-              {ownPicture ? 'Using your own image' : 'Add your own image'}
-              <span>{ownPicture ? 'Press to pick another' : 'PNG or JPG'}</span>
-            </button>
-            <input ref={pictureRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePictureChosen} />
+            {OWN_TOKEN_PICTURES && (
+              <>
+                <button type="button" className={`add-image-drop${ownPicture ? ' chosen' : ''}`} disabled={Boolean(busy)} onClick={() => pictureRef.current?.click()}>
+                  {ownPicture ? 'Using your own image' : 'Add your own image'}
+                  <span>{ownPicture ? 'Press to pick another' : 'PNG or JPG'}</span>
+                </button>
+                <input ref={pictureRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePictureChosen} />
+              </>
+            )}
           </section>
 
           <section className="hero-screen-block">

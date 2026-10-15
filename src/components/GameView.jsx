@@ -41,8 +41,10 @@ import {
   isHeldBackDestination,
 } from '../utils/fogOfWar.js';
 import { uniqueTokenName } from '../utils/tokenNames.js';
-import { islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
+import { OWN_TOKEN_PICTURES, islandsTemplateSize, renderIslandsTemplateToDataUrl } from '../utils/image.js';
 import { iconRefForUrl, makeIconDataUrl } from '../data/defaultTokens.js';
+import { isCompendiumImage } from '../data/compendiumImages.js';
+import { fromStoredImage } from '../lib/storedImages.js';
 import { resolveImage, storeImage } from '../lib/imageCache.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import {
@@ -1434,7 +1436,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   // the DM's browser then asks for it like any other shared picture.
   async function offerHero(hero) {
     if (!hostSeenRef.current) throw new Error('The DM is not at the table right now, so nobody would receive it. Try again when they are back.');
-    let imageUrl = hero.imageUrl;
+    let imageUrl = builtInPicture(hero.imageUrl, { kind: 'hero', color: hero.color });
     if (needsSharing(imageUrl)) {
       try {
         imageUrl = await storeImage(imageUrl);
@@ -1930,6 +1932,31 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     return isSharedTable && typeof url === 'string' && url.startsWith('data:') && !iconRefForUrl(url);
   }
 
+  // While pictures of one's own go only on maps (utils/image.js
+  // OWN_TOKEN_PICTURES), one that still reaches a token (a stale screen, an
+  // old saved hero) becomes its kind's built-in icon. Built-in icons, the
+  // compendium's bundled pictures and shared fingerprints (`img:`, a picture
+  // already on the table) pass.
+  function builtInPicture(url, row) {
+    if (OWN_TOKEN_PICTURES || typeof url !== 'string' || !url.startsWith('data:') || iconRefForUrl(url) || isCompendiumImage(url)) return url;
+    return fromStoredImage('', row);
+  }
+  function withBuiltInPictures(draft, kind) {
+    let next = draft;
+    if ('imageUrl' in draft) {
+      const imageUrl = builtInPicture(draft.imageUrl, { kind, color: draft.color });
+      if (imageUrl !== draft.imageUrl) next = { ...next, imageUrl };
+    }
+    if (Array.isArray(draft.ambushMonsters)) {
+      const ambushMonsters = draft.ambushMonsters.map((m) => {
+        const imageUrl = builtInPicture(m.imageUrl, { kind: 'mob', color: m.color });
+        return imageUrl === m.imageUrl ? m : { ...m, imageUrl };
+      });
+      if (ambushMonsters.some((m, i) => m !== draft.ambushMonsters[i])) next = { ...next, ambushMonsters };
+    }
+    return next;
+  }
+
   function shareImageFailed(err) {
     alert(imageErrorMessage(err, 'Could not keep that image in this browser — try a different file.'));
   }
@@ -2022,6 +2049,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
 
   function addEntity(draft) {
     if (!isHost) return;
+    draft = withBuiltInPictures(draft, draft.kind);
     if (draft.kind === 'ambush' && (draft.ambushMonsters || []).some((m) => needsSharing(m.imageUrl))) {
       shareAmbushMonsters(draft.ambushMonsters)
         .then((ambushMonsters) => addEntity({ ...draft, ambushMonsters }))
@@ -2223,6 +2251,7 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
   function updateEntity(id, patch) {
     const entity = state.entities[id];
     if (!canUpdateEntity(entity, patch)) return;
+    patch = withBuiltInPictures(patch, entity.kind);
     if (isHost && (patch.ambushMonsters || []).some((m) => needsSharing(m.imageUrl))) {
       shareAmbushMonsters(patch.ambushMonsters)
         .then((ambushMonsters) => updateEntity(id, { ...patch, ambushMonsters }))
@@ -3632,8 +3661,21 @@ export default function GameView({ me, mode, onLeave, onCodeRotated, theme, onTh
     goToLayer(pending.destinationLayerId);
   }
 
+  // Not going through after all: a token left standing on the door (or the
+  // portal) steps off it, onto the free square beside it closest to it —
+  // the same square it would come out on from the other side.
   function cancelEnterDoor() {
+    const pending = pendingDoor;
     setPendingDoor(null);
+    if (!pending) return;
+    const door = visibleEntities[pending.door.id] || pending.door;
+    const token = isHost ? state.entities[pending.travellerId] : heroes.find((h) => h.id === pending.heroId && h.ownerId === me.id);
+    if (!token || token.layerId !== currentLayerId || token.islandId !== door.islandId) return;
+    const size = token.size || 1;
+    const onDoor = door.col >= token.col && door.col < token.col + size && door.row >= token.row && door.row < token.row + size;
+    if (!onDoor) return;
+    const spot = arrivalCellNear(state, currentLayerId, door.islandId, door.col, door.row);
+    moveEntity(token.id, spot.col, spot.row, spot.islandId);
   }
 
   // The token the DM dropped on the door, for the prompt's wording.

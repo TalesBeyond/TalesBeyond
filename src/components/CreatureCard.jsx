@@ -7,7 +7,7 @@ import { useFx } from '../lib/fx.js';
 import { useImageCacheVersion } from '../lib/imageCache.js';
 import { entityImageSrc } from '../lib/storedImages.js';
 import { spriteForUrl, useSpritePlaying } from '../data/spriteTokens.js';
-import { resizeImageToDataUrl } from '../utils/image.js';
+import { OWN_TOKEN_PICTURES, resizeImageToDataUrl } from '../utils/image.js';
 import { imageErrorMessage } from '../lib/imageSafety.js';
 import { HERO_IMAGE_MAX_DIM } from '../lib/heroFile.js';
 
@@ -17,7 +17,7 @@ import { HERO_IMAGE_MAX_DIM } from '../lib/heroFile.js';
 // ability scores, death saves, conditions, and a tab ribbon whose sections
 // (Battle, Spells, Bag, Loot, Skills, DM) the caller supplies as `tabs`. The
 // pencil on the art swaps the token's picture for one of the DM's own
-// (TokenPictureButton below).
+// (TokenPictureButton below), while utils/image.js OWN_TOKEN_PICTURES allows it.
 //
 // Every value the viewer may change is click-to-edit (Editable below): it
 // shows a pencil on hover, turns into an input on click, and saves on Enter
@@ -238,8 +238,14 @@ export function RemoveTokenButton({ name, onRemove, className = '' }) {
 // The DM's "use a picture of my own for this token", a pencil on the card's
 // art. The picture chosen replaces the token's `imageUrl`, so the card and the
 // token on the map both draw it. `children`: what the pencil sits on, where
-// the button is the picture itself (the phone sheet's avatar).
+// the button is the picture itself (the phone sheet's avatar). Only `children`
+// while own token pictures are off (utils/image.js OWN_TOKEN_PICTURES).
 export function TokenPictureButton({ name, onPick, className = '', children = null }) {
+  if (!OWN_TOKEN_PICTURES) return children;
+  return <TokenPicturePicker name={name} onPick={onPick} className={className}>{children}</TokenPicturePicker>;
+}
+
+function TokenPicturePicker({ name, onPick, className, children }) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
 

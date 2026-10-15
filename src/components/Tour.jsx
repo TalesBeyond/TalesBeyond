@@ -129,7 +129,7 @@ export const HOST_TOUR = [
   {
     target: 'inspector',
     title: 'The character sheet',
-    text: 'Click any token on the map and its sheet opens here: hit points, armor, conditions, and tabs for fighting, magic, the bag and stats. On a hero, “played by” sets which player controls it. The pencil on its picture swaps it for an image of your own.',
+    text: 'Click any token on the map and its sheet opens here: hit points, armor, conditions, and tabs for fighting, magic, the bag and stats. On a hero, “played by” sets which player controls it.',
     side: 'left',
   },
   {

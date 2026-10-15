@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '../lib/catalog.js';
-import { useOwnedBooks, ownedCatalog } from '../data/storeBooks.js';
+import { useOwnedBooks, ownedCatalog, hasSource } from '../data/storeBooks.js';
 import { defaultCharacterSheet, SPELL_LEVELS } from '../data/characterSheet.js';
 import { spellLevelLabel } from '../data/spells.js';
 import {
@@ -50,9 +50,14 @@ function customSourceFor(role) {
 // can hold "Place" back until it is added or cleared.
 export function ShopWaresEditor({ role, wares, customAssets, onChange, onPendingCustomChange }) {
   const catalog = useCatalog();
-  const fromCompendium = role.sources.length > 0;
+  // The chapters it can stock from: those of a Store book this browser hasn't
+  // added (data/storeBooks.js) aren't offered, and a shop left with none —
+  // a Librarian without the Tomes book — has only its own wares to stock.
+  const ownedBooks = useOwnedBooks();
+  const sources = role.sources.filter((key) => hasSource(key, ownedBooks));
+  const fromCompendium = sources.length > 0;
   const [tab, setTab] = useState(fromCompendium ? 'compendium' : 'custom');
-  const [source, setSource] = useState(role.sources[0] || null);
+  const [source, setSource] = useState(sources[0] || null);
   const [search, setSearch] = useState('');
   const [customName, setCustomName] = useState('');
   const [customPrice, setCustomPrice] = useState(5);
@@ -69,10 +74,8 @@ export function ShopWaresEditor({ role, wares, customAssets, onChange, onPending
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCustom]);
 
-  // What can be stocked: a Store book this browser hasn't added
-  // (data/storeBooks.js) lends none of its built-in entries, so a Librarian
-  // without the Tomes book stocks only the table's own tomes, and so on.
-  const ownedBooks = useOwnedBooks();
+  // A Store book not added lends none of its built-in entries (ingredients
+  // come from whichever of Food & Drink and Potions is added).
   const shelfCatalog = useMemo(() => ownedCatalog(catalog, ownedBooks), [catalog, ownedBooks]);
   const entries = useMemo(() => (source ? sourceEntries(source, shelfCatalog, customAssets) : []), [source, shelfCatalog, customAssets]);
   const matches = useMemo(() => {
@@ -212,9 +215,9 @@ export function ShopWaresEditor({ role, wares, customAssets, onChange, onPending
 
           {tab === 'compendium' && (
             <div className="chest-add-panel" role="tabpanel" aria-label="From the compendium">
-              {role.sources.length > 1 && (
+              {sources.length > 1 && (
                 <div className="shop-source-chips" role="group" aria-label="Which chapter">
-                  {role.sources.map((key) => (
+                  {sources.map((key) => (
                     <button key={key} type="button" className={`tool-btn${source === key ? ' active' : ''}`} aria-pressed={source === key} onClick={() => setSource(key)}>
                       {WARE_SOURCES[key].label}
                     </button>
@@ -256,13 +259,7 @@ export function ShopWaresEditor({ role, wares, customAssets, onChange, onPending
                     </div>
                   );
                 })}
-                {matches.length === 0 && (
-                  <p className="shop-empty">
-                    {entries.length === 0
-                      ? `No ${WARE_SOURCES[source].label.toLowerCase()} to stock yet. Add its book from the Store, or make your own in Asset Storage.`
-                      : 'Nothing by that name.'}
-                  </p>
-                )}
+                {matches.length === 0 && <p className="shop-empty">Nothing by that name.</p>}
                 {matches.length > BROWSE_LIMIT && (
                   <p className="shop-empty">
                     Showing {BROWSE_LIMIT} of {matches.length}. Search to narrow it down.

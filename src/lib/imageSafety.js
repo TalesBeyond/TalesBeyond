@@ -52,6 +52,15 @@ export class ImageCheckUnavailableError extends Error {
   }
 }
 
+// A picture of one's own somewhere other than a map, while those are off
+// (utils/image.js OWN_TOKEN_PICTURES): say, a hero file that brought one.
+export class OwnPictureOffError extends Error {
+  constructor() {
+    super('Pictures of your own are only for maps');
+    this.name = 'OwnPictureOffError';
+  }
+}
+
 // What to tell the person who picked the picture. `fallback` is the caller's
 // own message for every other failure (an unreadable file, a full disk).
 export function imageErrorMessage(err, fallback) {
@@ -60,6 +69,9 @@ export function imageErrorMessage(err, fallback) {
   }
   if (err instanceof ImageCheckUnavailableError) {
     return 'The picture could not be checked, so it was not added. Check your connection and try again.';
+  }
+  if (err instanceof OwnPictureOffError) {
+    return 'Pictures of your own can only be used on maps and layers, so a built-in picture is used instead.';
   }
   return fallback;
 }
